@@ -6,6 +6,7 @@ import android.print.PrintManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.example.model.ExamConfig
+import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
 
@@ -670,7 +671,7 @@ object PrintDocumentHelper {
             <style>
                 @page {
                     size: A4 portrait;
-                    margin: 8mm;
+                    margin: ${OmrGeometry.MARGIN_Y_MM}mm ${OmrGeometry.MARGIN_X_MM}mm;
                 }
                 * { box-sizing: border-box; }
                 body {
@@ -692,7 +693,7 @@ object PrintDocumentHelper {
 
     private fun getOmrCss(isStandalone: Boolean): String {
         return """
-        /* Drop-out Red OMR Theme Rules */
+        /* Drop-out Magenta/Pink NEET OMR Theme Rules */
         .omr-page {
             ${if (isStandalone) "" else "page-break-before: always; break-before: page;"}
             page-break-inside: avoid;
@@ -701,16 +702,17 @@ object PrintDocumentHelper {
             break-after: avoid;
             box-sizing: border-box;
             width: 100%;
-            height: 275mm;
-            max-height: 278mm;
+            height: ${OmrGeometry.PRINTABLE_HEIGHT_MM}mm;
+            max-height: ${OmrGeometry.PRINTABLE_HEIGHT_MM}mm;
             overflow: hidden;
             margin: 0;
             padding: 0;
+            color: #000000;
         }
         .omr-wrapper {
             position: relative;
-            border: 2px solid #b91c1c;
-            padding: 3mm 4mm;
+            border: 1.8px solid #be185d;
+            padding: 2.0mm 2.5mm;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -718,203 +720,391 @@ object PrintDocumentHelper {
             justify-content: space-between;
             background: #ffffff;
         }
-        /* Registration Anchors (Corner Markers in #b91c1c) */
+        /* 4 Corner Registration Fiducial Anchors */
         .omr-anchor {
             position: absolute;
-            width: 6.5mm;
-            height: 6.5mm;
-            background-color: #b91c1c;
+            width: ${OmrGeometry.ANCHOR_SIZE_MM}mm;
+            height: ${OmrGeometry.ANCHOR_SIZE_MM}mm;
+            background-color: #be185d;
             z-index: 20;
         }
-        .anchor-tl { top: 1.5mm; left: 1.5mm; }
-        .anchor-tr { top: 1.5mm; right: 1.5mm; }
-        .anchor-bl { bottom: 1.5mm; left: 1.5mm; }
-        .anchor-br { bottom: 1.5mm; right: 1.5mm; }
+        .anchor-tl { top: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; left: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
+        .anchor-tr { top: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; right: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
+        .anchor-bl { bottom: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; left: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
+        .anchor-br { bottom: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; right: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
 
+        /* Top Header Area */
         .omr-top-header {
-            margin: 0 8mm;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 0 5mm 1.5mm 5mm;
+            gap: 4mm;
+        }
+        .omr-header-warning {
+            flex: 1.2;
+            border: 1.2px solid #be185d;
+            border-radius: 4px;
+            padding: 1.2mm 2.5mm;
+            font-size: 5.6pt;
+            font-weight: 700;
+            color: #be185d;
+            line-height: 1.15;
+            background: #fdf2f8;
+        }
+        .omr-header-title-box {
+            flex: 1;
+            text-align: right;
         }
         .omr-title {
-            text-align: center;
-            font-weight: 800;
+            font-weight: 900;
             font-size: 11pt;
-            letter-spacing: 0.6px;
-            text-transform: uppercase;
-            color: #b91c1c;
-            margin: 0 0 2px 0;
-            line-height: 1.1;
-        }
-        .omr-info-header {
-            text-align: center;
-            margin-bottom: 2px;
-        }
-        .omr-inst-name {
-            font-size: 9.5pt;
-            font-weight: 800;
-            text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: #991b1b;
+            text-transform: uppercase;
+            color: #be185d;
             line-height: 1.1;
         }
-        .omr-exam-name {
-            font-size: 8.2pt;
+        .omr-exam-subtitle {
+            font-size: 7.2pt;
             font-weight: 700;
-            color: #b91c1c;
+            color: #9d174d;
+        }
+
+        /* 2-Panel Main Container */
+        .omr-body-container {
+            display: flex;
+            flex: 1;
+            gap: 2.5mm;
+            min-height: 0;
+            margin: 0 1mm;
+        }
+
+        /* Left Identification Panel */
+        .omr-left-panel {
+            width: ${OmrGeometry.LEFT_PANEL_WIDTH_MM}mm;
+            min-width: ${OmrGeometry.LEFT_PANEL_WIDTH_MM}mm;
+            max-width: ${OmrGeometry.LEFT_PANEL_WIDTH_MM}mm;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5mm;
+            border: 1.2px solid #be185d;
+            padding: 1.2mm;
+            background: #fff;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .omr-left-banner-text {
+            position: absolute;
+            left: -20px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-90deg);
+            font-size: 5.5pt;
+            font-weight: 800;
+            color: #be185d;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .grid-header-title {
+            background: #be185d;
+            color: #ffffff;
+            font-size: 6.2pt;
+            font-weight: 800;
+            text-align: center;
+            padding: 1px 0;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .digit-entry-row {
+            display: flex;
+            border-bottom: 1px solid #be185d;
+            background: #fff;
+        }
+        .digit-box {
+            flex: 1;
+            height: 3.5mm;
+            border-right: 1px solid #be185d;
+            box-sizing: border-box;
+        }
+        .digit-box:last-child {
+            border-right: none;
+        }
+        .bubble-matrix {
+            display: flex;
+            padding: 0.8mm 0;
+            justify-content: space-around;
+        }
+        .bubble-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5mm;
+        }
+        .micro-bubble {
+            width: 2.8mm;
+            height: 2.8mm;
+            border: 0.3mm solid #be185d;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4.2pt;
+            font-weight: 700;
+            color: #be185d;
+            background: #ffffff;
+            box-sizing: border-box;
+            line-height: 1;
+        }
+
+        /* Booklet Code & Barcode Box */
+        .code-and-barcode-row {
+            display: flex;
+            gap: 1.5mm;
+            align-items: stretch;
+        }
+        .booklet-code-box {
+            flex: 1;
+            border: 1px solid #be185d;
+            padding: 1mm;
+            text-align: center;
+        }
+        .booklet-code-large {
+            font-size: 16pt;
+            font-weight: 900;
+            color: #be185d;
             line-height: 1.1;
         }
-        .omr-info-grid {
-            display: grid;
-            grid-template-columns: 1.2fr 1fr 1fr 1fr;
-            border: 1.5px solid #b91c1c;
-            padding: 2.5px 6px;
-            font-size: 7pt;
-            background: #fff1f2;
-            color: #7f1d1d;
-            gap: 2px 6px;
+        .sheet-no-box {
+            flex: 1.4;
+            border: 1px dashed #be185d;
+            padding: 1mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 5pt;
+            color: #be185d;
+            font-weight: 700;
+            text-align: center;
+            background: #fdf2f8;
+        }
+        .barcode-simulation {
+            display: flex;
+            height: 10mm;
+            gap: 1px;
+            justify-content: center;
             align-items: center;
-            margin-top: 2px;
         }
-        .omr-info-grid > div {
-            border-right: 1px solid #f87171;
-            padding-right: 4px;
+        .bar {
+            background: #be185d;
+            height: 100%;
         }
-        .omr-info-grid > div:last-child {
-            border-right: none;
-            padding-right: 0;
+
+        /* Candidate Declaration Box */
+        .declaration-box {
+            border: 1px solid #be185d;
+            padding: 1.2mm;
+            font-size: 4.8pt;
+            color: #831843;
+            line-height: 1.15;
+            background: #fff;
         }
-        .omr-instructions {
-            font-size: 6.2pt;
-            border: 1px solid #b91c1c;
-            background: #fffbfa;
-            color: #991b1b;
-            padding: 2px 6px;
-            margin-top: 3px;
-            line-height: 1.2;
+        .declaration-title {
+            font-weight: 800;
+            color: #be185d;
+            font-size: 5.2pt;
+            margin-bottom: 0.5mm;
+            text-transform: uppercase;
+        }
+        .decl-sig-line {
+            border-bottom: 0.8px solid #be185d;
+            margin-top: 5mm;
+            margin-bottom: 0.5mm;
+        }
+        .decl-sig-caption {
+            font-size: 4.4pt;
+            font-weight: 700;
+            color: #be185d;
             text-align: center;
         }
 
-        /* Full-width OMR Response Grid (No sidebar or signature on left) */
-        .omr-grid-container {
+        /* Right 4-Column Question Grid */
+        .omr-right-grid {
+            width: ${OmrGeometry.RIGHT_GRID_WIDTH_MM}mm;
+            min-width: ${OmrGeometry.RIGHT_GRID_WIDTH_MM}mm;
+            max-width: ${OmrGeometry.RIGHT_GRID_WIDTH_MM}mm;
             display: flex;
-            width: 100%;
-            flex: 1;
-            border-top: 1.5px solid #b91c1c;
-            border-bottom: 1.5px solid #b91c1c;
-            margin: 3px 0;
-            background: #ffffff;
-            min-height: 0;
+            gap: ${OmrGeometry.COLUMN_GUTTER_MM}mm;
+            box-sizing: border-box;
         }
         .omr-column {
-            flex: 1;
+            width: ${OmrGeometry.COLUMN_WIDTH_MM}mm;
+            min-width: ${OmrGeometry.COLUMN_WIDTH_MM}mm;
+            max-width: ${OmrGeometry.COLUMN_WIDTH_MM}mm;
             display: flex;
             flex-direction: column;
-            justify-content: flex-start;
-            padding: 0.3mm 0.8mm;
-            border-right: 1.2px solid #f87171;
-            min-width: 0;
+            border: 1px solid #be185d;
+            box-sizing: border-box;
+            background: #ffffff;
         }
-        .omr-column:last-child {
-            border-right: none;
+        .omr-col-header {
+            background: #be185d;
+            color: #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1px 1.5mm;
+            height: ${OmrGeometry.COL_HEADER_HEIGHT_MM}mm;
+            box-sizing: border-box;
+            font-size: 5.4pt;
+            font-weight: 800;
+        }
+        .header-qnum-lbl {
+            width: 6.0mm;
+            text-align: center;
+        }
+        .header-resp-wrap {
+            display: flex;
+            gap: 1.0mm;
+            align-items: center;
+        }
+        .header-opt-lbl {
+            width: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            text-align: center;
+            font-size: 5.5pt;
+        }
+
+        /* Question Rows */
+        .section-separator {
+            background: #fdf2f8;
+            border-top: 1px solid #be185d;
+            border-bottom: 1px solid #be185d;
+            font-size: 4.6pt;
+            font-weight: 800;
+            color: #be185d;
+            text-align: center;
+            padding: 0.3mm 0;
+            letter-spacing: 0.3px;
         }
         .omr-row {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            margin: 0;
+            justify-content: flex-start;
+            height: ${OmrGeometry.ROW_PITCH_MM}mm;
+            min-height: ${OmrGeometry.ROW_PITCH_MM}mm;
+            max-height: ${OmrGeometry.ROW_PITCH_MM}mm;
+            padding: 0 0.8mm;
             box-sizing: border-box;
-            border: none;
         }
-        /* 5-row alternating zebra tint */
         .omr-row-shaded {
-            background-color: #fff1f2;
+            background-color: #fdf2f8;
         }
         .omr-qnum {
+            width: ${OmrGeometry.QNUM_WIDTH_MM}mm;
+            font-size: 6.2pt;
             font-weight: 800;
             text-align: right;
-            color: #b91c1c;
+            color: #be185d;
             font-family: "Courier New", Courier, monospace;
-            padding-right: 2px;
+            padding-right: ${OmrGeometry.QNUM_TO_BUBBLE_GAP_MM}mm;
+            box-sizing: border-box;
+        }
+        .bubble-group {
+            display: flex;
+            gap: 1.0mm; /* Fixed natural spacing */
+            align-items: center;
         }
         .bubble {
-            width: 3.9mm;
-            height: 3.9mm;
-            min-width: 3.9mm;
-            min-height: 3.9mm;
-            max-width: 3.9mm;
-            max-height: 3.9mm;
-            border: 1.1px solid #b91c1c;
+            width: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            height: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            min-width: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            min-height: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            max-width: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            max-height: ${OmrGeometry.BUBBLE_DIAMETER_MM}mm;
+            border: ${OmrGeometry.BUBBLE_BORDER_THICKNESS_MM}mm solid #be185d;
             border-radius: 50%;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 5.5pt;
-            color: #b91c1c;
+            font-size: 5.6pt;
+            color: #be185d;
             background: #ffffff;
             line-height: 1;
             box-sizing: border-box;
             text-transform: uppercase;
         }
-
-        /* Bottom Verification Area: Candidate Name & Signatures (Strict 1-inch signature boxes) */
-        .omr-bottom-area {
-            margin: 0 8mm;
+        .bubble-empty-slot {
+            opacity: 0.35;
         }
-        .omr-verification-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 4mm;
-            margin-bottom: 1.5mm;
+
+        /* Bottom Verification Area */
+        .omr-bottom-area {
+            border: 1.2px solid #be185d;
+            margin: 1.5mm 1mm 0 1mm;
+            background: #fff;
+            padding: 1.2mm;
+            box-sizing: border-box;
+        }
+        .omr-verification-grid {
+            display: grid;
+            grid-template-columns: 1.3fr 1.3fr 1.4fr 1.6fr;
+            gap: 2mm;
+            align-items: stretch;
         }
         .omr-verif-box {
-            flex: 1;
-            border: 1.2px solid #b91c1c;
-            padding: 2mm 3mm;
-            background: #fffbfa;
+            border: 1px solid #be185d;
+            padding: 1mm 1.5mm;
+            background: #fff;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            min-height: 14mm;
             box-sizing: border-box;
         }
         .omr-verif-label {
-            font-size: 5.8pt;
+            font-size: 5.2pt;
             font-weight: 800;
-            color: #b91c1c;
+            color: #be185d;
             text-transform: uppercase;
-            margin-bottom: 1.5mm;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
+            line-height: 1.1;
         }
         .omr-verif-line {
-            border-bottom: 1.2px solid #b91c1c;
-            height: 1in;
-            min-height: 1in;
-            max-height: 1in;
+            border-bottom: 1px solid #be185d;
+            height: 9mm;
             width: 100%;
-            box-sizing: border-box;
         }
-        .omr-sig-area {
-            height: 1in;
-            min-height: 1in;
-            max-height: 1in;
-            border: 1.2px dashed #f87171;
-            background: #ffffff;
+        .omr-thumb-box {
+            border: 1px dashed #be185d;
+            height: 9mm;
             display: flex;
-            align-items: flex-end;
+            align-items: center;
             justify-content: center;
-            padding-bottom: 2mm;
-            font-size: 5.5pt;
+            font-size: 4.8pt;
+            color: #be185d;
             font-weight: 700;
-            color: #b91c1c;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            box-sizing: border-box;
+            background: #fdf2f8;
         }
-        .end-of-omr {
+        .omr-sig-dual {
+            display: flex;
+            flex-direction: column;
+            gap: 1mm;
+        }
+        .omr-sig-dual-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 4.8pt;
+            color: #be185d;
+            font-weight: 700;
+            border-bottom: 0.8px solid #be185d;
+            padding-bottom: 3.5mm;
+        }
+        .end-of-omr-notice {
             text-align: center;
-            font-size: 5.8pt;
+            font-size: 5.2pt;
             font-weight: 800;
-            color: #b91c1c;
-            letter-spacing: 0.6px;
+            color: #be185d;
+            margin-top: 1mm;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
         }
         """.trimIndent()
@@ -922,102 +1112,183 @@ object PrintDocumentHelper {
 
     private fun generateOmrSectionHtml(paper: QuestionPaper, config: ExamConfig, isStandalone: Boolean = false): String {
         val questionCount = paper.questions.size.coerceAtLeast(1)
-
-        val (numColumns, rowsPerColumn) = when {
-            questionCount <= 20 -> 2 to Math.ceil(questionCount / 2.0).toInt().coerceAtLeast(1)
-            questionCount <= 30 -> 2 to Math.ceil(questionCount / 2.0).toInt().coerceAtLeast(1)
-            questionCount <= 50 -> 2 to Math.ceil(questionCount / 2.0).toInt().coerceAtLeast(1)
-            questionCount <= 75 -> 3 to Math.ceil(questionCount / 3.0).toInt().coerceAtLeast(1)
-            questionCount <= 100 -> 4 to Math.ceil(questionCount / 4.0).toInt().coerceAtLeast(1)
-            questionCount <= 180 -> 4 to Math.ceil(questionCount / 4.0).toInt().coerceAtLeast(1)
-            else -> 5 to Math.ceil(questionCount / 5.0).toInt().coerceAtLeast(1)
-        }
-
-        // Universal bubble size (3.8mm) across all question counts; row padding ensures single-page fit
-        val (qNumFontPt, qNumWidthPx, rowPaddingPx, bubbleMarginPx) = when {
-            rowsPerColumn > 35 -> Tuple4(6.5, 20, "0.3px 0", "0 1.2px")
-            rowsPerColumn > 25 -> Tuple4(7.0, 22, "0.6px 0", "0 1.6px")
-            rowsPerColumn > 15 -> Tuple4(7.4, 24, "1.2px 0", "0 2.0px")
-            else -> Tuple4(8.0, 26, "2.0px 0", "0 2.4px")
-        }
-
         val sb = StringBuilder()
+
         sb.append("""
         <div class="omr-page">
         <div class="omr-wrapper">
-            <!-- 4 Corner Registration Anchors in drop-out red (#b91c1c) -->
+            <!-- 4 Corner Registration Fiducial Anchors in drop-out magenta (#be185d) -->
             <div class="omr-anchor anchor-tl"></div>
             <div class="omr-anchor anchor-tr"></div>
             <div class="omr-anchor anchor-bl"></div>
             <div class="omr-anchor anchor-br"></div>
 
+            <!-- Top Header -->
             <div class="omr-top-header">
-                <div class="omr-title">OMR RESPONSE SHEET / ANSWER SHEET</div>
-                
-                <div class="omr-info-header">
-                    <div class="omr-inst-name">${escapeHtml(config.institutionName)}</div>
-                    <div class="omr-exam-name">${escapeHtml(config.examTitle)}</div>
+                <div class="omr-header-warning">
+                    The candidate should ensure that Roll No. and Test Booklet No. have been filled and marked correctly and Test Booklet Code printed in this sheet and Test Booklet is the same.
                 </div>
-
-                <div class="omr-info-grid">
-                    <div><strong>SUBJECT:</strong> ${escapeHtml(paper.metadata.subject.ifBlank { "General Studies" })}</div>
-                    <div><strong>SERIES / SET:</strong> [ <span style="font-weight:800;color:#b91c1c;">${escapeHtml(paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "SET - A" } })}</span> ]</div>
-                    <div><strong>TIME:</strong> ${escapeHtml(config.timeAllowed)}</div>
-                    <div><strong>MAX MARKS:</strong> ${escapeHtml(config.maxMarks)}</div>
-                </div>
-
-                <div class="omr-instructions">
-                    <strong>INSTRUCTIONS:</strong> 1. Use Blue/Black ballpoint pen only. 2. Darken completely one bubble for each question. 3. No stray marks or folds. 4. Multiple markings invalid.
+                <div class="omr-header-title-box">
+                    <div class="omr-title">NEET OMR RESPONSE SHEET / ANSWER SHEET</div>
+                    <div class="omr-exam-subtitle">${escapeHtml(config.institutionName.ifBlank { "NATIONAL ELIGIBILITY CUM ENTRANCE TEST" })}</div>
                 </div>
             </div>
 
-            <div class="omr-grid-container">
+            <!-- 2-Panel Main Body -->
+            <div class="omr-body-container">
+                <!-- Left Identification Panel -->
+                <div class="omr-left-panel">
+                    <!-- Roll No Grid (10 Digits) -->
+                    <div>
+                        <div class="grid-header-title">ROLL NO.</div>
+                        <div class="digit-entry-row">
+                            ${(1..10).joinToString("") { "<div class=\"digit-box\"></div>" }}
+                        </div>
+                        <div class="bubble-matrix">
+                            ${(1..10).joinToString("") {
+                                """
+                                <div class="bubble-col">
+                                    ${(1..9).joinToString("") { d -> "<span class=\"micro-bubble\">$d</span>" }}
+                                    <span class="micro-bubble">0</span>
+                                </div>
+                                """.trimIndent()
+                            }}
+                        </div>
+                    </div>
+
+                    <!-- Test Booklet No Grid (7 Digits) -->
+                    <div>
+                        <div class="grid-header-title">TEST BOOKLET NO.</div>
+                        <div class="digit-entry-row">
+                            ${(1..7).joinToString("") { "<div class=\"digit-box\"></div>" }}
+                        </div>
+                        <div class="bubble-matrix">
+                            ${(1..7).joinToString("") {
+                                """
+                                <div class="bubble-col">
+                                    ${(1..9).joinToString("") { d -> "<span class=\"micro-bubble\">$d</span>" }}
+                                    <span class="micro-bubble">0</span>
+                                </div>
+                                """.trimIndent()
+                            }}
+                        </div>
+                    </div>
+
+                    <!-- Test Booklet Code & Answer Sheet No -->
+                    <div class="code-and-barcode-row">
+                        <div class="booklet-code-box">
+                            <div style="font-size: 5.2pt; font-weight: 800; color: #be185d;">Test Booklet Code</div>
+                            <div class="booklet-code-large">${escapeHtml(paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "A" } })}</div>
+                        </div>
+                        <div class="sheet-no-box">
+                            <div>Answer Sheet No.</div>
+                            <div class="barcode-simulation">
+                                <div class="bar" style="width:2px;"></div>
+                                <div class="bar" style="width:1px; margin-left:1px;"></div>
+                                <div class="bar" style="width:3px; margin-left:2px;"></div>
+                                <div class="bar" style="width:1px; margin-left:1px;"></div>
+                                <div class="bar" style="width:2px; margin-left:1px;"></div>
+                                <div class="bar" style="width:4px; margin-left:2px;"></div>
+                                <div class="bar" style="width:1px; margin-left:1px;"></div>
+                                <div class="bar" style="width:2px; margin-left:1px;"></div>
+                                <div class="bar" style="width:3px; margin-left:1px;"></div>
+                            </div>
+                            <div style="font-size:4.5pt; font-family:monospace;">${String.format("%08d", (paper.id.hashCode().let { if (it < 0) -it else it } % 90000000) + 10000000)}</div>
+                        </div>
+                    </div>
+
+                    <!-- Candidate Declaration -->
+                    <div class="declaration-box">
+                        <div class="declaration-title">Declaration by the Candidate</div>
+                        "I declare that particulars and signature on this OMR Answer Sheet are mine and are same as in Attendance Sheet. I further declare that particulars filled-in and signature as well as circles darkened on this ORIGINAL Copy are same as in OFFICE Copy."
+                        <div class="decl-sig-line"></div>
+                        <div class="decl-sig-caption">Signature with time (in running handwriting)</div>
+                        <div class="decl-sig-line" style="margin-top: 3.5mm;"></div>
+                        <div class="decl-sig-caption">CANDIDATE'S NAME (in running handwriting)</div>
+                    </div>
+                </div>
+
+                <!-- Right 4-Column Question Grid -->
+                <div class="omr-right-grid">
         """.trimIndent())
 
-        for (col in 0 until numColumns) {
-            val startQ = col * rowsPerColumn + 1
-            val endQ = minOf((col + 1) * rowsPerColumn, questionCount)
+        // 4 Fixed Columns matching NEET Answer Sheet
+        for (col in 0 until OmrGeometry.NUM_GRID_COLUMNS) {
+            val startQ = col * OmrGeometry.ROWS_PER_COLUMN + 1
+            val endQ = (col + 1) * OmrGeometry.ROWS_PER_COLUMN
 
-            sb.append("<div class=\"omr-column\">\n")
-            if (startQ <= questionCount) {
-                for (i in startQ..endQ) {
-                    val blockIndex = (i - 1) / 5
-                    val isShaded = (blockIndex % 2) == 1
-                    val shadedClass = if (isShaded) "omr-row-shaded" else ""
-
-                    sb.append("""
-                    <div class="omr-row $shadedClass" style="padding: $rowPaddingPx;">
-                        <span class="omr-qnum" style="width: ${qNumWidthPx}px; font-size: ${qNumFontPt}pt;">$i.</span>
-                        <span class="bubble" style="width: 3.8mm; height: 3.8mm; margin: $bubbleMarginPx;">A</span>
-                        <span class="bubble" style="width: 3.8mm; height: 3.8mm; margin: $bubbleMarginPx;">B</span>
-                        <span class="bubble" style="width: 3.8mm; height: 3.8mm; margin: $bubbleMarginPx;">C</span>
-                        <span class="bubble" style="width: 3.8mm; height: 3.8mm; margin: $bubbleMarginPx;">D</span>
+            sb.append("""
+            <div class="omr-column">
+                <div class="omr-col-header">
+                    <span class="header-qnum-lbl">Q. No.</span>
+                    <div class="header-resp-wrap">
+                        <span class="header-opt-lbl">1</span>
+                        <span class="header-opt-lbl">2</span>
+                        <span class="header-opt-lbl">3</span>
+                        <span class="header-opt-lbl">4</span>
                     </div>
-                    """.trimIndent())
+                </div>
+            """.trimIndent())
+
+            for (i in startQ..endQ) {
+                val rowInCol = (i - startQ)
+                // Add Section divider between Section A (1..35) and Section B (36..50)
+                if (rowInCol == OmrGeometry.SECTION_A_ROWS) {
+                    sb.append("<div class=\"section-separator\">SECTION-B: Q. $i to $endQ</div>\n")
                 }
+
+                val blockIndex = (i - 1) / 5
+                val isShaded = (blockIndex % 2) == 1
+                val shadedClass = if (isShaded) "omr-row-shaded" else ""
+                val qPadded = String.format("%03d", i)
+
+                val isActive = i <= questionCount
+                val slotClass = if (isActive) "" else "bubble-empty-slot"
+
+                sb.append("""
+                <div class="omr-row $shadedClass $slotClass">
+                    <span class="omr-qnum">$qPadded.</span>
+                    <div class="bubble-group">
+                        <span class="bubble">1</span>
+                        <span class="bubble">2</span>
+                        <span class="bubble">3</span>
+                        <span class="bubble">4</span>
+                    </div>
+                </div>
+                """.trimIndent())
             }
+
             sb.append("</div>\n")
         }
 
         sb.append("""
+                </div>
             </div>
 
+            <!-- Bottom Verification & Parent Information -->
             <div class="omr-bottom-area">
-                <div class="omr-verification-row">
+                <div class="omr-verification-grid">
                     <div class="omr-verif-box">
-                        <div class="omr-verif-label">Candidate's Name (Block Letters)</div>
+                        <div class="omr-verif-label">MOTHER'S NAME (In running handwriting)</div>
                         <div class="omr-verif-line"></div>
                     </div>
                     <div class="omr-verif-box">
-                        <div class="omr-verif-label">Candidate's Signature</div>
-                        <div class="omr-sig-area">Sign Inside Box</div>
+                        <div class="omr-verif-label">FATHER'S NAME (In running handwriting)</div>
+                        <div class="omr-verif-line"></div>
                     </div>
                     <div class="omr-verif-box">
-                        <div class="omr-verif-label">Invigilator's Signature &amp; Stamp</div>
-                        <div class="omr-sig-area">Sig &amp; Stamp</div>
+                        <div class="omr-verif-label">CANDIDATE'S LEFT THUMB</div>
+                        <div class="omr-thumb-box">Left Thumb Impression</div>
+                    </div>
+                    <div class="omr-verif-box">
+                        <div class="omr-verif-label">INVIGILATOR'S SIGNATURE WITH TIME</div>
+                        <div class="omr-sig-dual">
+                            <div class="omr-sig-dual-row"><span>1.</span><span>Sign &amp; Stamp</span></div>
+                            <div class="omr-sig-dual-row" style="border-bottom:none; padding-bottom:0;"><span>2.</span><span>Sign &amp; Stamp</span></div>
+                        </div>
                     </div>
                 </div>
-                <div class="end-of-omr">❖ END OF OMR ANSWER SHEET — SINGLE PAGE DROP-OUT RED EDITION ❖</div>
+                <div class="end-of-omr-notice">❖ OFFICIAL NEET-STYLE OMR ANSWER SHEET — SINGLE PAGE DROP-OUT MAGENTA EDITION ❖</div>
             </div>
         </div>
         </div>

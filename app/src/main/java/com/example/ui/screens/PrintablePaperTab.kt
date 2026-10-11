@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.ExamConfig
+import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
 import com.example.util.PrintDocumentHelper
@@ -546,7 +547,7 @@ fun PrintablePaperTab(
                     }
                 }
 
-                // OMR Sheet Simulation Preview (for Student Paper mode - Drop-out Red Theme)
+                // OMR Sheet Simulation Preview (for Student Paper mode - Official NEET Drop-out Magenta Theme)
                 if (config.includeOmrSheet && config.printMode == PrintMode.STUDENT_PAPER) {
                     item {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -554,186 +555,299 @@ fun PrintablePaperTab(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color.White)
-                                .border(BorderStroke(1.5.dp, Color(0xFFB91C1C)))
+                                .border(BorderStroke(1.5.dp, Color(0xFFBE185D)))
                         ) {
-                            // 4 Corner Registration Anchors in #b91c1c
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFB91C1C)).align(Alignment.TopStart))
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFB91C1C)).align(Alignment.TopEnd))
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFB91C1C)).align(Alignment.BottomStart))
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFB91C1C)).align(Alignment.BottomEnd))
+                            // 4 Corner Registration Fiducial Anchors in #BE185D
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFBE185D)).align(Alignment.TopStart))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFBE185D)).align(Alignment.TopEnd))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFBE185D)).align(Alignment.BottomStart))
+                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFBE185D)).align(Alignment.BottomEnd))
 
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(10.dp)
+                                    .padding(8.dp)
                             ) {
-                                Text(
-                                    text = "OMR RESPONSE SHEET (DROP-OUT RED EDITION)",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    textAlign = TextAlign.Center,
-                                    color = Color(0xFFB91C1C),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Text(
-                                    text = "Universal 3.8mm Bubbles | Drop-Out Red #B91C1C | No Horizontal Lines | 5-Row Zebra Tint",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    textAlign = TextAlign.Center,
-                                    color = Color(0xFFB91C1C),
-                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)
-                                )
+                                // Top Header
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1.3f)
+                                            .border(BorderStroke(1.dp, Color(0xFFBE185D)), RoundedCornerShape(3.dp))
+                                            .background(Color(0xFFFDF2F8))
+                                            .padding(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Ensure Roll No. and Test Booklet No. have been filled and marked correctly.",
+                                            fontSize = 7.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFBE185D),
+                                            lineHeight = 9.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.End
+                                    ) {
+                                        Text(
+                                            text = "NEET OMR ANSWER SHEET",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFFBE185D)
+                                        )
+                                        Text(
+                                            text = "Universal 3.8mm Bubbles | 4-Col Grid | Fixed Single Page (1..200 Qs)",
+                                            fontSize = 6.5.sp,
+                                            color = Color(0xFF9D174D)
+                                        )
+                                    }
+                                }
 
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
 
-                                // Sample rows of bubbles with 5-row alternating zebra tint (no horizontal lines between questions)
-                                val sampleQuestions = paper.questions.take(minOf(10, paper.questions.size))
-                                sampleQuestions.forEachIndexed { index, q ->
-                                    val isShaded = (index / 5) % 2 == 1
-
+                                // 2-Panel Layout Preview
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    // Left Identification Sidebar Preview
                                     Column(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(if (isShaded) Color(0xFFFFF1F2) else Color.White)
+                                            .weight(1.1f)
+                                            .border(BorderStroke(1.dp, Color(0xFFBE185D)))
+                                            .padding(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
+                                        // Roll No Header & Grid simulation
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFBE185D))
+                                                .padding(vertical = 1.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "ROLL NO. (10 DIGITS)",
+                                                fontSize = 6.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            repeat(10) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(8.dp)
+                                                        .border(BorderStroke(0.5.dp, Color(0xFFBE185D)))
+                                                )
+                                            }
+                                        }
+
+                                        // Test Booklet No Header
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFFBE185D))
+                                                .padding(vertical = 1.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "TEST BOOKLET NO. (7 DIGITS)",
+                                                fontSize = 6.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            repeat(7) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(8.dp)
+                                                        .border(BorderStroke(0.5.dp, Color(0xFFBE185D)))
+                                                )
+                                            }
+                                        }
+
+                                        // Booklet Code & Barcode row
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
+                                                    .padding(2.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text("Booklet Code", fontSize = 5.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
+                                                Text("A", fontSize = 12.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Black)
+                                            }
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1.3f)
+                                                    .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
+                                                    .background(Color(0xFFFDF2F8))
+                                                    .padding(2.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text("Answer Sheet No.", fontSize = 5.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
+                                                Text("|||| | || |||", fontSize = 7.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        // Declaration Box
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
+                                                .padding(3.dp)
+                                        ) {
+                                            Text(
+                                                text = "DECLARATION BY CANDIDATE",
+                                                fontSize = 5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFBE185D)
+                                            )
+                                            Text(
+                                                text = "\"I declare particulars and signature on this sheet are mine...\"",
+                                                fontSize = 4.5.sp,
+                                                color = Color(0xFF831843),
+                                                lineHeight = 6.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
+                                            Text("Candidate's Signature with Time", fontSize = 4.5.sp, color = Color(0xFFBE185D))
+                                        }
+                                    }
+
+                                    // Right 4-Column Question Grid Preview
+                                    Column(
+                                        modifier = Modifier.weight(2.4f)
+                                    ) {
+                                        // Column Headers
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(vertical = 2.5.dp, horizontal = 4.dp),
+                                                .background(Color(0xFFBE185D))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = String.format("%02d.", q.num),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFB91C1C),
-                                                modifier = Modifier.width(28.dp)
-                                            )
-                                            listOf("A", "B", "C", "D").forEach { opt ->
-                                                Surface(
-                                                    modifier = Modifier
-                                                        .padding(horizontal = 4.dp)
-                                                        .size(16.dp),
-                                                    shape = CircleShape,
-                                                    border = BorderStroke(1.2.dp, Color(0xFFB91C1C)),
-                                                    color = Color.White
+                                            Text("Q.No.", fontSize = 6.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                listOf("1", "2", "3", "4").forEach {
+                                                    Text(it, fontSize = 6.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                }
+                                            }
+                                        }
+
+                                        // Sample Question Rows (with fixed 3.8mm scale bubbles & tight natural spacing)
+                                        val sampleQuestions = paper.questions.take(minOf(6, paper.questions.size))
+                                        sampleQuestions.forEachIndexed { index, q ->
+                                            val isShaded = (index / 5) % 2 == 1
+
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(if (isShaded) Color(0xFFFDF2F8) else Color.White)
+                                                    .padding(vertical = 1.5.dp, horizontal = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = String.format("%03d.", q.num),
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFBE185D),
+                                                    modifier = Modifier.width(24.dp)
+                                                )
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Text(
-                                                            text = opt,
-                                                            fontSize = 8.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFFB91C1C)
-                                                        )
+                                                    listOf("1", "2", "3", "4").forEach { opt ->
+                                                        Surface(
+                                                            modifier = Modifier.size(13.dp),
+                                                            shape = CircleShape,
+                                                            border = BorderStroke(1.dp, Color(0xFFBE185D)),
+                                                            color = Color.White
+                                                        ) {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                Text(
+                                                                    text = opt,
+                                                                    fontSize = 6.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color(0xFFBE185D)
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+
+                                        Text(
+                                            text = "❖ 4 Columns × 50 Rows (Strictly 1 Page for 1..200 Questions) ❖",
+                                            fontSize = 6.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFBE185D),
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                                        )
                                     }
                                 }
 
-                                if (paper.questions.size > 10) {
-                                    Text(
-                                        text = "... + remaining ${paper.questions.size - 10} questions with alternating 5-row zebra strips (#FFF1F2)",
-                                        fontSize = 8.5.sp,
-                                        color = Color(0xFFB91C1C),
-                                        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
-                                    )
-                                }
+                                Spacer(modifier = Modifier.height(6.dp))
 
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Verification row at bottom (Fixed 1-inch signature boxes, no roll number)
+                                // Bottom Verification Area (Mother's Name, Father's Name, Thumb, Invigilator)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
+                                        .padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    // Candidate Name Box
                                     Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .border(BorderStroke(1.dp, Color(0xFFB91C1C)))
-                                            .background(Color(0xFFFFFBFA))
-                                            .padding(4.dp)
-                                            .height(42.dp),
+                                        modifier = Modifier.weight(1f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
                                         verticalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            text = "Candidate Name (Block Letters)",
-                                            fontSize = 7.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFB91C1C)
-                                        )
-                                        HorizontalDivider(thickness = 1.dp, color = Color(0xFFB91C1C))
+                                        Text("Mother's Name (Running)", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
                                     }
-
-                                    // Candidate Signature Box (1-inch fixed)
                                     Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .border(BorderStroke(1.dp, Color(0xFFB91C1C)))
-                                            .background(Color(0xFFFFFBFA))
-                                            .padding(4.dp)
-                                            .height(42.dp),
+                                        modifier = Modifier.weight(1f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
                                         verticalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            text = "Candidate Signature",
-                                            fontSize = 7.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFB91C1C)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(26.dp)
-                                                .border(BorderStroke(1.dp, Color(0xFFF87171)))
-                                                .background(Color.White),
-                                            contentAlignment = Alignment.BottomCenter
-                                        ) {
-                                            Text(
-                                                text = "Sign Inside Box",
-                                                fontSize = 6.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFB91C1C),
-                                                modifier = Modifier.padding(bottom = 2.dp)
-                                            )
-                                        }
+                                        Text("Father's Name (Running)", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
                                     }
-
-                                    // Invigilator Signature Box (1-inch fixed)
                                     Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .border(BorderStroke(1.dp, Color(0xFFB91C1C)))
-                                            .background(Color(0xFFFFFBFA))
-                                            .padding(4.dp)
-                                            .height(42.dp),
+                                        modifier = Modifier.weight(0.9f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).background(Color(0xFFFDF2F8)).padding(2.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text("Left Thumb Impression", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D), textAlign = TextAlign.Center)
+                                    }
+                                    Column(
+                                        modifier = Modifier.weight(1.2f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
                                         verticalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            text = "Invigilator Sig & Stamp",
-                                            fontSize = 7.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFB91C1C)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(26.dp)
-                                                .border(BorderStroke(1.dp, Color(0xFFF87171)))
-                                                .background(Color.White),
-                                            contentAlignment = Alignment.BottomCenter
-                                        ) {
-                                            Text(
-                                                text = "Sig & Stamp",
-                                                fontSize = 6.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFB91C1C),
-                                                modifier = Modifier.padding(bottom = 2.dp)
-                                            )
+                                        Text("Invigilator's Signature with Time", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("1. Sign", fontSize = 4.5.sp, color = Color(0xFFBE185D))
+                                            Text("2. Sign", fontSize = 4.5.sp, color = Color(0xFFBE185D))
                                         }
                                     }
                                 }
