@@ -28,7 +28,10 @@ private val LightColorScheme = lightColorScheme(
     surfaceVariant = ExamSurfaceVariant,
     onSurfaceVariant = ExamMuted,
     outline = ExamBorder,
-    outlineVariant = ExamBorderLight
+    outlineVariant = ExamBorderLight,
+    inverseSurface = ExamNavy,
+    inverseOnSurface = ExamWhite,
+    inversePrimary = ExamTealLight
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -51,7 +54,10 @@ private val DarkColorScheme = darkColorScheme(
     surfaceVariant = DarkExamSurfaceVariant,
     onSurfaceVariant = DarkExamMuted,
     outline = DarkExamBorder,
-    outlineVariant = DarkExamBorderLight
+    outlineVariant = DarkExamBorderLight,
+    inverseSurface = DarkExamSurfaceElevated,
+    inverseOnSurface = DarkExamInkBold,
+    inversePrimary = DarkExamTeal
 )
 
 object ExamTheme {

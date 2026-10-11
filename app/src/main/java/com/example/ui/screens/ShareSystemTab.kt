@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -40,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
+import kotlinx.coroutines.launch
 
 @Composable
 fun ShareSystemTab(
@@ -61,18 +66,63 @@ fun ShareSystemTab(
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val currentPaper by viewModel.currentPaper.collectAsState()
+    val savedPapers by viewModel.savedPapers.collectAsState()
 
     var pastedJson by remember { mutableStateOf("") }
     var copiedJson by remember { mutableStateOf(false) }
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.loadFromUri(uri)
-            onNavigateToMaster()
+    var pendingExportData by remember { mutableStateOf<String?>(null) }
+    var pendingExportMimeType by remember { mutableStateOf("application/json") }
+
+    // Storage Access Framework launcher to save file directly to device File Manager
+    val createDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(pendingExportMimeType)
+    ) { uri: Uri? ->
+        if (uri != null && pendingExportData != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.bufferedWriter(Charsets.UTF_8).write(pendingExportData!!)
+                }
+                Toast.makeText(context, "Saved file successfully to device!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to write file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
         }
+    }
+
+    // Concurrent multi-file import launcher
+    val multipleFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.batchValidateUris(uris) { batchItems ->
+                coroutineScope.launch {
+                    val res = viewModel.importValidatedBatch(batchItems)
+                    Toast.makeText(context, "Imported ${res.importedCount} question set(s) successfully!", Toast.LENGTH_SHORT).show()
+                    if (res.importedCount > 0) {
+                        onNavigateToMaster()
+                    }
+                }
+            }
+        }
+    }
+
+    fun triggerExportToFile(data: String, defaultName: String, mime: String) {
+        pendingExportData = data
+        pendingExportMimeType = mime
+        createDocLauncher.launch(defaultName)
+    }
+
+    fun triggerShare(data: String, title: String) {
+        val sendIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, data)
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            type = "text/plain"
+        }
+        context.startActivity(Intent.createChooser(sendIntent, "Share Question Sets"))
     }
 
     LazyColumn(
@@ -121,7 +171,7 @@ fun ShareSystemTab(
                                 color = colors.inkBold
                             )
                             Text(
-                                text = "JSON exchange with Web, Mobile, and LMS portals",
+                                text = "Export and import question sets to File Manager or external apps",
                                 fontSize = 11.5.sp,
                                 color = colors.inkMuted
                             )
@@ -131,7 +181,116 @@ fun ShareSystemTab(
             }
         }
 
-        // Active Paper Sharing
+        // SECTION: EXPORT ALL SAVED QUESTION SETS (BULK BACKUP / SHARE)
+        item {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(0.8.dp, colors.border)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Inventory2, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "EXPORT ALL QUESTION SETS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkMuted,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                        Text(
+                            text = "${savedPapers.size} Saved Sets",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.teal
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Backup all stored exam papers to your phone storage or share them with teachers and students.",
+                        fontSize = 12.sp,
+                        color = colors.inkMuted
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (savedPapers.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Export All as JSON File
+                                Button(
+                                    onClick = {
+                                        val json = viewModel.exportAllPapersAsJson()
+                                        if (!json.isNullOrBlank()) {
+                                            triggerExportToFile(json, "examset_all_${savedPapers.size}_papers.json", "application/json")
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Save as JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                // Export All as Text File
+                                Button(
+                                    onClick = {
+                                        val textData = viewModel.exportPapersAsFormattedText()
+                                        if (!textData.isNullOrBlank()) {
+                                            triggerExportToFile(textData, "examset_all_${savedPapers.size}_papers.txt", "text/plain")
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Save as TXT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            // Share All via Android Apps
+                            OutlinedButton(
+                                onClick = {
+                                    val json = viewModel.exportAllPapersAsJson()
+                                    if (!json.isNullOrBlank()) {
+                                        triggerShare(json, "ExamSet Backup (${savedPapers.size} Question Sets)")
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.teal)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Share All via Apps (WhatsApp / Drive / Gmail)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "No saved papers to export. Create or paste question sets first.",
+                            fontSize = 11.5.sp,
+                            color = colors.inkMuted
+                        )
+                    }
+                }
+            }
+        }
+
+        // SECTION: ACTIVE QUESTION PAPER SHARING
         item {
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -192,35 +351,46 @@ fun ShareSystemTab(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (copiedJson) "JSON Copied!" else "Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(if (copiedJson) "Copied!" else "Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
 
-                            // Share via Android Apps
+                            // Save Active to File
+                            Button(
+                                onClick = {
+                                    val json = viewModel.exportCurrentPaperAsJson()
+                                    if (!json.isNullOrBlank()) {
+                                        val name = "exam_${paper.metadata.title.take(20).replace(" ", "_")}.json"
+                                        triggerExportToFile(json, name, "application/json")
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save File", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Share via Apps
                             OutlinedButton(
                                 onClick = {
                                     val json = viewModel.exportCurrentPaperAsJson()
                                     if (!json.isNullOrBlank()) {
-                                        val sendIntent: Intent = Intent().apply {
-                                            action = Intent.ACTION_SEND
-                                            putExtra(Intent.EXTRA_TEXT, json)
-                                            putExtra(Intent.EXTRA_SUBJECT, "${paper.metadata.title} - ExamSet JSON")
-                                            type = "text/plain"
-                                        }
-                                        val shareIntent = Intent.createChooser(sendIntent, "Share ExamSet Paper")
-                                        context.startActivity(shareIntent)
+                                        triggerShare(json, "${paper.metadata.title} - ExamSet JSON")
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share via Apps", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     } else {
                         Text(
-                            text = "No active paper loaded. Select one in Folders or load one in Exam Tools.",
+                            text = "No active paper loaded. Open a saved set or load one in Question Creator.",
                             fontSize = 12.sp,
                             color = colors.inkMuted
                         )
@@ -229,7 +399,7 @@ fun ShareSystemTab(
             }
         }
 
-        // Import ExamSet JSON
+        // SECTION: CONCURRENT IMPORT QUESTION SETS
         item {
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -243,7 +413,7 @@ fun ShareSystemTab(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "IMPORT EXAMSET JSON",
+                            text = "CONCURRENT BATCH IMPORT",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkMuted,
@@ -252,16 +422,23 @@ fun ShareSystemTab(
 
                         OutlinedButton(
                             onClick = {
-                                filePicker.launch(arrayOf("application/json", "text/plain"))
+                                multipleFilePicker.launch(arrayOf("application/json", "text/plain", "*/*"))
                             },
                             shape = RoundedCornerShape(6.dp),
                             modifier = Modifier.height(28.dp)
                         ) {
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Import File", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Pick Files", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Import multiple files simultaneously or paste single/bundled JSON arrays.",
+                        fontSize = 11.5.sp,
+                        color = colors.inkMuted
+                    )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -270,7 +447,7 @@ fun ShareSystemTab(
                         onValueChange = { pastedJson = it },
                         placeholder = {
                             Text(
-                                text = "Paste ExamSet JSON payload here (must include metadata and questions array)...",
+                                text = "Paste ExamSet JSON payload or JSON array of papers here...",
                                 fontSize = 11.5.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = colors.inkMuted.copy(alpha = 0.6f)
@@ -283,7 +460,7 @@ fun ShareSystemTab(
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp),
+                            .height(130.dp),
                         shape = RoundedCornerShape(8.dp)
                     )
 
@@ -292,10 +469,16 @@ fun ShareSystemTab(
                     Button(
                         onClick = {
                             if (pastedJson.isNotBlank()) {
-                                val success = viewModel.importPaperFromJson(pastedJson)
-                                if (success) {
-                                    pastedJson = ""
-                                    onNavigateToMaster()
+                                coroutineScope.launch {
+                                    if (pastedJson.trim().startsWith("[")) {
+                                        viewModel.importMultiplePapersFromJson(pastedJson)
+                                    } else {
+                                        val success = viewModel.importPaperFromJson(pastedJson)
+                                        if (success) {
+                                            pastedJson = ""
+                                            onNavigateToMaster()
+                                        }
+                                    }
                                 }
                             }
                         },
@@ -306,7 +489,7 @@ fun ShareSystemTab(
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Validate & Import Assessment", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Validate & Import Papers", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

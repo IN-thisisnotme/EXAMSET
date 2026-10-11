@@ -995,6 +995,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return rootArray.toString(2)
     }
 
+    fun exportSelectedPapersAsJson(selectedPaperIds: Set<Long>): String? {
+        val papers = savedPapers.value.filter { it.id in selectedPaperIds }
+        if (papers.isEmpty()) return null
+        val rootArray = org.json.JSONArray()
+        papers.forEach { entity ->
+            val parsed = McqParser.parse(entity.rawText).copy(
+                metadata = PaperMetadata(
+                    title = entity.title,
+                    subject = entity.subject,
+                    topic = entity.topic,
+                    setNumber = entity.setNumber,
+                    exam = entity.exam,
+                    createdAt = entity.createdAt
+                )
+            )
+            val jsonStr = ExamJsonHelper.toJson(parsed)
+            rootArray.put(org.json.JSONObject(jsonStr))
+        }
+        return rootArray.toString(2)
+    }
+
+    fun exportPapersAsFormattedText(selectedPaperIds: Set<Long>? = null): String? {
+        val papers = if (selectedPaperIds == null) {
+            savedPapers.value
+        } else {
+            savedPapers.value.filter { it.id in selectedPaperIds }
+        }
+        if (papers.isEmpty()) return null
+        return buildString {
+            papers.forEachIndexed { index, entity ->
+                val parsed = McqParser.parse(entity.rawText)
+                append("========================================\n")
+                append("EXAM SET ${index + 1}: ${entity.title}\n")
+                append("Subject: ${entity.subject} | Set: ${entity.setNumber}\n")
+                if (entity.topic.isNotBlank()) append("Topic: ${entity.topic}\n")
+                if (entity.exam.isNotBlank()) append("Target Exam: ${entity.exam}\n")
+                append("Questions: ${parsed.questions.size}\n")
+                append("========================================\n\n")
+                append(entity.rawText.trim())
+                append("\n\n\n")
+            }
+        }
+    }
+
+    suspend fun importMultiplePapersFromJson(jsonStr: String): Pair<Int, Int> {
+        return withContext(Dispatchers.IO) {
+            val items = BatchExamImporter.validatePaperJson(jsonStr)
+            val valid = items.filter { it.paper != null && it.status != com.example.model.BatchItemStatus.INVALID }
+            var success = 0
+            var failed = 0
+            valid.forEach { item ->
+                try {
+                    val p = item.paper!!
+                    val rawText = McqParser.reconstructToRaw(p)
+                    val entity = PaperEntity(
+                        title = p.metadata.title,
+                        subject = p.metadata.subject.ifBlank { "General Knowledge" },
+                        topic = p.metadata.topic,
+                        setNumber = p.metadata.setNumber.ifBlank { "Set A" },
+                        exam = p.metadata.exam,
+                        questionCount = p.questions.size,
+                        answerKeyCount = p.quickAnswersCount,
+                        explanationCount = p.explanationsCount,
+                        rawText = rawText,
+                        createdAt = if (p.createdAt > 0) p.createdAt else System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    paperDao.insertPaper(entity)
+                    success++
+                } catch (e: Exception) {
+                    failed++
+                }
+            }
+            withContext(Dispatchers.Main) {
+                if (success > 0) {
+                    _statusMessage.value = "Imported $success question set(s) successfully!"
+                } else {
+                    _statusMessage.value = "No valid question sets found to import."
+                }
+            }
+            Pair(success, failed)
+        }
+    }
+
     // --- Bulk Validation & Batch JSON Import ---
 
     fun batchValidateUris(uris: List<Uri>, onResult: (List<BatchImportItem>) -> Unit) {

@@ -79,6 +79,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +92,9 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -158,6 +165,7 @@ fun InputBottomSheet(
 ) {
     val context = LocalContext.current
     val colors = ExamTheme.colors
+    val haptic = LocalHapticFeedback.current
     var textInput by remember(initialText) { mutableStateOf(initialText) }
 
     // Debounced background preview parsing metrics to prevent UI freezes on large pastes
@@ -345,17 +353,24 @@ fun InputBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        dragHandle = null,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = colors.muted.copy(alpha = 0.4f)
+            )
+        },
         containerColor = colors.surface,
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        contentColor = colors.ink,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        contentWindowInsets = { WindowInsets.statusBars },
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
+                .navigationBarsPadding()
                 .nestedScroll(blockSheetDismissNestedScroll)
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 20.dp, vertical = 6.dp)
                 .verticalScroll(columnScrollState)
         ) {
             // Sheet Header
@@ -421,16 +436,19 @@ fun InputBottomSheet(
                 selectedTabIndex = activeSheetTab,
                 containerColor = colors.surfaceVariant,
                 contentColor = colors.inkBold,
+                divider = {},
                 indicator = { tabPositions ->
                     TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[activeSheetTab]),
+                        Modifier
+                            .tabIndicatorOffset(tabPositions[activeSheetTab])
+                            .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
                         color = colors.teal,
                         height = 3.dp
                     )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
             ) {
                 Tab(
                     selected = activeSheetTab == 0,
@@ -1225,20 +1243,20 @@ fun InputBottomSheet(
                             if (onOpenPromptBuilder != null) {
                                 Surface(
                                     modifier = Modifier.clickable { onOpenPromptBuilder() },
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = RoundedCornerShape(20.dp),
                                     color = colors.teal,
                                     contentColor = androidx.compose.ui.graphics.Color.White
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Full Screen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Full Screen", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.width(5.dp))
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                             contentDescription = null,
-                                            modifier = Modifier.size(12.dp)
+                                            modifier = Modifier.size(13.dp)
                                         )
                                     }
                                 }
@@ -1291,10 +1309,13 @@ fun InputBottomSheet(
                             examPresets.forEach { preset ->
                                 val isSelected = promptExam.equals(preset, ignoreCase = true) || (promptExam.isNotBlank() && promptExam.startsWith(preset.take(6)))
                                 Surface(
-                                    modifier = Modifier.clickable { promptExam = preset },
+                                    modifier = Modifier.clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        promptExam = preset
+                                    },
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
-                                    border = BorderStroke(0.5.dp, colors.border)
+                                    border = BorderStroke(if (isSelected) 1.5.dp else 0.5.dp, if (isSelected) colors.tealLight else colors.border)
                                 ) {
                                     Text(
                                         text = preset,
@@ -1314,6 +1335,7 @@ fun InputBottomSheet(
                             placeholder = { Text("e.g. UPSC, State PCS, NEET, School Board", fontSize = 11.sp) },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                             modifier = Modifier.fillMaxWidth().testTag("prompt_field_exam")
                         )
 
@@ -1343,15 +1365,19 @@ fun InputBottomSheet(
                             quickSubjects.forEach { quickSub ->
                                 val isSubSelected = promptSubject.equals(quickSub, ignoreCase = true)
                                 Surface(
-                                    modifier = Modifier.clickable { promptSubject = quickSub },
+                                    modifier = Modifier.clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        promptSubject = quickSub
+                                    },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isSubSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
-                                    border = BorderStroke(0.5.dp, if (isSubSelected) colors.teal else colors.border)
+                                    color = if (isSubSelected) colors.teal else colors.surfaceVariant.copy(alpha = 0.6f),
+                                    border = BorderStroke(if (isSubSelected) 1.5.dp else 0.5.dp, if (isSubSelected) colors.tealLight else colors.border)
                                 ) {
                                     Text(
                                         text = quickSub,
                                         fontSize = 10.sp,
-                                        color = if (isSubSelected) colors.teal else colors.inkBold,
+                                        fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSubSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
@@ -1365,6 +1391,7 @@ fun InputBottomSheet(
                             placeholder = { Text("e.g. Physics, History, General Science", fontSize = 11.sp) },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                             modifier = Modifier.fillMaxWidth().testTag("prompt_field_subject")
                         )
 
@@ -1375,6 +1402,7 @@ fun InputBottomSheet(
                             placeholder = { Text("e.g. Thermodynamics, Modern History", fontSize = 11.sp) },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             modifier = Modifier.fillMaxWidth().testTag("prompt_field_topic")
                         )
 
@@ -1976,6 +2004,7 @@ fun InputBottomSheet(
                 ) {
                     Button(
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                             val clip = android.content.ClipData.newPlainText("ExamSet Prompt", fullPrompt)
                             clipboard?.setPrimaryClip(clip)

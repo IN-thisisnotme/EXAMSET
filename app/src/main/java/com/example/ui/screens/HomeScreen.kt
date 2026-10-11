@@ -70,6 +70,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
@@ -217,7 +218,18 @@ fun HomeScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = colors.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { snackbarData ->
+                Snackbar(
+                    snackbarData = snackbarData,
+                    containerColor = if (colors.isDark) colors.surfaceElevated else colors.navyBanner,
+                    contentColor = if (colors.isDark) colors.inkBold else colors.navyBannerText,
+                    actionColor = colors.teal,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+        },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -870,6 +882,7 @@ fun HomeScreen(
     if (showSavedDialog) {
         SavedPapersDialog(
             papers = savedPapers,
+            viewModel = viewModel,
             onSelectPaper = { viewModel.loadSavedPaper(it) },
             onDeletePaper = { viewModel.deleteSavedPaper(it) },
             onEditPaper = { paperEntity ->

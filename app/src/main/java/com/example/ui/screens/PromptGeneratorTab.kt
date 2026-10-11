@@ -61,6 +61,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -78,6 +82,7 @@ fun PromptGeneratorTab(
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
 
     var examType by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
@@ -231,6 +236,7 @@ fun PromptGeneratorTab(
     }
 
     val copyAction = {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("AI Exam Prompt", generatedPrompt)
         clipboard.setPrimaryClip(clip)
@@ -350,10 +356,13 @@ fun PromptGeneratorTab(
                         examPresets.forEach { preset ->
                             val isSelected = examType.equals(preset, ignoreCase = true) || (examType.isNotBlank() && examType.startsWith(preset.take(6)))
                             Surface(
-                                modifier = Modifier.clickable { examType = preset },
+                                modifier = Modifier.clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    examType = preset
+                                },
                                 shape = RoundedCornerShape(14.dp),
                                 color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
-                                border = BorderStroke(0.5.dp, colors.border)
+                                border = BorderStroke(if (isSelected) 1.5.dp else 0.5.dp, if (isSelected) Color(0xFF93C5FD) else colors.border)
                             ) {
                                 Text(
                                     text = preset,
@@ -373,6 +382,7 @@ fun PromptGeneratorTab(
                         placeholder = { Text("e.g. UPSC, State PCS, NEET, School Board", fontSize = 11.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -402,15 +412,19 @@ fun PromptGeneratorTab(
                         quickSubjects.forEach { quickSub ->
                             val isSubSelected = subject.equals(quickSub, ignoreCase = true)
                             Surface(
-                                modifier = Modifier.clickable { subject = quickSub },
+                                modifier = Modifier.clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    subject = quickSub
+                                },
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (isSubSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
-                                border = BorderStroke(0.5.dp, if (isSubSelected) colors.teal else colors.border)
+                                color = if (isSubSelected) colors.teal else colors.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(if (isSubSelected) 1.5.dp else 0.5.dp, if (isSubSelected) colors.tealLight else colors.border)
                             ) {
                                 Text(
                                     text = quickSub,
                                     fontSize = 10.sp,
-                                    color = if (isSubSelected) colors.teal else colors.inkBold,
+                                    fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSubSelected) Color.White else colors.inkBold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
@@ -424,6 +438,7 @@ fun PromptGeneratorTab(
                         placeholder = { Text("e.g. General Science, Physics, History", fontSize = 11.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -434,6 +449,7 @@ fun PromptGeneratorTab(
                         placeholder = { Text("e.g. Thermodynamics, Ecology & Climate Change", fontSize = 11.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         modifier = Modifier.fillMaxWidth()
                     )
 
