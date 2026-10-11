@@ -302,20 +302,34 @@ fun PromptGeneratorTab(
                         letterSpacing = 0.5.sp
                     )
 
-                    // Exam Presets
+                    // Extended Exam Preset Catalog
+                    val examPresets = listOf(
+                        "UPSC Civil Services",
+                        "State PCS",
+                        "SSC CGL / Banking",
+                        "Railways / RRB",
+                        "NEET / Biology",
+                        "JEE / Physics",
+                        "GATE / Engineering",
+                        "USMLE / Clinical",
+                        "BAR / Law Exam",
+                        "SAT / ACT",
+                        "School Board"
+                    )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("UPSC Civil Services", "SSC CGL / Banking", "NEET / Biology", "JEE / Physics", "State PSC", "School Board").forEach { preset ->
+                        examPresets.forEach { preset ->
+                            val isSelected = examType.equals(preset, ignoreCase = true) || (examType.isNotBlank() && examType.startsWith(preset.take(6)))
                             Surface(
                                 modifier = Modifier.clickable { examType = preset },
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (examType.startsWith(preset.take(6))) Color(0xFF2563EB) else colors.surfaceVariant,
+                                color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
                                 border = BorderStroke(0.5.dp, colors.border)
                             ) {
                                 Text(
                                     text = preset,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (examType.startsWith(preset.take(6))) Color.White else colors.inkBold,
+                                    color = if (isSelected) Color.White else colors.inkBold,
                                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                                 )
                             }
@@ -330,6 +344,42 @@ fun PromptGeneratorTab(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // Quick-Pick Subject Suggestions
+                    val quickSubjects = listOf(
+                        "General Science",
+                        "Modern Indian History",
+                        "Polity & Governance",
+                        "Geography & Climate",
+                        "Quantitative Aptitude",
+                        "Clinical Medicine",
+                        "Physics & Mechanics",
+                        "English Comprehension"
+                    )
+                    Text(
+                        text = "Quick Subject Ideas",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.inkMuted
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        quickSubjects.forEach { quickSub ->
+                            val isSubSelected = subject.equals(quickSub, ignoreCase = true)
+                            Surface(
+                                modifier = Modifier.clickable { subject = quickSub },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSubSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(0.5.dp, if (isSubSelected) colors.teal else colors.border)
+                            ) {
+                                Text(
+                                    text = quickSub,
+                                    fontSize = 10.sp,
+                                    color = if (isSubSelected) colors.teal else colors.inkBold,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp)
+                                )
+                            }
+                        }
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

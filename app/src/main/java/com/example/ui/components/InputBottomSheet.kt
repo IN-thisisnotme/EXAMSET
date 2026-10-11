@@ -58,6 +58,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
@@ -137,7 +140,11 @@ fun computeNextSetForSubject(subject: String, papers: List<PaperEntity>): String
     return "Set ${subjectPapers.size + 1}"
 }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class
+)
 @Composable
 fun InputBottomSheet(
     initialText: String,
@@ -184,16 +191,38 @@ fun InputBottomSheet(
 
     // AI Prompt Generator Form State
     var promptMcqCount by remember { mutableStateOf("20") }
+    var promptExam by remember { mutableStateOf("State PCS / UPSC") }
+    var promptSubject by remember { mutableStateOf("") }
     var promptTopic by remember { mutableStateOf("") }
     var promptQuestionLanguage by remember { mutableStateOf("English") }
-    var promptExplanationLanguage by remember { mutableStateOf("English") }
-    var promptExam by remember { mutableStateOf("State PCS / UPSC") }
+    var promptExplanationChoice by remember { mutableStateOf("Same as Question") }
+    var promptCustomExplanationLanguage by remember { mutableStateOf("") }
     var promptSyllabus by remember { mutableStateOf("based on new syllabus") }
     var promptDifficulty by remember { mutableStateOf("Mixed") }
     var promptExplainAllFourOptions by remember { mutableStateOf(true) }
     var promptIncludeFormulasAndDiagrams by remember { mutableStateOf(true) }
     // Format & Quantity Correction Rule (Disabled by default: Unrestricted Full Stream)
     var promptEnableQuantityCorrectionRule by remember { mutableStateOf(false) }
+
+    val effectivePromptExplanationLanguage by remember(promptQuestionLanguage, promptExplanationChoice, promptCustomExplanationLanguage) {
+        derivedStateOf {
+            val q = promptQuestionLanguage.trim().ifBlank { "English" }
+            when (promptExplanationChoice) {
+                "Same as Question" -> "$q (same language as the questions)"
+                "Bilingual" -> {
+                    if (q.equals("English", ignoreCase = true)) {
+                        "Bilingual (English & Hindi)"
+                    } else {
+                        "Bilingual (English & $q)"
+                    }
+                }
+                "English" -> "English"
+                "Hindi" -> "Hindi"
+                "Custom" -> promptCustomExplanationLanguage.trim().ifBlank { q }
+                else -> promptExplanationChoice
+            }
+        }
+    }
 
     val existingSubjectFolders = remember(savedPapers) {
         savedPapers.map { it.subject.trim() }
@@ -1142,6 +1171,7 @@ fun InputBottomSheet(
             Spacer(modifier = Modifier.height(24.dp))
         } else {
             // AI Prompt Generator Tab Content
+            val parsedCount = promptMcqCount.trim().toIntOrNull() ?: 20
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1151,33 +1181,41 @@ fun InputBottomSheet(
                 Card(
                     colors = CardDefaults.cardColors(containerColor = colors.tealLight.copy(alpha = 0.5f)),
                     border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.3f)),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = colors.teal,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = colors.teal.copy(alpha = 0.15f),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Column {
                                     Text(
                                         text = "AI MCQ Prompt Builder",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
+                                        fontSize = 15.sp,
                                         color = colors.inkBold
                                     )
                                     Text(
                                         text = "Zero-drift prompts for Gemini, Claude, and ChatGPT",
-                                        fontSize = 11.sp,
+                                        fontSize = 11.5.sp,
                                         color = colors.muted
                                     )
                                 }
@@ -1191,7 +1229,7 @@ fun InputBottomSheet(
                                     contentColor = androidx.compose.ui.graphics.Color.White
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text("Full Screen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -1210,318 +1248,495 @@ fun InputBottomSheet(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Field 1: MCQ Questions Number
-                val parsedCount = promptMcqCount.trim().toIntOrNull() ?: 20
-                Text(
-                    text = "1. Number of Questions ($parsedCount MCQs)",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("5", "10", "15", "20", "25", "30", "50").forEach { num ->
-                        FilterChip(
-                            selected = promptMcqCount == num,
-                            onClick = { promptMcqCount = num },
-                            label = { Text(num, fontSize = 11.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = colors.tealLight,
-                                selectedLabelColor = colors.teal
-                            )
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = promptMcqCount,
-                    onValueChange = { promptMcqCount = it },
-                    placeholder = { Text("e.g. 20, 25, 30, 50") },
-                    modifier = Modifier.fillMaxWidth().testTag("prompt_field_mcq_count"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Field 2: Topic Name
-                Text(
-                    text = "2. Focus Topic / Subject",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedTextField(
-                    value = promptTopic,
-                    onValueChange = { promptTopic = it },
-                    placeholder = { Text("e.g. Indian Constitution, Human Physiology, Modern Physics") },
-                    modifier = Modifier.fillMaxWidth().testTag("prompt_field_topic"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Field 3: Target Examination
-                Text(
-                    text = "3. Examination Name / Target Agency",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("State PCS", "NEET", "UPSC CSE", "SSC CGL").forEach { exam ->
-                        FilterChip(
-                            selected = promptExam == exam,
-                            onClick = { promptExam = exam },
-                            label = { Text(exam, fontSize = 11.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = colors.tealLight,
-                                selectedLabelColor = colors.teal
-                            )
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = promptExam,
-                    onValueChange = { promptExam = it },
-                    placeholder = { Text("e.g. UPSC CSE, NEET, State PCS, SSC CGL") },
-                    modifier = Modifier.fillMaxWidth().testTag("prompt_field_exam"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Field 4: Syllabus Specification
-                Text(
-                    text = "4. Syllabus Specification",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedTextField(
-                    value = promptSyllabus,
-                    onValueChange = { promptSyllabus = it },
-                    placeholder = { Text("e.g. based on new syllabus") },
-                    modifier = Modifier.fillMaxWidth().testTag("prompt_field_syllabus"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    trailingIcon = {
-                        if (promptSyllabus.isNotEmpty()) {
-                            IconButton(onClick = { promptSyllabus = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Field 5: Languages (Question & Explanation)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Question Language",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf("English", "Hindi").forEach { lang ->
-                                FilterChip(
-                                    selected = promptQuestionLanguage == lang,
-                                    onClick = { promptQuestionLanguage = lang },
-                                    label = { Text(lang, fontSize = 10.5.sp) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = colors.tealLight,
-                                        selectedLabelColor = colors.teal
-                                    )
-                                )
-                            }
-                        }
-                        OutlinedTextField(
-                            value = promptQuestionLanguage,
-                            onValueChange = { promptQuestionLanguage = it },
-                            placeholder = { Text("Language") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Explanation Language",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf("English", "Hindi").forEach { lang ->
-                                FilterChip(
-                                    selected = promptExplanationLanguage == lang,
-                                    onClick = { promptExplanationLanguage = lang },
-                                    label = { Text(lang, fontSize = 10.5.sp) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = colors.tealLight,
-                                        selectedLabelColor = colors.teal
-                                    )
-                                )
-                            }
-                        }
-                        OutlinedTextField(
-                            value = promptExplanationLanguage,
-                            onValueChange = { promptExplanationLanguage = it },
-                            placeholder = { Text("Language") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Field 6: Target Standard / Difficulty
-                Text(
-                    text = "5. Target Standard / Difficulty",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkBold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("Mixed", "Conceptual", "Standard", "Challenging").forEach { diff ->
-                        FilterChip(
-                            selected = promptDifficulty == diff,
-                            onClick = { promptDifficulty = diff },
-                            label = { Text(diff, fontSize = 10.5.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = colors.tealLight,
-                                selectedLabelColor = colors.teal
-                            )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Checkbox: Explain All 4 Options
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = promptExplainAllFourOptions,
-                        onCheckedChange = { promptExplainAllFourOptions = it }
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column {
-                        Text(
-                            text = "Explain All 4 Options Individually",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold
-                        )
-                        Text(
-                            text = "Explains why correct option is right and why each distractor is wrong",
-                            fontSize = 10.5.sp,
-                            color = colors.muted
-                        )
-                    }
-                }
-
-                // Checkbox: Include Formulas & Diagrams
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = promptIncludeFormulasAndDiagrams,
-                        onCheckedChange = { promptIncludeFormulasAndDiagrams = it }
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column {
-                        Text(
-                            text = "Include Formulas & Diagram References",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold
-                        )
-                        Text(
-                            text = "Formats equations and figures so the app renders them visually",
-                            fontSize = 10.5.sp,
-                            color = colors.muted
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Format & Quantity Truncation Guard Switch (DISABLED BY DEFAULT)
+                // SECTION 1: EXAMINATION & TOPIC PARAMETERS CARD (Matching Tools Tab styling)
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (promptEnableQuantityCorrectionRule) androidx.compose.ui.graphics.Color(0xFFEFF6FF) else colors.surfaceVariant
-                    ),
-                    border = BorderStroke(1.dp, if (promptEnableQuantityCorrectionRule) androidx.compose.ui.graphics.Color(0xFF93C5FD) else colors.border),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = BorderStroke(0.8.dp, colors.border),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { promptEnableQuantityCorrectionRule = !promptEnableQuantityCorrectionRule }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Shield,
-                                    contentDescription = null,
-                                    tint = if (promptEnableQuantityCorrectionRule) colors.teal else colors.muted,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Format & Quantity Truncation Guard",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (promptEnableQuantityCorrectionRule) colors.teal else colors.inkBold
-                                )
+                        Text(
+                            text = "EXAMINATION PARAMETERS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.muted,
+                            letterSpacing = 0.5.sp
+                        )
+
+                        // Extended Exam Preset Catalog (Synchronized with Tools Tab)
+                        val examPresets = listOf(
+                            "UPSC Civil Services",
+                            "State PCS",
+                            "SSC CGL / Banking",
+                            "Railways / RRB",
+                            "NEET / Biology",
+                            "JEE / Physics",
+                            "GATE / Engineering",
+                            "USMLE / Clinical",
+                            "BAR / Law Exam",
+                            "SAT / ACT",
+                            "School Board"
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            examPresets.forEach { preset ->
+                                val isSelected = promptExam.equals(preset, ignoreCase = true) || (promptExam.isNotBlank() && promptExam.startsWith(preset.take(6)))
+                                Surface(
+                                    modifier = Modifier.clickable { promptExam = preset },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                    border = BorderStroke(0.5.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = preset,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (promptEnableQuantityCorrectionRule) {
-                                    "ACTIVE: Enforces a strict 2–3 sentence explanation budget to prevent token cutoffs for 20–25+ question sets."
-                                } else {
-                                    "DISABLED (Default): Unrestricted full stream. Generates all $parsedCount questions continuously without artificial limits."
-                                },
-                                fontSize = 10.5.sp,
-                                lineHeight = 14.sp,
-                                color = if (promptEnableQuantityCorrectionRule) colors.tealDark else colors.muted
+                        }
+
+                        OutlinedTextField(
+                            value = promptExam,
+                            onValueChange = { promptExam = it },
+                            label = { Text("Exam Name / Target Agency", fontSize = 11.sp) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("prompt_field_exam")
+                        )
+
+                        // Quick-Pick Subject Suggestions
+                        val quickSubjects = listOf(
+                            "General Science",
+                            "Modern Indian History",
+                            "Polity & Governance",
+                            "Geography & Climate",
+                            "Quantitative Aptitude",
+                            "Clinical Medicine",
+                            "Physics & Mechanics",
+                            "English Comprehension"
+                        )
+                        Text(
+                            text = "Quick Subject Ideas",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.muted
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            quickSubjects.forEach { quickSub ->
+                                val isSubSelected = promptSubject.equals(quickSub, ignoreCase = true)
+                                Surface(
+                                    modifier = Modifier.clickable { promptSubject = quickSub },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSubSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                                    border = BorderStroke(0.5.dp, if (isSubSelected) colors.teal else colors.border)
+                                ) {
+                                    Text(
+                                        text = quickSub,
+                                        fontSize = 10.sp,
+                                        color = if (isSubSelected) colors.teal else colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Subject and Focus Topic side by side
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = promptSubject,
+                                onValueChange = { promptSubject = it },
+                                label = { Text("Subject", fontSize = 11.sp) },
+                                placeholder = { Text("e.g. Physics, History") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).testTag("prompt_field_subject")
+                            )
+
+                            OutlinedTextField(
+                                value = promptTopic,
+                                onValueChange = { promptTopic = it },
+                                label = { Text("Focus Topic", fontSize = 11.sp) },
+                                placeholder = { Text("e.g. Thermodynamics") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).testTag("prompt_field_topic")
                             )
                         }
-                        Switch(
-                            checked = promptEnableQuantityCorrectionRule,
-                            onCheckedChange = { promptEnableQuantityCorrectionRule = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = androidx.compose.ui.graphics.Color.White,
-                                checkedTrackColor = colors.teal
+
+                        // Question Count Selector & Chips
+                        val parsedCount = promptMcqCount.trim().toIntOrNull() ?: 20
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Question Count", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                                Text("$parsedCount MCQs", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Preset Count Chips (5, 10, 20, 25, 50, 100)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(5, 10, 20, 25, 30, 50, 100).forEach { cnt ->
+                                    val isSelected = parsedCount == cnt
+                                    Surface(
+                                        onClick = { promptMcqCount = cnt.toString() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
+                                    ) {
+                                        Text(
+                                            text = "$cnt Qs",
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            var sliderVal by remember(parsedCount) { mutableStateOf(parsedCount.toFloat().coerceIn(5f, 200f)) }
+                            Slider(
+                                value = sliderVal,
+                                onValueChange = {
+                                    sliderVal = it
+                                    promptMcqCount = it.toInt().toString()
+                                },
+                                valueRange = 5f..150f,
+                                modifier = Modifier.fillMaxWidth()
                             )
+                        }
+
+                        // Syllabus Specification
+                        OutlinedTextField(
+                            value = promptSyllabus,
+                            onValueChange = { promptSyllabus = it },
+                            label = { Text("Syllabus Specification (Optional)", fontSize = 11.sp) },
+                            placeholder = { Text("e.g. based on new syllabus / NCERT") },
+                            modifier = Modifier.fillMaxWidth().testTag("prompt_field_syllabus"),
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            trailingIcon = {
+                                if (promptSyllabus.isNotEmpty()) {
+                                    IconButton(onClick = { promptSyllabus = "" }) {
+                                        Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // SECTION 2: LANGUAGE & EXPLANATION SETTINGS (Matching Tools Tab)
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = BorderStroke(0.8.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "LANGUAGE & EXPLANATIONS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.muted,
+                            letterSpacing = 0.5.sp
+                        )
+
+                        // Question Language
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Question Language",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    "Any language supported",
+                                    fontSize = 10.sp,
+                                    color = colors.teal,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                "Universal (A)-(D) option labels are preserved across all languages",
+                                fontSize = 10.sp,
+                                color = colors.muted
+                            )
+                            Spacer(modifier = Modifier.height(5.dp))
+                            OutlinedTextField(
+                                value = promptQuestionLanguage,
+                                onValueChange = { promptQuestionLanguage = it },
+                                placeholder = { Text("e.g. English, Hindi, Tamil, Bengali, French...", fontSize = 11.5.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Quick preset language chips
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf(
+                                    "English", "Hindi", "Bengali", "Marathi", "Telugu",
+                                    "Tamil", "Gujarati", "Urdu", "Kannada", "Malayalam",
+                                    "Odia", "Punjabi", "Sanskrit", "Spanish", "French", "German"
+                                ).forEach { lang ->
+                                    val isSelected = promptQuestionLanguage.trim().equals(lang, ignoreCase = true)
+                                    Surface(
+                                        onClick = { promptQuestionLanguage = lang },
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
+                                    ) {
+                                        Text(
+                                            text = lang,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 7.5.dp, vertical = 3.5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Explanation Language
+                        Column {
+                            val activeQLang = promptQuestionLanguage.trim().ifBlank { "English" }
+                            val bilingualPresetName = if (activeQLang.equals("English", ignoreCase = true)) {
+                                "Bilingual (Eng & Hin)"
+                            } else {
+                                "Bilingual (Eng & $activeQLang)"
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Explanation Language",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    "Current: $effectivePromptExplanationLanguage",
+                                    fontSize = 10.sp,
+                                    color = colors.muted,
+                                    maxLines = 1
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val explanationOptions = listOf(
+                                    "Same as Question" to "Same as Question",
+                                    "English" to "English",
+                                    "Hindi" to "Hindi",
+                                    "Bilingual" to bilingualPresetName,
+                                    "Custom" to "Custom..."
+                                )
+
+                                explanationOptions.forEach { (key, displayLabel) ->
+                                    val isSelected = promptExplanationChoice == key
+                                    Surface(
+                                        onClick = { promptExplanationChoice = key },
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
+                                    ) {
+                                        Text(
+                                            text = displayLabel,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 7.5.dp, vertical = 3.5.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (promptExplanationChoice == "Custom") {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = promptCustomExplanationLanguage,
+                                    onValueChange = { promptCustomExplanationLanguage = it },
+                                    placeholder = { Text("Type custom explanation language (e.g. Marathi, Sanskrit, French)...") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // Difficulty & Pedagogy
+                        Text("Target Standard / Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Mixed", "Conceptual", "Standard", "Challenging", "Assertion-Reason").forEach { diff ->
+                                val isSelected = promptDifficulty == diff
+                                Surface(
+                                    modifier = Modifier.clickable { promptDifficulty = diff },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                    border = BorderStroke(0.5.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = diff,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Option Explanations Checkbox
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = promptExplainAllFourOptions,
+                                onCheckedChange = { promptExplainAllFourOptions = it }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Column {
+                                Text(
+                                    text = "Explain All 4 Options Individually",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "Explains why correct option is right and why each distractor is wrong",
+                                    fontSize = 10.5.sp,
+                                    color = colors.muted
+                                )
+                            }
+                        }
+
+                        // Formulas & Diagrams Checkbox
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = promptIncludeFormulasAndDiagrams,
+                                onCheckedChange = { promptIncludeFormulasAndDiagrams = it }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Column {
+                                Text(
+                                    text = "Include Formulas & Diagram References",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "Formats equations and figures so the app renders them visually",
+                                    fontSize = 10.5.sp,
+                                    color = colors.muted
+                                )
+                            }
+                        }
+
+                        // Format & Quantity Truncation Guard
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (promptEnableQuantityCorrectionRule) androidx.compose.ui.graphics.Color(0xFFEFF6FF) else colors.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(0.8.dp, if (promptEnableQuantityCorrectionRule) androidx.compose.ui.graphics.Color(0xFF93C5FD) else colors.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { promptEnableQuantityCorrectionRule = !promptEnableQuantityCorrectionRule }
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Shield,
+                                            contentDescription = null,
+                                            tint = if (promptEnableQuantityCorrectionRule) colors.teal else colors.muted,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Format & Quantity Truncation Guard",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (promptEnableQuantityCorrectionRule) colors.teal else colors.inkBold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = if (promptEnableQuantityCorrectionRule) {
+                                            "ACTIVE: Enforces a strict 2–3 sentence explanation budget to prevent token cutoffs for 20–25+ question sets."
+                                        } else {
+                                            "DISABLED (Default): Unrestricted full stream. Generates all $parsedCount questions continuously without artificial limits."
+                                        },
+                                        fontSize = 10.5.sp,
+                                        lineHeight = 14.sp,
+                                        color = if (promptEnableQuantityCorrectionRule) colors.tealDark else colors.muted
+                                    )
+                                }
+
+                                Switch(
+                                    checked = promptEnableQuantityCorrectionRule,
+                                    onCheckedChange = { promptEnableQuantityCorrectionRule = it },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = androidx.compose.ui.graphics.Color.White,
+                                        checkedTrackColor = colors.teal
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1529,17 +1744,29 @@ fun InputBottomSheet(
 
                 // Generated Dynamic Prompt Construction (Senior Psychometrician Standard)
                 val countVal = parsedCount
-                val topicVal = promptTopic.trim().ifBlank { "[Subject / Focus Topic]" }
+                val topicDisplay = buildString {
+                    if (promptSubject.isNotBlank()) {
+                        append(promptSubject.trim())
+                        if (promptTopic.isNotBlank()) {
+                            append(" - ")
+                            append(promptTopic.trim())
+                        }
+                    } else if (promptTopic.isNotBlank()) {
+                        append(promptTopic.trim())
+                    } else {
+                        append("[Subject / Focus Topic]")
+                    }
+                }
                 val qLangVal = promptQuestionLanguage.trim().ifBlank { "English" }
-                val expLangVal = promptExplanationLanguage.trim().ifBlank { "English" }
+                val expLangVal = effectivePromptExplanationLanguage
                 val examVal = promptExam.trim().ifBlank { "Competitive Examination" }
 
                 val fullPrompt = buildString {
                     append("Act as a senior psychometrician and chief examination paper setter for $examVal.\n\n")
-                    append("Generate exactly $countVal multiple-choice questions (MCQs) for $topicVal at $promptDifficulty difficulty in $qLangVal.\n\n")
+                    append("Generate exactly $countVal multiple-choice questions (MCQs) for $topicDisplay at $promptDifficulty difficulty in $qLangVal.\n\n")
 
                     append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
-                    if (expLangVal.equals(qLangVal, ignoreCase = true)) {
+                    if (expLangVal == qLangVal || promptExplanationChoice == "Same as Question") {
                         append("- Language: Write the question stems, options, and explanations entirely in $qLangVal using natural, academically rigorous terminology.\n")
                     } else {
                         append("- Language: Write question stems and options in $qLangVal, and explanations in $expLangVal, using natural, academically rigorous terminology.\n")

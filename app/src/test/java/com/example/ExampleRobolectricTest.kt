@@ -558,4 +558,104 @@ class ExampleRobolectricTest {
         assertTrue(q10.question.contains("3 m"))
         assertTrue(q10.options.c.contains("0.271 m"))
     }
+
+    @Test
+    fun `parser parses standard 3-phase psychometric generated mcqs with explanations and memory anchor`() {
+        val input = """
+            Phase 1: Questions
+            Q1. A particle of mass §m§ accelerates uniformly from rest under a constant force §F§. What is the kinetic energy acquired after traversing distance §d§?
+            (A) §F \cdot d§
+            (B) §\frac{1}{2} F \cdot d§
+            (C) §2 F \cdot d§
+            (D) §F^2 \cdot d§
+
+            Q2. What is the conjugate base of §H_2SO_4§ in aqueous solution?
+            (A) §SO_4^{2-}§
+            (B) §HSO_4^-§
+            (C) §H_3SO_4^+§
+            (D) §H_3O^+§
+
+            Phase 2: Answer Key
+            Q1: (A)
+            Q2: (B)
+
+            Phase 3: Explanations & Solution
+            Q1.
+            • Core Concept & Reasoning: The work-energy theorem states that work done by the net force equals change in kinetic energy: §W = \Delta K = F \cdot d§.
+            • Option Breakdown:
+              - (A) Correct: Direct application of §W = F \cdot d = K§.
+              - (B) Incorrect: Erroneously introduces a factor of 1/2 from (1/2)mv^2.
+              - (C) Incorrect: Incorrect multiplier.
+              - (D) Incorrect: Dimensional inconsistency.
+            • Memory Anchor / Key Takeaway: Work done by net force equals kinetic energy gained.
+
+            Q2.
+            • Core Concept & Reasoning: A conjugate base is formed when a Bronsted-Lowry acid loses a single proton (§H^+§).
+            • Option Breakdown:
+              - (A) Incorrect: This is the conjugate base of bisulfate, not sulfuric acid.
+              - (B) Correct: Removal of one proton from §H_2SO_4§ yields bisulfate ion §HSO_4^-§.
+              - (C) Incorrect: Represents protonation.
+              - (D) Incorrect: Hydronium ion is the conjugate acid of water.
+            • Memory Anchor / Key Takeaway: Conjugate base = Acid minus §H^+§.
+        """.trimIndent().replace("§", "$")
+
+        val paper = McqParser.parse(input)
+        assertEquals(2, paper.questions.size)
+
+        val q1 = paper.questions[0]
+        assertEquals(1, q1.num)
+        assertTrue(q1.question.contains("particle of mass"))
+        assertTrue(q1.question.contains("\$m\$"))
+        assertEquals("\$F \\cdot d\$", q1.options.a)
+        assertEquals("A", q1.correctAnswer)
+        assertNotNull(q1.explanation)
+        assertTrue(q1.explanation!!.contains("Core Concept & Reasoning"))
+        assertTrue(q1.explanation!!.contains("Memory Anchor"))
+
+        val q2 = paper.questions[1]
+        assertEquals(2, q2.num)
+        assertTrue(q2.question.contains("conjugate base"))
+        assertEquals("\$HSO_4^-\$", q2.options.b)
+        assertEquals("B", q2.correctAnswer)
+        assertNotNull(q2.explanation)
+        assertTrue(q2.explanation!!.contains("Removal of one proton"))
+    }
+
+    @Test
+    fun `parser parses multilingual psychometric mcqs with universal labels`() {
+        val input = """
+            Phase 1: Questions
+            Q1. प्रकाश संश्लेषण के दौरान ऑक्सीजन किस अणु के विघटन से उत्पन्न होती है?
+            (A) कार्बन डाइऑक्साइड
+            (B) ग्लूकोज
+            (C) जल (§H_2O§)
+            (D) क्लोरोफिल
+
+            Phase 2: Answer Key
+            Q1: (C)
+
+            Phase 3: Explanations & Solution
+            Q1.
+            • Core Concept & Reasoning: फोटोलाइसिस के दौरान जल के अणुओं का प्रकाश-अपघटन होता है।
+            • Option Breakdown:
+              - (A) Incorrect: CO2 का उपयोग केल्विन चक्र में होता है।
+              - (B) Incorrect: ग्लूकोज अंतिम उत्पाद है।
+              - (C) Correct: जल (H2O) के प्रकाश-अपघटन से O2 मुक्त होती है।
+              - (D) Incorrect: क्लोरोफिल प्रकाश अवशोषित करता है।
+            • Memory Anchor / Key Takeaway: प्रकाश-रासायनिक अभिक्रिया में जल ऑक्सीजन का स्रोत है।
+        """.trimIndent().replace("§", "$")
+
+        val paper = McqParser.parse(input)
+        assertEquals(1, paper.questions.size)
+
+        val q1 = paper.questions[0]
+        assertEquals(1, q1.num)
+        assertTrue(q1.question.contains("प्रकाश संश्लेषण"))
+        assertEquals("कार्बन डाइऑक्साइड", q1.options.a)
+        assertEquals("जल (\$H_2O\$)", q1.options.c)
+        assertEquals("C", q1.correctAnswer)
+        assertNotNull(q1.explanation)
+        assertTrue(q1.explanation!!.contains("फोटोलाइसिस"))
+        assertTrue(q1.explanation!!.contains("Memory Anchor"))
+    }
 }
