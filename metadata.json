@@ -1,0 +1,8 @@
+{
+  "name": "ExamSet",
+  "description": "Generate, customize, and print professional MCQ examination papers, student question sets with OMR sheets, answer keys, and detailed explanations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

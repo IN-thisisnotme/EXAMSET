@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Paper Sheet Drop Shadow -->
+    <path
+        android:fillColor="#33000000"
+        android:pathData="M31,27 L79,27 A4,4 0 0,1 83,31 L83,85 A4,4 0 0,1 79,89 L31,89 A4,4 0 0,1 27,85 L27,31 A4,4 0 0,1 31,27 Z" />
+
+    <!-- Paper Sheet Body (Pure Crisp White) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M29,25 L77,25 A4,4 0 0,1 81,29 L81,83 A4,4 0 0,1 77,87 L29,87 A4,4 0 0,1 25,83 L25,29 A4,4 0 0,1 29,25 Z" />
+
+    <!-- Top Navy/Teal Header Banner on Paper -->
+    <path
+        android:fillColor="#177E89"
+        android:pathData="M25,29 A4,4 0 0,1 29,25 L77,25 A4,4 0 0,1 81,29 L81,37 L25,37 Z" />
+
+    <!-- Header Title Simulation Lines -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M31,31 L55,31 A1.5,1.5 0 0,1 55,34 L31,34 A1.5,1.5 0 0,1 31,31 Z" />
+    <path
+        android:fillColor="#B2EBF2"
+        android:pathData="M59,31.5 L73,31.5 A1,1 0 0,1 73,33.5 L59,33.5 A1,1 0 0,1 59,31.5 Z" />
+
+    <!-- Question 1: Text Line -->
+    <path
+        android:fillColor="#17324D"
+        android:pathData="M31,43 L69,43 A1.5,1.5 0 0,1 69,46 L31,46 A1.5,1.5 0 0,1 31,43 Z" />
+
+    <!-- Q1 MCQ Option Bubbles (A, B, C, D) -->
+    <path
+        android:fillColor="#D5E1E7"
+        android:pathData="M34,51 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <!-- Option B is filled Teal (Selected answer) -->
+    <path
+        android:fillColor="#177E89"
+        android:pathData="M45,51 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#D5E1E7"
+        android:pathData="M56,51 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#D5E1E7"
+        android:pathData="M67,51 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+
+    <!-- Question 2: Text Line -->
+    <path
+        android:fillColor="#17324D"
+        android:pathData="M31,61 L64,61 A1.5,1.5 0 0,1 64,64 L31,64 A1.5,1.5 0 0,1 31,61 Z" />
+
+    <!-- Q2 MCQ Option Bubbles -->
+    <path
+        android:fillColor="#D5E1E7"
+        android:pathData="M34,69 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#D5E1E7"
+        android:pathData="M45,69 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <!-- Option C is filled Teal -->
+    <path
+        android:fillColor="#177E89"
+        android:pathData="M56,69 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <path
+        android:fillColor="#D5E1E7"
+        android:pathData="M67,69 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+
+    <!-- Question 3: Text Line -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M31,77 L56,77 A1.5,1.5 0 0,1 56,80 L31,80 A1.5,1.5 0 0,1 31,77 Z" />
+
+    <!-- Floating Badge: Emerald Verified Circle (Bottom Right) -->
+    <path
+        android:fillColor="#1F2937"
+        android:pathData="M73,73 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+    <path
+        android:fillColor="#247A55"
+        android:pathData="M73,72 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
+
+    <!-- Checkmark in Badge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68.5,72 L71.5,75 L77.5,69 L79,70.5 L71.5,78 L67,73.5 Z" />
+
+</vector>
+
