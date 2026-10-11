@@ -547,7 +547,7 @@ fun PrintablePaperTab(
                     }
                 }
 
-                // OMR Sheet Simulation Preview (for Student Paper mode - Official NEET Drop-out Magenta Theme)
+                // OMR Sheet Simulation Preview (for Student Paper mode - Official Authentic NEET Theme)
                 if (config.includeOmrSheet && config.printMode == PrintMode.STUDENT_PAPER) {
                     item {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -566,7 +566,7 @@ fun PrintablePaperTab(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(8.dp)
+                                    .padding(6.dp)
                             ) {
                                 // Top Header
                                 Row(
@@ -578,18 +578,17 @@ fun PrintablePaperTab(
                                         modifier = Modifier
                                             .weight(1.3f)
                                             .border(BorderStroke(1.dp, Color(0xFFBE185D)), RoundedCornerShape(3.dp))
-                                            .background(Color(0xFFFDF2F8))
                                             .padding(4.dp)
                                     ) {
                                         Text(
-                                            text = "Ensure Roll No. and Test Booklet No. have been filled and marked correctly.",
-                                            fontSize = 7.sp,
+                                            text = "The candidate should ensure that Roll No. and Test Booklet No. have been filled and marked correctly and Test Booklet Code printed in this sheet and Test Booklet is the same.",
+                                            fontSize = 6.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFBE185D),
-                                            lineHeight = 9.sp
+                                            lineHeight = 7.5.sp
                                         )
                                     }
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Column(
                                         modifier = Modifier.weight(1f),
                                         horizontalAlignment = Alignment.End
@@ -601,88 +600,80 @@ fun PrintablePaperTab(
                                             color = Color(0xFFBE185D)
                                         )
                                         Text(
-                                            text = "Universal 3.8mm Bubbles | 4-Col Grid | Fixed Single Page (1..200 Qs)",
-                                            fontSize = 6.5.sp,
+                                            text = "PRACTICE / MOCK TEST OMR RESPONSE SHEET",
+                                            fontSize = 5.5.sp,
+                                            fontWeight = FontWeight.Bold,
                                             color = Color(0xFF9D174D)
                                         )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
                                 // 2-Panel Layout Preview
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     // Left Identification Sidebar Preview
                                     Column(
                                         modifier = Modifier
                                             .weight(1.1f)
                                             .border(BorderStroke(1.dp, Color(0xFFBE185D)))
-                                            .padding(4.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            .padding(3.dp),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
+                                        Text(
+                                            text = "Candidate MUST NOT carry ORIGINAL or OFFICE Copy",
+                                            fontSize = 4.8.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFFBE185D)
+                                        )
+
                                         // Roll No Header & Grid simulation
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFFBE185D))
-                                                .padding(vertical = 1.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
+                                        Column(modifier = Modifier.border(BorderStroke(0.8.dp, Color(0xFFBE185D)))) {
                                             Text(
-                                                text = "ROLL NO. (10 DIGITS)",
+                                                text = "ROLL NO.",
                                                 fontSize = 6.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White
+                                                color = Color(0xFFBE185D),
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                                textAlign = TextAlign.Center
                                             )
-                                        }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
-                                        ) {
-                                            repeat(10) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(8.dp)
-                                                        .border(BorderStroke(0.5.dp, Color(0xFFBE185D)))
-                                                )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().border(BorderStroke(0.5.dp, Color(0xFFBE185D))),
+                                                horizontalArrangement = Arrangement.SpaceEvenly
+                                            ) {
+                                                repeat(10) {
+                                                    Box(modifier = Modifier.size(7.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))))
+                                                }
                                             }
                                         }
 
                                         // Test Booklet No Header
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFFBE185D))
-                                                .padding(vertical = 1.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
+                                        Column(modifier = Modifier.border(BorderStroke(0.8.dp, Color(0xFFBE185D)))) {
                                             Text(
-                                                text = "TEST BOOKLET NO. (7 DIGITS)",
+                                                text = "TEST BOOKLET No.",
                                                 fontSize = 6.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White
+                                                color = Color(0xFFBE185D),
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                                textAlign = TextAlign.Center
                                             )
-                                        }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
-                                        ) {
-                                            repeat(7) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(8.dp)
-                                                        .border(BorderStroke(0.5.dp, Color(0xFFBE185D)))
-                                                )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().border(BorderStroke(0.5.dp, Color(0xFFBE185D))),
+                                                horizontalArrangement = Arrangement.SpaceEvenly
+                                            ) {
+                                                repeat(7) {
+                                                    Box(modifier = Modifier.size(7.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))))
+                                                }
                                             }
                                         }
 
-                                        // Booklet Code & Barcode row
+                                        // Booklet Code & Answer Sheet No
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                                         ) {
                                             Column(
                                                 modifier = Modifier
@@ -691,19 +682,18 @@ fun PrintablePaperTab(
                                                     .padding(2.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                Text("Booklet Code", fontSize = 5.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
-                                                Text("A", fontSize = 12.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Black)
+                                                Text("Test Booklet Code", fontSize = 5.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
+                                                Text("A", fontSize = 11.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Black)
                                             }
                                             Column(
                                                 modifier = Modifier
                                                     .weight(1.3f)
                                                     .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
-                                                    .background(Color(0xFFFDF2F8))
                                                     .padding(2.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
                                                 Text("Answer Sheet No.", fontSize = 5.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
-                                                Text("|||| | || |||", fontSize = 7.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
+                                                Text("08492041", fontSize = 7.sp, color = Color(0xFFBE185D), fontWeight = FontWeight.Bold)
                                             }
                                         }
 
@@ -712,85 +702,139 @@ fun PrintablePaperTab(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
-                                                .padding(3.dp)
+                                                .padding(2.5.dp)
                                         ) {
                                             Text(
-                                                text = "DECLARATION BY CANDIDATE",
+                                                text = "DECLARATION BY THE CANDIDATE",
                                                 fontSize = 5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFFBE185D)
                                             )
                                             Text(
-                                                text = "\"I declare particulars and signature on this sheet are mine...\"",
-                                                fontSize = 4.5.sp,
+                                                text = "\"I declare that particulars and signature on this OMR Answer Sheet are mine...\"",
+                                                fontSize = 4.sp,
                                                 color = Color(0xFF831843),
-                                                lineHeight = 6.sp
+                                                lineHeight = 5.5.sp
                                             )
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Spacer(modifier = Modifier.height(2.dp))
                                             HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
-                                            Text("Candidate's Signature with Time", fontSize = 4.5.sp, color = Color(0xFFBE185D))
+                                            Text("Signature with time (in running handwriting)", fontSize = 4.sp, color = Color(0xFFBE185D))
+                                        }
+
+                                        // Candidate's Name Box
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
+                                                .padding(2.5.dp)
+                                        ) {
+                                            Text("CANDIDATE'S NAME (in running handwriting)", fontSize = 4.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                            Spacer(modifier = Modifier.height(6.dp))
                                         }
                                     }
 
-                                    // Right 4-Column Question Grid Preview
+                                    // Right Question Grid Preview (Section A + Section B)
                                     Column(
-                                        modifier = Modifier.weight(2.4f)
+                                        modifier = Modifier.weight(2.4f),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        // Column Headers
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFFBE185D))
-                                                .padding(horizontal = 4.dp, vertical = 2.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("Q.No.", fontSize = 6.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                listOf("1", "2", "3", "4").forEach {
-                                                    Text(it, fontSize = 6.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        // Section A Preview Card
+                                        Column(modifier = Modifier.border(BorderStroke(0.8.dp, Color(0xFFBE185D)))) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(Color(0xFFBE185D))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("SECTION-A (Q 001-035, 051-085, 101-135, 151-185)", fontSize = 5.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                Text("Response: 1 2 3 4", fontSize = 5.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+
+                                            val sampleQuestions = paper.questions.take(minOf(4, paper.questions.size))
+                                            sampleQuestions.forEachIndexed { index, q ->
+                                                val isShaded = (index / 5) % 2 == 1
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(if (isShaded) Color(0xFFFDF2F8) else Color.White)
+                                                        .padding(vertical = 1.dp, horizontal = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text(
+                                                        text = String.format("%03d", q.num),
+                                                        fontSize = 7.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFBE185D),
+                                                        modifier = Modifier.width(20.dp)
+                                                    )
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        listOf("1", "2", "3", "4").forEach { opt ->
+                                                            Surface(
+                                                                modifier = Modifier.size(11.dp),
+                                                                shape = CircleShape,
+                                                                border = BorderStroke(0.8.dp, Color(0xFFBE185D)),
+                                                                color = Color.White
+                                                            ) {
+                                                                Box(contentAlignment = Alignment.Center) {
+                                                                    Text(text = opt, fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        // Sample Question Rows (with fixed 3.8mm scale bubbles & tight natural spacing)
-                                        val sampleQuestions = paper.questions.take(minOf(6, paper.questions.size))
-                                        sampleQuestions.forEachIndexed { index, q ->
-                                            val isShaded = (index / 5) % 2 == 1
-
+                                        // Section B Preview Card
+                                        Column(modifier = Modifier.border(BorderStroke(0.8.dp, Color(0xFFBE185D)))) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .background(if (isShaded) Color(0xFFFDF2F8) else Color.White)
-                                                    .padding(vertical = 1.5.dp, horizontal = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                    .background(Color(0xFFBE185D))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text(
-                                                    text = String.format("%03d.", q.num),
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFBE185D),
-                                                    modifier = Modifier.width(24.dp)
-                                                )
+                                                Text("SECTION-B (Q 036-050, 086-100, 136-150, 186-200)", fontSize = 5.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                Text("Response: 1 2 3 4", fontSize = 5.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+
+                                            listOf(36, 37).forEach { qNum ->
                                                 Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Color.White)
+                                                        .padding(vertical = 1.dp, horizontal = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
-                                                    listOf("1", "2", "3", "4").forEach { opt ->
-                                                        Surface(
-                                                            modifier = Modifier.size(13.dp),
-                                                            shape = CircleShape,
-                                                            border = BorderStroke(1.dp, Color(0xFFBE185D)),
-                                                            color = Color.White
-                                                        ) {
-                                                            Box(contentAlignment = Alignment.Center) {
-                                                                Text(
-                                                                    text = opt,
-                                                                    fontSize = 6.5.sp,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    color = Color(0xFFBE185D)
-                                                                )
+                                                    Text(
+                                                        text = String.format("%03d", qNum),
+                                                        fontSize = 7.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFBE185D),
+                                                        modifier = Modifier.width(20.dp)
+                                                    )
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        listOf("1", "2", "3", "4").forEach { opt ->
+                                                            Surface(
+                                                                modifier = Modifier.size(11.dp),
+                                                                shape = CircleShape,
+                                                                border = BorderStroke(0.8.dp, Color(0xFFBE185D)),
+                                                                color = Color.White
+                                                            ) {
+                                                                Box(contentAlignment = Alignment.Center) {
+                                                                    Text(text = opt, fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -799,55 +843,64 @@ fun PrintablePaperTab(
                                         }
 
                                         Text(
-                                            text = "❖ 4 Columns × 50 Rows (Strictly 1 Page for 1..200 Questions) ❖",
-                                            fontSize = 6.sp,
+                                            text = "❖ 4 Columns (Section A 35 Rows + Section B 15 Rows = 200 MCQs strictly 1 Page) ❖",
+                                            fontSize = 5.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFBE185D),
                                             textAlign = TextAlign.Center,
-                                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
-                                // Bottom Verification Area (Mother's Name, Father's Name, Thumb, Invigilator)
-                                Row(
+                                // Bottom Verification Area (Mother, Father, Thumb, Invigilator - Strictly NO parent signature)
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .border(BorderStroke(0.8.dp, Color(0xFFBE185D)))
-                                        .padding(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        .padding(3.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.weight(1f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
-                                        Text("Mother's Name (Running)", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
-                                        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
+                                        Column(
+                                            modifier = Modifier.weight(1f).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp)
+                                        ) {
+                                            Text("MOTHER'S NAME (in running handwriting)", fontSize = 4.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1f).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp)
+                                        ) {
+                                            Text("FATHER'S NAME (in running handwriting)", fontSize = 4.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
+                                        }
                                     }
-                                    Column(
-                                        modifier = Modifier.weight(1f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
-                                        Text("Father's Name (Running)", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
-                                        HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFBE185D))
-                                    }
-                                    Column(
-                                        modifier = Modifier.weight(0.9f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).background(Color(0xFFFDF2F8)).padding(2.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text("Left Thumb Impression", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D), textAlign = TextAlign.Center)
-                                    }
-                                    Column(
-                                        modifier = Modifier.weight(1.2f).height(32.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Invigilator's Signature with Time", fontSize = 5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("1. Sign", fontSize = 4.5.sp, color = Color(0xFFBE185D))
-                                            Text("2. Sign", fontSize = 4.5.sp, color = Color(0xFFBE185D))
+                                        Column(
+                                            modifier = Modifier.weight(1f).height(24.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
+                                            verticalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("CANDIDATE'S LEFT HAND THUMB IMPRESSION", fontSize = 4.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                        }
+                                        Column(
+                                            modifier = Modifier.weight(1.3f).height(24.dp).border(BorderStroke(0.5.dp, Color(0xFFBE185D))).padding(2.dp),
+                                            verticalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("SIGNATURE OF INVIGILATOR'S WITH TIME", fontSize = 4.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                                Text("1. Sign & Stamp", fontSize = 4.sp, color = Color(0xFFBE185D))
+                                                Text("2. Sign & Stamp", fontSize = 4.sp, color = Color(0xFFBE185D))
+                                            }
                                         }
                                     }
                                 }

@@ -2,6 +2,7 @@ package com.example.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import kotlin.math.hypot
 
@@ -11,57 +12,78 @@ class OmrGeometryTest {
     fun testPhysicalA4Dimensions() {
         assertEquals(210.0f, OmrGeometry.PAGE_WIDTH_MM, 0.001f)
         assertEquals(297.0f, OmrGeometry.PAGE_HEIGHT_MM, 0.001f)
-        assertEquals(5.0f, OmrGeometry.MARGIN_X_MM, 0.001f)
-        assertEquals(5.0f, OmrGeometry.MARGIN_Y_MM, 0.001f)
+        assertEquals(4.0f, OmrGeometry.MARGIN_X_MM, 0.001f)
+        assertEquals(4.0f, OmrGeometry.MARGIN_Y_MM, 0.001f)
 
-        assertEquals(200.0f, OmrGeometry.PRINTABLE_WIDTH_MM, 0.001f)
-        assertEquals(287.0f, OmrGeometry.PRINTABLE_HEIGHT_MM, 0.001f)
+        assertEquals(202.0f, OmrGeometry.PRINTABLE_WIDTH_MM, 0.001f)
+        assertEquals(289.0f, OmrGeometry.PRINTABLE_HEIGHT_MM, 0.001f)
     }
 
     @Test
     fun testVerticalBudgetAccommodates200QuestionsStrictlyOnSinglePage() {
         val layout = OmrGeometry.calculateLayout(200)
         assertEquals(4, layout.numColumns)
-        assertEquals(50, layout.rowsPerColumn)
+        assertEquals(35, layout.rowsSectionA)
+        assertEquals(15, layout.rowsSectionB)
         assertEquals(200, layout.totalQuestions)
 
-        // Grid height = 50 rows * 4.05mm = 202.5mm
-        assertEquals(202.5f, layout.gridHeightMm, 0.001f)
-
-        // Available height in single A4 page
+        // Total grid height must fit safely within single A4 printable height with margin for headers and footer
+        val totalVerticalUsed = OmrGeometry.HEADER_HEIGHT_MM + layout.totalGridHeightMm + OmrGeometry.BOTTOM_AREA_HEIGHT_MM
         assertTrue(
-            "Grid height (${layout.gridHeightMm}mm) must fit within available height (${OmrGeometry.GRID_AVAILABLE_HEIGHT_MM}mm)",
-            layout.gridHeightMm <= OmrGeometry.GRID_AVAILABLE_HEIGHT_MM
+            "Total vertical content ($totalVerticalUsed mm) must fit within printable height (${OmrGeometry.PRINTABLE_HEIGHT_MM} mm)",
+            totalVerticalUsed <= OmrGeometry.PRINTABLE_HEIGHT_MM
         )
     }
 
     @Test
-    fun testLayoutFixedAcrossQuestionCounts() {
-        // Across any question count, columns and rows per column remain fixed
-        val plan10 = OmrGeometry.calculateLayout(10)
-        assertEquals(4, plan10.numColumns)
-        assertEquals(50, plan10.rowsPerColumn)
+    fun testNeetQuestionMappingSectionsAndColumns() {
+        // Subject 1 (Physics): Q 001..050
+        val (s1a, isA1, r1) = OmrGeometry.getQuestionMapping(1)
+        assertEquals(0, s1a)
+        assertTrue(isA1)
+        assertEquals(0, r1)
 
-        val plan25 = OmrGeometry.calculateLayout(25)
-        assertEquals(4, plan25.numColumns)
-        assertEquals(50, plan25.rowsPerColumn)
+        val (s35a, isA35, r35) = OmrGeometry.getQuestionMapping(35)
+        assertEquals(0, s35a)
+        assertTrue(isA35)
+        assertEquals(34, r35)
 
-        val plan50 = OmrGeometry.calculateLayout(50)
-        assertEquals(4, plan50.numColumns)
-        assertEquals(50, plan50.rowsPerColumn)
+        val (s36b, isA36, r36) = OmrGeometry.getQuestionMapping(36)
+        assertEquals(0, s36b)
+        assertFalse(isA36)
+        assertEquals(0, r36)
 
-        val plan100 = OmrGeometry.calculateLayout(100)
-        assertEquals(4, plan100.numColumns)
-        assertEquals(50, plan100.rowsPerColumn)
+        val (s50b, isA50, r50) = OmrGeometry.getQuestionMapping(50)
+        assertEquals(0, s50b)
+        assertFalse(isA50)
+        assertEquals(14, r50)
 
-        val plan200 = OmrGeometry.calculateLayout(200)
-        assertEquals(4, plan200.numColumns)
-        assertEquals(50, plan200.rowsPerColumn)
+        // Subject 2 (Chemistry): Q 051..100
+        val (s51a, isA51, r51) = OmrGeometry.getQuestionMapping(51)
+        assertEquals(1, s51a)
+        assertTrue(isA51)
+        assertEquals(0, r51)
+
+        // Subject 3 (Botany): Q 101..150
+        val (s101a, isA101, r101) = OmrGeometry.getQuestionMapping(101)
+        assertEquals(2, s101a)
+        assertTrue(isA101)
+        assertEquals(0, r101)
+
+        // Subject 4 (Zoology): Q 151..200
+        val (s151a, isA151, r151) = OmrGeometry.getQuestionMapping(151)
+        assertEquals(3, s151a)
+        assertTrue(isA151)
+        assertEquals(0, r151)
+
+        val (s200b, isA200, r200) = OmrGeometry.getQuestionMapping(200)
+        assertEquals(3, s200b)
+        assertFalse(isA200)
+        assertEquals(14, r200)
     }
 
     @Test
     fun testDeterministicBubbleCoordinatesRegardlessOfQuestionCount() {
-        // Question 1 Option A must have the EXACT SAME physical coordinate whether test has 10, 50, or 200 Qs
         val bubbles10 = OmrGeometry.getBubbleCoordinates(10)
         val bubbles50 = OmrGeometry.getBubbleCoordinates(50)
         val bubbles200 = OmrGeometry.getBubbleCoordinates(200)
