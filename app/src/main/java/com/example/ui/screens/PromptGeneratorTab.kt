@@ -79,11 +79,12 @@ fun PromptGeneratorTab(
     val colors = ExamTheme.colors
     val context = LocalContext.current
 
-    var examType by remember { mutableStateOf("UPSC Civil Services Examination") }
-    var subject by remember { mutableStateOf("General Science") }
-    var topic by remember { mutableStateOf("Ecology, Biodiversity, Climate Change & Green Energy") }
+    var examType by remember { mutableStateOf("") }
+    var subject by remember { mutableStateOf("") }
+    var topic by remember { mutableStateOf("") }
     var questionCount by remember { mutableFloatStateOf(20f) }
-    var difficulty by remember { mutableStateOf("Mixed") }
+    var difficulty by remember { mutableStateOf("Moderate") }
+    var questionType by remember { mutableStateOf("Mixed Formats") }
     var questionLanguage by remember { mutableStateOf("English") }
     var explanationChoice by remember { mutableStateOf("Same as Question") }
     var customExplanationLanguage by remember { mutableStateOf("") }
@@ -118,7 +119,7 @@ fun PromptGeneratorTab(
     }
 
     val generatedPrompt by remember(
-        examType, subject, topic, countInt, difficulty,
+        examType, subject, topic, countInt, difficulty, questionType,
         questionLanguage, effectiveExplanationLanguage, explainAllFourOptions,
         includeFormulasAndDiagrams, enableQuantityCorrectionRule
     ) {
@@ -126,10 +127,21 @@ fun PromptGeneratorTab(
             buildString {
                 val qLang = questionLanguage.trim().ifBlank { "English" }
                 val targetExam = examType.trim().ifBlank { "Competitive Examination" }
-                val targetSubject = if (topic.isNotBlank()) "$subject (Focus: $topic)" else subject
+                val targetSubject = buildString {
+                    if (subject.isNotBlank()) {
+                        append(subject.trim())
+                        if (topic.isNotBlank()) {
+                            append(" (Focus: ${topic.trim()})")
+                        }
+                    } else if (topic.isNotBlank()) {
+                        append("Focus: ${topic.trim()}")
+                    } else {
+                        append("Comprehensive Subject Curriculum")
+                    }
+                }
 
                 append("Act as a senior psychometrician and chief examination paper setter for $targetExam.\n\n")
-                append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty in $qLang.\n\n")
+                append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty (Question Pattern: $questionType) in $qLang.\n\n")
 
                 append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
                 if (effectiveExplanationLanguage == qLang || explanationChoice == "Same as Question") {
@@ -140,17 +152,30 @@ fun PromptGeneratorTab(
                 append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as \"(A)\", \"(B)\", \"(C)\", \"(D)\" for universal OMR and parser compatibility.\n\n")
 
                 append("### 2. PSYCHOMETRIC & DISTRACTOR RULES\n")
-                append("1. COGNITIVE LEVEL: Target higher-order reasoning (application, diagnosis, multi-step calculation, or critical deduction) over rote recall.\n")
-                append("2. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
-                append("3. LENGTH CONTROL: The correct option must NOT be the longest option by default. Maintain a tight word-count ratio across all 4 options (no option exceeding 1.25x the length of the shortest).\n")
-                append("4. ORDERING: If options contain numerical values, dates, or quantitative ranges, order them strictly from lowest to highest.\n")
-                append("5. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
-                append("6. NEGATIVE STEMS: Avoid negative questions where possible. If unavoidable, highlight the negative operator in uppercase bold (e.g., **NOT**, **EXCEPT**, **LEAST**).\n")
+                when (difficulty) {
+                    "Easy" -> append("1. COGNITIVE LEVEL (Easy / Foundational): Direct conceptual recall, core standard definitions, basic formulas, and straightforward identification with unambiguous distractors.\n")
+                    "Moderate" -> append("1. COGNITIVE LEVEL (Moderate / Standard): Standard examination caliber requiring multi-step comprehension, application of principles, and analytical deduction.\n")
+                    "Hard" -> append("1. COGNITIVE LEVEL (Hard / Advanced): Advanced analytical rigor, intricate edge cases, multi-layered calculations, and trap options diagnosing common misconceptions.\n")
+                    "Extreme" -> append("1. COGNITIVE LEVEL (Extreme Olympiad / Rank-Decider): Deep synthesis, Olympiad-level multi-concept integration, subtle distractor nuances, and demanding problem-solving.\n")
+                    else -> append("1. COGNITIVE LEVEL (Mixed Difficulty): Balanced distribution spanning ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging questions.\n")
+                }
+                when (questionType) {
+                    "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
+                    "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
+                    "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items including 'Assertion (A) & Reason (R)', 'Statement I & Statement II', and 'Which of the statements given above is/are correct?'.\n")
+                    "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
+                    else -> append("2. QUESTION FORMAT FOCUS: Dynamic mix of direct conceptual items, multi-statement questions, numerical application, and scenario analysis.\n")
+                }
+                append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
+                append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default. Maintain a tight word-count ratio across all 4 options (no option exceeding 1.25x the length of the shortest).\n")
+                append("5. ORDERING: If options contain numerical values, dates, or quantitative ranges, order them strictly from lowest to highest.\n")
+                append("6. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
+                append("7. NEGATIVE STEMS: Avoid negative questions where possible. If unavoidable, highlight the negative operator in uppercase bold (e.g., **NOT**, **EXCEPT**, **LEAST**).\n")
                 if (includeFormulasAndDiagrams) {
-                    append("7. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
-                    append("8. DIAGRAMS: If a question references a diagram, chart, or figure, include: Diagram: [Figure title or description | Optional URL].\n")
+                    append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
+                    append("9. DIAGRAMS: If a question references a diagram, chart, or figure, include: Diagram: [Figure title or description | Optional URL].\n")
                 } else {
-                    append("7. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
+                    append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
                 }
                 append("\n")
 
@@ -316,7 +341,12 @@ fun PromptGeneratorTab(
                         "SAT / ACT",
                         "School Board"
                     )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         examPresets.forEach { preset ->
                             val isSelected = examType.equals(preset, ignoreCase = true) || (examType.isNotBlank() && examType.startsWith(preset.take(6)))
                             Surface(
@@ -340,6 +370,7 @@ fun PromptGeneratorTab(
                         value = examType,
                         onValueChange = { examType = it },
                         label = { Text("Exam Name / Target Agency", fontSize = 11.sp) },
+                        placeholder = { Text("e.g. UPSC, State PCS, NEET, School Board", fontSize = 11.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -362,7 +393,12 @@ fun PromptGeneratorTab(
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkMuted
                     )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         quickSubjects.forEach { quickSub ->
                             val isSubSelected = subject.equals(quickSub, ignoreCase = true)
                             Surface(
@@ -375,67 +411,76 @@ fun PromptGeneratorTab(
                                     text = quickSub,
                                     fontSize = 10.sp,
                                     color = if (isSubSelected) colors.teal else colors.inkBold,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = subject,
-                            onValueChange = { subject = it },
-                            label = { Text("Subject", fontSize = 11.sp) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
-                        )
+                    OutlinedTextField(
+                        value = subject,
+                        onValueChange = { subject = it },
+                        label = { Text("Subject", fontSize = 11.sp) },
+                        placeholder = { Text("e.g. General Science, Physics, History", fontSize = 11.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                        OutlinedTextField(
-                            value = topic,
-                            onValueChange = { topic = it },
-                            label = { Text("Focus Topic", fontSize = 11.sp) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    OutlinedTextField(
+                        value = topic,
+                        onValueChange = { topic = it },
+                        label = { Text("Focus Topic (Optional)", fontSize = 11.sp) },
+                        placeholder = { Text("e.g. Thermodynamics, Ecology & Climate Change", fontSize = 11.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
                     // Question Count Selector & Chips
                     Column {
+                        val presetCounts = listOf(5, 10, 25, 50, 100, 180)
+                        val isPreset = countInt in presetCounts
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Question Count", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-                            Text("$countInt MCQs", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = if (isPreset) "Preset" else "Custom",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isPreset) Color(0xFF2563EB) else colors.muted
+                                )
+                                Text("$countInt MCQs", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                            }
                         }
                         
                         Spacer(modifier = Modifier.height(4.dp))
                         
-                        // Preset Count Chips (5, 10, 25, 50, 100, 180)
+                        // Preset Count Chips (5, 10, 25, 50, 100, 180) - synchronized with max 200
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            listOf(5, 10, 25, 50, 100, 180).forEach { cnt ->
+                            presetCounts.forEach { cnt ->
+                                val isSelected = countInt == cnt
                                 Surface(
                                     onClick = { questionCount = cnt.toFloat() },
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (countInt == cnt) Color(0xFF2563EB) else colors.surfaceVariant,
-                                    border = BorderStroke(0.6.dp, if (countInt == cnt) Color(0xFF2563EB) else colors.border)
+                                    color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
+                                    border = BorderStroke(0.6.dp, if (isSelected) Color(0xFF2563EB) else colors.border)
                                 ) {
                                     Text(
                                         text = "$cnt Qs",
                                         fontSize = 11.sp,
-                                        fontWeight = if (countInt == cnt) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (countInt == cnt) Color.White else colors.inkBold,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else colors.inkBold,
                                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                                     )
                                 }
@@ -444,10 +489,15 @@ fun PromptGeneratorTab(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
+                        // Slider snapping to multiples of 5 with 39 steps between 5 and 200 (5, 10, 15, ..., 200)
                         Slider(
                             value = questionCount,
-                            onValueChange = { questionCount = it },
-                            valueRange = 5f..200f
+                            onValueChange = { newVal ->
+                                val snapped = kotlin.math.round(newVal / 5f) * 5f
+                                questionCount = snapped.coerceIn(5f, 200f)
+                            },
+                            valueRange = 5f..200f,
+                            steps = 38
                         )
                     }
 
@@ -619,26 +669,83 @@ fun PromptGeneratorTab(
                         }
                     }
 
-                    // Standard / Difficulty
-                    Text("Target Standard / Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf("Mixed", "Conceptual", "Standard", "Challenging", "Assertion-Reason").forEach { diff ->
-                            Surface(
-                                modifier = Modifier.clickable { difficulty = diff },
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (difficulty == diff) Color(0xFF2563EB) else colors.surfaceVariant,
-                                border = BorderStroke(0.5.dp, colors.border)
-                            ) {
-                                Text(
-                                    text = diff,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (difficulty == diff) Color.White else colors.inkBold,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                )
+                    // 1. Difficulty Level Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Difficulty Level", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                            Text(difficulty, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Easy", "Moderate", "Hard", "Extreme", "Mixed").forEach { diff ->
+                                val label = when(diff) {
+                                    "Easy" -> "Easy"
+                                    "Moderate" -> "Moderate"
+                                    "Hard" -> "Hard"
+                                    "Extreme" -> "Extreme (Olympiad)"
+                                    else -> "Mixed Difficulty"
+                                }
+                                val isSelected = difficulty == diff
+                                Surface(
+                                    modifier = Modifier.clickable { difficulty = diff },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
+                                    border = BorderStroke(0.5.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) Color.White else colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Question Types & Formats Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Question Format & Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                            Text(questionType, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                "Mixed Formats",
+                                "Conceptual & Theory",
+                                "Numerical & Calculation",
+                                "Assertion-Reason & Statement-Based",
+                                "Case Study & Passage-Based"
+                            ).forEach { qType ->
+                                val isSelected = questionType == qType
+                                Surface(
+                                    modifier = Modifier.clickable { questionType = qType },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
+                                    border = BorderStroke(0.5.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = qType,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) Color.White else colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
                             }
                         }
                     }
