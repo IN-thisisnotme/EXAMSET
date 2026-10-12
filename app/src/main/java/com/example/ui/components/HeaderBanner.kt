@@ -239,6 +239,43 @@ fun HeaderBanner(
                     fontWeight = FontWeight.Medium
                 )
             }
+
+            if (metadata.rollNumber.isNotBlank() || metadata.bookletNumber.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (metadata.rollNumber.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = colors.teal.copy(alpha = 0.25f)
+                        ) {
+                            Text(
+                                text = "Roll: ${metadata.rollNumber}",
+                                color = colors.navyBannerText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    if (metadata.bookletNumber.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = colors.teal.copy(alpha = 0.25f)
+                        ) {
+                            Text(
+                                text = "Booklet: ${metadata.bookletNumber}",
+                                color = colors.navyBannerText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

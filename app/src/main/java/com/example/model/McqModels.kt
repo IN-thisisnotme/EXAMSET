@@ -1,5 +1,7 @@
 package com.example.model
 
+import com.example.util.ExamNumberGenerator
+
 /**
  * Options A, B, C, D for a Multiple Choice Question.
  */
@@ -56,6 +58,8 @@ data class PaperMetadata(
     val setNumber: String = "Set A",
     val exam: String = "",
     val folderId: String? = null,
+    val rollNumber: String = ExamNumberGenerator.generateRollNumber(),
+    val bookletNumber: String = ExamNumberGenerator.generateBookletNumber(),
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -113,6 +117,15 @@ enum class PrintMode {
     SOLUTIONS_ONLY     // Answer Key Table + Detailed Explanations
 }
 
+/**
+ * OMR Sheet Bubbling Mode for Roll Number and Test Booklet Number
+ */
+enum class OmrBubblingMode {
+    BLANK_CANDIDATE,       // Blank digit boxes, open 0-9 bubbles for candidate to fill with pen
+    PRE_PRINTED_DIGITS,    // Digits printed inside top boxes, open 0-9 bubbles
+    PRE_DARKENED_BUBBLES   // Digits printed inside top boxes AND darkened bubbles in 0-9 grids
+}
+
 data class ExamConfig(
     val institutionName: String = "CENTRAL EXAMINATION BOARD",
     val examTitle: String = "OBJECTIVE PRACTICE & EVALUATION TEST",
@@ -127,6 +140,9 @@ data class ExamConfig(
     val includeOmrSheet: Boolean = true,
     val twoColumns: Boolean = true,
     val printMode: PrintMode = PrintMode.STUDENT_PAPER,
+    val rollNumber: String = "",
+    val bookletNumber: String = "",
+    val omrBubblingMode: OmrBubblingMode = OmrBubblingMode.BLANK_CANDIDATE,
     val customInstructions: List<String> = listOf(
         "Check that this question paper contains all pages and questions in sequential order.",
         "Each question carries equal marks (+1.00). Choose the single most appropriate option (A, B, C, or D).",

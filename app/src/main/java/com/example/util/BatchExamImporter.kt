@@ -195,9 +195,37 @@ object BatchExamImporter {
         // Top-level is single JSON object
         return try {
             val root = JSONObject(trimmed)
-            val paper = parseSinglePaperObject(root, fileName)
-            val validated = validateParsedPaper(paper, fileName, formattedSize, fileSizeBytes, trimmed)
-            listOf(validated)
+
+            // Check if object is a multi-set bundle
+            val bundleSetsArray = when {
+                root.has("questionSets") -> root.optJSONArray("questionSets")
+                root.has("sets") -> root.optJSONArray("sets")
+                else -> null
+            }
+
+            if (bundleSetsArray != null && bundleSetsArray.length() > 0) {
+                val bundleTitle = root.optString("examTitle", fileName.substringBeforeLast('.'))
+                val bundleFolderId = if (root.has("folderId") && !root.isNull("folderId")) root.optString("folderId").ifBlank { null } else null
+                val items = mutableListOf<BatchImportItem>()
+                for (i in 0 until bundleSetsArray.length()) {
+                    val paperObj = bundleSetsArray.optJSONObject(i)
+                    if (paperObj != null) {
+                        val subName = "${bundleTitle}_set_${i + 1}.json"
+                        val paper = parseSinglePaperObject(paperObj, subName)
+                        val finalPaper = if (bundleFolderId != null && paper.metadata.folderId.isNullOrBlank()) {
+                            paper.copy(metadata = paper.metadata.copy(folderId = bundleFolderId))
+                        } else {
+                            paper
+                        }
+                        items.add(validateParsedPaper(finalPaper, subName, formattedSize, fileSizeBytes, paperObj.toString(2)))
+                    }
+                }
+                items
+            } else {
+                val paper = parseSinglePaperObject(root, fileName)
+                val validated = validateParsedPaper(paper, fileName, formattedSize, fileSizeBytes, trimmed)
+                listOf(validated)
+            }
         } catch (e: JSONException) {
             listOf(
                 BatchImportItem(
@@ -228,6 +256,18 @@ object BatchExamImporter {
             .ifBlank { "Exam Paper" }
 
         val metadata = if (metaObj != null) {
+            val rawRoll = metaObj.optString("rollNumber", root.optString("rollNumber", "")).trim()
+            val finalRoll = if (rawRoll.isNotBlank()) rawRoll else ExamNumberGenerator.generateRollNumber()
+
+            val rawBooklet = metaObj.optString("bookletNumber", root.optString("bookletNumber", "")).trim()
+            val finalBooklet = if (rawBooklet.isNotBlank()) rawBooklet else ExamNumberGenerator.generateBookletNumber()
+
+            val folder = if (metaObj.has("folderId") && !metaObj.isNull("folderId")) {
+                metaObj.optString("folderId").ifBlank { null }
+            } else if (root.has("folderId") && !root.isNull("folderId")) {
+                root.optString("folderId").ifBlank { null }
+            } else null
+
             PaperMetadata(
                 id = metaObj.optString("id", ""),
                 title = metaObj.optString("title", fallbackTitle).ifBlank { fallbackTitle },
@@ -235,10 +275,20 @@ object BatchExamImporter {
                 topic = metaObj.optString("topic", root.optString("topic", "")),
                 setNumber = metaObj.optString("setNumber", root.optString("setNumber", "Set A")).ifBlank { "Set A" },
                 exam = metaObj.optString("targetExam", root.optString("exam", "")),
-                folderId = if (metaObj.has("folderId")) metaObj.optString("folderId") else null,
+                folderId = folder,
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet,
                 createdAt = metaObj.optLong("createdAt", System.currentTimeMillis())
             )
         } else {
+            val rawRoll = root.optString("rollNumber", "").trim()
+            val finalRoll = if (rawRoll.isNotBlank()) rawRoll else ExamNumberGenerator.generateRollNumber()
+
+            val rawBooklet = root.optString("bookletNumber", "").trim()
+            val finalBooklet = if (rawBooklet.isNotBlank()) rawBooklet else ExamNumberGenerator.generateBookletNumber()
+
+            val folder = if (root.has("folderId") && !root.isNull("folderId")) root.optString("folderId").ifBlank { null } else null
+
             PaperMetadata(
                 id = root.optString("id", ""),
                 title = root.optString("title", fallbackTitle).ifBlank { fallbackTitle },
@@ -246,6 +296,9 @@ object BatchExamImporter {
                 topic = root.optString("topic", ""),
                 setNumber = root.optString("setNumber", "Set A").ifBlank { "Set A" },
                 exam = root.optString("exam", root.optString("targetExam", "")),
+                folderId = folder,
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet,
                 createdAt = root.optLong("createdAt", System.currentTimeMillis())
             )
         }

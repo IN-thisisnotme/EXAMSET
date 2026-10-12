@@ -23,8 +23,7 @@ class OmrGeometryTest {
     fun testVerticalBudgetAccommodates200QuestionsStrictlyOnSinglePage() {
         val layout = OmrGeometry.calculateLayout(200)
         assertEquals(4, layout.numColumns)
-        assertEquals(35, layout.rowsSectionA)
-        assertEquals(15, layout.rowsSectionB)
+        assertEquals(50, layout.rowsPerColumn)
         assertEquals(200, layout.totalQuestions)
 
         // Total grid height must fit safely within single A4 printable height with margin for headers and footer
@@ -36,50 +35,46 @@ class OmrGeometryTest {
     }
 
     @Test
-    fun testNeetQuestionMappingSectionsAndColumns() {
-        // Subject 1 (Physics): Q 001..050
-        val (s1a, isA1, r1) = OmrGeometry.getQuestionMapping(1)
-        assertEquals(0, s1a)
-        assertTrue(isA1)
-        assertEquals(0, r1)
+    fun testContinuousQuestionMappingAcrossColumns() {
+        // Column 0: Questions 001..050
+        val (col1, row1) = OmrGeometry.getQuestionMapping(1)
+        assertEquals(0, col1)
+        assertEquals(0, row1)
 
-        val (s35a, isA35, r35) = OmrGeometry.getQuestionMapping(35)
-        assertEquals(0, s35a)
-        assertTrue(isA35)
-        assertEquals(34, r35)
+        val (col35, row35) = OmrGeometry.getQuestionMapping(35)
+        assertEquals(0, col35)
+        assertEquals(34, row35)
 
-        val (s36b, isA36, r36) = OmrGeometry.getQuestionMapping(36)
-        assertEquals(0, s36b)
-        assertFalse(isA36)
-        assertEquals(0, r36)
+        val (col50, row50) = OmrGeometry.getQuestionMapping(50)
+        assertEquals(0, col50)
+        assertEquals(49, row50)
 
-        val (s50b, isA50, r50) = OmrGeometry.getQuestionMapping(50)
-        assertEquals(0, s50b)
-        assertFalse(isA50)
-        assertEquals(14, r50)
+        // Column 1: Questions 051..100
+        val (col51, row51) = OmrGeometry.getQuestionMapping(51)
+        assertEquals(1, col51)
+        assertEquals(0, row51)
 
-        // Subject 2 (Chemistry): Q 051..100
-        val (s51a, isA51, r51) = OmrGeometry.getQuestionMapping(51)
-        assertEquals(1, s51a)
-        assertTrue(isA51)
-        assertEquals(0, r51)
+        val (col100, row100) = OmrGeometry.getQuestionMapping(100)
+        assertEquals(1, col100)
+        assertEquals(49, row100)
 
-        // Subject 3 (Botany): Q 101..150
-        val (s101a, isA101, r101) = OmrGeometry.getQuestionMapping(101)
-        assertEquals(2, s101a)
-        assertTrue(isA101)
-        assertEquals(0, r101)
+        // Column 2: Questions 101..150
+        val (col101, row101) = OmrGeometry.getQuestionMapping(101)
+        assertEquals(2, col101)
+        assertEquals(0, row101)
 
-        // Subject 4 (Zoology): Q 151..200
-        val (s151a, isA151, r151) = OmrGeometry.getQuestionMapping(151)
-        assertEquals(3, s151a)
-        assertTrue(isA151)
-        assertEquals(0, r151)
+        val (col150, row150) = OmrGeometry.getQuestionMapping(150)
+        assertEquals(2, col150)
+        assertEquals(49, row150)
 
-        val (s200b, isA200, r200) = OmrGeometry.getQuestionMapping(200)
-        assertEquals(3, s200b)
-        assertFalse(isA200)
-        assertEquals(14, r200)
+        // Column 3: Questions 151..200
+        val (col151, row151) = OmrGeometry.getQuestionMapping(151)
+        assertEquals(3, col151)
+        assertEquals(0, row151)
+
+        val (col200, row200) = OmrGeometry.getQuestionMapping(200)
+        assertEquals(3, col200)
+        assertEquals(49, row200)
     }
 
     @Test
@@ -148,8 +143,7 @@ class OmrGeometryTest {
                 val b1 = qBubbles[i]
                 val b2 = qBubbles[i + 1]
                 val dist = hypot(b2.centerXMm - b1.centerXMm, b2.centerYMm - b1.centerYMm)
-                // Pitch is 4.8mm, outer diameter 3.8mm, gap is 1.0mm
-                assertEquals(4.8f, dist, 0.01f)
+                assertEquals(OmrGeometry.BUBBLE_PITCH_X_MM, dist, 0.01f)
                 assertTrue(
                     "Distance between bubbles in Q$qNum must exceed diameter (3.8mm)",
                     dist >= OmrGeometry.BUBBLE_DIAMETER_MM

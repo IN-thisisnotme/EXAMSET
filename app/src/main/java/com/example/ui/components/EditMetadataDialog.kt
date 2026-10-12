@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -162,6 +163,84 @@ fun EditMetadataDialog(
                         .testTag("edit_set_number_field"),
                     shape = RoundedCornerShape(8.dp)
                 )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Permanent Identifiers (Immutable for authentic hand-circling practice)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.surfaceVariant,
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = colors.muted,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Permanent Identifiers (For OMR Circling Practice)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                        }
+                        Text(
+                            text = "Assigned permanently per set to ensure authentic bubbling practice without accidental edits.",
+                            fontSize = 10.sp,
+                            color = colors.muted,
+                            lineHeight = 13.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.surface,
+                                border = BorderStroke(0.8.dp, colors.border),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(7.dp)) {
+                                    Text("Roll No (10-Digit)", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = initialMetadata.rollNumber.ifBlank { "Unassigned" },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.teal
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.surface,
+                                border = BorderStroke(0.8.dp, colors.border),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(7.dp)) {
+                                    Text("Test Booklet No (7-Digit)", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = initialMetadata.bookletNumber.ifBlank { "Unassigned" },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.teal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 

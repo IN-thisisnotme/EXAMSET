@@ -322,6 +322,70 @@ fun ShareSystemTab(
                             color = colors.inkMuted
                         )
 
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Core Identifier Badges
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = colors.tealLight,
+                                border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "Set: ${paper.metadata.setNumber}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.teal,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            if (!paper.metadata.folderId.isNullOrBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.6.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = "Folder: ${paper.metadata.folderId}",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(0.6.dp, Color(0xFF3B82F6).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "Roll: ${paper.metadata.rollNumber}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1D4ED8),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFFDF2F8),
+                                border = BorderStroke(0.6.dp, Color(0xFFEC4899).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "Booklet: ${paper.metadata.bookletNumber}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFBE185D),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Row(

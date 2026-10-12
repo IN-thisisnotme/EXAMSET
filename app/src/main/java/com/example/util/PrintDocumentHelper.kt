@@ -6,9 +6,11 @@ import android.print.PrintManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.example.model.ExamConfig
+import com.example.model.OmrBubblingMode
 import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
+import com.example.util.ExamNumberGenerator
 
 object PrintDocumentHelper {
 
@@ -107,7 +109,7 @@ object PrintDocumentHelper {
             <style>
                 @page {
                     size: A4 portrait;
-                    margin: 8mm 10mm;
+                    margin: 6mm 8mm;
                 }
                 * { box-sizing: border-box; }
                 body {
@@ -432,6 +434,9 @@ object PrintDocumentHelper {
                     border-bottom: 2px solid #177E89;
                     padding-bottom: 4px;
                 }
+                .master-questions-container {
+                    ${if (config.twoColumns) "column-count: 2; column-gap: 8mm; column-rule: 1px solid #D5E1E7;" else ""}
+                }
                 /* Question Items - Continuous clean flow */
                 .q-card {
                     border: none;
@@ -541,7 +546,9 @@ object PrintDocumentHelper {
             </div>
 
             <div class="section-heading">Questions</div>
-            $questionsCardsHtml
+            <div class="master-questions-container">
+                $questionsCardsHtml
+            </div>
 
             <div class="page-break"></div>
             <div class="section-heading">Answer Key</div>
@@ -671,7 +678,7 @@ object PrintDocumentHelper {
             <style>
                 @page {
                     size: A4 portrait;
-                    margin: ${OmrGeometry.MARGIN_Y_MM}mm ${OmrGeometry.MARGIN_X_MM}mm;
+                    margin: 10mm 4mm 4mm 4mm;
                 }
                 * { box-sizing: border-box; }
                 body {
@@ -693,7 +700,7 @@ object PrintDocumentHelper {
 
     private fun getOmrCss(isStandalone: Boolean): String {
         return """
-        /* Drop-out Magenta/Pink Authentic NEET OMR Theme Rules */
+        /* Drop-out Magenta/Pink Authentic NEET & UPSC OMR Theme Rules */
         .omr-page {
             ${if (isStandalone) "" else "page-break-before: always; break-before: page;"}
             page-break-inside: avoid;
@@ -702,11 +709,12 @@ object PrintDocumentHelper {
             break-after: avoid;
             box-sizing: border-box;
             width: 100%;
-            height: 284mm;
-            max-height: 284mm;
+            height: 275mm;
+            max-height: 275mm;
             overflow: hidden;
             margin: 0;
-            padding: 0;
+            padding-top: ${if (isStandalone) "0" else "4mm"};
+            padding-bottom: 0;
             color: #000000;
         }
         .omr-wrapper {
@@ -716,8 +724,7 @@ object PrintDocumentHelper {
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
-            height: 100%;
-            justify-content: space-between;
+            gap: 1.2mm;
             background: #ffffff;
         }
         /* 4 Corner Registration Fiducial Anchors */
@@ -733,39 +740,71 @@ object PrintDocumentHelper {
         .anchor-bl { bottom: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; left: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
         .anchor-br { bottom: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; right: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
 
-        /* Top Header Area */
+        /* Top Header Area with Center/Room Superintendent Stamp Box */
         .omr-top-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin: 0 4mm 1.2mm 4mm;
-            gap: 4mm;
+            align-items: stretch;
+            margin: 0 4mm 0.8mm 4mm;
+            gap: 3mm;
         }
         .omr-header-warning {
-            flex: 1.3;
+            flex: 1.2;
             border: 1.2px solid #be185d;
-            border-radius: 6px;
-            padding: 1.0mm 2.0mm;
-            font-size: 5.4pt;
+            border-radius: 4px;
+            padding: 1.0mm 1.8mm;
+            font-size: 5.2pt;
             font-weight: 700;
             color: #be185d;
             line-height: 1.15;
             background: #ffffff;
         }
+        .omr-stamp-box {
+            width: 28mm;
+            min-width: 28mm;
+            max-width: 28mm;
+            border: 1.2px dashed #be185d;
+            border-radius: 4px;
+            padding: 1.0mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background: #ffffff;
+        }
+        .omr-stamp-title {
+            font-size: 4.6pt;
+            font-weight: 900;
+            color: #be185d;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+            line-height: 1.15;
+        }
+        .omr-stamp-sub {
+            font-size: 3.8pt;
+            font-weight: 700;
+            color: #be185d;
+            margin-top: 1px;
+        }
         .omr-header-title-box {
-            flex: 1;
+            flex: 1.1;
             text-align: right;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         .omr-title {
             font-weight: 900;
-            font-size: 11pt;
+            font-size: 10.5pt;
             letter-spacing: 0.5px;
             text-transform: uppercase;
             color: #be185d;
             line-height: 1.1;
         }
         .omr-exam-subtitle {
-            font-size: 6.2pt;
+            font-size: 6.0pt;
             font-weight: 800;
             color: #be185d;
             letter-spacing: 0.3px;
@@ -774,9 +813,7 @@ object PrintDocumentHelper {
         /* 2-Panel Main Container */
         .omr-body-container {
             display: flex;
-            flex: 1;
             gap: 2.2mm;
-            min-height: 0;
             margin: 0 0.5mm;
         }
 
@@ -790,19 +827,19 @@ object PrintDocumentHelper {
             gap: 1.2mm;
             box-sizing: border-box;
             position: relative;
-            padding-left: 5.5mm; /* Space for vertical margin warning */
         }
-        .omr-margin-warning {
-            position: absolute;
-            left: -32px;
-            top: 50%;
-            transform: translateY(-50%) rotate(-90deg);
-            transform-origin: center center;
-            font-size: 6.2pt;
-            font-weight: 900;
+        .omr-panel-warning {
+            border: 1.2px solid #be185d;
+            background: #fdf2f8;
             color: #be185d;
-            letter-spacing: 0.6px;
-            white-space: nowrap;
+            font-size: 5.2pt;
+            font-weight: 900;
+            text-align: center;
+            padding: 1.0mm 0.6mm;
+            letter-spacing: 0.3px;
+            line-height: 1.2;
+            text-transform: uppercase;
+            box-sizing: border-box;
         }
         .panel-box {
             border: 1.2px solid #be185d;
@@ -826,38 +863,62 @@ object PrintDocumentHelper {
         }
         .digit-box {
             flex: 1;
-            height: 3.4mm;
+            height: 3.8mm;
             border-right: 1px solid #be185d;
             box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6.2pt;
+            font-weight: 900;
+            font-family: "Courier New", Courier, monospace;
+            color: #000000;
         }
         .digit-box:last-child {
             border-right: none;
         }
-        .bubble-matrix {
-            display: flex;
-            padding: 0.6mm 0;
-        }
-        .bubble-col {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
+        .roll-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            row-gap: 0.35mm;
+            column-gap: 0.6mm;
+            padding: 0.6mm 0.3mm;
+            justify-items: center;
             align-items: center;
-            gap: 0.35mm;
+        }
+        .booklet-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            row-gap: 0.35mm;
+            column-gap: 0.8mm;
+            padding: 0.6mm 0.3mm;
+            justify-items: center;
+            align-items: center;
         }
         .micro-bubble {
-            width: 2.6mm;
-            height: 2.6mm;
-            border: 0.3mm solid #be185d;
+            width: 3.3mm;
+            height: 3.3mm;
+            min-width: 3.3mm;
+            min-height: 3.3mm;
+            max-width: 3.3mm;
+            max-height: 3.3mm;
+            border: 0.35mm solid #be185d;
             border-radius: 50%;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 4.2pt;
+            font-size: 5.2pt;
             font-weight: 800;
             color: #be185d;
             background: #ffffff;
             box-sizing: border-box;
             line-height: 1;
+            text-align: center;
+        }
+        .micro-bubble-darkened {
+            background: #000000 !important;
+            color: #ffffff !important;
+            border-color: #000000 !important;
         }
 
         /* Booklet Code Box */
@@ -871,7 +932,7 @@ object PrintDocumentHelper {
             font-weight: 900;
             color: #be185d;
             text-align: center;
-            margin-bottom: 1mm;
+            margin-bottom: 0.8mm;
         }
         .booklet-code-inner {
             display: flex;
@@ -879,7 +940,7 @@ object PrintDocumentHelper {
             justify-content: space-around;
         }
         .booklet-code-large {
-            font-size: 18pt;
+            font-size: 16pt;
             font-weight: 900;
             color: #be185d;
             line-height: 1;
@@ -892,12 +953,12 @@ object PrintDocumentHelper {
         /* Answer Sheet No Area (with L-bracket corner marks) */
         .sheet-no-container {
             position: relative;
-            height: 16mm;
+            height: 14mm;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            margin: 0.5mm 0;
+            margin: 0.3mm 0;
         }
         .bracket {
             position: absolute;
@@ -914,16 +975,16 @@ object PrintDocumentHelper {
             font-size: 5.8pt;
             font-weight: 800;
             color: #be185d;
-            margin-bottom: 1mm;
+            margin-bottom: 0.8mm;
         }
 
         /* Candidate Declaration Box */
         .declaration-box {
             border: 1.2px solid #be185d;
-            padding: 1.0mm 1.2mm;
-            font-size: 4.6pt;
+            padding: 1.2mm 1.5mm;
+            font-size: 4.7pt;
             color: #831843;
-            line-height: 1.15;
+            line-height: 1.18;
             background: #fff;
             box-sizing: border-box;
         }
@@ -934,67 +995,38 @@ object PrintDocumentHelper {
             margin-bottom: 0.6mm;
             text-transform: uppercase;
         }
-        .decl-sig-line {
-            border-bottom: 1px solid #be185d;
-            margin-top: 5.5mm;
-            margin-bottom: 0.5mm;
-        }
-        .decl-sig-caption {
-            font-size: 4.4pt;
-            font-weight: 800;
-            color: #be185d;
-            text-align: center;
-        }
 
-        /* Candidate's Name Box */
+        /* Candidate's Name Box (Full write-in rectangular box) */
         .cand-name-box {
             border: 1.2px solid #be185d;
-            padding: 1.0mm;
-            height: 11mm;
+            padding: 1.2mm 1.5mm;
+            height: 14.5mm;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            background: #ffffff;
+        }
+        .cand-name-label {
+            font-size: 5.4pt;
+            font-weight: 900;
+            color: #be185d;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+        }
+        .cand-name-line {
+            border-bottom: 1px solid #be185d;
+            width: 100%;
+            margin-top: auto;
         }
 
-        /* Right Question Grid (Two-Part: Section A and Section B) */
+        /* Right Question Grid (Continuous 4 Columns × 50 Rows, No Section Partitions) */
         .omr-right-grid {
             flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: ${OmrGeometry.SECTION_GAP_MM}mm;
-            box-sizing: border-box;
-        }
-        .section-wrapper {
             display: flex;
             border: 1.2px solid #be185d;
             box-sizing: border-box;
             background: #ffffff;
-        }
-        .section-vertical-strip {
-            width: ${OmrGeometry.SECTION_LABEL_WIDTH_MM}mm;
-            min-width: ${OmrGeometry.SECTION_LABEL_WIDTH_MM}mm;
-            max-width: ${OmrGeometry.SECTION_LABEL_WIDTH_MM}mm;
-            background: #ffffff;
-            border-right: 1.2px solid #be185d;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-            box-sizing: border-box;
-        }
-        .section-vertical-text {
-            transform: rotate(-90deg);
-            white-space: nowrap;
-            font-size: 5.4pt;
-            font-weight: 900;
-            color: #be185d;
-            letter-spacing: 0.4px;
-        }
-        .section-columns-container {
-            flex: 1;
-            display: flex;
         }
         .omr-column {
             flex: 1;
@@ -1008,7 +1040,7 @@ object PrintDocumentHelper {
         }
         .omr-col-header {
             background: #ffffff;
-            border-bottom: 1px solid #be185d;
+            border-bottom: 1.2px solid #be185d;
             color: #be185d;
             display: flex;
             align-items: center;
@@ -1026,7 +1058,7 @@ object PrintDocumentHelper {
         }
         .header-resp-wrap {
             display: flex;
-            gap: 1.0mm;
+            gap: 2.0mm;
             align-items: center;
         }
         .header-opt-lbl {
@@ -1042,9 +1074,9 @@ object PrintDocumentHelper {
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            height: ${OmrGeometry.ROW_PITCH_MM}mm;
-            min-height: ${OmrGeometry.ROW_PITCH_MM}mm;
-            max-height: ${OmrGeometry.ROW_PITCH_MM}mm;
+            height: 3.85mm;
+            min-height: 3.85mm;
+            max-height: 3.85mm;
             padding: 0 0.8mm;
             box-sizing: border-box;
         }
@@ -1053,7 +1085,7 @@ object PrintDocumentHelper {
         }
         .omr-qnum {
             width: ${OmrGeometry.QNUM_WIDTH_MM}mm;
-            font-size: 6.2pt;
+            font-size: 6.0pt;
             font-weight: 900;
             text-align: right;
             color: #be185d;
@@ -1063,7 +1095,7 @@ object PrintDocumentHelper {
         }
         .bubble-group {
             display: flex;
-            gap: 1.0mm; /* Fixed natural spacing */
+            gap: 2.0mm;
             align-items: center;
         }
         .bubble {
@@ -1084,92 +1116,101 @@ object PrintDocumentHelper {
             background: #ffffff;
             line-height: 1;
             box-sizing: border-box;
+            text-align: center;
             text-transform: uppercase;
         }
-        .bubble-empty-slot {
-            opacity: 0.35;
-        }
 
-        /* Bottom Verification Area */
+        /* Bottom Verification Area: 3 Distinct Boxes (Thumb + Candidate Sign + Single Invigilator Sign-Across) */
         .omr-bottom-area {
             border: 1.2px solid #be185d;
-            margin: 1.0mm 0.5mm 0 0.5mm;
+            margin: 0.8mm 0.5mm 0 0.5mm;
             background: #fff;
-            padding: 1.0mm;
-            box-sizing: border-box;
-        }
-        .omr-bottom-row-1 {
-            display: flex;
-            gap: 2mm;
-            margin-bottom: 1mm;
-        }
-        .omr-name-field-box {
-            flex: 1;
-            border: 1px solid #be185d;
-            padding: 1mm;
-            height: 8mm;
+            padding: 1.0mm 1.2mm;
             box-sizing: border-box;
             display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        .omr-bottom-row-2 {
-            display: flex;
-            gap: 2mm;
+            gap: 2.5mm;
+            height: 20mm;
         }
         .omr-thumb-container {
             flex: 1;
-            border: 1px solid #be185d;
-            padding: 1mm;
-            height: 13.5mm;
+            border: 1.2px solid #be185d;
+            padding: 1.0mm;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            background: #ffffff;
+        }
+        .omr-cand-sig-container {
+            flex: 1.2;
+            border: 1.2px solid #be185d;
+            padding: 1.0mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: #ffffff;
         }
         .omr-invig-container {
-            flex: 1.3;
-            border: 1px solid #be185d;
-            padding: 1mm;
-            height: 13.5mm;
+            flex: 1.5;
+            border: 1.2px solid #be185d;
+            padding: 1.0mm 1.2mm;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            background: #ffffff;
         }
         .field-label {
-            font-size: 5.2pt;
+            font-size: 5.3pt;
             font-weight: 900;
             color: #be185d;
             text-transform: uppercase;
             letter-spacing: 0.2px;
         }
-        .field-line {
-            border-bottom: 1px solid #be185d;
-            width: 100%;
-        }
         .invig-sig-row {
             display: flex;
             align-items: center;
             border-bottom: 1px solid #be185d;
-            padding-bottom: 1mm;
-            font-size: 5pt;
+            padding-bottom: 0.8mm;
+            font-size: 5.1pt;
             font-weight: 800;
             color: #be185d;
+            gap: 2mm;
         }
-        .invig-sig-row:last-child {
-            border-bottom: none;
-            padding-bottom: 0;
-            padding-top: 1mm;
-        }
-        .invig-num {
-            width: 6mm;
+        .invig-line {
+            flex: 1;
+            border-bottom: 1px solid #be185d;
         }
         """.trimIndent()
     }
 
     private fun generateOmrSectionHtml(paper: QuestionPaper, config: ExamConfig, isStandalone: Boolean = false): String {
         val questionCount = paper.questions.size.coerceAtLeast(1)
+        val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "A" } }.trim().uppercase()
+        val setClean = ExamNumberGenerator.extractBookletCode(rawSet)
+        val bookletLetters = ExamNumberGenerator.resolveBookletSets(setClean)
+
+        val rollStr = if (config.rollNumber.isNotBlank()) {
+            ExamNumberGenerator.normalizeRollNumber(config.rollNumber, 10)
+        } else if (paper.metadata.rollNumber.isNotBlank()) {
+            ExamNumberGenerator.normalizeRollNumber(paper.metadata.rollNumber, 10)
+        } else ""
+
+        val bookletStr = if (config.bookletNumber.isNotBlank()) {
+            ExamNumberGenerator.normalizeBookletNumber(config.bookletNumber, 7)
+        } else if (paper.metadata.bookletNumber.isNotBlank()) {
+            ExamNumberGenerator.normalizeBookletNumber(paper.metadata.bookletNumber, 7)
+        } else ""
+
+        val showRollDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS || 
+                              config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && rollStr.length == 10
+        val darkenRollBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && rollStr.length == 10
+
+        val showBookletDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS || 
+                                 config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && bookletStr.length == 7
+        val darkenBookletBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && bookletStr.length == 7
+
         val sb = StringBuilder()
 
         sb.append("""
@@ -1181,13 +1222,18 @@ object PrintDocumentHelper {
             <div class="omr-anchor anchor-bl"></div>
             <div class="omr-anchor anchor-br"></div>
 
-            <!-- Top Header -->
+            <!-- Top Header with Institutional Stamp Margin Box -->
             <div class="omr-top-header">
                 <div class="omr-header-warning">
                     The candidate should ensure that Roll No. and Test Booklet No. have been filled and marked correctly and Test Booklet Code printed in this sheet and Test Booklet is the same.
                 </div>
+                <div class="omr-stamp-box">
+                    <div class="omr-stamp-title">CENTRE / ROOM</div>
+                    <div class="omr-stamp-title">SUPERINTENDENT STAMP</div>
+                    <div class="omr-stamp-sub">(Affix Official Stamp Here)</div>
+                </div>
                 <div class="omr-header-title-box">
-                    <div class="omr-title">NEET OMR ANSWER SHEET</div>
+                    <div class="omr-title">${escapeHtml(config.examTitle.ifBlank { paper.metadata.exam.ifBlank { "UPSC CSE" } }).uppercase()} OMR ANSWER SHEET</div>
                     <div class="omr-exam-subtitle">PRACTICE / MOCK TEST OMR RESPONSE SHEET — FOR EXAMINATION PREPARATION ONLY</div>
                 </div>
             </div>
@@ -1196,38 +1242,44 @@ object PrintDocumentHelper {
             <div class="omr-body-container">
                 <!-- Left Identification Panel -->
                 <div class="omr-left-panel">
-                    <div class="omr-margin-warning">Candidate MUST NOT carry ORIGINAL or OFFICE Copy</div>
+                    <div class="omr-panel-warning">Candidate MUST NOT carry ORIGINAL or OFFICE Copy</div>
 
-                    <!-- Roll No Grid (10 Digits) -->
+                    <!-- Roll No Grid (10 Digits) with Synchronized Grid -->
                     <div class="panel-box">
                         <div class="grid-header-title">ROLL NO.</div>
                         <div class="digit-entry-row">
-                            ${(1..10).joinToString("") { "<div class=\"digit-box\"></div>" }}
+                            ${(0 until 10).joinToString("") { colIdx ->
+                                val ch = if (showRollDigits) rollStr[colIdx].toString() else ""
+                                "<div class=\"digit-box\">$ch</div>"
+                            }}
                         </div>
-                        <div class="bubble-matrix">
-                            ${(1..10).joinToString("") {
-                                """
-                                <div class="bubble-col">
-                                    ${(0..9).joinToString("") { d -> "<span class=\"micro-bubble\">$d</span>" }}
-                                </div>
-                                """.trimIndent()
+                        <div class="roll-grid">
+                            ${(0..9).joinToString("") { d ->
+                                (0 until 10).joinToString("") { colIdx ->
+                                    val isDarkened = darkenRollBubbles && (rollStr[colIdx] - '0') == d
+                                    val cls = if (isDarkened) "micro-bubble micro-bubble-darkened" else "micro-bubble"
+                                    "<span class=\"$cls\">$d</span>"
+                                }
                             }}
                         </div>
                     </div>
 
-                    <!-- Test Booklet No Grid (7 Digits) -->
+                    <!-- Test Booklet No Grid (7 Digits) with Synchronized Grid -->
                     <div class="panel-box">
                         <div class="grid-header-title">TEST BOOKLET No.</div>
                         <div class="digit-entry-row">
-                            ${(1..7).joinToString("") { "<div class=\"digit-box\"></div>" }}
+                            ${(0 until 7).joinToString("") { colIdx ->
+                                val ch = if (showBookletDigits) bookletStr[colIdx].toString() else ""
+                                "<div class=\"digit-box\">$ch</div>"
+                            }}
                         </div>
-                        <div class="bubble-matrix">
-                            ${(1..7).joinToString("") {
-                                """
-                                <div class="bubble-col">
-                                    ${(0..9).joinToString("") { d -> "<span class=\"micro-bubble\">$d</span>" }}
-                                </div>
-                                """.trimIndent()
+                        <div class="booklet-grid">
+                            ${(0..9).joinToString("") { d ->
+                                (0 until 7).joinToString("") { colIdx ->
+                                    val isDarkened = darkenBookletBubbles && (bookletStr[colIdx] - '0') == d
+                                    val cls = if (isDarkened) "micro-bubble micro-bubble-darkened" else "micro-bubble"
+                                    "<span class=\"$cls\">$d</span>"
+                                }
                             }}
                         </div>
                     </div>
@@ -1236,12 +1288,12 @@ object PrintDocumentHelper {
                     <div class="booklet-code-box">
                         <div class="booklet-code-header">Test Booklet Code</div>
                         <div class="booklet-code-inner">
-                            <div class="booklet-code-large">${escapeHtml(paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "A" } })}</div>
+                            <div class="booklet-code-large">${escapeHtml(setClean.ifBlank { "A" })}</div>
                             <div class="code-bubbles">
-                                ${listOf("A", "B", "C", "D").joinToString("") {
-                                    val isSelected = it.equals(paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "A" } }, ignoreCase = true)
-                                    val bgStyle = if (isSelected) "background:#be185d; color:#ffffff;" else "background:#ffffff; color:#be185d;"
-                                    "<span class=\"micro-bubble\" style=\"width:3.2mm; height:3.2mm; $bgStyle\">$it</span>"
+                                ${bookletLetters.joinToString("") { code ->
+                                    val isDark = (config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && code.equals(setClean, ignoreCase = true))
+                                    val darkStyle = if (isDark) "background:#000000; color:#ffffff; border-color:#000000;" else "background:#ffffff; color:#be185d;"
+                                    "<span class=\"micro-bubble\" style=\"width:3.3mm; height:3.3mm; $darkStyle\">$code</span>"
                                 }}
                             </div>
                         </div>
@@ -1259,146 +1311,79 @@ object PrintDocumentHelper {
                         </div>
                     </div>
 
+                    <!-- Candidate's Name Box (Full write-in rectangular box) -->
+                    <div class="cand-name-box">
+                        <div class="cand-name-label">CANDIDATE'S NAME (in running handwriting)</div>
+                        <div class="cand-name-line"></div>
+                    </div>
+
                     <!-- Candidate Declaration -->
                     <div class="declaration-box">
                         <div class="declaration-title">DECLARATION BY THE CANDIDATE</div>
-                        "I declare that particulars and signature on this OMR Answer Sheet are mine and are same as in Attendance Sheet. I further declare that particulars filled-in and signature as well as circles darkened on this ORIGINAL Copy are same as in OFFICE Copy."
-                        <div class="decl-sig-line"></div>
-                        <div class="decl-sig-caption">Signature with time (in running handwriting)</div>
-                    </div>
-
-                    <!-- Candidate's Name Box -->
-                    <div class="cand-name-box">
-                        <div class="field-label">CANDIDATE'S NAME (in running handwriting)</div>
-                        <div class="field-line"></div>
+                        "I declare that particulars and signature on this OMR Answer Sheet are mine and same as in Attendance Sheet. I further declare that particulars filled-in and signature as well as circles darkened on this ORIGINAL Copy are same as in OFFICE Copy."
                     </div>
                 </div>
 
-                <!-- Right Question Grid (Section A + Section B) -->
+                <!-- Right Question Grid (Continuous 4 Columns of 50 Questions Each, 100% Full Opacity) -->
                 <div class="omr-right-grid">
-                    <!-- Section A: 35 Questions per subject -->
-                    <div class="section-wrapper">
-                        <div class="section-vertical-strip">
-                            <div class="section-vertical-text">SECTION-A &nbsp; Attempt all 35 questions in each subject.</div>
-                        </div>
-                        <div class="section-columns-container">
-                            ${(0 until OmrGeometry.NUM_GRID_COLUMNS).joinToString("") { col ->
-                                val startQ = col * OmrGeometry.QUESTIONS_PER_SUBJECT + 1
-                                val endQ = startQ + OmrGeometry.SECTION_A_ROWS - 1
-                                buildString {
-                                    append("""<div class="omr-column">""")
-                                    append("""
-                                        <div class="omr-col-header">
-                                            <span class="header-qnum-lbl">Q. No.</span>
-                                            <div class="header-resp-wrap">
-                                                <span class="header-opt-lbl">1</span>
-                                                <span class="header-opt-lbl">2</span>
-                                                <span class="header-opt-lbl">3</span>
-                                                <span class="header-opt-lbl">4</span>
-                                            </div>
+                    ${(0 until OmrGeometry.NUM_GRID_COLUMNS).joinToString("") { col ->
+                        val startQ = col * OmrGeometry.ROWS_PER_COLUMN + 1
+                        val endQ = (col + 1) * OmrGeometry.ROWS_PER_COLUMN
+                        buildString {
+                            append("""<div class="omr-column">""")
+                            append("""
+                                <div class="omr-col-header">
+                                    <span class="header-qnum-lbl">Q. No.</span>
+                                    <div class="header-resp-wrap">
+                                        <span class="header-opt-lbl">1</span>
+                                        <span class="header-opt-lbl">2</span>
+                                        <span class="header-opt-lbl">3</span>
+                                        <span class="header-opt-lbl">4</span>
+                                    </div>
+                                </div>
+                            """.trimIndent())
+                            for (q in startQ..endQ) {
+                                val blockIndex = (q - 1) / 5
+                                val isShaded = (blockIndex % 2) == 1
+                                val shadedClass = if (isShaded) "omr-row-shaded" else ""
+                                val qPadded = String.format("%03d", q)
+                                append("""
+                                    <div class="omr-row $shadedClass">
+                                        <span class="omr-qnum">$qPadded</span>
+                                        <div class="bubble-group">
+                                            <span class="bubble">1</span>
+                                            <span class="bubble">2</span>
+                                            <span class="bubble">3</span>
+                                            <span class="bubble">4</span>
                                         </div>
-                                    """.trimIndent())
-                                    for (q in startQ..endQ) {
-                                        val blockIndex = (q - 1) / 5
-                                        val isShaded = (blockIndex % 2) == 1
-                                        val shadedClass = if (isShaded) "omr-row-shaded" else ""
-                                        val qPadded = String.format("%03d", q)
-                                        val isActive = q <= questionCount
-                                        val slotClass = if (isActive) "" else "bubble-empty-slot"
-                                        append("""
-                                            <div class="omr-row $shadedClass $slotClass">
-                                                <span class="omr-qnum">$qPadded</span>
-                                                <div class="bubble-group">
-                                                    <span class="bubble">1</span>
-                                                    <span class="bubble">2</span>
-                                                    <span class="bubble">3</span>
-                                                    <span class="bubble">4</span>
-                                                </div>
-                                            </div>
-                                        """.trimIndent())
-                                    }
-                                    append("</div>")
-                                }
-                            }}
-                        </div>
-                    </div>
-
-                    <!-- Section B: 15 Questions per subject -->
-                    <div class="section-wrapper">
-                        <div class="section-vertical-strip">
-                            <div class="section-vertical-text">SECTION-B &nbsp; Attempt any 10 questions.</div>
-                        </div>
-                        <div class="section-columns-container">
-                            ${(0 until OmrGeometry.NUM_GRID_COLUMNS).joinToString("") { col ->
-                                val startQ = col * OmrGeometry.QUESTIONS_PER_SUBJECT + OmrGeometry.SECTION_A_ROWS + 1
-                                val endQ = (col + 1) * OmrGeometry.QUESTIONS_PER_SUBJECT
-                                buildString {
-                                    append("""<div class="omr-column">""")
-                                    append("""
-                                        <div class="omr-col-header">
-                                            <span class="header-qnum-lbl">Q. No.</span>
-                                            <div class="header-resp-wrap">
-                                                <span class="header-opt-lbl">1</span>
-                                                <span class="header-opt-lbl">2</span>
-                                                <span class="header-opt-lbl">3</span>
-                                                <span class="header-opt-lbl">4</span>
-                                            </div>
-                                        </div>
-                                    """.trimIndent())
-                                    for (q in startQ..endQ) {
-                                        val blockIndex = (q - 1) / 5
-                                        val isShaded = (blockIndex % 2) == 1
-                                        val shadedClass = if (isShaded) "omr-row-shaded" else ""
-                                        val qPadded = String.format("%03d", q)
-                                        val isActive = q <= questionCount
-                                        val slotClass = if (isActive) "" else "bubble-empty-slot"
-                                        append("""
-                                            <div class="omr-row $shadedClass $slotClass">
-                                                <span class="omr-qnum">$qPadded</span>
-                                                <div class="bubble-group">
-                                                    <span class="bubble">1</span>
-                                                    <span class="bubble">2</span>
-                                                    <span class="bubble">3</span>
-                                                    <span class="bubble">4</span>
-                                                </div>
-                                            </div>
-                                        """.trimIndent())
-                                    }
-                                    append("</div>")
-                                }
-                            }}
-                        </div>
-                    </div>
+                                    </div>
+                                """.trimIndent())
+                            }
+                            append("</div>")
+                        }
+                    }}
                 </div>
             </div>
 
-            <!-- Bottom Verification & Identification Area (Mother, Father, Thumb, Invigilator - Strictly NO parent signature) -->
+            <!-- Bottom Verification & Identification Area (3 Distinct Boxes: Thumb, Candidate Sign & Single Invigilator Sign-Across) -->
             <div class="omr-bottom-area">
-                <div class="omr-bottom-row-1">
-                    <div class="omr-name-field-box">
-                        <div class="field-label">MOTHER'S NAME (in running handwriting)</div>
-                        <div class="field-line"></div>
-                    </div>
-                    <div class="omr-name-field-box">
-                        <div class="field-label">FATHER'S NAME (in running handwriting)</div>
-                        <div class="field-line"></div>
-                    </div>
+                <div class="omr-thumb-container">
+                    <div class="field-label">CANDIDATE'S LEFT HAND THUMB IMPRESSION</div>
+                    <div style="flex:1;"></div>
                 </div>
-                <div class="omr-bottom-row-2">
-                    <div class="omr-thumb-container">
-                        <div class="field-label">CANDIDATE'S LEFT HAND THUMB IMPRESSION</div>
-                        <div style="flex:1;"></div>
-                    </div>
-                    <div class="omr-invig-container">
-                        <div class="field-label">SIGNATURE OF INVIGILATOR'S WITH TIME</div>
-                        <div class="invig-sig-row">
-                            <span class="invig-num">1</span>
-                            <div class="field-line"></div>
-                        </div>
-                        <div class="invig-sig-row">
-                            <span class="invig-num">2</span>
-                            <div class="field-line"></div>
-                        </div>
+                <div class="omr-cand-sig-container">
+                    <div class="field-label">CANDIDATE'S SIGNATURE WITH TIME</div>
+                    <div style="font-size: 4.4pt; color: #831843; margin-top: 1px;">(in running handwriting)</div>
+                    <div style="flex:1;"></div>
+                    <div class="field-line"></div>
+                </div>
+                <div class="omr-invig-container">
+                    <div class="field-label">INVIGILATOR'S SIGNATURE WITH TIME</div>
+                    <div style="font-size: 4.4pt; color: #831843; margin-top: 1px;">(Sign across the blank line with time)</div>
+                    <div style="flex:1;"></div>
+                    <div class="invig-sig-row">
+                        <div class="invig-line"></div>
+                        <span style="font-size: 4.8pt; white-space: nowrap; font-weight: 800;">(Sign & Date/Time)</span>
                     </div>
                 </div>
             </div>

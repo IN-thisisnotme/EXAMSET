@@ -15,8 +15,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -42,8 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.model.ExamConfig
+import com.example.model.OmrBubblingMode
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
+import com.example.util.ExamNumberGenerator
 import com.example.util.PrintDocumentHelper
 import com.example.ui.theme.ExamTheme
 
@@ -119,18 +123,25 @@ fun PrintConfigDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     ModeSelectorPill(
                         title = "Student Paper",
-                        subtitle = "Exam ready (No answers)",
+                        subtitle = "Exam ready (No ans)",
                         isSelected = config.printMode == PrintMode.STUDENT_PAPER,
                         onClick = { config = config.copy(printMode = PrintMode.STUDENT_PAPER) },
                         modifier = Modifier.weight(1f)
                     )
                     ModeSelectorPill(
+                        title = "OMR Only",
+                        subtitle = "A4 Answer Sheet",
+                        isSelected = config.printMode == PrintMode.OMR_ONLY,
+                        onClick = { config = config.copy(printMode = PrintMode.OMR_ONLY) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ModeSelectorPill(
                         title = "Master Booklet",
-                        subtitle = "Full PDF + Answers & Exp",
+                        subtitle = "Full PDF + Sol",
                         isSelected = config.printMode == PrintMode.MASTER_BOOKLET,
                         onClick = { config = config.copy(printMode = PrintMode.MASTER_BOOKLET) },
                         modifier = Modifier.weight(1f)
@@ -230,43 +241,183 @@ fun PrintConfigDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Student Exam Toggles (Only visible in Student Paper mode)
-                if (config.printMode == PrintMode.STUDENT_PAPER) {
+                // Layout and Print Options
+                if (config.printMode == PrintMode.STUDENT_PAPER || config.printMode == PrintMode.MASTER_BOOKLET) {
                     Text(
-                        text = "Examination Paper Options",
+                        text = if (config.printMode == PrintMode.STUDENT_PAPER) "Examination Paper Options" else "Master Booklet Print Options",
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkBold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    ConfigSwitchRow(
-                        title = "Candidate Details Box",
-                        subtitle = "Includes Name & Signature fields (no roll number)",
-                        checked = config.includeCandidateDetails,
-                        onCheckedChange = { config = config.copy(includeCandidateDetails = it) }
-                    )
+                    if (config.printMode == PrintMode.STUDENT_PAPER) {
+                        ConfigSwitchRow(
+                            title = "Candidate Details Box",
+                            subtitle = "Includes Name & Signature fields (no roll number)",
+                            checked = config.includeCandidateDetails,
+                            onCheckedChange = { config = config.copy(includeCandidateDetails = it) }
+                        )
 
-                    ConfigSwitchRow(
-                        title = "General Instructions",
-                        subtitle = "Standard examination rules at top",
-                        checked = config.includeInstructions,
-                        onCheckedChange = { config = config.copy(includeInstructions = it) }
-                    )
+                        ConfigSwitchRow(
+                            title = "General Instructions",
+                            subtitle = "Standard examination rules at top",
+                            checked = config.includeInstructions,
+                            onCheckedChange = { config = config.copy(includeInstructions = it) }
+                        )
 
-                    ConfigSwitchRow(
-                        title = "Printable OMR Answer Sheet",
-                        subtitle = "Drop-out red (#b91c1c) sheet with 5-row zebra strips",
-                        checked = config.includeOmrSheet,
-                        onCheckedChange = { config = config.copy(includeOmrSheet = it) }
-                    )
+                        ConfigSwitchRow(
+                            title = "Printable OMR Answer Sheet",
+                            subtitle = "Authentic UPSC/NEET magenta sheet with continuous 50-row columns",
+                            checked = config.includeOmrSheet,
+                            onCheckedChange = { config = config.copy(includeOmrSheet = it) }
+                        )
+                    }
 
                     ConfigSwitchRow(
                         title = "2-Column Examination Layout",
-                        subtitle = "Optimized paper saving 2-column format",
+                        subtitle = "Paper-saving 2-column continuous format for questions",
                         checked = config.twoColumns,
                         onCheckedChange = { config = config.copy(twoColumns = it) }
                     )
+                }
+
+                // OMR Identification & Numbering Configuration
+                if (config.includeOmrSheet || config.printMode == PrintMode.OMR_ONLY) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "OMR Identification & Numbering",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
+                    )
+                    Text(
+                        text = "Candidate Roll No. and Booklet No. configuration for scanning",
+                        fontSize = 11.sp,
+                        color = colors.muted
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Roll Number (10 digits) with Generate Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = config.rollNumber,
+                            onValueChange = { config = config.copy(rollNumber = it.filter { ch -> ch.isDigit() }.take(10)) },
+                            label = { Text("Roll No. (10 digits)") },
+                            placeholder = { Text("e.g. 2026104821") },
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("roll_number_input"),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        Button(
+                            onClick = {
+                                config = config.copy(rollNumber = ExamNumberGenerator.generateRollNumber())
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.tealLight,
+                                contentColor = colors.tealDark
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("generate_roll_button")
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Generate", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Test Booklet Number (7 digits) with Generate Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = config.bookletNumber,
+                            onValueChange = { config = config.copy(bookletNumber = it.filter { ch -> ch.isDigit() }.take(7)) },
+                            label = { Text("Booklet No. (7 digits)") },
+                            placeholder = { Text("e.g. 7104523") },
+                            singleLine = true,
+                            colors = tfColors,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("booklet_number_input"),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        Button(
+                            onClick = {
+                                config = config.copy(bookletNumber = ExamNumberGenerator.generateBookletNumber())
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.tealLight,
+                                contentColor = colors.tealDark
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("generate_booklet_button")
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Generate", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "OMR Bubbling Style",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val modes = listOf(
+                            Triple(OmrBubblingMode.BLANK_CANDIDATE, "Blank Circles", "Candidate pen"),
+                            Triple(OmrBubblingMode.PRE_PRINTED_DIGITS, "Printed Digits", "Top boxes only"),
+                            Triple(OmrBubblingMode.PRE_DARKENED_BUBBLES, "Darkened", "Pre-shaded")
+                        )
+                        modes.forEach { (mode, title, desc) ->
+                            val isSel = config.omrBubblingMode == mode
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { config = config.copy(omrBubblingMode = mode) },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) colors.tealLight else colors.surfaceVariant,
+                                border = BorderStroke(1.dp, if (isSel) colors.teal else colors.border)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = title,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSel) colors.tealDark else colors.inkBold
+                                    )
+                                    Text(
+                                        text = desc,
+                                        fontSize = 8.sp,
+                                        color = colors.muted
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))

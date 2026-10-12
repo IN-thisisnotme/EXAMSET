@@ -718,8 +718,7 @@ fun HomeScreen(
                     PrintablePaperTab(
                         paper = paper,
                         config = examConfig,
-                        onOpenConfig = { showPrintDialog = true },
-                        onScanOmr = { showOmrScannerDialog = true }
+                        onOpenConfig = { showPrintDialog = true }
                     )
                 } else {
                     NoPaperPlaceholder(

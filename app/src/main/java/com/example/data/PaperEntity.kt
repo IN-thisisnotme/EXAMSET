@@ -17,5 +17,8 @@ data class PaperEntity(
     val explanationCount: Int,
     val rawText: String,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val folderId: String? = null,
+    val rollNumber: String = "",
+    val bookletNumber: String = ""
 )

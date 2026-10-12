@@ -26,6 +26,7 @@ import com.example.model.QuestionPaper
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
 import com.example.util.ExamJsonHelper
+import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -298,7 +299,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         questionCount = result.paper.questions.size,
                         answerKeyCount = result.paper.quickAnswersCount,
                         explanationCount = result.paper.explanationsCount,
-                        rawText = cleanText
+                        rawText = cleanText,
+                        folderId = result.paper.metadata.folderId,
+                        rollNumber = result.paper.metadata.rollNumber,
+                        bookletNumber = result.paper.metadata.bookletNumber
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -360,7 +364,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         questionCount = updatedPaper.questions.size,
                         answerKeyCount = updatedPaper.questions.count { it.correctAnswer != null },
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
-                        rawText = raw
+                        rawText = raw,
+                        folderId = updatedPaper.metadata.folderId,
+                        rollNumber = updatedPaper.metadata.rollNumber,
+                        bookletNumber = updatedPaper.metadata.bookletNumber
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -383,6 +390,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         answerKeyCount = updatedPaper.questions.count { it.correctAnswer != null },
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
+                        folderId = updatedPaper.metadata.folderId ?: match.folderId,
+                        rollNumber = if (match.rollNumber.isNotBlank()) match.rollNumber else updatedPaper.metadata.rollNumber,
+                        bookletNumber = if (match.bookletNumber.isNotBlank()) match.bookletNumber else updatedPaper.metadata.bookletNumber,
                         updatedAt = System.currentTimeMillis()
                     )
                     paperDao.updatePaper(updated)
@@ -397,7 +407,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         questionCount = updatedPaper.questions.size,
                         answerKeyCount = updatedPaper.questions.count { it.correctAnswer != null },
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
-                        rawText = raw
+                        rawText = raw,
+                        folderId = updatedPaper.metadata.folderId,
+                        rollNumber = updatedPaper.metadata.rollNumber,
+                        bookletNumber = updatedPaper.metadata.bookletNumber
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -748,6 +761,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     questionCount = finalPaper.questions.size,
                     answerKeyCount = finalPaper.quickAnswersCount,
                     explanationCount = finalPaper.explanationsCount,
+                    folderId = finalMetadata.folderId ?: existing.folderId,
+                    rollNumber = if (existing.rollNumber.isNotBlank()) existing.rollNumber else finalMetadata.rollNumber,
+                    bookletNumber = if (existing.bookletNumber.isNotBlank()) existing.bookletNumber else finalMetadata.bookletNumber,
                     updatedAt = System.currentTimeMillis()
                 )
                 paperDao.updatePaper(updated)
@@ -762,7 +778,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     questionCount = finalPaper.questions.size,
                     answerKeyCount = finalPaper.quickAnswersCount,
                     explanationCount = finalPaper.explanationsCount,
-                    rawText = text.trim()
+                    rawText = text.trim(),
+                    folderId = finalMetadata.folderId,
+                    rollNumber = finalMetadata.rollNumber,
+                    bookletNumber = finalMetadata.bookletNumber
                 )
                 paperDao.insertPaper(newEntity)
             } else {
@@ -814,14 +833,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadSavedPaperInternal(entity: PaperEntity) {
         val result = McqParser.parseWithResult(entity.rawText)
+        val finalRoll = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber()
+        val finalBooklet = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber()
+
         val parsed = result.paper.copy(
             id = entity.id,
             metadata = PaperMetadata(
+                id = "paper-${entity.id}",
                 title = entity.title,
                 subject = entity.subject,
                 topic = entity.topic,
                 setNumber = entity.setNumber.ifBlank { "Set A" },
-                exam = entity.exam
+                exam = entity.exam,
+                folderId = entity.folderId,
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet,
+                createdAt = entity.createdAt
             )
         )
         val unsubmittedAttempt = paperDao.getLatestUnsubmittedAttempt(entity.id)
@@ -859,6 +886,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 examTitle = entity.title,
                 subject = entity.subject,
                 seriesCode = entity.setNumber.ifBlank { "SET - A" },
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet,
                 maxMarks = "${parsed.questions.size}"
             )
             _autoSaveStatus.value = AutoSaveStatus.SAVED
@@ -978,43 +1007,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun exportAllPapersAsJson(): String? {
         val papers = savedPapers.value
         if (papers.isEmpty()) return null
-        val rootArray = org.json.JSONArray()
-        papers.forEach { entity ->
-            val parsed = McqParser.parse(entity.rawText).copy(
+        val questionPapers = papers.map { entity ->
+            val parsed = McqParser.parse(entity.rawText)
+            parsed.copy(
+                id = entity.id,
                 metadata = PaperMetadata(
+                    id = "paper-${entity.id}",
                     title = entity.title,
                     subject = entity.subject,
                     topic = entity.topic,
-                    setNumber = entity.setNumber,
+                    setNumber = entity.setNumber.ifBlank { "Set A" },
                     exam = entity.exam,
+                    folderId = entity.folderId,
+                    rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                    bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
                     createdAt = entity.createdAt
                 )
             )
-            val jsonStr = ExamJsonHelper.toJson(parsed)
-            rootArray.put(org.json.JSONObject(jsonStr))
         }
-        return rootArray.toString(2)
+        val firstTitle = questionPapers.firstOrNull()?.metadata?.title ?: "Examination Package"
+        val firstFolder = questionPapers.firstOrNull()?.metadata?.folderId
+        return ExamJsonHelper.bundleToJson(firstTitle, firstFolder, questionPapers)
     }
 
     fun exportSelectedPapersAsJson(selectedPaperIds: Set<Long>): String? {
         val papers = savedPapers.value.filter { it.id in selectedPaperIds }
         if (papers.isEmpty()) return null
-        val rootArray = org.json.JSONArray()
-        papers.forEach { entity ->
-            val parsed = McqParser.parse(entity.rawText).copy(
+        val questionPapers = papers.map { entity ->
+            val parsed = McqParser.parse(entity.rawText)
+            parsed.copy(
+                id = entity.id,
                 metadata = PaperMetadata(
+                    id = "paper-${entity.id}",
                     title = entity.title,
                     subject = entity.subject,
                     topic = entity.topic,
-                    setNumber = entity.setNumber,
+                    setNumber = entity.setNumber.ifBlank { "Set A" },
                     exam = entity.exam,
+                    folderId = entity.folderId,
+                    rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                    bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
                     createdAt = entity.createdAt
                 )
             )
-            val jsonStr = ExamJsonHelper.toJson(parsed)
-            rootArray.put(org.json.JSONObject(jsonStr))
         }
-        return rootArray.toString(2)
+        val firstTitle = questionPapers.firstOrNull()?.metadata?.title ?: "Examination Package"
+        val firstFolder = questionPapers.firstOrNull()?.metadata?.folderId
+        return ExamJsonHelper.bundleToJson(firstTitle, firstFolder, questionPapers)
     }
 
     fun exportPapersAsFormattedText(selectedPaperIds: Set<Long>? = null): String? {
@@ -1061,7 +1100,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = p.explanationsCount,
                         rawText = rawText,
                         createdAt = if (p.createdAt > 0) p.createdAt else System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
+                        updatedAt = System.currentTimeMillis(),
+                        folderId = p.metadata.folderId,
+                        rollNumber = if (p.metadata.rollNumber.isNotBlank()) p.metadata.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                        bookletNumber = if (p.metadata.bookletNumber.isNotBlank()) p.metadata.bookletNumber else ExamNumberGenerator.generateBookletNumber()
                     )
                     paperDao.insertPaper(entity)
                     success++
@@ -1164,7 +1206,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = updatedPaper.explanationsCount,
                         rawText = rawText,
                         createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
+                        updatedAt = System.currentTimeMillis(),
+                        folderId = updatedPaper.metadata.folderId,
+                        rollNumber = if (updatedPaper.metadata.rollNumber.isNotBlank()) updatedPaper.metadata.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                        bookletNumber = if (updatedPaper.metadata.bookletNumber.isNotBlank()) updatedPaper.metadata.bookletNumber else ExamNumberGenerator.generateBookletNumber()
                     )
                     paperDao.insertPaper(newEntity)
                     importedCount++
