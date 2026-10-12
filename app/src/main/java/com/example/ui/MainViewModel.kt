@@ -26,6 +26,7 @@ import com.example.model.QuestionPaper
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
 import com.example.util.ExamJsonHelper
+import com.example.util.OmrVisionProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1444,6 +1445,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             recordTestCompletionInDailyAnalytics(
                 questionsAttempted = answersSnapshot.size,
+                correctCount = stats.correct
+            )
+        }
+    }
+
+    /**
+     * Submits and records an optical OMR scan evaluation directly into the attempts history,
+     * updating state flows so student can immediately review question-by-question explanations.
+     */
+    fun submitScannedOmrResult(result: OmrVisionProcessor.OmrScanOutput) {
+        val paperId = _currentPaperEntityId.value ?: return
+        val paper = _currentPaper.value ?: return
+
+        stopTimerTicker()
+        _isExamStarted.value = false
+        _isExamSubmitted.value = true
+        _retryQuestionNumbers.value = null
+
+        // Map detected answers (only valid single marks)
+        val answersSnapshot = mutableMapOf<Int, String>()
+        for ((qNum, qResult) in result.questionResults) {
+            val mark = qResult.selectedOption?.toString()
+            if (!mark.isNullOrBlank() && !qResult.isMultipleMarked) {
+                answersSnapshot[qNum] = mark
+            }
+        }
+
+        _studentAnswers.value = answersSnapshot
+        _submittedAnswers.value = answersSnapshot
+
+        val stats = Companion.TestStats(
+            total = result.totalQuestions,
+            correct = result.correctCount,
+            incorrect = result.incorrectCount + result.multipleMarkedCount,
+            unanswered = result.unattemptedCount,
+            score = result.totalScore.toDouble().coerceAtLeast(0.0)
+        )
+        _submittedStats.value = stats
+
+        val incorrectSet = result.questionResults.values
+            .filter { q ->
+                val officialAns = paper.questions.getOrNull(q.questionNum - 1)?.correctAnswer?.uppercase()?.firstOrNull()?.toString()
+                q.isMultipleMarked || (q.selectedOption != null && !q.selectedOption.toString().equals(officialAns, ignoreCase = true))
+            }
+            .map { it.questionNum }
+            .toSet()
+        _incorrectQuestionLog.value = incorrectSet
+
+        val unattendedSet = result.questionResults.values
+            .filter { !it.isMultipleMarked && it.selectedOption == null }
+            .map { it.questionNum }
+            .toSet()
+        _unattendedQuestionLog.value = unattendedSet
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val answersJson = AttemptEntity.buildAnswersJson(answersSnapshot)
+            val scannedAttempt = AttemptEntity(
+                paperId = paperId,
+                answersJson = answersJson,
+                totalQuestions = stats.total,
+                isSubmitted = true,
+                correctCount = stats.correct,
+                incorrectCount = stats.incorrect,
+                unansweredCount = stats.unanswered,
+                score = stats.score,
+                timeSpentSeconds = _timeSpentSeconds.value.coerceAtLeast(60L),
+                submittedAt = System.currentTimeMillis()
+            )
+
+            val newId = paperDao.insertAttempt(scannedAttempt)
+            withContext(Dispatchers.Main) {
+                _currentAttemptId.value = newId
+                _statusMessage.value = "OMR sheet evaluated & recorded: Score ${stats.score.toInt()} / ${result.maxPossibleScore}"
+            }
+            loadAttemptHistory(paperId)
+
+            recordTestCompletionInDailyAnalytics(
+                questionsAttempted = result.attemptedCount,
                 correctCount = stats.correct
             )
         }

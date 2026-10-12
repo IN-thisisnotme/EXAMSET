@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.HelpOutline
@@ -132,6 +133,7 @@ fun StudentTestTab(
     shuffleOptions: Boolean = false,
     sessionSeed: Long = 0L,
     onToggleShuffleOptions: (Boolean) -> Unit = {},
+    onScanOmr: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showHistoryDialog by remember { mutableStateOf(false) }
@@ -228,6 +230,7 @@ fun StudentTestTab(
                 onOpenHistory = { showHistoryDialog = true },
                 onOpenAnalytics = { showHistoricalAnalyticsDialog = true },
                 onLoadAttempt = onLoadAttempt,
+                onScanOmr = onScanOmr,
                 modifier = modifier
             )
         }
@@ -257,6 +260,7 @@ private fun ExamStartOverviewView(
     onOpenHistory: () -> Unit,
     onOpenAnalytics: () -> Unit,
     onLoadAttempt: (AttemptEntity) -> Unit,
+    onScanOmr: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -1003,38 +1007,71 @@ private fun ExamStartOverviewView(
                 }
             }
         } else {
-            // Main Primary Start Test Button
+            // Main Primary Start Test Button & Scan Physical OMR Sheet Button
             item {
-                Button(
-                    onClick = onStartExam,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .testTag("start_test_button"),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.navyBanner,
-                        contentColor = colors.navyBannerText
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = if (timerMode == ExamTimerMode.COUNTDOWN) Icons.Default.HourglassBottom else Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (timerMode == ExamTimerMode.COUNTDOWN) {
-                            "Start Timed Exam (${customTimeLimitMinutes}m)"
-                        } else {
-                            "Start Practice"
-                        },
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
+                    Button(
+                        onClick = onStartExam,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .testTag("start_test_button"),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.navyBanner,
+                            contentColor = colors.navyBannerText
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (timerMode == ExamTimerMode.COUNTDOWN) Icons.Default.HourglassBottom else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (timerMode == ExamTimerMode.COUNTDOWN) {
+                                "Start Timed Exam (${customTimeLimitMinutes}m)"
+                            } else {
+                                "Start Practice"
+                            },
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
+
+                    // Scan Physical OMR Sheet Button
+                    OutlinedButton(
+                        onClick = onScanOmr,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("scan_physical_omr_button"),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.2.dp, Color(0xFFBE185D).copy(alpha = 0.6f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFBE185D)
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DocumentScanner,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = Color(0xFFBE185D)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Scan Filled OMR Sheet (Camera / Gallery)",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFBE185D)
+                        )
+                    }
                 }
             }
         }

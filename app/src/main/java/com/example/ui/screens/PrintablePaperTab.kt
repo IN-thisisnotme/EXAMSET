@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -54,6 +55,7 @@ fun PrintablePaperTab(
     paper: QuestionPaper,
     config: ExamConfig,
     onOpenConfig: () -> Unit,
+    onScanOmr: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -114,6 +116,26 @@ fun PrintablePaperTab(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Customize", fontSize = 12.sp, color = colors.inkBold)
+                    }
+
+                    // Scan OMR button
+                    OutlinedButton(
+                        onClick = onScanOmr,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFBE185D)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFBE185D).copy(alpha = 0.5f)),
+                        modifier = Modifier.testTag("scan_omr_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DocumentScanner,
+                            contentDescription = "Scan OMR",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color(0xFFBE185D)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Scan OMR", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBE185D))
                     }
 
                     // Print / PDF Button

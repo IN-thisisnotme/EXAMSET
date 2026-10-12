@@ -115,6 +115,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.components.EditMetadataDialog
 import com.example.ui.components.InputBottomSheet
+import com.example.ui.components.OmrScannerDialog
 import com.example.ui.components.PrintConfigDialog
 import com.example.ui.components.SavedPapersDialog
 import com.example.ui.components.StudentHistoricalAnalysisDialog
@@ -153,6 +154,7 @@ fun HomeScreen(
 
     var showInputSheet by remember { mutableStateOf(false) }
     var showPrintDialog by remember { mutableStateOf(false) }
+    var showOmrScannerDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
@@ -177,6 +179,9 @@ fun HomeScreen(
             }
             showPrintDialog -> {
                 showPrintDialog = false
+            }
+            showOmrScannerDialog -> {
+                showOmrScannerDialog = false
             }
             showSavedDialog -> {
                 showSavedDialog = false
@@ -700,7 +705,8 @@ fun HomeScreen(
                         onLoadAttempt = { viewModel.loadOldAttempt(it) },
                         shuffleOptions = viewModel.shuffleOptions.collectAsState().value,
                         sessionSeed = viewModel.examSessionSeed.collectAsState().value,
-                        onToggleShuffleOptions = { viewModel.setShuffleOptions(it) }
+                        onToggleShuffleOptions = { viewModel.setShuffleOptions(it) },
+                        onScanOmr = { showOmrScannerDialog = true }
                     )
                 } else {
                     NoPaperPlaceholder(
@@ -712,7 +718,8 @@ fun HomeScreen(
                     PrintablePaperTab(
                         paper = paper,
                         config = examConfig,
-                        onOpenConfig = { showPrintDialog = true }
+                        onOpenConfig = { showPrintDialog = true },
+                        onScanOmr = { showOmrScannerDialog = true }
                     )
                 } else {
                     NoPaperPlaceholder(
@@ -875,6 +882,18 @@ fun HomeScreen(
             initialConfig = examConfig,
             onDismiss = { showPrintDialog = false },
             onPrintTriggered = { newConfig -> viewModel.updateExamConfig(newConfig) }
+        )
+    }
+
+    // Optical OMR Scanner Dialog
+    if (showOmrScannerDialog && currentPaper != null) {
+        OmrScannerDialog(
+            paper = currentPaper!!,
+            onDismiss = { showOmrScannerDialog = false },
+            onSubmitResult = { scoringResult ->
+                viewModel.submitScannedOmrResult(scoringResult)
+                viewModel.selectTab(2) // Jump to Student Test tab to see evaluated result review
+            }
         )
     }
 
