@@ -53,4 +53,36 @@ class ExamNumberGeneratorTest {
         val extended = ExamNumberGenerator.resolveBookletSets("Set F")
         assertTrue("Extended sets should contain F", extended.contains("F"))
     }
+
+    @Test
+    fun testGenerateOmrCohortManifestCsv() {
+        val q1 = com.example.model.McqQuestion(
+            num = 1,
+            question = "Sample Q1",
+            options = com.example.model.QuestionOptions(a = "Opt A", b = "Opt B"),
+            correctAnswer = "B"
+        )
+        val q2 = com.example.model.McqQuestion(
+            num = 2,
+            question = "Sample Q2",
+            options = com.example.model.QuestionOptions(a = "Opt A", b = "Opt B"),
+            correctAnswer = "A"
+        )
+        val paper = com.example.model.QuestionPaper(
+            metadata = com.example.model.PaperMetadata(
+                title = "Biology Assessment",
+                subject = "Genetics",
+                setNumber = "Set A",
+                rollNumber = "2026100001",
+                bookletNumber = "7100001"
+            ),
+            questions = listOf(q1, q2)
+        )
+        val csv = ExamNumberGenerator.generateOmrCohortManifestCsv(listOf(paper))
+        assertTrue("CSV header must contain Roll_Number", csv.contains("Roll_Number,Booklet_Number,Set_Code"))
+        assertTrue("CSV data must contain candidate roll number", csv.contains("\"2026100001\""))
+        assertTrue("CSV data must contain booklet number", csv.contains("\"7100001\""))
+        assertTrue("CSV data must contain answer key pattern", csv.contains("1:B;2:A"))
+    }
 }
+

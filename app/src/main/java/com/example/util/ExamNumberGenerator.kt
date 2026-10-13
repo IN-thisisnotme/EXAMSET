@@ -127,4 +127,27 @@ object ExamNumberGenerator {
         }
         return listOf("A", "B", "C", "D")
     }
+
+    /**
+     * Generates a standardized OMR Candidate Manifest CSV for psychometricians and chief paper setters.
+     * Contains Roll Number, Booklet Number, Set Code, Subject, Exam Title, Total Questions, and Answer Keys.
+     */
+    fun generateOmrCohortManifestCsv(papers: List<com.example.model.QuestionPaper>): String {
+        val sb = StringBuilder()
+        sb.append("Roll_Number,Booklet_Number,Set_Code,Subject,Exam_Title,Total_Questions,Answer_Keys\n")
+        papers.forEach { p ->
+            val roll = if (p.metadata.rollNumber.isNotBlank()) normalizeRollNumber(p.metadata.rollNumber, 10) else "0000000001"
+            val booklet = if (p.metadata.bookletNumber.isNotBlank()) normalizeBookletNumber(p.metadata.bookletNumber, 7) else "0000001"
+            val set = extractBookletCode(p.metadata.setNumber)
+            val subject = p.metadata.subject.replace("\"", "\"\"")
+            val title = p.metadata.title.replace("\"", "\"\"")
+            val count = p.questions.size
+            val keyString = p.questions.joinToString(";") { q ->
+                "${q.num}:${q.correctAnswer ?: "-"}"
+            }.replace("\"", "\"\"")
+            sb.append("\"$roll\",\"$booklet\",\"$set\",\"$subject\",\"$title\",$count,\"$keyString\"\n")
+        }
+        return sb.toString()
+    }
 }
+

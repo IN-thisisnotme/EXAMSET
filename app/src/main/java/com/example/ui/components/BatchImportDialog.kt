@@ -123,6 +123,11 @@ fun BatchImportDialog(
     var customNewFolderText by remember { mutableStateOf("") }
     var showCustomFolderInput by remember { mutableStateOf(false) }
 
+    // Cohort Identification & Auto Numbering
+    var assignCohortNumbers by remember { mutableStateOf(false) }
+    var startingRollInput by remember { mutableStateOf("2026100001") }
+    var startingBookletInput by remember { mutableStateOf("7100001") }
+
     // Counts
     val totalFiles = items.size
     val validCount = items.count { it.status == BatchItemStatus.VALID }
@@ -456,6 +461,78 @@ fun BatchImportDialog(
                                 }
                             }
                         }
+
+                        // Cohort Sequential Roll & Booklet Numbering Toggle
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (assignCohortNumbers) Color(0xFFF0FDF4) else colors.surfaceVariant.copy(alpha = 0.25f),
+                            border = BorderStroke(0.8.dp, if (assignCohortNumbers) Color(0xFF16A34A).copy(alpha = 0.5f) else colors.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { assignCohortNumbers = !assignCohortNumbers },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = assignCohortNumbers,
+                                        onCheckedChange = { assignCohortNumbers = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF16A34A)),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = "Assign Sequential Cohort Numbers (Roll & Booklet No.)",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (assignCohortNumbers) Color(0xFF15803D) else colors.inkBold
+                                        )
+                                        Text(
+                                            text = "For mass candidate evaluation: allocates unique sequential roll & booklet numbers to each paper.",
+                                            fontSize = 10.sp,
+                                            color = colors.inkMuted
+                                        )
+                                    }
+                                }
+
+                                if (assignCohortNumbers) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = startingRollInput,
+                                            onValueChange = { startingRollInput = it.filter { ch -> ch.isDigit() }.take(10) },
+                                            label = { Text("Starting Roll No (10 digits)", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                            shape = RoundedCornerShape(6.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            )
+                                        )
+                                        OutlinedTextField(
+                                            value = startingBookletInput,
+                                            onValueChange = { startingBookletInput = it.filter { ch -> ch.isDigit() }.take(7) },
+                                            label = { Text("Starting Booklet No (7 digits)", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                            shape = RoundedCornerShape(6.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -679,10 +756,15 @@ fun BatchImportDialog(
                                 onClick = {
                                     if (selectedCount > 0 && !isImporting) {
                                         isImporting = true
+                                        val startRoll = startingRollInput.filter { it.isDigit() }.toLongOrNull() ?: 2026100001L
+                                        val startBooklet = startingBookletInput.filter { it.isDigit() }.toLongOrNull() ?: 7100001L
                                         coroutineScope.launch {
                                             val result = viewModel.importValidatedBatch(
                                                 items = items,
-                                                targetFolder = selectedTargetFolder
+                                                targetFolder = selectedTargetFolder,
+                                                sequentialCohortNumbers = assignCohortNumbers,
+                                                startingRollNumber = startRoll,
+                                                startingBookletNumber = startBooklet
                                             )
                                             isImporting = false
                                             onImportSuccess(result)

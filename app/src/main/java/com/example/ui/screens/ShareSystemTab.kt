@@ -72,6 +72,7 @@ fun ShareSystemTab(
 
     var pastedJson by remember { mutableStateOf("") }
     var copiedJson by remember { mutableStateOf(false) }
+    var copiedManifest by remember { mutableStateOf(false) }
 
     var pendingExportData by remember { mutableStateOf<String?>(null) }
     var pendingExportMimeType by remember { mutableStateOf("application/json") }
@@ -559,6 +560,90 @@ fun ShareSystemTab(
             }
         }
 
+        // SECTION: OMR EVALUATION & CANDIDATE MANIFEST (CSV)
+        item {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(0.8.dp, colors.border)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "OMR EVALUATION MANIFEST (CSV)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0284C7),
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Exports standardized matrix of Roll Numbers (10-digit), Booklet Numbers (7-digit), Set Codes, and Answer Keys for mass student scanning and psychometric analysis.",
+                        fontSize = 11.5.sp,
+                        color = colors.inkMuted
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val csv = viewModel.exportOmrCohortManifestCsv()
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("OMR Manifest CSV", csv)
+                                clipboard.setPrimaryClip(clip)
+                                copiedManifest = true
+                                Toast.makeText(context, "Copied OMR Manifest CSV to clipboard!", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (copiedManifest) Color(0xFF059669) else Color(0xFF0284C7)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                if (copiedManifest) Icons.Default.Check else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (copiedManifest) "Copied CSV!" else "Copy CSV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val csv = viewModel.exportOmrCohortManifestCsv()
+                                triggerExportToFile(csv, "omr_candidate_manifest.csv", "text/csv")
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save CSV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val csv = viewModel.exportOmrCohortManifestCsv()
+                                triggerShare(csv, "OMR Candidate Manifest CSV")
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+
         item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
+

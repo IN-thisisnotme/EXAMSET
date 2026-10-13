@@ -1202,7 +1202,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun importValidatedBatch(
         items: List<BatchImportItem>,
-        targetFolder: String? = null
+        targetFolder: String? = null,
+        sequentialCohortNumbers: Boolean = false,
+        startingRollNumber: Long = 2026100001L,
+        startingBookletNumber: Long = 7100001L
     ): BatchImportResult {
         return withContext(Dispatchers.IO) {
             var importedCount = 0
@@ -1248,8 +1251,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         p.metadata.subject.ifBlank { "General Knowledge" }
                     }
 
+                    val finalRoll = if (sequentialCohortNumbers) {
+                        (startingRollNumber + importedCount).toString().takeLast(10).padStart(10, '0')
+                    } else if (p.metadata.rollNumber.isNotBlank()) {
+                        ExamNumberGenerator.normalizeRollNumber(p.metadata.rollNumber, 10)
+                    } else {
+                        ExamNumberGenerator.generateRollNumber()
+                    }
+
+                    val finalBooklet = if (sequentialCohortNumbers) {
+                        (startingBookletNumber + importedCount).toString().takeLast(7).padStart(7, '0')
+                    } else if (p.metadata.bookletNumber.isNotBlank()) {
+                        ExamNumberGenerator.normalizeBookletNumber(p.metadata.bookletNumber, 7)
+                    } else {
+                        ExamNumberGenerator.generateBookletNumber()
+                    }
+
                     val updatedPaper = p.copy(
-                        metadata = p.metadata.copy(subject = finalSubject)
+                        metadata = p.metadata.copy(
+                            subject = finalSubject,
+                            rollNumber = finalRoll,
+                            bookletNumber = finalBooklet
+                        )
                     )
                     val rawText = McqParser.reconstructToRaw(updatedPaper)
 
@@ -1266,8 +1289,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         createdAt = System.currentTimeMillis(),
                         updatedAt = System.currentTimeMillis(),
                         folderId = updatedPaper.metadata.folderId,
-                        rollNumber = if (updatedPaper.metadata.rollNumber.isNotBlank()) updatedPaper.metadata.rollNumber else ExamNumberGenerator.generateRollNumber(),
-                        bookletNumber = if (updatedPaper.metadata.bookletNumber.isNotBlank()) updatedPaper.metadata.bookletNumber else ExamNumberGenerator.generateBookletNumber()
+                        rollNumber = finalRoll,
+                        bookletNumber = finalBooklet
                     )
                     paperDao.insertPaper(newEntity)
                     importedCount++
@@ -1292,6 +1315,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 failedCount = failedCount
             )
         }
+    }
+
+    /**
+     * Exports a standardized OMR Candidate Manifest CSV for all saved papers or selected IDs.
+     * Contains Roll Number, Booklet Number, Set Code, Subject, Exam Title, Total Questions, and Answer Keys.
+     */
+    fun exportOmrCohortManifestCsv(selectedPaperIds: List<Long>? = null): String {
+        val entities = if (selectedPaperIds.isNullOrEmpty()) {
+            savedPapers.value
+        } else {
+            savedPapers.value.filter { it.id in selectedPaperIds }
+        }
+        val papers = entities.map { entity ->
+            val parsed = McqParser.parse(entity.rawText)
+            parsed.copy(
+                metadata = parsed.metadata.copy(
+                    title = entity.title,
+                    subject = entity.subject,
+                    topic = entity.topic,
+                    setNumber = entity.setNumber,
+                    rollNumber = entity.rollNumber,
+                    bookletNumber = entity.bookletNumber
+                )
+            )
+        }
+        return ExamNumberGenerator.generateOmrCohortManifestCsv(papers)
     }
 
     // --- Folders Management ---
