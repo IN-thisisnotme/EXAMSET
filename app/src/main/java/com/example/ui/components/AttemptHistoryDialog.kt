@@ -85,6 +85,17 @@ fun AttemptHistoryDialog(
                                     Text(dateStr, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.inkBold)
                                     if (attempt.isSubmitted) {
                                         Text("Score: ${attempt.getFormattedScore()} / ${attempt.totalQuestions}", fontSize = 12.sp, color = colors.green)
+                                        val roll = attempt.getCandidateRollNumber()
+                                        val booklet = attempt.getCandidateBookletNumber()
+                                        val code = attempt.getCandidateBookletCode()
+                                        if (roll.isNotBlank() || booklet.isNotBlank()) {
+                                            Text(
+                                                text = "Roll: ${roll.ifBlank { "—" }}  •  Booklet: ${booklet.ifBlank { "—" }}${if (code.isNotBlank()) " (Set $code)" else ""}",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = androidx.compose.ui.graphics.Color(0xFF0284C7)
+                                            )
+                                        }
                                     } else {
                                         Text("In Progress", fontSize = 12.sp, color = colors.muted)
                                     }

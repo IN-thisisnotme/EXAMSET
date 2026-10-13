@@ -55,7 +55,9 @@ object OmrVisionProcessor {
         val bookletCode: String,
         val rollNumberConfidence: Float = 1.0f,
         val bookletNumberConfidence: Float = 1.0f,
-        val bookletCodeConfidence: Float = 1.0f
+        val bookletCodeConfidence: Float = 1.0f,
+        val rollDigitConfidences: List<Float> = emptyList(),
+        val bookletDigitConfidences: List<Float> = emptyList()
     )
 
     data class OmrScanOutput(
@@ -69,7 +71,9 @@ object OmrVisionProcessor {
         val maxPossibleScore: Int,
         val questionResults: Map<Int, QuestionScanResult>,
         val perspectiveDetected: Boolean,
-        val headerResult: OmrHeaderScanResult? = null
+        val headerResult: OmrHeaderScanResult? = null,
+        val detectedCorners: Quadrilateral? = null,
+        val cornersLocked: Boolean = true
     )
 
     /**
@@ -446,7 +450,9 @@ object OmrVisionProcessor {
             maxPossibleScore = totalQuestions * 4,
             questionResults = questionResults,
             perspectiveDetected = canonicalToSourceH != null,
-            headerResult = headerResult
+            headerResult = headerResult,
+            detectedCorners = detectedCorners,
+            cornersLocked = canonicalToSourceH != null
         )
     }
 
@@ -465,13 +471,15 @@ object OmrVisionProcessor {
         val bookletBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.BOOKLET_NUMBER }
         val codeBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.BOOKLET_CODE }
 
-        // Decode 10-digit roll number
-        val rollChars = CharArray(10) { ' ' }
+        // Decode 10-digit roll number with per-column margin
+        val rollChars = CharArray(10) { '0' }
+        val rollConfs = FloatArray(10) { 1.0f }
         var rollConfSum = 0f
         for (col in 0 until 10) {
             val colPoints = rollBubbles.filter { it.columnIndex == col }
             var bestDigit = '0'
             var maxDensity = 0f
+            var secondMaxDensity = 0f
             for (p in colPoints) {
                 val (srcX, srcY) = canonicalToSourceH?.transform(p.centerXPx.toDouble(), p.centerYPx.toDouble())
                     ?: Pair(
@@ -481,21 +489,29 @@ object OmrVisionProcessor {
                 val density = measureBubbleDarkness(bitmap, srcX.toFloat(), srcY.toFloat(), (p.radiusPx * 0.75f).coerceAtLeast(2.5f))
                 val effDensity = (density - baselineDarkness).coerceIn(0.0f, 1.0f)
                 if (effDensity > maxDensity) {
+                    secondMaxDensity = maxDensity
                     maxDensity = effDensity
                     bestDigit = p.digitOrChar
+                } else if (effDensity > secondMaxDensity) {
+                    secondMaxDensity = effDensity
                 }
             }
             rollChars[col] = bestDigit
-            rollConfSum += (maxDensity / 0.25f).coerceIn(0f, 1f)
+            val margin = (maxDensity - secondMaxDensity).coerceAtLeast(0f)
+            val conf = ((maxDensity / 0.25f) * 0.6f + (margin / 0.15f) * 0.4f).coerceIn(0f, 1f)
+            rollConfs[col] = conf
+            rollConfSum += conf
         }
 
-        // Decode 7-digit booklet number
-        val bookletChars = CharArray(7) { ' ' }
+        // Decode 7-digit booklet number with per-column margin
+        val bookletChars = CharArray(7) { '0' }
+        val bookletConfs = FloatArray(7) { 1.0f }
         var bookletConfSum = 0f
         for (col in 0 until 7) {
             val colPoints = bookletBubbles.filter { it.columnIndex == col }
             var bestDigit = '0'
             var maxDensity = 0f
+            var secondMaxDensity = 0f
             for (p in colPoints) {
                 val (srcX, srcY) = canonicalToSourceH?.transform(p.centerXPx.toDouble(), p.centerYPx.toDouble())
                     ?: Pair(
@@ -505,12 +521,18 @@ object OmrVisionProcessor {
                 val density = measureBubbleDarkness(bitmap, srcX.toFloat(), srcY.toFloat(), (p.radiusPx * 0.75f).coerceAtLeast(2.5f))
                 val effDensity = (density - baselineDarkness).coerceIn(0.0f, 1.0f)
                 if (effDensity > maxDensity) {
+                    secondMaxDensity = maxDensity
                     maxDensity = effDensity
                     bestDigit = p.digitOrChar
+                } else if (effDensity > secondMaxDensity) {
+                    secondMaxDensity = effDensity
                 }
             }
             bookletChars[col] = bestDigit
-            bookletConfSum += (maxDensity / 0.25f).coerceIn(0f, 1f)
+            val margin = (maxDensity - secondMaxDensity).coerceAtLeast(0f)
+            val conf = ((maxDensity / 0.25f) * 0.6f + (margin / 0.15f) * 0.4f).coerceIn(0f, 1f)
+            bookletConfs[col] = conf
+            bookletConfSum += conf
         }
 
         // Decode Booklet Code
@@ -536,7 +558,9 @@ object OmrVisionProcessor {
             bookletCode = bestCode,
             rollNumberConfidence = (rollConfSum / 10f).coerceIn(0f, 1f),
             bookletNumberConfidence = (bookletConfSum / 7f).coerceIn(0f, 1f),
-            bookletCodeConfidence = (maxCodeDensity / 0.25f).coerceIn(0f, 1f)
+            bookletCodeConfidence = (maxCodeDensity / 0.25f).coerceIn(0f, 1f),
+            rollDigitConfidences = rollConfs.toList(),
+            bookletDigitConfidences = bookletConfs.toList()
         )
     }
 

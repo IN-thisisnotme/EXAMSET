@@ -855,7 +855,12 @@ fun HomeScreen(
             paper = currentPaper!!,
             onDismiss = { showOmrScannerDialog = false },
             onSubmitResult = { scoringResult ->
-                viewModel.submitScannedOmrResult(scoringResult)
+                viewModel.submitScannedOmrResult(
+                    result = scoringResult,
+                    candidateRollNumber = scoringResult.headerResult?.rollNumber,
+                    candidateBookletNumber = scoringResult.headerResult?.bookletNumber,
+                    candidateBookletCode = scoringResult.headerResult?.bookletCode
+                )
                 viewModel.selectTab(2) // Jump to Student Test tab to see evaluated result review
             }
         )

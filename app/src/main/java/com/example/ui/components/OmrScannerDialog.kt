@@ -22,15 +22,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -43,8 +47,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.input.KeyboardType
+import com.example.util.CameraCaptureHelper
+import com.example.util.ExamNumberGenerator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,7 +161,28 @@ fun OmrScannerDialog(
         }
     }
 
-    // Photo picker launcher (Android Photo Picker / Gallery)
+    var highResCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Full-resolution camera launcher (writes full A4 camera photo to temporary FileProvider URI)
+    val fullCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        val uri = highResCameraUri
+        if (success && uri != null) {
+            loadBitmapFromUri(uri)
+        }
+    }
+
+    // Modern Zero-Permission Photo Picker launcher
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            loadBitmapFromUri(uri)
+        }
+    }
+
+    // Photo picker fallback launcher (Standard Gallery Intent)
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -161,8 +191,8 @@ fun OmrScannerDialog(
         }
     }
 
-    // Camera photo capture launcher
-    val cameraLauncher = rememberLauncherForActivityResult(
+    // Fallback thumbnail camera capture launcher (if FileProvider URI creation is unavailable)
+    val cameraPreviewLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { previewBitmap: Bitmap? ->
         if (previewBitmap != null) {
@@ -291,8 +321,8 @@ fun OmrScannerDialog(
                                 scanResult = null
                                 errorMessage = null
                             },
-                            onSubmit = {
-                                onSubmitResult(currentResult)
+                            onSubmit = { verifiedOutput ->
+                                onSubmitResult(verifiedOutput)
                                 onDismiss()
                             },
                             modifier = Modifier.weight(1f)
@@ -304,8 +334,24 @@ fun OmrScannerDialog(
                         ScannerUploadPromptsView(
                             paper = paper,
                             errorMessage = errorMessage,
-                            onPickCamera = { cameraLauncher.launch(null) },
-                            onPickGallery = { galleryLauncher.launch("image/*") },
+                            onPickCamera = {
+                                val tempUri = CameraCaptureHelper.createTempPictureUri(context)
+                                if (tempUri != null) {
+                                    highResCameraUri = tempUri
+                                    fullCameraLauncher.launch(tempUri)
+                                } else {
+                                    cameraPreviewLauncher.launch(null)
+                                }
+                            },
+                            onPickGallery = {
+                                if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(context)) {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                } else {
+                                    galleryLauncher.launch("image/*")
+                                }
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -546,7 +592,7 @@ private fun ScannedResultReviewView(
     result: OmrVisionProcessor.OmrScanOutput,
     paper: QuestionPaper,
     onRescan: () -> Unit,
-    onSubmit: () -> Unit,
+    onSubmit: (OmrVisionProcessor.OmrScanOutput) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -556,12 +602,24 @@ private fun ScannedResultReviewView(
     val incorrect = result.incorrectCount
     val unanswered = result.unattemptedCount
 
+    var editableRollNumber by remember { mutableStateOf(result.headerResult?.rollNumber ?: "") }
+    var editableBookletNumber by remember { mutableStateOf(result.headerResult?.bookletNumber ?: "") }
+    var editableBookletCode by remember { mutableStateOf(result.headerResult?.bookletCode ?: "A") }
+    var isEditingHeader by remember { mutableStateOf(false) }
+
+    // Question audit filter: "ALL", "CORRECT", "INCORRECT", "UNANSWERED"
+    var auditFilter by remember { mutableStateOf("ALL") }
+
     val accuracyPercent = if (result.attemptedCount > 0) {
         ((correct.toFloat() / result.attemptedCount) * 100).toInt().coerceIn(0, 100)
     } else 0
 
+    // Check if booklet code matches active paper
+    val activePaperSet = paper.metadata.setNumber.trim()
+    val isSetMatching = activePaperSet.contains(editableBookletCode, ignoreCase = true)
+
     Column(modifier = modifier.fillMaxWidth()) {
-        // Summary Card
+        // Summary & Candidate Header Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -623,63 +681,188 @@ private fun ScannedResultReviewView(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Scanned Candidate Header Identification
-                if (result.headerResult != null) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
-                        modifier = Modifier.fillMaxWidth()
+                // Corner Fiducial Alignment Badge
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (result.cornersLocked) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
+                    border = BorderStroke(0.8.dp, if (result.cornersLocked) Color(0xFF10B981) else Color(0xFFF59E0B)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Icon(
+                            imageVector = if (result.cornersLocked) Icons.Default.CheckCircle else Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (result.cornersLocked) Color(0xFF059669) else Color(0xFFD97706),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (result.cornersLocked)
+                                "4 Corner Registration Anchors Locked (Perspective Corrected)"
+                            else
+                                "Perspective Approximation (Ensure all 4 corner black anchors are visible)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (result.cornersLocked) Color(0xFF065F46) else Color(0xFF92400E)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Candidate Header Identification Card with in-place review & editing
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text("CANDIDATE ROLL NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = result.headerResult.rollNumber,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Black,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color(0xFF0284C7)
+                                    text = "STUDENT CANDIDATE IDENTIFICATION",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0284C7),
+                                    letterSpacing = 0.5.sp
+                                )
+                                if (isSetMatching) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(3.dp),
+                                        color = Color(0xFFECFDF5)
+                                    ) {
+                                        Text(
+                                            text = "MATCHES $activePaperSet",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF059669),
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { isEditingHeader = !isEditingHeader },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isEditingHeader) Icons.Default.Check else Icons.Default.Edit,
+                                    contentDescription = "Edit Candidate Data",
+                                    tint = Color(0xFF0284C7),
+                                    modifier = Modifier.size(15.dp)
                                 )
                             }
-                            Column {
-                                Text("BOOKLET NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
-                                Text(
-                                    text = result.headerResult.bookletNumber,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Black,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color(0xFFBE185D)
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        if (isEditingHeader) {
+                            // Editable fields
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = editableRollNumber,
+                                    onValueChange = { if (it.length <= 10 && it.all { c -> c.isDigit() }) editableRollNumber = it },
+                                    label = { Text("Roll No. (10 digits)", fontSize = 10.sp) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1.3f)
+                                )
+
+                                OutlinedTextField(
+                                    value = editableBookletNumber,
+                                    onValueChange = { if (it.length <= 7 && it.all { c -> c.isDigit() }) editableBookletNumber = it },
+                                    label = { Text("Booklet No. (7 digits)", fontSize = 10.sp) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1.1f)
+                                )
+
+                                OutlinedTextField(
+                                    value = editableBookletCode,
+                                    onValueChange = { if (it.length <= 2) editableBookletCode = it.uppercase() },
+                                    label = { Text("Set", fontSize = 10.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(0.6f)
                                 )
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("SET CODE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color(0xFFFDF2F8),
-                                    border = BorderStroke(0.6.dp, Color(0xFFBE185D))
-                                ) {
+                        } else {
+                            // Read-only presentation with confidence
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("CANDIDATE ROLL NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
                                     Text(
-                                        text = "Set ${result.headerResult.bookletCode}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFBE185D),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        text = editableRollNumber.ifBlank { "Not Detected" },
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFF0284C7)
                                     )
+                                }
+                                Column {
+                                    Text("BOOKLET NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
+                                    Text(
+                                        text = editableBookletNumber.ifBlank { "Not Detected" },
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFBE185D)
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("SET CODE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFFDF2F8),
+                                        border = BorderStroke(0.6.dp, Color(0xFFBE185D))
+                                    ) {
+                                        Text(
+                                            text = "Set $editableBookletCode",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFBE185D),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Breakdown pills
                 Row(
@@ -711,31 +894,63 @@ private fun ScannedResultReviewView(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Questions list header
+        // Questions audit filter tabs
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = "Question-by-Question Audit (${result.questionResults.size} Questions)",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.inkBold
+            val filterOptions = listOf(
+                "ALL" to "All (${result.questionResults.size})",
+                "CORRECT" to "Correct ($correct)",
+                "INCORRECT" to "Incorrect ($incorrect)",
+                "UNANSWERED" to "Skipped ($unanswered)"
             )
-            Text(
-                text = "Marked vs Key",
-                fontSize = 11.sp,
-                color = colors.muted
-            )
+            filterOptions.forEach { (key, label) ->
+                val isSelected = auditFilter == key
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isSelected) Color(0xFF0284C7) else colors.surfaceVariant,
+                    border = BorderStroke(0.8.dp, if (isSelected) Color(0xFF0284C7) else colors.border),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { auditFilter = key }
+                ) {
+                    Box(
+                        modifier = Modifier.padding(vertical = 5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 10.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.White else colors.inkBold
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Question detail list
-        val questionsList = result.questionResults.values.toList().sortedBy { it.questionNum }
+        // Filtered Question list
+        val allQuestionsList = result.questionResults.values.toList().sortedBy { it.questionNum }
+        val filteredList = allQuestionsList.filter { item ->
+            val officialQuestion = paper.questions.getOrNull(item.questionNum - 1)
+            val officialAnswer = officialQuestion?.correctAnswer?.uppercase()?.firstOrNull()?.toString() ?: ""
+            val markedChar = item.selectedOption?.toString()
+            val isCorrect = !item.isMultipleMarked && markedChar != null && markedChar.equals(officialAnswer, ignoreCase = true)
+            val isIncorrect = !item.isMultipleMarked && markedChar != null && !markedChar.equals(officialAnswer, ignoreCase = true)
+            val isUnanswered = !item.isMultipleMarked && markedChar == null
+
+            when (auditFilter) {
+                "CORRECT" -> isCorrect
+                "INCORRECT" -> isIncorrect || item.isMultipleMarked
+                "UNANSWERED" -> isUnanswered
+                else -> true
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -743,7 +958,7 @@ private fun ScannedResultReviewView(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            items(questionsList) { item ->
+            items(filteredList) { item ->
                 val officialQuestion = paper.questions.getOrNull(item.questionNum - 1)
                 val officialAnswer = officialQuestion?.correctAnswer?.uppercase()?.firstOrNull()?.toString() ?: ""
                 val markedChar = item.selectedOption?.toString()
@@ -820,7 +1035,7 @@ private fun ScannedResultReviewView(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Action Buttons: Re-scan vs Submit Result
+        // Action Buttons: Re-scan vs Save Verified Result
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -844,7 +1059,19 @@ private fun ScannedResultReviewView(
             }
 
             Button(
-                onClick = onSubmit,
+                onClick = {
+                    val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
+                        rollNumber = editableRollNumber,
+                        bookletNumber = editableBookletNumber,
+                        bookletCode = editableBookletCode
+                    )).copy(
+                        rollNumber = editableRollNumber,
+                        bookletNumber = editableBookletNumber,
+                        bookletCode = editableBookletCode
+                    )
+                    val verifiedResult = result.copy(headerResult = verifiedHeader)
+                    onSubmit(verifiedResult)
+                },
                 modifier = Modifier
                     .weight(1.4f)
                     .height(48.dp)

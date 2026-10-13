@@ -658,4 +658,41 @@ class ExampleRobolectricTest {
         assertTrue(q1.explanation!!.contains("फोटोलाइसिस"))
         assertTrue(q1.explanation!!.contains("Memory Anchor"))
     }
+
+    @Test
+    fun `candidate identification in AttemptEntity is serialized and recovered cleanly`() {
+        val sampleAnswers = mapOf(1 to "B", 2 to "A", 3 to "C", 4 to "A", 5 to "A", 6 to "A")
+        val rollNo = "2026928088"
+        val bookletNo = "9987078"
+        val setCode = "A"
+
+        val answersJson = com.example.data.AttemptEntity.buildAnswersJson(
+            map = sampleAnswers,
+            rollNumber = rollNo,
+            bookletNumber = bookletNo,
+            bookletCode = setCode
+        )
+
+        val attempt = com.example.data.AttemptEntity(
+            id = 1L,
+            paperId = 101L,
+            answersJson = answersJson,
+            isSubmitted = true,
+            totalQuestions = 6,
+            score = 24.0
+        )
+
+        assertEquals(rollNo, attempt.getCandidateRollNumber())
+        assertEquals(bookletNo, attempt.getCandidateBookletNumber())
+        assertEquals(setCode, attempt.getCandidateBookletCode())
+
+        val recoveredAnswers = attempt.getAnswersMap()
+        assertEquals(6, recoveredAnswers.size)
+        assertEquals("B", recoveredAnswers[1])
+        assertEquals("A", recoveredAnswers[2])
+        assertEquals("C", recoveredAnswers[3])
+        assertEquals("A", recoveredAnswers[4])
+        assertEquals("A", recoveredAnswers[5])
+        assertEquals("A", recoveredAnswers[6])
+    }
 }

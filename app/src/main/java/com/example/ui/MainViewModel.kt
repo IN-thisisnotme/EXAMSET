@@ -1604,9 +1604,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Submits and records an optical OMR scan evaluation directly into the attempts history,
-     * updating state flows so student can immediately review question-by-question explanations.
+     * recording student candidate identification (roll number, booklet number, and set code)
+     * and updating state flows so student and psychometrician can immediately review evaluated results.
      */
-    fun submitScannedOmrResult(result: OmrVisionProcessor.OmrScanOutput) {
+    fun submitScannedOmrResult(
+        result: OmrVisionProcessor.OmrScanOutput,
+        candidateRollNumber: String? = null,
+        candidateBookletNumber: String? = null,
+        candidateBookletCode: String? = null
+    ) {
         val paperId = _currentPaperEntityId.value ?: return
         val paper = _currentPaper.value ?: return
 
@@ -1614,6 +1620,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isExamStarted.value = false
         _isExamSubmitted.value = true
         _retryQuestionNumbers.value = null
+
+        val finalRoll = candidateRollNumber ?: result.headerResult?.rollNumber ?: ""
+        val finalBooklet = candidateBookletNumber ?: result.headerResult?.bookletNumber ?: ""
+        val finalCode = candidateBookletCode ?: result.headerResult?.bookletCode ?: ""
 
         // Map detected answers (only valid single marks)
         val answersSnapshot = mutableMapOf<Int, String>()
@@ -1652,7 +1662,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _unattendedQuestionLog.value = unattendedSet
 
         viewModelScope.launch(Dispatchers.IO) {
-            val answersJson = AttemptEntity.buildAnswersJson(answersSnapshot)
+            val answersJson = AttemptEntity.buildAnswersJson(
+                map = answersSnapshot,
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet,
+                bookletCode = finalCode
+            )
             val scannedAttempt = AttemptEntity(
                 paperId = paperId,
                 answersJson = answersJson,
@@ -1669,7 +1684,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val newId = paperDao.insertAttempt(scannedAttempt)
             withContext(Dispatchers.Main) {
                 _currentAttemptId.value = newId
-                _statusMessage.value = "OMR sheet evaluated & recorded: Score ${stats.score.toInt()} / ${result.maxPossibleScore}"
+                val rollSnippet = if (finalRoll.isNotBlank()) " | Roll: $finalRoll" else ""
+                _statusMessage.value = "OMR sheet evaluated$rollSnippet: Score ${stats.score.toInt()} / ${result.maxPossibleScore}"
             }
             loadAttemptHistory(paperId)
 

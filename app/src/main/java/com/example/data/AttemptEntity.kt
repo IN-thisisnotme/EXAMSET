@@ -40,7 +40,10 @@ data class AttemptEntity(
         try {
             val json = JSONObject(answersJson)
             json.keys().forEach { key ->
-                map[key.toInt()] = json.getString(key)
+                val qNum = key.toIntOrNull()
+                if (qNum != null) {
+                    map[qNum] = json.getString(key)
+                }
             }
         } catch (e: Exception) {
             // Ignore
@@ -48,11 +51,37 @@ data class AttemptEntity(
         return map
     }
 
+    fun getCandidateRollNumber(): String {
+        return try {
+            JSONObject(answersJson).optString("_rollNumber", "")
+        } catch (e: Exception) { "" }
+    }
+
+    fun getCandidateBookletNumber(): String {
+        return try {
+            JSONObject(answersJson).optString("_bookletNumber", "")
+        } catch (e: Exception) { "" }
+    }
+
+    fun getCandidateBookletCode(): String {
+        return try {
+            JSONObject(answersJson).optString("_bookletCode", "")
+        } catch (e: Exception) { "" }
+    }
+
     companion object {
-        fun buildAnswersJson(map: Map<Int, String>): String {
+        fun buildAnswersJson(
+            map: Map<Int, String>,
+            rollNumber: String? = null,
+            bookletNumber: String? = null,
+            bookletCode: String? = null
+        ): String {
             val json = JSONObject()
             try {
                 map.forEach { (k, v) -> json.put(k.toString(), v) }
+                if (!rollNumber.isNullOrBlank()) json.put("_rollNumber", rollNumber)
+                if (!bookletNumber.isNullOrBlank()) json.put("_bookletNumber", bookletNumber)
+                if (!bookletCode.isNullOrBlank()) json.put("_bookletCode", bookletCode)
             } catch (e: Exception) {
                 // Ignore
             }
