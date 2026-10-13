@@ -1998,6 +1998,7 @@ Although B and D are correctly matched, Terzaghi's consolidation is not Euler bu
     """.trimIndent()
 
     val paper = McqParser.parse(raw)
+    println("MATCH PAPER QUESTIONS: ${paper.questions.map { "Q${it.num}: ${it.question.take(40)}" }}")
     assertEquals(1, paper.questions.size)
 
     val q1 = paper.questions[0]
@@ -3706,6 +3707,137 @@ D. अत्याचार = अति + आचार
     val html = com.example.util.PrintDocumentHelper.generatePrintHtml(testPaper, config)
     assertFalse("Printed HTML must not contain literal --- dividers", html.contains("---"))
     assertTrue("Printed HTML must include clean explanation", html.contains("Core concept"))
+  }
+
+  @Test
+  fun testUserSampleBiology() {
+    val raw = """
+# Advanced Biological Sciences & Genetics Assessment
+Subject: Samples & Practice
+Series: Set
+
+1. A diploid flowering plant has 2n = 14. A pollen mother cell undergoes meiosis normally. Which combination correctly describes the chromosome and chromatid numbers immediately after meiosis I in each daughter cell?
+(A) 7 chromosomes and 7 chromatids
+(B) 7 chromosomes and 14 chromatids
+(C) 14 chromosomes and 14 chromatids
+(D) 14 chromosomes and 28 chromatids
+
+2. Hormone	Principal association
+(A) Insulin 1. Blood glucose lowering
+(B) Glucagon 2. Glycogenolysis
+(C) Aldosterone 3. Na⁺ retention
+(D) ADH
+
+4. (a) A-1, B-2, C-3, D-4
+(b) A-2, B-1, C-4, D-3
+(c) A-3, B-4, C-1, D-2
+(d) A-4, B-3, C-2, D-1
+
+3. Which combination would most strongly favour natural selection causing directional evolutionary change?
+
+1. Heritable phenotypic variation
+2. Differential reproductive success
+3. Random mating
+4. Environmental pressure favouring one extreme phenotype
+
+(a) 1 and 2 only
+(b) 1, 2 and 4 only
+(c) 2 and 3 only
+(d) 1, 3 and 4 only
+
+4. Assertion–Reason
+
+Assertion (A): Genetic drift can cause fixation of a neutral allele.
+
+Reason (R): Random sampling of alleles can alter allele frequencies independently of their selective advantage.
+(A) Both A and R are true, and R is the correct explanation of A.
+(B) Both A and R are true, but R is not the correct explanation of A.
+(C) A is true, but R is false.
+(D) A is false, but R is true.
+
+5. Assertion (A): Mitochondrial ATP synthase generates ATP in the mitochondrial matrix.
+
+Reason (R): The proton-motive force drives protons from the intermembrane space through the F₀ component into the matrix.
+(A) Both A and R are true, and R correctly explains A.
+(B) Both A and R are true, but R does not correctly explain A.
+(C) A is true, but R is false.
+(D) A is false, but R is true.
+
+6. In PCR, primers are required because:
+(A) DNA polymerase generally requires a pre-existing 3′-OH end from which synthesis can proceed
+(B) DNA polymerase can synthesize DNA only in the 3′→5′ direction
+(C) Primers permanently replace template DNA
+(D) Primers perform restriction digestion
+
+Answer Key
+1: B
+2: A
+4: A
+5: A
+6: A
+
+Detailed Explanations
+1. Correct Answer: (B)
+Explanation: Chromosomes after meiosis I
+(b) 7 chromosomes and 14 chromatids — Correct. The homologous chromosomes have separated, reducing the chromosome number from 14 to 7, while sister chromatids remain joined.
+
+2. Correct Answer: (A)
+Explanation: Hormone and association match
+(a) A-1, B-2, C-3, D-4 — Correct. Insulin lowers blood glucose, glucagon stimulates glycogenolysis, aldosterone promotes renal sodium retention, and ADH promotes water reabsorption.
+
+4. Correct Answer: (A)
+Explanation: Genetic drift and neutral alleles
+(a) Both A and R are true, and R is the correct explanation of A. — Correct. Genetic drift results from random changes in allele frequencies caused by sampling effects in finite populations.
+
+5. Correct Answer: (A)
+Explanation: ATP synthase mechanism
+(a) Both A and R are true, and R correctly explains A. — Correct. The proton-motive force drives protons from the intermembrane space into the mitochondrial matrix through the F₀ component of ATP synthase.
+
+6. Correct Answer: (A)
+Explanation: PCR primers
+(a) DNA polymerase generally requires a pre-existing 3′-OH end from which synthesis can proceed — Correct. Primers provide the free 3′-OH group required for DNA polymerase to begin extending a new DNA strand.
+    """.trimIndent()
+
+    val paper = McqParser.parse(raw)
+    assertEquals(6, paper.questions.size)
+
+    val q1 = paper.questions[0]
+    assertEquals(1, q1.num)
+    assertEquals("B", q1.correctAnswer)
+    assertEquals("7 chromosomes and 7 chromatids", q1.options.a)
+
+    val q2 = paper.questions[1]
+    assertEquals(2, q2.num)
+    assertEquals("A", q2.correctAnswer)
+    assertTrue(q2.question.contains("Hormone"))
+    assertEquals("A-1, B-2, C-3, D-4", q2.options.a)
+
+    val q3 = paper.questions[2]
+    assertEquals(3, q3.num)
+    assertTrue(q3.question.contains("natural selection"))
+    assertTrue(q3.question.contains("Heritable phenotypic variation"))
+    assertTrue(q3.question.contains("Environmental pressure favouring one extreme phenotype"))
+    assertEquals("1 and 2 only", q3.options.a)
+    assertEquals("1, 2 and 4 only", q3.options.b)
+    assertEquals("2 and 3 only", q3.options.c)
+    assertEquals("1, 3 and 4 only", q3.options.d)
+
+    val q4 = paper.questions[3]
+    assertEquals(4, q4.num)
+    assertEquals("A", q4.correctAnswer)
+    assertEquals("Assertion–Reason", q4.questionType)
+    assertTrue(q4.question.contains("Genetic drift"))
+    assertTrue(q4.options.a.contains("Both A and R are true"))
+
+    val q5 = paper.questions[4]
+    assertEquals(5, q5.num)
+    assertEquals("A", q5.correctAnswer)
+    assertTrue(q5.question.contains("ATP synthase"))
+
+    val q6 = paper.questions[5]
+    assertEquals(6, q6.num)
+    assertEquals("A", q6.correctAnswer)
+    assertTrue(q6.question.contains("PCR"))
   }
 }
 

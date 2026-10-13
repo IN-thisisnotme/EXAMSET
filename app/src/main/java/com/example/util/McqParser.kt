@@ -392,7 +392,11 @@ object McqParser {
             val optPair = extractOptionsFromBlock(line)
             if (optPair != null) {
                 val textBeforeOpt = line.substring(0, optPair.second).trim()
-                if (textBeforeOpt.isEmpty() || !QUESTION_START_REGEX.matcher(textBeforeOpt).matches()) {
+                val stemWords = textBeforeOpt.replace(
+                    Regex("""^\s*(?:#+\s*)?(?:\*\*|__)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)?\.?\s*(?:No\.?|#)?\s*[\(\[]?\d+[\)\]\.\:\-]?\s*""", RegexOption.IGNORE_CASE),
+                    ""
+                ).trim()
+                if (textBeforeOpt.isEmpty() || stemWords.isEmpty() || !QUESTION_START_REGEX.matcher(textBeforeOpt).matches()) {
                     continue
                 }
             }
@@ -442,6 +446,27 @@ object McqParser {
                 // Check 1: Explicit question marker (e.g. Q1, **Q1**, Question 1, MCQ 1, प्रश्न 1, or header #)
                 val isExplicitHeader = isExplicitQuestionMarker(candidateLine)
 
+                // Outlier lookahead check: if candidate number jumps ahead (e.g. 2 to 4), check if a closer sequential candidate exists immediately ahead (e.g. 3)
+                if (candidate.second > previous.second + 1 && !isExplicitHeader) {
+                    val hasCloserAhead = (i + 1 until minOf(effectiveStarts.size, i + 5)).any { aheadIdx ->
+                        val aheadNum = effectiveStarts[aheadIdx].second
+                        aheadNum > previous.second && aheadNum < candidate.second
+                    }
+                    if (hasCloserAhead) {
+                        continue
+                    }
+                }
+
+                // Verify candidate has non-empty stem text before its options
+                val nextCandidateStart = if (i + 1 < effectiveStarts.size) effectiveStarts[i + 1].first else lines.size
+                val candidateBlock = lines.subList(candidateStart, nextCandidateStart).joinToString("\n")
+                val candidateOptPair = extractOptionsFromBlock(candidateBlock) ?: recoverEmbeddedOptions(candidateBlock)
+                val stemBeforeOpt = if (candidateOptPair != null) candidateBlock.substring(0, candidateOptPair.second) else candidateBlock
+                if (cleanQuestionNumbered(stemBeforeOpt).trim().isEmpty()) {
+                    // Entire block before options is empty or just a number with no stem words
+                    continue
+                }
+
                 // Check 2: Examine previous question block text for options
                 val previousBlock = lines.subList(previousStart, candidateStart).joinToString("\n")
                 val prevHasOptions = extractOptionsFromBlock(previousBlock) != null
@@ -449,6 +474,12 @@ object McqParser {
                 // If both previous and candidate are explicit headers for the same question number (e.g. "MCQ 1" followed by "Question 1"), collapse them
                 if (isExplicitHeader && candidate.second == previous.second && !prevHasOptions) {
                     filtered[filtered.size - 1] = candidate
+                    continue
+                }
+
+                // If candidate is a continuation item in a numbered statement list (1., 2., 3.) before options are provided
+                val isItemInList = (candidate.second in 2..9 && Regex("""(?m)^\s*[1-3१-३]\s*[\.\:\)]""").containsMatchIn(previousBlock) && !prevHasOptions)
+                if (isItemInList && !isExplicitHeader) {
                     continue
                 }
 
@@ -463,11 +494,10 @@ object McqParser {
                 }
 
                 // Check 3: Check candidate's own block text for options
-                val nextCandidateStart = if (i + 1 < effectiveStarts.size) effectiveStarts[i + 1].first else lines.size
-                val candidateBlock = lines.subList(candidateStart, nextCandidateStart).joinToString("\n")
-                val candidateHasOptions = extractOptionsFromBlock(candidateBlock) != null
+                val candidateHasOptions = candidateOptPair != null
 
-                val isInsideStatementQuestion = Regex("""(?i)\b(?:statements?|कथन|following|codes?|कूट)\b""").containsMatchIn(lines[previousStart]) &&
+                val isInsideStatementQuestion = (Regex("""(?i)\b(?:combination|statements?|कथन|following|codes?|कूट|pairs?|items?|above|given)\b""").containsMatchIn(previousBlock) ||
+                        Regex("""(?m)^\s*[1-3१-३]\s*[\.\:\)]""").containsMatchIn(previousBlock)) &&
                         !Regex("""(?i)\b(?:which|correct|true|false|सही|गलत)\b""").containsMatchIn(candidateLine)
 
                 if (candidateHasOptions && !isInsideStatementQuestion) {
@@ -489,7 +519,9 @@ object McqParser {
             val remainingLines = blockLines.drop(1)
             val cleanFirst = firstText.replace(Regex("""^\s*[-–—:\.]\s*"""), "").trim()
             val isHeaderType = isQuestionTypeHeader(firstText) || isQuestionTypeHeader(cleanFirst)
-            val isTopicHeader = !isHeaderType && cleanFirst.isNotBlank() && cleanFirst.length in 3..60 && !cleanFirst.endsWith("?") && !cleanFirst.contains("?") && remainingLines.any { it.isNotBlank() }
+            val hasTableOrTab = cleanFirst.contains("\t") || cleanFirst.contains("|") || cleanFirst.contains(Regex("""\s{3,}""")) ||
+                    Regex("""(?i)\b(?:column|list|सूची|स्तम्भ|association|hormone)\b""").containsMatchIn(cleanFirst)
+            val isTopicHeader = !isHeaderType && !hasTableOrTab && cleanFirst.isNotBlank() && cleanFirst.length in 3..60 && !cleanFirst.endsWith("?") && !cleanFirst.contains("?") && remainingLines.any { it.isNotBlank() }
 
             if (isHeaderType) {
                 detectedType = normalizeQuestionType(if (isQuestionTypeHeader(cleanFirst)) cleanFirst else firstText)
@@ -507,7 +539,8 @@ object McqParser {
             val options = optionsPair?.first ?: QuestionOptions()
             val optAStart = optionsPair?.second ?: block.length
 
-            val rawQText = block.substring(0, optAStart)
+            var rawQText = block.substring(0, optAStart)
+            rawQText = rawQText.replace(Regex("""(?:\n|\s+)\d+[\.\:\)\-]?\s*$"""), "\n").trim()
             val qText = cleanQuestionNumbered(rawQText)
 
             // Also check for inline answer/explanation in block
@@ -687,21 +720,45 @@ object McqParser {
 
         if (validSequences.isEmpty()) return null
 
-        // Filter out sequences of bare digits where the text after the last option asks the question prompt
-        val filteredSequences = validSequences.filter { seq ->
-            val lastMatch = seq.last()
-            val remainingAfterSeq = cleanBlock.substring(lastMatch.third).trim()
-            val isDigitSeq = seq.all { match ->
+        // If there are sequences that are NOT bare digits (e.g. (a), (b), (c), (d) or (A), (B), (C), (D)),
+        // prioritize them completely over bare digits (e.g. 1., 2., 3., 4.) which are usually numbered statements in the stem.
+        val nonBareDigitSequences = validSequences.filter { seq ->
+            seq.any { match ->
                 val matchedText = cleanBlock.substring(match.second, match.third)
-                matchedText.contains(Regex("""[1-4१-४]"""))
-            }
-            if (isDigitSeq && Regex("""(?i)\b(?:which\s+(?:of\s+the|statement|statements|option)|select\s+the\s+correct|choose\s+the\s+correct|उपरोक्त\s+में\s+से\s+कौन)\b""").containsMatchIn(remainingAfterSeq)) {
-                false
-            } else {
-                true
+                !Regex("""^\s*(?:[-*•]\s*)?[1-5१-५][\.\)]""").containsMatchIn(matchedText)
             }
         }
-        val candidateSequences = if (filteredSequences.isNotEmpty()) filteredSequences else validSequences
+        val poolSequences = if (nonBareDigitSequences.isNotEmpty()) nonBareDigitSequences else validSequences
+
+        // Filter out sequences of bare digits where the context before or after indicates
+        // they are numbered statements or items inside the question stem.
+        val filteredSequences = poolSequences.filter { seq ->
+            val isDigitSeq = seq.all { match ->
+                val matchedText = cleanBlock.substring(match.second, match.third)
+                Regex("""^\s*(?:[-*•]\s*)?[1-5१-५][\.\)]""").containsMatchIn(matchedText)
+            }
+            if (!isDigitSeq) return@filter true
+
+            val firstMatch = seq.first()
+            val textBeforeSeq = cleanBlock.substring(0, firstMatch.second).trim()
+            val lastMatch = seq.last()
+            val remainingAfterSeq = cleanBlock.substring(lastMatch.third).trim()
+
+            // 1. If text after the sequence contains actual letter options, this digit sequence is statements, not options
+            val hasOptionsAfter = Regex("""(?m)^\s*(?:\([a-eA-E]\)|\[[a-eA-E]\]|[a-eA-E][\.\)])""").containsMatchIn(remainingAfterSeq)
+            if (hasOptionsAfter) return@filter false
+
+            // 2. If text before asks for a combination/statement assessment, digits are statements
+            val isStatementQuestionPrompt = Regex("""(?i)\b(?:combination|statements?|कथन|following\s+(?:statements?|items?|codes?)|codes?|कूट|pairs?|items?|विचार|सुमेलित|निम्न)\b""").containsMatchIn(textBeforeSeq)
+            if (isStatementQuestionPrompt) return@filter false
+
+            // 3. If text after asks which statement/option/combination is correct
+            val isPromptAfter = Regex("""(?i)\b(?:which\s+(?:of\s+the|statement|statements|option|combination)|select\s+the\s+correct|choose\s+the\s+correct|उपरोक्त\s+में\s+से\s+कौन)\b""").containsMatchIn(remainingAfterSeq)
+            if (isPromptAfter) return@filter false
+
+            true
+        }
+        val candidateSequences = filteredSequences
         if (candidateSequences.isEmpty()) return null
 
         val prioritized = candidateSequences.sortedWith(
@@ -710,7 +767,7 @@ object McqParser {
             }.thenBy { seq ->
                 val isBareDigit = seq.all { match ->
                     val t = cleanBlock.substring(match.second, match.third)
-                    Regex("""^\s*(?:[-*•]\s*)?[1-4१-४][\.\)]""").containsMatchIn(t)
+                    Regex("""^\s*(?:[-*•]\s*)?[1-5१-५][\.\)]""").containsMatchIn(t)
                 }
                 !isBareDigit
             }.thenBy { seq ->
