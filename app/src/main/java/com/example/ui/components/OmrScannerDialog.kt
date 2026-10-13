@@ -625,6 +625,62 @@ private fun ScannedResultReviewView(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Scanned Candidate Header Identification
+                if (result.headerResult != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("CANDIDATE ROLL NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
+                                Text(
+                                    text = result.headerResult.rollNumber,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFF0284C7)
+                                )
+                            }
+                            Column {
+                                Text("BOOKLET NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
+                                Text(
+                                    text = result.headerResult.bookletNumber,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFFBE185D)
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("SET CODE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFFDF2F8),
+                                    border = BorderStroke(0.6.dp, Color(0xFFBE185D))
+                                ) {
+                                    Text(
+                                        text = "Set ${result.headerResult.bookletCode}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFBE185D),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
                 // Breakdown pills
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -124,6 +124,30 @@ object OmrGeometry {
         val radiusPx: Float
     )
 
+    enum class HeaderFieldType {
+        ROLL_NUMBER,
+        BOOKLET_NUMBER,
+        BOOKLET_CODE
+    }
+
+    data class HeaderBubblePoint(
+        val fieldType: HeaderFieldType,
+        val columnIndex: Int,
+        val digitOrChar: Char,
+        val centerXMm: Float,
+        val centerYMm: Float,
+        val radiusMm: Float
+    )
+
+    data class HeaderBubblePixelPoint(
+        val fieldType: HeaderFieldType,
+        val columnIndex: Int,
+        val digitOrChar: Char,
+        val centerXPx: Float,
+        val centerYPx: Float,
+        val radiusPx: Float
+    )
+
     /**
      * Resolves the deterministic layout plan based on total questions (strictly single page up to 200).
      */
@@ -226,4 +250,99 @@ object OmrGeometry {
             )
         }
     }
+
+    /**
+     * Computes exact physical millimeter coordinates for Left Panel header bubbles:
+     * - Roll Number: 10 columns (0..9) x 10 rows (digits 0..9)
+     * - Booklet Number: 7 columns (0..6) x 10 rows (digits 0..9)
+     * - Booklet Code: options A, B, C, D (or custom cohort sets)
+     */
+    fun getHeaderBubbleCoordinates(sets: List<String> = listOf("A", "B", "C", "D")): List<HeaderBubblePoint> {
+        val list = ArrayList<HeaderBubblePoint>(200)
+        val leftPanelStart = MARGIN_X_MM + 2.0f
+        val microRadius = 1.65f // 3.3mm diameter micro bubble
+
+        // 1. Roll Number 10 columns x 10 rows (0..9)
+        val rollColPitch = (LEFT_PANEL_WIDTH_MM - 4.0f) / 10f
+        val rollTopStart = GRID_TOP_OFFSET_MM + 9.5f
+        val rollRowPitch = 3.65f
+        for (c in 0 until 10) {
+            val cx = leftPanelStart + 2.0f + (c * rollColPitch) + (rollColPitch / 2f)
+            for (d in 0..9) {
+                val cy = rollTopStart + (d * rollRowPitch) + (rollRowPitch / 2f)
+                list.add(
+                    HeaderBubblePoint(
+                        fieldType = HeaderFieldType.ROLL_NUMBER,
+                        columnIndex = c,
+                        digitOrChar = ('0' + d),
+                        centerXMm = cx,
+                        centerYMm = cy,
+                        radiusMm = microRadius
+                    )
+                )
+            }
+        }
+
+        // 2. Booklet Number 7 columns x 10 rows (0..9)
+        val bookletColPitch = (LEFT_PANEL_WIDTH_MM - 6.0f) / 7f
+        val bookletTopStart = rollTopStart + (10 * rollRowPitch) + 9.0f
+        val bookletRowPitch = 3.65f
+        for (c in 0 until 7) {
+            val cx = leftPanelStart + 3.0f + (c * bookletColPitch) + (bookletColPitch / 2f)
+            for (d in 0..9) {
+                val cy = bookletTopStart + (d * bookletRowPitch) + (bookletRowPitch / 2f)
+                list.add(
+                    HeaderBubblePoint(
+                        fieldType = HeaderFieldType.BOOKLET_NUMBER,
+                        columnIndex = c,
+                        digitOrChar = ('0' + d),
+                        centerXMm = cx,
+                        centerYMm = cy,
+                        radiusMm = microRadius
+                    )
+                )
+            }
+        }
+
+        // 3. Booklet Code bubbles (A, B, C, D...)
+        val codeTop = bookletTopStart + (10 * bookletRowPitch) + 12.0f
+        val codePitch = 6.0f
+        val codeStartX = leftPanelStart + (LEFT_PANEL_WIDTH_MM / 2f)
+        sets.take(4).forEachIndexed { idx, s ->
+            val char = s.firstOrNull() ?: 'A'
+            val cx = codeStartX + (idx * codePitch)
+            list.add(
+                HeaderBubblePoint(
+                    fieldType = HeaderFieldType.BOOKLET_CODE,
+                    columnIndex = idx,
+                    digitOrChar = char,
+                    centerXMm = cx,
+                    centerYMm = codeTop,
+                    radiusMm = microRadius
+                )
+            )
+        }
+
+        return list
+    }
+
+    /**
+     * Converts physical millimeter header bubble coordinates into canonical pixel space.
+     */
+    fun getCanonicalHeaderPixelCoordinates(
+        sets: List<String> = listOf("A", "B", "C", "D"),
+        scalePxPerMm: Float = CANONICAL_SCALE_PX_PER_MM
+    ): List<HeaderBubblePixelPoint> {
+        return getHeaderBubbleCoordinates(sets).map { hp ->
+            HeaderBubblePixelPoint(
+                fieldType = hp.fieldType,
+                columnIndex = hp.columnIndex,
+                digitOrChar = hp.digitOrChar,
+                centerXPx = hp.centerXMm * scalePxPerMm,
+                centerYPx = hp.centerYMm * scalePxPerMm,
+                radiusPx = hp.radiusMm * scalePxPerMm
+            )
+        }
+    }
 }
+

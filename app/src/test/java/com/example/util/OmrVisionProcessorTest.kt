@@ -167,5 +167,53 @@ class OmrVisionProcessorTest {
         assertEquals(5, output.unattemptedCount)
         assertEquals(0, output.totalScore)
         assertEquals(20, output.maxPossibleScore)
+        assertNotNull(output.headerResult)
+        assertEquals(10, output.headerResult?.rollNumber?.length)
+        assertEquals(7, output.headerResult?.bookletNumber?.length)
+    }
+
+    @Test
+    fun testPsychometricCohortEvaluation() {
+        val q1 = McqQuestion(
+            num = 1,
+            question = "Question 1",
+            options = QuestionOptions(a = "Opt A", b = "Opt B", c = "Opt C", d = "Opt D"),
+            correctAnswer = "A"
+        )
+        val q2 = McqQuestion(
+            num = 2,
+            question = "Question 2",
+            options = QuestionOptions(a = "Opt A", b = "Opt B", c = "Opt C", d = "Opt D"),
+            correctAnswer = "B"
+        )
+        val paper = QuestionPaper(
+            metadata = PaperMetadata(title = "Psychometric Test"),
+            questions = listOf(q1, q2)
+        )
+
+        val candidate1 = mapOf(1 to 'A', 2 to 'B') // 8 marks
+        val candidate2 = mapOf(1 to 'A', 2 to 'C') // 3 marks
+        val candidate3 = mapOf(1 to 'B', 2 to 'B') // 3 marks
+        val candidate4 = mapOf(1 to 'C', 2 to 'D') // -2 marks
+
+        val report = PsychometricEngine.evaluateCohort(
+            candidateResponses = listOf(candidate1, candidate2, candidate3, candidate4),
+            paper = paper
+        )
+
+        assertEquals(4, report.candidateCount)
+        assertEquals(2, report.questionCount)
+        assertTrue("Mean score calculated", report.meanScore >= 0f)
+        assertEquals(2, report.items.size)
+
+        // Q1 p-value should be 0.5 (candidate1 and candidate2 got it right)
+        assertEquals(0.5f, report.items[0].difficultyP, 0.01f)
+        assertEquals("Moderate", report.items[0].difficultyLabel)
+
+        // CSV export
+        val csv = PsychometricEngine.formatPsychometricReportCsv(report, "Psychometric Test")
+        assertTrue("CSV contains Question_Num", csv.contains("Question_Num,Difficulty_P"))
+        assertTrue("CSV contains Q1 stats", csv.contains("1,0.500"))
     }
 }
+
