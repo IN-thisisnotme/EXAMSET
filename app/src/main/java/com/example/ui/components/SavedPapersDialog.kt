@@ -443,6 +443,15 @@ fun SavedPapersDialog(
                                                 fontSize = 9.5.sp,
                                                 color = colors.muted
                                             )
+                                            if (item.rollNumber.isNotBlank()) {
+                                                Text("•", fontSize = 9.5.sp, color = colors.muted)
+                                                Text(
+                                                    text = "Roll: ${item.rollNumber}",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = colors.tealDark
+                                                )
+                                            }
                                         }
                                     }
 

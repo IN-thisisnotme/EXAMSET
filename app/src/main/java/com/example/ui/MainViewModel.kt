@@ -188,6 +188,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         restoreAutosavedState()
         initTodayStudyAnalytics()
+        backfillLegacyPaperNumbers()
+    }
+
+    private fun backfillLegacyPaperNumbers() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val allPapers = paperDao.getAllPapers().first()
+                allPapers.forEach { paper ->
+                    val needRoll = paper.rollNumber.isBlank()
+                    val needBooklet = paper.bookletNumber.isBlank()
+                    if (needRoll || needBooklet) {
+                        val updatedRoll = if (needRoll) ExamNumberGenerator.generateRollNumber() else paper.rollNumber
+                        val updatedBooklet = if (needBooklet) ExamNumberGenerator.generateBookletNumber() else paper.bookletNumber
+                        paperDao.updatePaper(
+                            paper.copy(
+                                rollNumber = updatedRoll,
+                                bookletNumber = updatedBooklet
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore transient errors during first launch
+            }
+        }
     }
 
     private fun restoreAutosavedState() {
@@ -853,6 +878,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         val unsubmittedAttempt = paperDao.getLatestUnsubmittedAttempt(entity.id)
         appPreferences.setLastActivePaperId(entity.id)
+
+        if (entity.rollNumber.isBlank() || entity.bookletNumber.isBlank()) {
+            paperDao.updatePaper(
+                entity.copy(
+                    rollNumber = finalRoll,
+                    bookletNumber = finalBooklet
+                )
+            )
+        }
 
         withContext(Dispatchers.Main) {
             _currentPaperEntityId.value = entity.id
