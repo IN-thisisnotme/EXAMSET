@@ -6,11 +6,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -123,46 +126,99 @@ fun PrintablePaperTab(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     // Settings / Customize button
                     OutlinedButton(
                         onClick = onOpenConfig,
                         shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.border),
-                        modifier = Modifier.testTag("configure_exam_button")
+                        modifier = Modifier
+                            .height(38.dp)
+                            .testTag("configure_exam_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Configure",
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(15.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Customize", fontSize = 12.sp, color = colors.inkBold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Customize", fontSize = 12.sp, maxLines = 1, softWrap = false, color = colors.inkBold)
                     }
 
-                    // Print / PDF Button
+                    // Save PDF directly to File Manager
+                    OutlinedButton(
+                        onClick = {
+                            PrintDocumentHelper.savePdfDirectly(
+                                context = context,
+                                paper = paper,
+                                config = config,
+                                onSuccess = { savedPath ->
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Saved to $savedPath",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                onError = { errorMsg ->
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        errorMsg,
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.inkBold
+                        ),
+                        border = BorderStroke(1.dp, colors.teal),
+                        modifier = Modifier
+                            .height(38.dp)
+                            .testTag("quick_save_pdf_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SaveAlt,
+                            contentDescription = "Save PDF",
+                            modifier = Modifier.size(15.dp),
+                            tint = colors.teal
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Save PDF", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.inkBold)
+                    }
+
+                    // Native Print Spooler Button
                     Button(
                         onClick = {
                             PrintDocumentHelper.printQuestionPaper(context, paper, config)
                         },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.navyBanner,
-                            contentColor = colors.navyBannerText
+                            containerColor = colors.primaryButtonBg,
+                            contentColor = colors.primaryButtonText
                         ),
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("quick_print_button")
+                        modifier = Modifier
+                            .height(38.dp)
+                            .testTag("quick_print_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Print,
                             contentDescription = "Print",
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp),
+                            tint = colors.primaryButtonText
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Print", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Print", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.primaryButtonText)
                     }
                 }
             }

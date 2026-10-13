@@ -1066,9 +1066,11 @@ private fun ExamStartOverviewView(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Scan Filled OMR Sheet (Camera / Gallery)",
+                            text = "Scan Filled OMR Sheet",
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
                             color = Color(0xFFBE185D)
                         )
                     }

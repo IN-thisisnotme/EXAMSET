@@ -295,13 +295,15 @@ fun MasterViewTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Title & Status (stable height to prevent interface jump/bounce)
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = "Master Inspection",
                                         fontSize = 13.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold
+                                        color = colors.inkBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     if (isEditMode) {
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -334,6 +336,8 @@ fun MasterViewTab(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             // Toolbar Actions: Clean Edit Mode toggle & Add Question
                             Row(
@@ -431,8 +435,10 @@ fun MasterViewTab(
                         onValueChange = { searchQuery = it },
                         placeholder = {
                             Text(
-                                text = "Filter questions or options...",
-                                fontSize = 12.sp,
+                                text = "Search questions...",
+                                fontSize = 12.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
                                 color = colors.muted
                             )
                         },
@@ -479,7 +485,9 @@ fun MasterViewTab(
 
                     // Filter mode chips
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         val missingKeyCount = questions.count { it.correctAnswer == null }
@@ -1024,8 +1032,8 @@ fun MasterViewTab(
     if (showEditMetadataDialog) {
         EditMetadataDialog(
             initialMetadata = paper.metadata,
-            onSave = { title, subject, topic, setNumber ->
-                viewModel.updatePaperMetadata(title, subject, topic, setNumber)
+            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
+                viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
             },
             onDismiss = { showEditMetadataDialog = false },
             onEnterQuestionEditMode = enterEditMode

@@ -238,11 +238,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         _parseResult.value = result
                         if (result.paper.questions.isNotEmpty()) {
                             _currentPaper.value = result.paper
+                            val initialQCount = result.paper.questions.size.coerceAtLeast(1)
                             _examConfig.value = _examConfig.value.copy(
                                 examTitle = result.paper.metadata.title,
                                 subject = result.paper.metadata.subject,
                                 seriesCode = result.paper.metadata.setNumber.ifBlank { "SET - A" },
-                                maxMarks = "${result.paper.questions.size}"
+                                timeAllowed = "$initialQCount Minutes",
+                                maxMarks = "${result.paper.questions.size}",
+                                rollNumber = result.paper.metadata.rollNumber,
+                                bookletNumber = result.paper.metadata.bookletNumber
                             )
                         }
                     }
@@ -731,25 +735,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _statusMessage.value = "Added Question Q$nextNum"
     }
 
-    fun updatePaperMetadata(title: String, subject: String, topic: String, setNumber: String) {
+    fun updatePaperMetadata(
+        title: String,
+        subject: String,
+        topic: String,
+        setNumber: String,
+        rollNumber: String? = null,
+        bookletNumber: String? = null
+    ) {
         val active = _currentPaper.value ?: return
         val cleanTitle = title.trim().ifBlank { "MCQ Practice Set" }
         val cleanSubject = subject.trim().ifBlank { "General Studies" }
         val cleanTopic = topic.trim()
         val cleanSet = setNumber.trim().ifBlank { "Set A" }
+        val cleanRoll = rollNumber?.filter { it.isDigit() }?.take(10)?.ifBlank { null }
+            ?: active.metadata.rollNumber.ifBlank { ExamNumberGenerator.generateRollNumber() }
+        val cleanBooklet = bookletNumber?.filter { it.isDigit() }?.take(7)?.ifBlank { null }
+            ?: active.metadata.bookletNumber.ifBlank { ExamNumberGenerator.generateBookletNumber() }
 
         val newMetadata = active.metadata.copy(
             title = cleanTitle,
             subject = cleanSubject,
             topic = cleanTopic,
-            setNumber = cleanSet
+            setNumber = cleanSet,
+            rollNumber = cleanRoll,
+            bookletNumber = cleanBooklet
         )
         val updatedPaper = active.copy(metadata = newMetadata)
 
         _examConfig.value = _examConfig.value.copy(
             examTitle = cleanTitle,
             subject = cleanSubject,
-            seriesCode = cleanSet
+            seriesCode = cleanSet,
+            rollNumber = cleanRoll,
+            bookletNumber = cleanBooklet
         )
 
         schedulePaperAutoSave(updatedPaper)
@@ -827,11 +846,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isExamSubmitted.value = false
                 _isExamStarted.value = false
                 _retryQuestionNumbers.value = null
+                val autoMinutes = finalPaper.questions.size.coerceAtLeast(1)
                 _examConfig.value = _examConfig.value.copy(
                     examTitle = finalMetadata.title,
                     subject = finalMetadata.subject,
                     seriesCode = finalMetadata.setNumber.ifBlank { "SET - A" },
-                    maxMarks = "${finalPaper.questions.size}"
+                    timeAllowed = "$autoMinutes Minutes",
+                    maxMarks = "${finalPaper.questions.size}",
+                    rollNumber = finalMetadata.rollNumber,
+                    bookletNumber = finalMetadata.bookletNumber
                 )
                 _autoSaveStatus.value = AutoSaveStatus.SAVED
                 updateTimestamp()
@@ -920,6 +943,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 examTitle = entity.title,
                 subject = entity.subject,
                 seriesCode = entity.setNumber.ifBlank { "SET - A" },
+                timeAllowed = "$autoMinutes Minutes",
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
                 maxMarks = "${parsed.questions.size}"

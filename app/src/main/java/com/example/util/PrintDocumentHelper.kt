@@ -1,18 +1,63 @@
 package com.example.util
 
+import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.CancellationSignal
+import android.os.Environment
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
 import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
 import android.print.PrintManager
+import android.provider.MediaStore
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.example.model.ExamConfig
 import com.example.model.OmrBubblingMode
 import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
 import com.example.util.ExamNumberGenerator
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object PrintDocumentHelper {
+
+    /**
+     * Sanitizes a string to be safely used in a directory or file name,
+     * converting spaces and invalid characters to underscores.
+     */
+    fun sanitizeForFileName(input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return "Unknown"
+        return trimmed.replace(Regex("[^a-zA-Z0-9.-]"), "_").replace(Regex("_+"), "_")
+    }
+
+    /**
+     * Computes the formatted PDF filename: {subject}_{rollNumber}_{bookletNumber}.pdf
+     * with spaces replaced by underscores.
+     */
+    fun getExamPdfFileName(paper: QuestionPaper, config: ExamConfig): String {
+        val rawSubject = paper.metadata.subject.ifBlank { config.subject.ifBlank { "Exam" } }
+        val subjectClean = sanitizeForFileName(rawSubject)
+
+        val rollClean = sanitizeForFileName(
+            config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } }
+        )
+        val bookletClean = sanitizeForFileName(
+            config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } }
+        )
+
+        return "${subjectClean}_${rollClean}_${bookletClean}.pdf"
+    }
 
     /**
      * Triggers the native Android Print dialog using WebView and PrintDocumentAdapter.
@@ -24,7 +69,7 @@ object PrintDocumentHelper {
         config: ExamConfig
     ) {
         val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager ?: return
-        val jobName = "${paper.metadata.title.replace(" ", "_")}_${config.printMode.name}"
+        val jobName = getExamPdfFileName(paper, config).removeSuffix(".pdf")
         val html = generatePrintHtml(paper, config)
 
         val webView = WebView(context)
@@ -46,6 +91,122 @@ object PrintDocumentHelper {
         }
 
         webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    }
+
+    /**
+     * Saves the question paper directly as a PDF file into the device file manager
+     * under: Documents/Exam_Set/{YYYY}/{MM}/{Subject}/
+     * File name: {Subject}_{RollNo}_{BookletNo}.pdf
+     * Without opening or relying on the Android Print Spooler.
+     */
+    fun savePdfDirectly(
+        context: Context,
+        paper: QuestionPaper,
+        config: ExamConfig,
+        onSuccess: (savedPath: String) -> Unit,
+        onError: (errorMessage: String) -> Unit
+    ) {
+        val fileName = getExamPdfFileName(paper, config)
+        val html = generatePrintHtml(paper, config)
+
+        val yearStr = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
+        val monthStr = SimpleDateFormat("MM", Locale.getDefault()).format(Date())
+        val subjectClean = sanitizeForFileName(
+            paper.metadata.subject.ifBlank { config.subject.ifBlank { "General" } }
+        )
+
+        val relativeSubDir = "exam_set/$yearStr/$monthStr/$subjectClean"
+
+        val webView = WebView(context)
+        webView.settings.apply {
+            javaScriptEnabled = false
+            loadWithOverviewMode = true
+            useWideViewPort = true
+        }
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                try {
+                    val adapter = webView.createPrintDocumentAdapter(fileName.removeSuffix(".pdf"))
+                    val attributes = PrintAttributes.Builder()
+                        .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                        .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                        .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
+                        .build()
+
+                    val tempPdfFile = File(context.cacheDir, "temp_render_${System.currentTimeMillis()}.pdf")
+
+                    android.print.PdfPrintHelper.printAdapterToFile(
+                        adapter = adapter,
+                        attributes = attributes,
+                        destinationFile = tempPdfFile,
+                        onSuccess = {
+                            try {
+                                val finalPath = exportTempFileToExamSetDirectory(
+                                    context = context,
+                                    tempFile = tempPdfFile,
+                                    relativeSubDir = relativeSubDir,
+                                    fileName = fileName
+                                )
+                                tempPdfFile.delete()
+                                onSuccess(finalPath)
+                            } catch (e: Exception) {
+                                tempPdfFile.delete()
+                                onError("Failed to export PDF: ${e.localizedMessage ?: "Unknown error"}")
+                            }
+                        },
+                        onError = { error ->
+                            tempPdfFile.delete()
+                            onError("Failed to render PDF: $error")
+                        }
+                    )
+                } catch (e: Exception) {
+                    onError("Failed to initiate PDF generator: ${e.localizedMessage ?: "Unknown error"}")
+                }
+            }
+        }
+
+        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    }
+
+    private fun exportTempFileToExamSetDirectory(
+        context: Context,
+        tempFile: File,
+        relativeSubDir: String,
+        fileName: String
+    ): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/$relativeSubDir")
+            }
+
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), contentValues)
+                ?: throw IllegalStateException("Unable to allocate MediaStore entry for PDF")
+
+            resolver.openOutputStream(uri)?.use { outputStream ->
+                FileInputStream(tempFile).use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            } ?: throw IllegalStateException("Could not write to MediaStore PDF output stream")
+
+            "Documents/$relativeSubDir/$fileName"
+        } else {
+            val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            val targetDir = File(docsDir, relativeSubDir)
+            if (!targetDir.exists()) {
+                targetDir.mkdirs()
+            }
+            val targetFile = File(targetDir, fileName)
+            FileInputStream(tempFile).use { input ->
+                FileOutputStream(targetFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            targetFile.absolutePath
+        }
     }
 
     /**
@@ -111,7 +272,7 @@ object PrintDocumentHelper {
             <style>
                 @page {
                     size: A4 portrait;
-                    margin: 6mm 8mm;
+                    margin: 14mm 8mm 8mm 8mm;
                 }
                 * { box-sizing: border-box; }
                 body {
@@ -700,7 +861,7 @@ object PrintDocumentHelper {
             <style>
                 @page {
                     size: A4 portrait;
-                    margin: 10mm 4mm 4mm 4mm;
+                    margin: 8mm 4mm 8mm 4mm;
                 }
                 * { box-sizing: border-box; }
                 body {
@@ -735,8 +896,8 @@ object PrintDocumentHelper {
             max-height: 275mm;
             overflow: hidden;
             margin: 0;
-            padding-top: ${if (isStandalone) "8mm" else "12mm"};
-            padding-bottom: 2mm;
+            padding-top: ${if (isStandalone) "4mm" else "6mm"};
+            padding-bottom: 6mm;
             color: #000000;
         }
         .omr-wrapper {
@@ -1196,12 +1357,10 @@ object PrintDocumentHelper {
             ExamNumberGenerator.normalizeBookletNumber(paper.metadata.bookletNumber, 7)
         } else ""
 
-        val showRollDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS || 
-                              config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && rollStr.length == 10
+        val showRollDigits = rollStr.length == 10
         val darkenRollBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && rollStr.length == 10
 
-        val showBookletDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS || 
-                                 config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && bookletStr.length == 7
+        val showBookletDigits = bookletStr.length == 7
         val darkenBookletBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && bookletStr.length == 7
 
         val sb = StringBuilder()

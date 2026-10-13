@@ -363,61 +363,26 @@ fun HomeScreen(
                         }
                     }
 
-                    // Saved Papers Folder
-                    IconButton(
-                        onClick = { showSavedDialog = true },
-                        modifier = Modifier.testTag("saved_papers_icon")
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                if (savedPapers.isNotEmpty()) {
-                                    Badge(containerColor = colors.teal) {
-                                        Text("${savedPapers.size}", fontSize = 9.sp, color = Color.White)
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = "Saved Sets",
-                                tint = colors.inkBold
-                            )
-                        }
-                    }
-
-                    // Print action button
-                    IconButton(
-                        onClick = { showPrintDialog = true },
-                        enabled = currentPaper?.questions?.isNotEmpty() == true,
-                        modifier = Modifier.testTag("print_icon_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Print,
-                            contentDescription = "Print Paper",
-                            tint = colors.inkBold
-                        )
-                    }
-
-                    // Share paper
-                    IconButton(
-                        onClick = {
-                            currentPaper?.let { paper ->
+                    // Share paper (if paper loaded)
+                    val activePaper = currentPaper
+                    if (activePaper != null) {
+                        IconButton(
+                            onClick = {
                                 val sendIntent = Intent().apply {
                                     action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TITLE, paper.metadata.title)
-                                    putExtra(Intent.EXTRA_TEXT, paper.rawText)
+                                    putExtra(Intent.EXTRA_TITLE, activePaper.metadata.title)
+                                    putExtra(Intent.EXTRA_TEXT, activePaper.rawText)
                                     type = "text/plain"
                                 }
                                 context.startActivity(Intent.createChooser(sendIntent, "Share Question Set"))
                             }
-                        },
-                        enabled = currentPaper != null
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Share",
-                            tint = colors.inkBold
-                        )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share",
+                                tint = colors.inkBold
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -863,12 +828,12 @@ fun HomeScreen(
         )
     }
 
-    // Edit Metadata Dialog (Title, Subject, Topic, Set Number)
+    // Edit Metadata Dialog (Title, Subject, Topic, Set Number, Roll No, Booklet No)
     if (showEditDialog && currentPaper != null) {
         EditMetadataDialog(
             initialMetadata = currentPaper!!.metadata,
-            onSave = { title, subject, topic, setNumber ->
-                viewModel.updatePaperMetadata(title, subject, topic, setNumber)
+            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
+                viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
             },
             onDismiss = { showEditDialog = false }
         )
@@ -1178,7 +1143,15 @@ fun SubjectDashboard(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search exam folders or topics...", fontSize = 13.sp) },
+            placeholder = {
+                Text(
+                    text = "Search folders...",
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    color = colors.muted
+                )
+            },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,

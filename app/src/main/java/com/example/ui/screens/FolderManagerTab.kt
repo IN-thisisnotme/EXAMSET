@@ -224,33 +224,6 @@ fun FolderManagerTab(
                         onDelete = { folderToDelete = folder }
                     )
                 }
-
-                // Add Folder pill
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = colors.surface,
-                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                    modifier = Modifier.clickable { showNewFolderDialog = true }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "New Folder",
-                            tint = colors.teal,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "New Folder",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.teal
-                        )
-                    }
-                }
             }
         }
 
@@ -265,45 +238,31 @@ fun FolderManagerTab(
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = colors.teal,
-                                modifier = Modifier.size(20.dp)
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = colors.teal,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Organize with Custom Folders",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "No custom folders yet",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "Create folders to organize question papers by exam or subject.",
-                                    fontSize = 10.5.sp,
-                                    color = colors.inkMuted,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(
-                            onClick = { showNewFolderDialog = true },
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.height(28.dp)
-                        ) {
-                            Text("+ Add Folder", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "Use 'New Folder' above to group papers by exam or subject.",
+                                fontSize = 11.sp,
+                                color = colors.inkMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -317,8 +276,10 @@ fun FolderManagerTab(
                 onValueChange = { searchQuery = it },
                 placeholder = {
                     Text(
-                        text = "Search papers by title, subject, topic, or series...",
-                        fontSize = 12.5.sp,
+                        text = "Search papers...",
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        softWrap = false,
                         color = colors.inkMuted
                     )
                 },
@@ -868,14 +829,25 @@ private fun PaperCardItem(
                     Button(
                         onClick = onOpenMaster,
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryButtonBg,
+                            contentColor = colors.primaryButtonText
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
+                            .heightIn(min = 38.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Open in Master", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Master View",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            color = colors.primaryButtonText
+                        )
                     }
 
                     OutlinedButton(
@@ -883,13 +855,21 @@ private fun PaperCardItem(
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669)),
                         border = BorderStroke(1.dp, Color(0xFF059669)),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
+                            .heightIn(min = 38.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF059669))
                         Spacer(modifier = Modifier.width(5.dp))
-                        Text("Practice Test", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "Practice",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            color = Color(0xFF059669)
+                        )
                     }
                 }
 

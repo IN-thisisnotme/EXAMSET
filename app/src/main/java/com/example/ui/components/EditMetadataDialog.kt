@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
@@ -44,7 +45,7 @@ import com.example.ui.theme.ExamTheme
 @Composable
 fun EditMetadataDialog(
     initialMetadata: PaperMetadata,
-    onSave: (title: String, subject: String, topic: String, setNumber: String) -> Unit,
+    onSave: (title: String, subject: String, topic: String, setNumber: String, rollNumber: String, bookletNumber: String) -> Unit,
     onDismiss: () -> Unit,
     onEnterQuestionEditMode: (() -> Unit)? = null
 ) {
@@ -53,6 +54,16 @@ fun EditMetadataDialog(
     var subject by remember { mutableStateOf(initialMetadata.subject) }
     var topic by remember { mutableStateOf(initialMetadata.topic) }
     var setNumber by remember { mutableStateOf(initialMetadata.setNumber) }
+    var rollNumber by remember {
+        mutableStateOf(
+            if (initialMetadata.rollNumber.isNotBlank()) initialMetadata.rollNumber else com.example.util.ExamNumberGenerator.generateRollNumber()
+        )
+    }
+    var bookletNumber by remember {
+        mutableStateOf(
+            if (initialMetadata.bookletNumber.isNotBlank()) initialMetadata.bookletNumber else com.example.util.ExamNumberGenerator.generateBookletNumber()
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -166,7 +177,7 @@ fun EditMetadataDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Permanent Identifiers (Immutable for authentic hand-circling practice)
+                // OMR Identification & Question Paper Numbering Section
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = colors.surfaceVariant,
@@ -177,7 +188,7 @@ fun EditMetadataDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -186,57 +197,90 @@ fun EditMetadataDialog(
                             Icon(
                                 imageVector = Icons.Default.Lock,
                                 contentDescription = null,
-                                tint = colors.muted,
-                                modifier = Modifier.size(13.dp)
+                                tint = colors.teal,
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = "Permanent Identifiers (For OMR Circling Practice)",
-                                fontSize = 11.sp,
+                                text = "OMR Identification & Numbering",
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkBold
                             )
                         }
                         Text(
-                            text = "Assigned permanently per set to ensure authentic bubbling practice without accidental edits.",
+                            text = "Assigned directly per question set so printed papers and OMR sheets are permanently synchronized.",
                             fontSize = 10.sp,
                             color = colors.muted,
                             lineHeight = 13.sp
                         )
+
+                        // Roll Number Row with Generate Button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = colors.surface,
-                                border = BorderStroke(0.8.dp, colors.border),
-                                modifier = Modifier.weight(1f)
+                            OutlinedTextField(
+                                value = rollNumber,
+                                onValueChange = { rollNumber = it.filter { ch -> ch.isDigit() }.take(10) },
+                                label = { Text("Roll No (10 digits)") },
+                                placeholder = { Text("e.g. 2026104821") },
+                                singleLine = true,
+                                colors = textFieldColors,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("edit_roll_number_field"),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    rollNumber = com.example.util.ExamNumberGenerator.generateRollNumber()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.tealLight,
+                                    contentColor = colors.tealDark
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("edit_generate_roll_button")
                             ) {
-                                Column(modifier = Modifier.padding(7.dp)) {
-                                    Text("Roll No (10-Digit)", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        text = initialMetadata.rollNumber.ifBlank { "Unassigned" },
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.teal
-                                    )
-                                }
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("New", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = colors.surface,
-                                border = BorderStroke(0.8.dp, colors.border),
-                                modifier = Modifier.weight(1f)
+                        }
+
+                        // Booklet Number Row with Generate Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = bookletNumber,
+                                onValueChange = { bookletNumber = it.filter { ch -> ch.isDigit() }.take(7) },
+                                label = { Text("Booklet No (7 digits)") },
+                                placeholder = { Text("e.g. 7104523") },
+                                singleLine = true,
+                                colors = textFieldColors,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("edit_booklet_number_field"),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    bookletNumber = com.example.util.ExamNumberGenerator.generateBookletNumber()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.tealLight,
+                                    contentColor = colors.tealDark
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("edit_generate_booklet_button")
                             ) {
-                                Column(modifier = Modifier.padding(7.dp)) {
-                                    Text("Test Booklet No (7-Digit)", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        text = initialMetadata.bookletNumber.ifBlank { "Unassigned" },
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.teal
-                                    )
-                                }
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("New", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -247,7 +291,7 @@ fun EditMetadataDialog(
                 if (onEnterQuestionEditMode != null) {
                     OutlinedButton(
                         onClick = {
-                            onSave(title, subject, topic, setNumber)
+                            onSave(title, subject, topic, setNumber, rollNumber, bookletNumber)
                             onDismiss()
                             onEnterQuestionEditMode()
                         },
@@ -282,7 +326,7 @@ fun EditMetadataDialog(
 
                     Button(
                         onClick = {
-                            onSave(title, subject, topic, setNumber)
+                            onSave(title, subject, topic, setNumber, rollNumber, bookletNumber)
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(

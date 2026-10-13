@@ -132,7 +132,7 @@ data class ExamConfig(
     val subject: String = "",
     val topic: String = "",
     val seriesCode: String = "SET - A",
-    val timeAllowed: String = "60 Minutes",
+    val timeAllowed: String = "Auto (1 min/question)",
     val maxMarks: String = "50",
     val negativeMarking: String = "0.33 Marks (-0.10 Unattended)",
     val includeCandidateDetails: Boolean = true,

@@ -474,7 +474,10 @@ fun CreatorTab(
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primaryButtonBg,
+                                contentColor = colors.primaryButtonText
+                            ),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()

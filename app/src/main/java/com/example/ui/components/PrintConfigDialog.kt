@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,8 +20,10 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -282,174 +285,92 @@ fun PrintConfigDialog(
                     )
                 }
 
-                // OMR Identification & Numbering Configuration
-                if (config.includeOmrSheet || config.printMode == PrintMode.OMR_ONLY) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "OMR Identification & Numbering",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
-                    )
-                    Text(
-                        text = "Candidate Roll No. and Booklet No. configuration for scanning",
-                        fontSize = 11.sp,
-                        color = colors.muted
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Roll Number (10 digits) with Generate Button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = config.rollNumber,
-                            onValueChange = { config = config.copy(rollNumber = it.filter { ch -> ch.isDigit() }.take(10)) },
-                            label = { Text("Roll No. (10 digits)") },
-                            placeholder = { Text("e.g. 2026104821") },
-                            singleLine = true,
-                            colors = tfColors,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("roll_number_input"),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        Button(
-                            onClick = {
-                                config = config.copy(rollNumber = ExamNumberGenerator.generateRollNumber())
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.tealLight,
-                                contentColor = colors.tealDark
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("generate_roll_button")
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Generate", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Test Booklet Number (7 digits) with Generate Button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = config.bookletNumber,
-                            onValueChange = { config = config.copy(bookletNumber = it.filter { ch -> ch.isDigit() }.take(7)) },
-                            label = { Text("Booklet No. (7 digits)") },
-                            placeholder = { Text("e.g. 7104523") },
-                            singleLine = true,
-                            colors = tfColors,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("booklet_number_input"),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        Button(
-                            onClick = {
-                                config = config.copy(bookletNumber = ExamNumberGenerator.generateBookletNumber())
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.tealLight,
-                                contentColor = colors.tealDark
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("generate_booklet_button")
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Generate", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = "OMR Bubbling Style",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val modes = listOf(
-                            Triple(OmrBubblingMode.BLANK_CANDIDATE, "Blank Circles", "Candidate pen"),
-                            Triple(OmrBubblingMode.PRE_PRINTED_DIGITS, "Printed Digits", "Top boxes only"),
-                            Triple(OmrBubblingMode.PRE_DARKENED_BUBBLES, "Darkened", "Pre-shaded")
-                        )
-                        modes.forEach { (mode, title, desc) ->
-                            val isSel = config.omrBubblingMode == mode
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { config = config.copy(omrBubblingMode = mode) },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSel) colors.tealLight else colors.surfaceVariant,
-                                border = BorderStroke(1.dp, if (isSel) colors.teal else colors.border)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(6.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = title,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSel) colors.tealDark else colors.inkBold
-                                    )
-                                    Text(
-                                        text = desc,
-                                        fontSize = 8.sp,
-                                        color = colors.muted
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Print Action Button
-                Button(
-                    onClick = {
-                        onPrintTriggered(config)
-                        PrintDocumentHelper.printQuestionPaper(context, paper, config)
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.navyBanner,
-                        contentColor = colors.navyBannerText
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("start_print_button")
+                // Unified Action Buttons: Save PDF to File Manager and Print via System Spooler
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Print,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Print / Save as PDF",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // Direct Save PDF Button
+                    OutlinedButton(
+                        onClick = {
+                            onPrintTriggered(config)
+                            PrintDocumentHelper.savePdfDirectly(
+                                context = context,
+                                paper = paper,
+                                config = config,
+                                onSuccess = { savedPath ->
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Saved to $savedPath",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                onError = { errorMsg ->
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        errorMsg,
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.inkBold
+                        ),
+                        border = BorderStroke(1.2.dp, colors.teal),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("save_pdf_dialog_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SaveAlt,
+                            contentDescription = "Save PDF",
+                            modifier = Modifier.size(18.dp),
+                            tint = colors.teal
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Save PDF",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkBold
+                        )
+                    }
+
+                    // Print via System Spooler Button
+                    Button(
+                        onClick = {
+                            onPrintTriggered(config)
+                            PrintDocumentHelper.printQuestionPaper(context, paper, config)
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.navyBanner,
+                            contentColor = colors.navyBannerText
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("start_print_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Print",
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -466,12 +387,19 @@ private fun ModeSelectorPill(
 ) {
     val colors = ExamTheme.colors
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier
+            .height(68.dp)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = if (isSelected) colors.tealLight else Color.Transparent,
         border = BorderStroke(1.2.dp, if (isSelected) colors.teal else colors.border)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
             Text(
                 text = title,
                 fontSize = 12.5.sp,

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -162,7 +163,15 @@ fun SubjectFolderDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        placeholder = { Text("Search sets in this folder...", fontSize = 13.sp) },
+                        placeholder = {
+                            Text(
+                                text = "Search sets...",
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                color = colors.muted
+                            )
+                        },
                         leadingIcon = {
                             Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = colors.muted)
                         },
@@ -299,12 +308,13 @@ fun SubjectFolderDialog(
                                             },
                                             modifier = Modifier.weight(1f),
                                             shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
                                             border = BorderStroke(1.dp, colors.border)
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.teal)
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("View Paper", fontSize = 12.sp)
+                                            Text("View Paper", fontSize = 12.sp, maxLines = 1, softWrap = false)
                                         }
 
                                         Button(
@@ -314,11 +324,15 @@ fun SubjectFolderDialog(
                                             },
                                             modifier = Modifier.weight(1f),
                                             shape = RoundedCornerShape(8.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = colors.primaryButtonBg,
+                                                contentColor = colors.primaryButtonText
+                                            )
                                         ) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Start Test", fontSize = 12.sp)
+                                            Text("Start Test", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.primaryButtonText)
                                         }
                                     }
                                 }
