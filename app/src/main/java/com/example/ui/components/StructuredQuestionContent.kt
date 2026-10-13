@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -22,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.McqQuestion
 import com.example.ui.theme.ExamTheme
+import com.example.ui.theme.RobotoMonoFontFamily
 import com.example.util.McqParser
 import com.example.util.QuestionFormatter
 import com.example.util.RichTextHelper
@@ -58,7 +61,8 @@ fun StructuredQuestionContent(
                 if (showNumber) {
                     Text(
                         text = "${question.num}.",
-                        fontSize = 17.5.sp,
+                        fontFamily = RobotoMonoFontFamily,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkBold
                     )
@@ -372,23 +376,23 @@ private fun StackedOptionsList(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    // Uniform 38.dp Option Badge
+                    // Uniform Option Badge
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = if (isCorrect) colors.greenLight else colors.tealLight,
                         border = BorderStroke(0.8.dp, if (isCorrect) colors.green else colors.teal),
-                        modifier = Modifier.width(38.dp)
+                        modifier = Modifier.width(34.dp).height(28.dp)
                     ) {
-                        Text(
-                            text = "($letter)",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isCorrect) colors.green else colors.tealDark,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 3.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = letter,
+                                fontFamily = RobotoMonoFontFamily,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCorrect) colors.green else colors.tealDark,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     LatexText(
@@ -471,18 +475,18 @@ private fun CompactOptionItem(
             shape = RoundedCornerShape(5.dp),
             color = if (isCorrect) colors.greenLight else colors.tealLight,
             border = BorderStroke(0.6.dp, if (isCorrect) colors.green else colors.teal),
-            modifier = Modifier.width(36.dp)
+            modifier = Modifier.size(24.dp)
         ) {
-            Text(
-                text = "($letter)",
-                color = if (isCorrect) colors.green else colors.tealDark,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp)
-            )
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = letter,
+                    fontFamily = RobotoMonoFontFamily,
+                    color = if (isCorrect) colors.green else colors.tealDark,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
         Spacer(modifier = Modifier.width(8.dp))
         LatexText(

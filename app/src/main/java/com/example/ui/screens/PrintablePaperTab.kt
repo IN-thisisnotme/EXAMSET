@@ -61,6 +61,7 @@ import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
 import com.example.util.PrintDocumentHelper
+import com.example.util.ExamNumberGenerator
 import com.example.ui.theme.ExamTheme
 import com.example.util.McqParser
 import com.example.util.RichTextHelper
@@ -198,25 +199,27 @@ fun PrintablePaperTab(
                             .clickable { previewMode = mode }
                             .testTag("preview_tab_$mode"),
                         shape = RoundedCornerShape(6.dp),
-                        color = if (isSelected) colors.tealLight else Color.Transparent,
-                        border = if (isSelected) BorderStroke(1.dp, colors.teal) else null
+                        color = if (isSelected) {
+                            if (colors.isDark) colors.tealDark.copy(alpha = 0.35f) else colors.tealLight
+                        } else Color.Transparent,
+                        border = if (isSelected) BorderStroke(1.2.dp, colors.teal) else BorderStroke(0.6.dp, Color.Transparent)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(
                                 imageVector = icon,
                                 contentDescription = label,
                                 tint = if (isSelected) colors.teal else colors.muted,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                             Text(
                                 text = label,
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) colors.teal else colors.inkBold
+                                color = if (isSelected) (if (colors.isDark) colors.teal else colors.navyBanner) else colors.inkBold
                             )
                         }
                     }
@@ -346,6 +349,12 @@ fun PrintablePaperTab(
                                 color = colors.printPaperText
                             )
                             Text(
+                                text = "Booklet No: ${config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } }}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.printPaperText
+                            )
+                            Text(
                                 text = "Time: ${config.timeAllowed}",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Normal,
@@ -361,9 +370,14 @@ fun PrintablePaperTab(
                     }
                 }
 
-                // Candidate Details Box (With responsive lines that never warp, no roll number)
+                // Candidate Details Box (With responsive lines, Roll Number & Booklet Number boxes)
                 if (config.includeCandidateDetails && config.printMode == PrintMode.STUDENT_PAPER) {
                     item {
+                        val defaultRoll = config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } }
+                        val defaultBooklet = config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } }
+                        val rollDigits = ExamNumberGenerator.normalizeRollNumber(defaultRoll, 10)
+                        val bookletDigits = ExamNumberGenerator.normalizeBookletNumber(defaultBooklet, 7)
+
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -388,7 +402,68 @@ fun PrintablePaperTab(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Roll No & Booklet No Rows
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Roll No: ",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.printPaperText
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        for (i in rollDigits.indices) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(width = 14.dp, height = 18.dp)
+                                                    .border(BorderStroke(1.dp, colors.printPaperBorder)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = rollDigits[i].toString(),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.printPaperText
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Booklet No: ",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.printPaperText
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        for (i in bookletDigits.indices) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(width = 14.dp, height = 18.dp)
+                                                    .border(BorderStroke(1.dp, colors.printPaperBorder)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = bookletDigits[i].toString(),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.printPaperText
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

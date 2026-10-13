@@ -187,14 +187,19 @@ fun MasterViewTab(
                         Button(
                             onClick = { viewModel.loadStarterSample("science") },
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primaryButtonBg,
+                                contentColor = colors.primaryButtonText
+                            ),
                             modifier = Modifier.testTag("master_load_starter_button")
                         ) {
-                            Text("Load Starter Exam", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Load Starter Exam", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                         }
                         OutlinedButton(
                             onClick = { viewModel.selectTab(0) },
                             shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                            border = BorderStroke(1.dp, colors.border),
                             modifier = Modifier.testTag("master_browse_library_button")
                         ) {
                             Text("Browse Question Library", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
@@ -403,14 +408,17 @@ fun MasterViewTab(
                                         if (!isEditMode) enterEditMode()
                                         showAddQuestionDialog = true
                                     },
-                                    shape = RoundedCornerShape(6.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.primaryButtonBg,
+                                        contentColor = colors.primaryButtonText
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
                                     modifier = Modifier.heightIn(min = 38.dp)
                                 ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Add", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("Add", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                                 }
                             }
                         }
@@ -798,8 +806,11 @@ fun MasterViewTab(
                                 showReviewDialog = true
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryButtonBg,
+                            contentColor = colors.primaryButtonText
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .heightIn(min = 36.dp)

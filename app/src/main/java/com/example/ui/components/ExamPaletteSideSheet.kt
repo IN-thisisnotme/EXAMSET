@@ -395,19 +395,19 @@ fun ExamPaletteSideSheet(
 
                             when {
                                 isAnswered -> Triple(
-                                    Color(0xFF10B981).copy(alpha = 0.15f),
-                                    Color(0xFF10B981),
-                                    Color(0xFF047857)
+                                    colors.badgeSuccessBg,
+                                    colors.green,
+                                    colors.badgeSuccessText
                                 )
                                 isMarked -> Triple(
-                                    Color(0xFF8B5CF6).copy(alpha = 0.15f),
-                                    Color(0xFF8B5CF6),
-                                    Color(0xFF6D28D9)
+                                    if (colors.isDark) Color(0xFF3B1D54) else Color(0xFFF3E8FF),
+                                    if (colors.isDark) Color(0xFFA855F7) else Color(0xFF9333EA),
+                                    if (colors.isDark) Color(0xFFD8B4FE) else Color(0xFF6B21A8)
                                 )
                                 isVisited -> Triple(
-                                    Color(0xFFEF4444).copy(alpha = 0.15f),
-                                    Color(0xFFEF4444),
-                                    Color(0xFFB91C1C)
+                                    colors.badgeDangerBg,
+                                    colors.red,
+                                    colors.badgeDangerText
                                 )
                                 else -> Triple(
                                     colors.surfaceVariant,
@@ -423,24 +423,24 @@ fun ExamPaletteSideSheet(
 
                             when {
                                 isModified -> Triple(
-                                    colors.amberLight,
+                                    colors.badgeWarningBg,
                                     colors.amber,
-                                    colors.amber
+                                    colors.badgeWarningText
                                 )
                                 !hasKey -> Triple(
-                                    Color(0xFFFEE2E2),
-                                    Color(0xFFEF4444),
-                                    Color(0xFFDC2626)
+                                    colors.badgeDangerBg,
+                                    colors.red,
+                                    colors.badgeDangerText
                                 )
                                 !hasExp -> Triple(
-                                    Color(0xFFFEF3C7),
-                                    Color(0xFFF59E0B),
-                                    Color(0xFFD97706)
+                                    colors.badgeWarningBg,
+                                    colors.amber,
+                                    colors.badgeWarningText
                                 )
                                 else -> Triple(
-                                    Color(0xFFECFDF5),
-                                    Color(0xFF10B981).copy(alpha = 0.7f),
-                                    Color(0xFF047857)
+                                    colors.badgeSuccessBg,
+                                    colors.green,
+                                    colors.badgeSuccessText
                                 )
                             }
                         }

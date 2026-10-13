@@ -308,7 +308,10 @@ fun CreatorTab(
                                             }
                                         },
                                         shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.primaryButtonBg,
+                                            contentColor = colors.primaryButtonText
+                                        ),
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
                                         modifier = Modifier
                                             .heightIn(min = 38.dp)
@@ -318,14 +321,14 @@ fun CreatorTab(
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(14.dp),
                                                 strokeWidth = 2.dp,
-                                                color = Color.White
+                                                color = colors.primaryButtonText
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Scanning...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("Scanning...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                                         } else {
-                                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Scan Notes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("Scan Notes", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                                         }
                                     }
                                 }
@@ -334,14 +337,15 @@ fun CreatorTab(
                                     onClick = onNavigateToMaster,
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (FeatureToggles.ENABLE_CAMERA_NOTES_SCANNER) colors.navyBanner else colors.teal
+                                        containerColor = if (FeatureToggles.ENABLE_CAMERA_NOTES_SCANNER) colors.navyBanner else colors.primaryButtonBg,
+                                        contentColor = colors.primaryButtonText
                                     ),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
                                     modifier = Modifier.heightIn(min = 38.dp)
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Master View", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text("Master View", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = colors.primaryButtonText)
                                 }
 
                                 OutlinedButton(
@@ -841,13 +845,16 @@ fun CreatorTab(
                                 batchFilePicker.launch(arrayOf("application/json", "text/plain", "*/*"))
                             },
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primaryButtonBg,
+                                contentColor = colors.primaryButtonText
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                             modifier = Modifier.heightIn(min = 36.dp)
                         ) {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import Files", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text("Import Files", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = colors.primaryButtonText)
                         }
 
                         // 2. Export Current Paper

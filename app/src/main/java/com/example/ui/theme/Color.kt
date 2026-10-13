@@ -84,7 +84,17 @@ data class ExamColorPalette(
     val redLight: Color,
     val printPaperBg: Color,
     val printPaperBorder: Color,
-    val printPaperText: Color
+    val printPaperText: Color,
+    val primaryButtonBg: Color,
+    val primaryButtonText: Color,
+    val secondaryButtonBg: Color,
+    val secondaryButtonText: Color,
+    val badgeSuccessBg: Color,
+    val badgeSuccessText: Color,
+    val badgeWarningBg: Color,
+    val badgeWarningText: Color,
+    val badgeDangerBg: Color,
+    val badgeDangerText: Color
 ) {
     val inkMuted: Color get() = muted
     val yellow: Color get() = amber
@@ -116,7 +126,17 @@ val LightExamColorPalette = ExamColorPalette(
     redLight = ExamRedLight,
     printPaperBg = ExamWhite,
     printPaperBorder = Color(0xFF334155),
-    printPaperText = ExamPureBlack
+    printPaperText = ExamPureBlack,
+    primaryButtonBg = ExamNavy,
+    primaryButtonText = ExamWhite,
+    secondaryButtonBg = ExamSurfaceVariant,
+    secondaryButtonText = ExamInk,
+    badgeSuccessBg = ExamGreenLight,
+    badgeSuccessText = ExamGreen,
+    badgeWarningBg = ExamAmberLight,
+    badgeWarningText = Color(0xFFB45309),
+    badgeDangerBg = ExamRedLight,
+    badgeDangerText = ExamRed
 )
 
 val DarkExamColorPalette = ExamColorPalette(
@@ -144,7 +164,17 @@ val DarkExamColorPalette = ExamColorPalette(
     redLight = DarkExamRedLight,
     printPaperBg = Color(0xFF1A2330),
     printPaperBorder = Color(0xFF475569),
-    printPaperText = Color(0xFFF1F5F9)
+    printPaperText = Color(0xFFF1F5F9),
+    primaryButtonBg = DarkExamTeal,
+    primaryButtonText = Color(0xFF0F172A),
+    secondaryButtonBg = DarkExamSurfaceElevated,
+    secondaryButtonText = DarkExamInkBold,
+    badgeSuccessBg = Color(0xFF064E3B),
+    badgeSuccessText = Color(0xFF6EE7B7),
+    badgeWarningBg = Color(0xFF451A03),
+    badgeWarningText = Color(0xFFFCD34D),
+    badgeDangerBg = Color(0xFF450A0A),
+    badgeDangerText = Color(0xFFFCA5A5)
 )
 
 val LocalExamColors = staticCompositionLocalOf { LightExamColorPalette }

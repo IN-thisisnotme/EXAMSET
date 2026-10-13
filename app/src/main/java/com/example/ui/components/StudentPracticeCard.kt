@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.McqQuestion
 import com.example.ui.theme.ExamTheme
+import com.example.ui.theme.RobotoMonoFontFamily
 import com.example.util.QuestionFormatter
 import com.example.util.RichTextHelper
 import com.example.util.rememberProcessedQuestion
@@ -109,7 +110,8 @@ fun StudentPracticeCard(
                 ) {
                     Text(
                         text = "Question ${q.num}",
-                        fontSize = 17.5.sp,
+                        fontFamily = RobotoMonoFontFamily,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkBold
                     )
@@ -407,6 +409,7 @@ fun StudentPracticeCard(
                                     } else {
                                         Text(
                                             text = item.displayLabel,
+                                            fontFamily = RobotoMonoFontFamily,
                                             color = if (isSelected) (if (colors.isDark) Color.Black else Color.White) else colors.muted,
                                             fontSize = 13.5.sp,
                                             fontWeight = FontWeight.Bold

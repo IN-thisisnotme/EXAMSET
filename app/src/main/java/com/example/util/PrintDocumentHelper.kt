@@ -106,6 +106,8 @@ object PrintDocumentHelper {
         <head>
             <meta charset="utf-8">
             <title>${escapeHtml(config.examTitle)}</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Roboto+Mono:wght@500;700&display=swap">
             <style>
                 @page {
                     size: A4 portrait;
@@ -113,7 +115,7 @@ object PrintDocumentHelper {
                 }
                 * { box-sizing: border-box; }
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                     color: #000000;
                     background: #ffffff;
                     margin: 0;
@@ -289,21 +291,36 @@ object PrintDocumentHelper {
                 <div class="exam-name">${escapeHtml(config.examTitle)}</div>
                 <div class="exam-meta-row">
                     <span><strong>Subject:</strong> ${escapeHtml(paper.metadata.subject)}</span>
-                    <span><strong>Paper Code / Series:</strong> ${escapeHtml(paper.metadata.setNumber.ifBlank { config.seriesCode })}</span>
+                    <span><strong>Series:</strong> ${escapeHtml(paper.metadata.setNumber.ifBlank { config.seriesCode })}</span>
+                    <span><strong>Booklet No:</strong> ${escapeHtml(config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } })}</span>
                     <span><strong>Time:</strong> ${escapeHtml(config.timeAllowed)}</span>
                     <span><strong>Max Marks:</strong> ${escapeHtml(config.maxMarks)}</span>
                 </div>
             </div>
 
-            ${if (config.includeCandidateDetails) """
+            ${if (config.includeCandidateDetails) {
+                val defaultRoll = config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } }
+                val defaultBooklet = config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } }
+                val rollDigits = ExamNumberGenerator.normalizeRollNumber(defaultRoll, 10).map { it.toString() }
+                val bookletDigits = ExamNumberGenerator.normalizeBookletNumber(defaultBooklet, 7).map { it.toString() }
+
+                val rollBoxesHtml = rollDigits.joinToString("") { "<div class=\"digit-cell\">$it</div>" }
+                val bookletBoxesHtml = bookletDigits.joinToString("") { "<div class=\"digit-cell\">$it</div>" }
+
+                """
             <div class="candidate-box">
                 <div class="cand-row">
                     <span><strong>Candidate Name:</strong> ___________________________________</span>
+                    <span><strong>Roll No:</strong> <div class="roll-box-wrap">$rollBoxesHtml</div></span>
+                    <span><strong>Booklet No:</strong> <div class="roll-box-wrap">$bookletBoxesHtml</div></span>
+                </div>
+                <div class="cand-row" style="margin-top: 6px;">
                     <span><strong>Candidate Signature:</strong> _____________________</span>
                     <span><strong>Invigilator's Signature:</strong> _____________________</span>
                 </div>
             </div>
-            """ else ""}
+            """
+            } else ""}
 
             ${if (config.includeInstructions) """
             <div class="instructions-box">
@@ -385,6 +402,8 @@ object PrintDocumentHelper {
         <head>
             <meta charset="utf-8">
             <title>${escapeHtml(paper.metadata.title)} - Master Booklet</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Roboto+Mono:wght@500;700&display=swap">
             <style>
                 @page {
                     size: A4 portrait;
@@ -392,7 +411,7 @@ object PrintDocumentHelper {
                 }
                 * { box-sizing: border-box; }
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                     color: #000;
                     background: #fff;
                     margin: 0;
@@ -541,7 +560,8 @@ object PrintDocumentHelper {
         <body>
             <div class="navy-banner">
                 <div class="banner-title">${escapeHtml(paper.metadata.title)}</div>
-                <div class="banner-sub">${escapeHtml(paper.metadata.subject)}</div>
+                <div class="banner-sub">${escapeHtml(paper.metadata.subject)} — Series: ${escapeHtml(paper.metadata.setNumber.ifBlank { config.seriesCode })}</div>
+                <div class="banner-sub">Test Booklet No: ${escapeHtml(config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } })} | Roll No: ${escapeHtml(config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } })}</div>
                 ${if (paper.metadata.exam.isNotEmpty()) "<div class=\"banner-exam\">" + escapeHtml(paper.metadata.exam) + "</div>" else ""}
             </div>
 
@@ -675,6 +695,8 @@ object PrintDocumentHelper {
         <head>
             <meta charset="utf-8">
             <title>OMR Response Sheet - ${escapeHtml(paper.metadata.setNumber.ifBlank { "Set A" })}</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Roboto+Mono:wght@500;700&display=swap">
             <style>
                 @page {
                     size: A4 portrait;
@@ -682,7 +704,7 @@ object PrintDocumentHelper {
                 }
                 * { box-sizing: border-box; }
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
                     color: #000000;
                     background: #ffffff;
                     margin: 0;
@@ -713,8 +735,8 @@ object PrintDocumentHelper {
             max-height: 275mm;
             overflow: hidden;
             margin: 0;
-            padding-top: ${if (isStandalone) "0" else "4mm"};
-            padding-bottom: 0;
+            padding-top: ${if (isStandalone) "8mm" else "12mm"};
+            padding-bottom: 2mm;
             color: #000000;
         }
         .omr-wrapper {
@@ -740,53 +762,24 @@ object PrintDocumentHelper {
         .anchor-bl { bottom: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; left: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
         .anchor-br { bottom: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; right: ${OmrGeometry.ANCHOR_MARGIN_MM}mm; }
 
-        /* Top Header Area with Center/Room Superintendent Stamp Box */
+        /* Top Header Area without middle stamp box to ensure clean header and ample staple margin */
         .omr-top-header {
             display: flex;
             justify-content: space-between;
-            align-items: stretch;
+            align-items: center;
             margin: 0 4mm 0.8mm 4mm;
-            gap: 3mm;
+            gap: 6mm;
         }
         .omr-header-warning {
-            flex: 1.2;
+            flex: 1.4;
             border: 1.2px solid #be185d;
             border-radius: 4px;
-            padding: 1.0mm 1.8mm;
-            font-size: 5.2pt;
+            padding: 1.2mm 2.0mm;
+            font-size: 5.4pt;
             font-weight: 700;
             color: #be185d;
-            line-height: 1.15;
+            line-height: 1.2;
             background: #ffffff;
-        }
-        .omr-stamp-box {
-            width: 28mm;
-            min-width: 28mm;
-            max-width: 28mm;
-            border: 1.2px dashed #be185d;
-            border-radius: 4px;
-            padding: 1.0mm;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            background: #ffffff;
-        }
-        .omr-stamp-title {
-            font-size: 4.6pt;
-            font-weight: 900;
-            color: #be185d;
-            text-transform: uppercase;
-            letter-spacing: 0.2px;
-            line-height: 1.15;
-        }
-        .omr-stamp-sub {
-            font-size: 3.8pt;
-            font-weight: 700;
-            color: #be185d;
-            margin-top: 1px;
         }
         .omr-header-title-box {
             flex: 1.1;
@@ -1222,15 +1215,10 @@ object PrintDocumentHelper {
             <div class="omr-anchor anchor-bl"></div>
             <div class="omr-anchor anchor-br"></div>
 
-            <!-- Top Header with Institutional Stamp Margin Box -->
+            <!-- Top Header without middle stamp box -->
             <div class="omr-top-header">
                 <div class="omr-header-warning">
                     The candidate should ensure that Roll No. and Test Booklet No. have been filled and marked correctly and Test Booklet Code printed in this sheet and Test Booklet is the same.
-                </div>
-                <div class="omr-stamp-box">
-                    <div class="omr-stamp-title">CENTRE / ROOM</div>
-                    <div class="omr-stamp-title">SUPERINTENDENT STAMP</div>
-                    <div class="omr-stamp-sub">(Affix Official Stamp Here)</div>
                 </div>
                 <div class="omr-header-title-box">
                     <div class="omr-title">${escapeHtml(config.examTitle.ifBlank { paper.metadata.exam.ifBlank { "UPSC CSE" } }).uppercase()} OMR ANSWER SHEET</div>

@@ -177,13 +177,16 @@ fun FolderManagerTab(
                     Button(
                         onClick = { showNewFolderDialog = true },
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryButtonBg,
+                            contentColor = colors.primaryButtonText
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                         modifier = Modifier.heightIn(min = 34.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("New Folder", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text("New Folder", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = colors.primaryButtonText)
                     }
                 }
             }

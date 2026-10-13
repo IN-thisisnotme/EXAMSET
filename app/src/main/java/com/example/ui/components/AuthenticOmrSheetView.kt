@@ -35,6 +35,7 @@ import com.example.model.ExamConfig
 import com.example.model.OmrBubblingMode
 import com.example.model.QuestionPaper
 import com.example.util.ExamNumberGenerator
+import com.example.ui.theme.RobotoMonoFontFamily
 
 private val OMR_MAGENTA = Color(0xFFBE185D)
 private val OMR_DARK_MAGENTA = Color(0xFF831843)
@@ -107,18 +108,18 @@ fun AuthenticOmrSheetView(
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    // Top Header Section with Center / Room Superintendent Stamp
+                    // Top Header Section (without middle stamp box, ample stapling space)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp),
+                            .padding(top = 10.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Instruction banner
                         Box(
                             modifier = Modifier
-                                .weight(1.2f)
+                                .weight(1.3f)
                                 .border(BorderStroke(1.dp, OMR_MAGENTA), RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 4.dp)
                         ) {
@@ -131,43 +132,7 @@ fun AuthenticOmrSheetView(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        // Institutional Center / Superintendent Stamp Box
-                        Box(
-                            modifier = Modifier
-                                .width(105.dp)
-                                .height(46.dp)
-                                .border(BorderStroke(1.dp, OMR_MAGENTA), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 4.dp, vertical = 3.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "CENTRE / ROOM",
-                                    fontSize = 5.8.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = OMR_MAGENTA,
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "SUPERINTENDENT STAMP",
-                                    fontSize = 5.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = OMR_MAGENTA,
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "(Affix Official Stamp Here)",
-                                    fontSize = 4.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = OMR_DARK_MAGENTA,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
                         // Title Box
                         Column(
@@ -642,6 +607,7 @@ private fun MicroBubble(
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = text,
+                fontFamily = RobotoMonoFontFamily,
                 fontSize = (sizeDp * 0.55).sp,
                 fontWeight = FontWeight.Black,
                 color = if (isDarkened) Color.White else OMR_MAGENTA,
