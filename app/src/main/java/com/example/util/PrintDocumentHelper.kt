@@ -1357,10 +1357,12 @@ object PrintDocumentHelper {
             ExamNumberGenerator.normalizeBookletNumber(paper.metadata.bookletNumber, 7)
         } else ""
 
-        val showRollDigits = rollStr.length == 10
+        val showRollDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS ||
+                config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && rollStr.length == 10
         val darkenRollBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && rollStr.length == 10
 
-        val showBookletDigits = bookletStr.length == 7
+        val showBookletDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS ||
+                config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && bookletStr.length == 7
         val darkenBookletBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && bookletStr.length == 7
 
         val sb = StringBuilder()

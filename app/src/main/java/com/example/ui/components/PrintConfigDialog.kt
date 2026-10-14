@@ -285,6 +285,32 @@ fun PrintConfigDialog(
                     )
                 }
 
+                // OMR Sheet Options
+                val showOmrOptions = config.printMode == PrintMode.OMR_ONLY ||
+                        (config.printMode == PrintMode.STUDENT_PAPER && config.includeOmrSheet)
+                if (showOmrOptions) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "OMR Sheet Options",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    ConfigSwitchRow(
+                        title = "Autofill Roll Number",
+                        subtitle = "Pre-fill roll number digits (leave OFF to use sheet for any question set)",
+                        checked = config.omrBubblingMode != OmrBubblingMode.BLANK_CANDIDATE,
+                        onCheckedChange = { isChecked ->
+                            config = config.copy(
+                                omrBubblingMode = if (isChecked) OmrBubblingMode.PRE_PRINTED_DIGITS else OmrBubblingMode.BLANK_CANDIDATE
+                            )
+                        },
+                        modifier = Modifier.testTag("omr_autofill_roll_switch")
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Unified Action Buttons: Save PDF to File Manager and Print via System Spooler
@@ -421,11 +447,12 @@ private fun ConfigSwitchRow(
     title: String,
     subtitle: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
