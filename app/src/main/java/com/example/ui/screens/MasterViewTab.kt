@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
@@ -130,6 +131,7 @@ fun MasterViewTab(
     val colors = ExamTheme.colors
     val coroutineScope = rememberCoroutineScope()
     val currentPaper by viewModel.currentPaper.collectAsState()
+    val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val autoSaveStatus by viewModel.autoSaveStatus.collectAsState()
     val lastSavedTime by viewModel.lastSavedTime.collectAsState()
 
@@ -179,7 +181,29 @@ fun MasterViewTab(
                         fontSize = 12.sp,
                         color = colors.inkMuted
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    if (lastOpenedPaper != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = { viewModel.loadSavedPaper(lastOpenedPaper!!) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.teal
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.testTag("master_open_last_paper_button")
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Last Set: ${lastOpenedPaper!!.title}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically

@@ -74,7 +74,8 @@ object PsychometricEngine {
         val bookletNumber: String,
         val bookletCode: String,
         val answers: Map<Int, Char?>,
-        val submittedAt: Long = System.currentTimeMillis()
+        val submittedAt: Long = System.currentTimeMillis(),
+        val precomputedScore: Double? = null
     )
 
     data class CohortPsychometricReport(
@@ -82,8 +83,8 @@ object PsychometricEngine {
         val questionCount: Int,
         val meanScore: Float,
         val medianScore: Float,
-        val highestScore: Int,
-        val lowestScore: Int,
+        val highestScore: Double,
+        val lowestScore: Double,
         val standardDeviation: Float,
         val cronbachAlpha: Float,
         val items: List<ItemEvaluation>,
@@ -131,8 +132,8 @@ object PsychometricEngine {
                 questionCount = k,
                 meanScore = 0f,
                 medianScore = 0f,
-                highestScore = 0,
-                lowestScore = 0,
+                highestScore = 0.0,
+                lowestScore = 0.0,
                 standardDeviation = 0f,
                 cronbachAlpha = 0f,
                 items = emptyList(),
@@ -144,14 +145,13 @@ object PsychometricEngine {
         // 1. Calculate each candidate's raw score & correct counts
         data class CandidateEval(
             val sub: CandidateSubmission,
-            val score: Int,
+            val score: Double,
             val correct: Int,
             val incorrect: Int,
             val unanswered: Int
         )
 
         val candidateEvals = submissions.map { sub ->
-            var score = 0
             var correct = 0
             var incorrect = 0
             var unanswered = 0
@@ -161,15 +161,22 @@ object PsychometricEngine {
                 val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
                 if (chosen != null && correctChar != null) {
                     if (chosen.uppercaseChar() == correctChar) {
-                        score += 4
                         correct++
                     } else {
-                        score -= 1
                         incorrect++
                     }
                 } else {
                     unanswered++
                 }
+            }
+
+            val score = if (sub.precomputedScore != null) {
+                sub.precomputedScore
+            } else {
+                val penaltyIncorrect = Math.round(incorrect * 0.33 * 100.0) / 100.0
+                val penaltyUnattended = Math.round(unanswered * 0.10 * 100.0) / 100.0
+                val raw = (correct * 1.0) - penaltyIncorrect - penaltyUnattended
+                maxOf(0.0, Math.round(raw * 100.0) / 100.0)
             }
             CandidateEval(sub, score, correct, incorrect, unanswered)
         }
@@ -181,7 +188,7 @@ object PsychometricEngine {
         val median = if (n % 2 == 1) {
             sortedScores[n / 2].toFloat()
         } else {
-            (sortedScores[n / 2 - 1] + sortedScores[n / 2]) / 2.0f
+            ((sortedScores[n / 2 - 1] + sortedScores[n / 2]) / 2.0).toFloat()
         }
         val maxScore = sortedScores.last()
         val minScore = sortedScores.first()
@@ -190,9 +197,23 @@ object PsychometricEngine {
         val stdDev = sqrt(variance.coerceAtLeast(1e-4f))
 
         // 2. Identify Upper 27% and Lower 27% cohorts for discrimination index D
-        val cohort27Size = (n * 0.27f).toInt().coerceAtLeast(1)
+        // For small cohorts (n < 4), avoid degenerate overlap
+        val cohort27Size = if (n >= 4) {
+            (n * 0.27f).toInt().coerceAtLeast(1)
+        } else {
+            1
+        }
         val upperCohort = sortedByScore.take(cohort27Size).map { it.sub.answers }
-        val lowerCohort = sortedByScore.takeLast(cohort27Size).map { it.sub.answers }
+        val lowerCohort = if (n > 1) {
+            sortedByScore.takeLast(cohort27Size).map { it.sub.answers }
+        } else {
+            emptyList()
+        }
+
+        val hasE = paper.questions.any {
+            it.options.e.isNotBlank() || it.correctAnswer.equals("E", ignoreCase = true)
+        }
+        val optionChars = if (hasE) listOf('A', 'B', 'C', 'D', 'E') else listOf('A', 'B', 'C', 'D')
 
         var sumItemVariances = 0.0f
         val itemEvals = mutableListOf<ItemEvaluation>()
@@ -201,10 +222,10 @@ object PsychometricEngine {
             val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
             var correctCount = 0
             var unattemptedCount = 0
-            val optionFreqs = mutableMapOf('A' to 0, 'B' to 0, 'C' to 0, 'D' to 0)
+            val optionFreqs = optionChars.associateWith { 0 }.toMutableMap()
 
             // For point-biserial correlation: scores of candidates who answered correctly
-            val scoresOfCorrect = mutableListOf<Int>()
+            val scoresOfCorrect = mutableListOf<Double>()
 
             candidateEvals.forEach { cEval ->
                 val choice = cEval.sub.answers[q.num]
@@ -221,28 +242,30 @@ object PsychometricEngine {
             }
 
             val pValue = correctCount.toFloat() / n
-            // Item variance: p * (1 - p) * score scale (5 points differential)
-            val itemVariance = pValue * (1.0f - pValue) * 25.0f
+            // Item variance: p * (1 - p)
+            val itemVariance = pValue * (1.0f - pValue)
             sumItemVariances += itemVariance
 
             // Upper 27% vs Lower 27% discrimination D
-            val upperCorrect = upperCohort.count { it[q.num]?.uppercaseChar() == correctChar }
-            val lowerCorrect = lowerCohort.count { it[q.num]?.uppercaseChar() == correctChar }
-            val pUpper = upperCorrect.toFloat() / upperCohort.size
-            val pLower = lowerCorrect.toFloat() / lowerCohort.size
-            val dIndex = (pUpper - pLower).coerceIn(-1.0f, 1.0f)
+            val dIndex = if (n >= 2 && upperCohort.isNotEmpty() && lowerCohort.isNotEmpty()) {
+                val upperCorrect = upperCohort.count { it[q.num]?.uppercaseChar() == correctChar }
+                val lowerCorrect = lowerCohort.count { it[q.num]?.uppercaseChar() == correctChar }
+                val pUpper = upperCorrect.toFloat() / upperCohort.size
+                val pLower = lowerCorrect.toFloat() / lowerCohort.size
+                (pUpper - pLower).coerceIn(-1.0f, 1.0f)
+            } else 0.0f
 
             // Point-Biserial Correlation r_pb = [(mean_correct - mean_total) / stdDev] * sqrt(p / (1 - p))
-            val rPb = if (correctCount in 1 until n && stdDev > 1e-4f) {
+            val rPb = if (n >= 3 && correctCount in 1 until n && stdDev > 1e-4f) {
                 val meanCorrect = scoresOfCorrect.average().toFloat()
                 val pqRatio = sqrt((pValue / (1.0f - pValue)).toDouble()).toFloat()
                 val r = ((meanCorrect - mean) / stdDev) * pqRatio
                 r.coerceIn(-1.0f, 1.0f)
             } else 0.0f
 
-            // Distractor efficiency: non-functioning if chosen by < 5% of candidates
+            // Distractor efficiency: non-functioning if chosen by < 5% of candidates (only evaluated when n >= 20)
             val nonFunctioning = mutableListOf<Char>()
-            listOf('A', 'B', 'C', 'D').forEach { opt ->
+            optionChars.forEach { opt ->
                 if (opt != correctChar) {
                     val count = optionFreqs[opt] ?: 0
                     val pct = count.toFloat() / n
@@ -255,16 +278,16 @@ object PsychometricEngine {
             // Flag conditions:
             var isFlagged = false
             var flagReason: String? = null
-            if (rPb < 0.0f || dIndex < 0.0f) {
+            if (n >= 4 && (rPb < 0.0f || dIndex < 0.0f)) {
                 isFlagged = true
                 flagReason = "Negative discrimination (r_pb = ${String.format(java.util.Locale.US, "%.2f", rPb)}, D = ${String.format(java.util.Locale.US, "%.2f", dIndex)}): High scorers failed more than low scorers. Verify answer key!"
             } else if (pValue < 0.15f) {
                 isFlagged = true
                 flagReason = "Extremely high difficulty (p = ${String.format(java.util.Locale.US, "%.2f", pValue)}): Outlier item with <15% pass rate."
-            } else if (nonFunctioning.size >= 2) {
+            } else if (n >= 20 && nonFunctioning.size >= 2) {
                 isFlagged = true
                 flagReason = "Weak distractors: Options ${nonFunctioning.joinToString(", ")} chosen by <5% of students."
-            } else if (dIndex < 0.12f && pValue in 0.30f..0.70f) {
+            } else if (n >= 10 && dIndex < 0.12f && pValue in 0.30f..0.70f) {
                 isFlagged = true
                 flagReason = "Marginal discrimination (D = ${String.format(java.util.Locale.US, "%.2f", dIndex)}): Fails to differentiate candidate ability."
             }
@@ -301,7 +324,7 @@ object PsychometricEngine {
                 rollNumber = cEval.sub.rollNumber,
                 bookletNumber = cEval.sub.bookletNumber,
                 bookletCode = cEval.sub.bookletCode,
-                totalScore = cEval.score.toDouble(),
+                totalScore = cEval.score,
                 correctCount = cEval.correct,
                 incorrectCount = cEval.incorrect,
                 unansweredCount = cEval.unanswered,
@@ -328,26 +351,26 @@ object PsychometricEngine {
     }
 
     /**
-     * Generates a calibrated simulated cohort of N candidates (default 40)
-     * for chief question paper setters to preview psychometric distributions.
+     * Generates simulated submissions for a cohort of N candidates.
      */
-    fun generateSimulatedCohortCalibration(
+    fun generateSimulatedCohortSubmissions(
         paper: QuestionPaper,
         candidateCount: Int = 40
-    ): CohortPsychometricReport {
+    ): List<CandidateSubmission> {
         val rand = java.util.Random(paper.metadata.title.hashCode().toLong())
         val sets = listOf("A", "B", "C", "D")
+        val hasE = paper.questions.any {
+            it.options.e.isNotBlank() || it.correctAnswer.equals("E", ignoreCase = true)
+        }
+        val defaultOptions = if (hasE) listOf('A', 'B', 'C', 'D', 'E') else listOf('A', 'B', 'C', 'D')
 
-        val simulatedSubmissions = (1..candidateCount).map { i ->
-            // Candidate ability level (-2.0 to +2.0)
+        return (1..candidateCount).map { i ->
             val ability = (rand.nextGaussian() * 0.8).coerceIn(-2.0, 2.0)
             val answersMap = mutableMapOf<Int, Char?>()
 
             paper.questions.forEach { q ->
                 val correctChar = q.correctAnswer?.uppercase()?.firstOrNull() ?: 'A'
-                // Item base difficulty: pseudo-random from question content
                 val itemDiff = ((q.question.length % 7) - 3) * 0.3
-                // Probability of correct answer via 2PL Logistic Model
                 val probCorrect = 1.0 / (1.0 + Math.exp(-(ability - itemDiff)))
 
                 if (rand.nextDouble() < 0.06) {
@@ -355,8 +378,10 @@ object PsychometricEngine {
                 } else if (rand.nextDouble() < probCorrect) {
                     answersMap[q.num] = correctChar // Correct
                 } else {
-                    // Distractor selection
-                    val distractors = listOf('A', 'B', 'C', 'D').filter { it != correctChar }
+                    val qOpts = if (q.options.isValid) {
+                        q.options.asList.map { it.first.uppercase().first() }
+                    } else defaultOptions
+                    val distractors = qOpts.filter { it != correctChar }.ifEmpty { defaultOptions.filter { it != correctChar } }
                     answersMap[q.num] = distractors[rand.nextInt(distractors.size)]
                 }
             }
@@ -369,8 +394,18 @@ object PsychometricEngine {
                 submittedAt = System.currentTimeMillis() - ((candidateCount - i) * 60000L)
             )
         }
+    }
 
-        return evaluateCohortWithCandidates(simulatedSubmissions, paper)
+    /**
+     * Generates a calibrated simulated cohort of N candidates (default 40)
+     * for chief question paper setters to preview psychometric distributions.
+     */
+    fun generateSimulatedCohortCalibration(
+        paper: QuestionPaper,
+        candidateCount: Int = 40
+    ): CohortPsychometricReport {
+        val submissions = generateSimulatedCohortSubmissions(paper, candidateCount)
+        return evaluateCohortWithCandidates(submissions, paper)
     }
 
     /**
@@ -382,7 +417,13 @@ object PsychometricEngine {
         sb.append("# Exam: \"${examTitle.replace("\"", "\"\"")}\"\n")
         sb.append("# Total Candidates: ${report.candidateCount} | Total Questions: ${report.questionCount}\n")
         sb.append("# Mean Score: ${String.format(java.util.Locale.US, "%.2f", report.meanScore)} | Std Dev: ${String.format(java.util.Locale.US, "%.2f", report.standardDeviation)} | Cronbach Alpha: ${String.format(java.util.Locale.US, "%.3f", report.cronbachAlpha)}\n\n")
-        sb.append("Question_Num,Difficulty_P,Difficulty_Label,Discrimination_D,Point_Biserial_r_pb,Point_Biserial_Label,Correct_Count,Unattempted_Count,Opt_A_Count,Opt_B_Count,Opt_C_Count,Opt_D_Count,Non_Functioning_Distractors,Flagged,Flag_Reason\n")
+
+        val hasE = report.items.any { it.optionFrequencies.containsKey('E') }
+        if (hasE) {
+            sb.append("Question_Num,Difficulty_P,Difficulty_Label,Discrimination_D,Point_Biserial_r_pb,Point_Biserial_Label,Correct_Count,Unattempted_Count,Opt_A_Count,Opt_B_Count,Opt_C_Count,Opt_D_Count,Opt_E_Count,Non_Functioning_Distractors,Flagged,Flag_Reason\n")
+        } else {
+            sb.append("Question_Num,Difficulty_P,Difficulty_Label,Discrimination_D,Point_Biserial_r_pb,Point_Biserial_Label,Correct_Count,Unattempted_Count,Opt_A_Count,Opt_B_Count,Opt_C_Count,Opt_D_Count,Non_Functioning_Distractors,Flagged,Flag_Reason\n")
+        }
 
         report.items.forEach { item ->
             val flagStr = if (item.isFlagged) "YES" else "NO"
@@ -400,6 +441,9 @@ object PsychometricEngine {
             sb.append("${item.optionFrequencies['B'] ?: 0},")
             sb.append("${item.optionFrequencies['C'] ?: 0},")
             sb.append("${item.optionFrequencies['D'] ?: 0},")
+            if (hasE) {
+                sb.append("${item.optionFrequencies['E'] ?: 0},")
+            }
             sb.append("\"$nonFunc\",")
             sb.append("\"$flagStr\",")
             sb.append("\"$reason\"\n")
@@ -419,11 +463,12 @@ object PsychometricEngine {
 
         report.candidates.forEach { c ->
             val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(c.submittedAt))
+            val formattedScore = if (c.totalScore % 1.0 == 0.0) c.totalScore.toInt().toString() else String.format(java.util.Locale.US, "%.2f", c.totalScore)
             sb.append("${c.rank},")
             sb.append("${c.rollNumber},")
             sb.append("${c.bookletNumber},")
             sb.append("${c.bookletCode},")
-            sb.append("${c.totalScore},")
+            sb.append("$formattedScore,")
             sb.append("${c.correctCount},")
             sb.append("${c.incorrectCount},")
             sb.append("${c.unansweredCount},")
@@ -444,7 +489,10 @@ object PsychometricEngine {
         answers: Map<Int, Char?>? = null,
         totalCohortSize: Int = 1
     ): String {
-        val totalMarks = paper.questions.size * 4
+        val totalMarks = paper.questions.size * 1.0
+        val formattedScore = if (candidate.totalScore % 1.0 == 0.0) candidate.totalScore.toInt().toString() else String.format(java.util.Locale.US, "%.2f", candidate.totalScore)
+        val formattedTotal = if (totalMarks % 1.0 == 0.0) totalMarks.toInt().toString() else String.format(java.util.Locale.US, "%.1f", totalMarks)
+
         val percentile = if (totalCohortSize > 1) {
             val p = ((totalCohortSize - candidate.rank + 1).toDouble() / totalCohortSize.toDouble()) * 100.0
             String.format(java.util.Locale.US, "%.1fth Percentile", p)
@@ -479,16 +527,20 @@ object PsychometricEngine {
         sb.append("  Booklet Set Code  : Set ${candidate.bookletCode}\n\n")
 
         sb.append("EXAMINATION PERFORMANCE SUMMARY:\n")
-        sb.append("  Overall Score     : ${candidate.totalScore.toInt()} / $totalMarks marks\n")
+        sb.append("  Overall Score     : $formattedScore / $formattedTotal marks\n")
         sb.append("  Cohort Rank       : Rank ${candidate.rank} of $totalCohortSize candidates\n")
         sb.append("  Cohort Percentile : $percentile\n")
         sb.append("  Accuracy Rate     : ${candidate.accuracyPercent}%\n")
         sb.append("  Performance Band  : $performanceBand\n\n")
 
-        sb.append("SCORING & PENALTY BREAKDOWN (NEET / UPSC MARKING SCHEME):\n")
-        sb.append("  Correct Responses : ${candidate.correctCount}  [+${candidate.correctCount * 4} marks]\n")
-        sb.append("  Incorrect Responses : ${candidate.incorrectCount}  [-${candidate.incorrectCount} penalty marks]\n")
-        sb.append("  Unattempted / Skip  : ${candidate.unansweredCount}  [0 marks]\n")
+        val penaltyIncorrect = Math.round(candidate.incorrectCount * 0.33 * 100.0) / 100.0
+        val penaltyUnattended = Math.round(candidate.unansweredCount * 0.10 * 100.0) / 100.0
+
+        sb.append("SCORING & PENALTY BREAKDOWN:\n")
+        sb.append("  Correct Responses : ${candidate.correctCount}  [+${candidate.correctCount}.00 marks]\n")
+        sb.append("  Incorrect Responses : ${candidate.incorrectCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyIncorrect)} penalty marks (-0.33 each)]\n")
+        sb.append("  Unattempted / Skip  : ${candidate.unansweredCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyUnattended)} penalty marks (-0.10 each)]\n")
+        sb.append("  Net Score (Min 0) : $formattedScore marks\n")
         sb.append("  Total Questions   : ${paper.questions.size}\n\n")
 
         if (!answers.isNullOrEmpty()) {
@@ -502,9 +554,9 @@ object PsychometricEngine {
                 val chosen = answers[q.num]?.uppercaseChar()
                 val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
                 val (pts, status) = when {
-                    chosen == null -> Pair(" 0", "UNATTENDED / SKIPPED")
-                    chosen == correctChar -> Pair("+4", "CORRECT")
-                    else -> Pair("-1", "INCORRECT")
+                    chosen == null -> Pair("-0.10", "UNATTENDED / SKIPPED")
+                    chosen == correctChar -> Pair("+1.00", "CORRECT")
+                    else -> Pair("-0.33", "INCORRECT")
                 }
                 val markedDisplay = chosen?.toString() ?: "—"
                 val keyDisplay = correctChar?.toString() ?: "—"

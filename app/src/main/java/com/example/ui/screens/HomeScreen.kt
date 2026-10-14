@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Schedule
@@ -367,18 +368,18 @@ fun HomeScreen(
                                 tint = colors.teal
                             )
                         }
+                    }
 
-                        // Psychometric & Item Difficulty Analysis button
-                        IconButton(
-                            onClick = { showPsychometricDialog = true },
-                            modifier = Modifier.testTag("psychometrics_topbar_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Assessment,
-                                contentDescription = "Psychometric & Item Difficulty Analysis",
-                                tint = Color(0xFF0284C7)
-                            )
-                        }
+                    // Psychometric & Item Difficulty Analysis button (always accessible)
+                    IconButton(
+                        onClick = { showPsychometricDialog = true },
+                        modifier = Modifier.testTag("psychometrics_topbar_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Assessment,
+                            contentDescription = "Psychometric & Item Difficulty Analysis",
+                            tint = Color(0xFF0284C7)
+                        )
                     }
 
                     // Share paper (if paper loaded)
@@ -693,9 +694,12 @@ fun HomeScreen(
                         onOpenPsychometrics = { showPsychometricDialog = true }
                     )
                 } else {
+                    val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
                     NoPaperPlaceholder(
                         title = "Student Test Series",
-                        onGoToCreator = { viewModel.selectTab(4) }
+                        onGoToCreator = { viewModel.selectTab(4) },
+                        lastOpenedPaper = lastPaperForPlaceholder,
+                        onOpenLastPaper = { viewModel.loadSavedPaper(it) }
                     )
                 }
                 3 -> if (paper != null && paper.questions.isNotEmpty()) {
@@ -705,9 +709,12 @@ fun HomeScreen(
                         onOpenConfig = { showPrintDialog = true }
                     )
                 } else {
+                    val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
                     NoPaperPlaceholder(
                         title = "Print & OMR Generator",
-                        onGoToCreator = { viewModel.selectTab(4) }
+                        onGoToCreator = { viewModel.selectTab(4) },
+                        lastOpenedPaper = lastPaperForPlaceholder,
+                        onOpenLastPaper = { viewModel.loadSavedPaper(it) }
                     )
                 }
                 4 -> CreatorTab(
@@ -887,9 +894,9 @@ fun HomeScreen(
     }
 
     // Psychometric & Classical Test Theory Evaluation Dialog
-    if (showPsychometricDialog && currentPaper != null) {
+    if (showPsychometricDialog) {
         PsychometricAnalysisDialog(
-            paper = currentPaper!!,
+            paper = currentPaper,
             viewModel = viewModel,
             onDismiss = { showPsychometricDialog = false }
         )
@@ -1370,6 +1377,8 @@ fun SubjectDashboard(
 private fun NoPaperPlaceholder(
     title: String,
     onGoToCreator: () -> Unit,
+    lastOpenedPaper: PaperEntity? = null,
+    onOpenLastPaper: ((PaperEntity) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -1404,11 +1413,57 @@ private fun NoPaperPlaceholder(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "To use the $title, select or import a question set in Folders & Library or Exam Tools.",
+                    text = "To use the $title, choose your last opened question set or select an assessment in Folders & Library.",
                     fontSize = 12.sp,
                     color = colors.inkMuted,
                     textAlign = TextAlign.Center
                 )
+
+                if (lastOpenedPaper != null && onOpenLastPaper != null) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.surfaceVariant,
+                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Last Opened Assessment:",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.muted
+                                )
+                                Text(
+                                    text = lastOpenedPaper.title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = { onOpenLastPaper(lastOpenedPaper) },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("Open Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
                 Button(
                     onClick = onGoToCreator,

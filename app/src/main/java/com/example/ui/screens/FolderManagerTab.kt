@@ -79,6 +79,8 @@ fun FolderManagerTab(
     val savedPapers by viewModel.savedPapers.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
+    val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
+    val currentPaper by viewModel.currentPaper.collectAsState()
 
     var activeFolderId by remember { mutableStateOf("all") }
     var searchQuery by remember { mutableStateOf("") }
@@ -187,6 +189,112 @@ fun FolderManagerTab(
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("New Folder", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = colors.primaryButtonText)
+                    }
+                }
+            }
+        }
+
+        // Last Opened Assessment Set Card
+        if (lastOpenedPaper != null) {
+            val lastPaper = lastOpenedPaper!!
+            val isCurrentActive = currentPaperEntityId == lastPaper.id || currentPaper?.metadata?.title == lastPaper.title
+            val formattedDate = SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date(lastPaper.updatedAt))
+
+            item {
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isCurrentActive) colors.tealLight else colors.surfaceVariant
+                    ),
+                    border = BorderStroke(1.dp, if (isCurrentActive) colors.teal else colors.border),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("last_opened_paper_card")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = if (isCurrentActive) Color(0xFFDCFCE7) else colors.teal.copy(alpha = 0.15f),
+                                border = BorderStroke(0.6.dp, if (isCurrentActive) Color(0xFF16A34A) else colors.teal)
+                            ) {
+                                Text(
+                                    text = if (isCurrentActive) "CURRENTLY ACTIVE SET" else "LAST OPENED SET",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCurrentActive) Color(0xFF15803D) else colors.tealDark,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = formattedDate,
+                                fontSize = 10.5.sp,
+                                color = colors.muted
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = lastPaper.title,
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "${lastPaper.setNumber.ifBlank { "Set A" }} • ${lastPaper.subject} • ${lastPaper.questionCount} Questions",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Button(
+                                onClick = {
+                                    viewModel.loadSavedPaper(lastPaper)
+                                    onNavigateToMaster()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isCurrentActive) colors.teal else colors.navyBanner
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isCurrentActive) Icons.Default.Check else Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isCurrentActive) "View in Master" else "Open Set",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -9,6 +9,7 @@ import com.example.data.AttemptEntity
 import com.example.data.DailyStudyAnalyticsEntity
 import com.example.data.ExamSetPreferences
 import com.example.data.PaperEntity
+import com.example.data.toQuestionPaper
 import com.example.data.SampleData
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
@@ -216,63 +217,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _lastOpenedPaper = MutableStateFlow<PaperEntity?>(null)
+    val lastOpenedPaper: StateFlow<PaperEntity?> = _lastOpenedPaper.asStateFlow()
+
     private fun restoreAutosavedState() {
         viewModelScope.launch(Dispatchers.IO) {
             val lastPaperId = appPreferences.getLastActivePaperId()
-            var loaded = false
-
             if (lastPaperId > 0) {
                 val entity = paperDao.getPaperById(lastPaperId)
                 if (entity != null) {
-                    loadSavedPaperInternal(entity)
-                    loaded = true
+                    _lastOpenedPaper.value = entity
                 }
-            }
-
-            if (!loaded) {
-                // Check draft raw text
-                val draft = appPreferences.getDraftRawText()
-                if (draft.isNotBlank()) {
-                    val result = McqParser.parseWithResult(draft)
-                    withContext(Dispatchers.Main) {
-                        _rawInputText.value = draft
-                        _parseResult.value = result
-                        if (result.paper.questions.isNotEmpty()) {
-                            _currentPaper.value = result.paper
-                            val initialQCount = result.paper.questions.size.coerceAtLeast(1)
-                            _examConfig.value = _examConfig.value.copy(
-                                examTitle = result.paper.metadata.title,
-                                subject = result.paper.metadata.subject,
-                                seriesCode = result.paper.metadata.setNumber.ifBlank { "SET - A" },
-                                timeAllowed = "$initialQCount Minutes",
-                                maxMarks = "${result.paper.questions.size}",
-                                rollNumber = result.paper.metadata.rollNumber,
-                                bookletNumber = result.paper.metadata.bookletNumber
-                            )
-                        }
-                    }
-                    loaded = true
-                } else {
-                    // Check if any papers already exist in Room database
+            } else {
+                // If lastPaperId not set, populate last opened info with most recently updated paper if any exist
+                try {
                     val allSaved = paperDao.getAllPapers().first()
                     if (allSaved.isNotEmpty()) {
-                        loadSavedPaperInternal(allSaved.first())
-                        loaded = true
-                    } else {
-                        // First-time cold launch: seed starter sample exam set
-                        withContext(Dispatchers.Main) {
-                            loadStarterSample("science")
-                        }
-                        loaded = true
+                        _lastOpenedPaper.value = allSaved.maxByOrNull { it.updatedAt }
                     }
+                } catch (e: Exception) {
+                    // Ignore
                 }
             }
 
-            // Restore saved tab if valid
+            // Preserve Set Opening on Minimize, But Not on App Restart / New Process:
+            // When the app is minimized (Activity paused/stopped while process is alive),
+            // the ViewModel retains in-memory state (_currentPaper stays populated).
+            // On fresh process start / cold restart, _currentPaper remains null.
+            // The user arrives at the clean Home/Library screen where the "Last Opened Set"
+            // banner provides clear visibility and quick one-tap restoration.
+
+            // Restore saved tab if valid, or default to Library (0)
             val savedTab = appPreferences.getActiveTabIndex()
             withContext(Dispatchers.Main) {
                 if (savedTab in 0..6) {
                     _selectedTab.value = savedTab
+                } else {
+                    _selectedTab.value = 0
                 }
             }
         }
@@ -913,6 +894,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         withContext(Dispatchers.Main) {
+            _lastOpenedPaper.value = entity
             _currentPaperEntityId.value = entity.id
             _currentPaper.value = parsed
             // Keep creator tab clean so opening a paper does not overwrite user's creator draft
@@ -1347,95 +1329,134 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Generates a Classical Test Theory (CTT) psychometric report for the active paper or specified paperId.
      * Evaluates actual student candidate attempts (with roll number, booklet number, and set code).
-     * If fewer than 2 student attempts exist, can generate a 40-student calibrated simulation
-     * so course chief question paper setters can evaluate predicted item discrimination and distractor curves.
+     * If no student attempts exist or simulation mode is explicitly requested, generates a 40-student
+     * calibrated simulation so question paper setters can evaluate predicted item discrimination and distractor curves.
      */
     fun generatePsychometricReport(
         targetPaperId: Long? = null,
+        paperOverride: QuestionPaper? = null,
+        forceSimulation: Boolean = false,
         allowSimulationFallback: Boolean = true
     ): PsychometricEngine.CohortPsychometricReport? {
-        val paper = _currentPaper.value ?: return null
-        val pid = targetPaperId ?: _currentPaperEntityId.value ?: return null
-        val paperAttempts = allAttempts.value.filter { it.paperId == pid && it.isSubmitted }
+        val paper = paperOverride ?: _currentPaper.value ?: run {
+            if (targetPaperId != null) {
+                savedPapers.value.find { it.id == targetPaperId }?.toQuestionPaper()
+            } else null
+        } ?: return null
 
-        if (paperAttempts.size >= 2) {
+        if (paper.questions.isEmpty()) return null
+
+        val pid = targetPaperId ?: _currentPaperEntityId.value ?: savedPapers.value.find { it.title.equals(paper.metadata.title, ignoreCase = true) }?.id
+        val paperAttempts = if (pid != null) allAttempts.value.filter { it.paperId == pid && it.isSubmitted } else emptyList()
+
+        if (forceSimulation) {
+            return PsychometricEngine.generateSimulatedCohortCalibration(paper, 40)
+        }
+
+        if (paperAttempts.isNotEmpty()) {
             val submissions = paperAttempts.mapIndexed { idx, att ->
                 val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
                 val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
-                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber.ifBlank { "A" } }
                 val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
                 PsychometricEngine.CandidateSubmission(
                     rollNumber = roll,
                     bookletNumber = booklet,
                     bookletCode = code,
                     answers = answers,
-                    submittedAt = att.submittedAt ?: att.createdAt
+                    submittedAt = att.submittedAt ?: att.createdAt,
+                    precomputedScore = att.score
                 )
             }
             return PsychometricEngine.evaluateCohortWithCandidates(submissions, paper)
         } else if (allowSimulationFallback) {
             return PsychometricEngine.generateSimulatedCohortCalibration(paper, 40)
-        } else if (paperAttempts.isNotEmpty()) {
-            val submissions = paperAttempts.mapIndexed { idx, att ->
-                val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
-                val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
-                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber }
-                val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
-                PsychometricEngine.CandidateSubmission(
-                    rollNumber = roll,
-                    bookletNumber = booklet,
-                    bookletCode = code,
-                    answers = answers,
-                    submittedAt = att.submittedAt ?: att.createdAt
-                )
-            }
-            return PsychometricEngine.evaluateCohortWithCandidates(submissions, paper)
         }
         return null
     }
 
-    fun exportPsychometricReportCsv(allowSimulationFallback: Boolean = true): String {
-        val paper = _currentPaper.value ?: return ""
-        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback) ?: return ""
+    fun exportPsychometricReportCsv(
+        paperOverride: QuestionPaper? = null,
+        forceSimulation: Boolean = false,
+        allowSimulationFallback: Boolean = true
+    ): String {
+        val paper = paperOverride ?: _currentPaper.value ?: return ""
+        val report = generatePsychometricReport(
+            paperOverride = paper,
+            forceSimulation = forceSimulation,
+            allowSimulationFallback = allowSimulationFallback
+        ) ?: return ""
         return PsychometricEngine.formatPsychometricReportCsv(report, paper.metadata.title)
     }
 
-    fun exportCandidateScorecardsCsv(allowSimulationFallback: Boolean = true): String {
-        val paper = _currentPaper.value ?: return ""
-        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback) ?: return ""
+    fun exportCandidateScorecardsCsv(
+        paperOverride: QuestionPaper? = null,
+        forceSimulation: Boolean = false,
+        allowSimulationFallback: Boolean = true
+    ): String {
+        val paper = paperOverride ?: _currentPaper.value ?: return ""
+        val report = generatePsychometricReport(
+            paperOverride = paper,
+            forceSimulation = forceSimulation,
+            allowSimulationFallback = allowSimulationFallback
+        ) ?: return ""
         return PsychometricEngine.formatCandidateScorecardsCsv(report, paper.metadata.title)
     }
 
-    fun getCandidateSubmissions(targetPaperId: Long? = null, allowSimulationFallback: Boolean = true): List<PsychometricEngine.CandidateSubmission> {
-        val paper = _currentPaper.value ?: return emptyList()
-        val pid = targetPaperId ?: _currentPaperEntityId.value ?: return emptyList()
-        val paperAttempts = allAttempts.value.filter { it.paperId == pid && it.isSubmitted }
-        if (paperAttempts.isNotEmpty()) {
+    fun getCandidateSubmissions(
+        targetPaperId: Long? = null,
+        paperOverride: QuestionPaper? = null,
+        forceSimulation: Boolean = false,
+        allowSimulationFallback: Boolean = true
+    ): List<PsychometricEngine.CandidateSubmission> {
+        val paper = paperOverride ?: _currentPaper.value ?: run {
+            if (targetPaperId != null) {
+                savedPapers.value.find { it.id == targetPaperId }?.toQuestionPaper()
+            } else null
+        } ?: return emptyList()
+
+        val pid = targetPaperId ?: _currentPaperEntityId.value ?: savedPapers.value.find { it.title.equals(paper.metadata.title, ignoreCase = true) }?.id
+        val paperAttempts = if (pid != null) allAttempts.value.filter { it.paperId == pid && it.isSubmitted } else emptyList()
+
+        if (!forceSimulation && paperAttempts.isNotEmpty()) {
             return paperAttempts.mapIndexed { idx, att ->
                 val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
                 val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
-                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber.ifBlank { "A" } }
                 val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
                 PsychometricEngine.CandidateSubmission(
                     rollNumber = roll,
                     bookletNumber = booklet,
                     bookletCode = code,
                     answers = answers,
-                    submittedAt = att.submittedAt ?: att.createdAt
+                    submittedAt = att.submittedAt ?: att.createdAt,
+                    precomputedScore = att.score
                 )
             }
+        } else if (forceSimulation || allowSimulationFallback) {
+            return PsychometricEngine.generateSimulatedCohortSubmissions(paper, 40)
         }
         return emptyList()
     }
 
     fun exportSingleStudentReportCard(
         candidate: PsychometricEngine.CandidateScorecard,
+        paperOverride: QuestionPaper? = null,
+        forceSimulation: Boolean = false,
         allowSimulationFallback: Boolean = true
     ): String {
-        val paper = _currentPaper.value ?: return ""
-        val submissions = getCandidateSubmissions(allowSimulationFallback = allowSimulationFallback)
+        val paper = paperOverride ?: _currentPaper.value ?: return ""
+        val submissions = getCandidateSubmissions(
+            paperOverride = paper,
+            forceSimulation = forceSimulation,
+            allowSimulationFallback = allowSimulationFallback
+        )
         val answers = submissions.find { it.rollNumber == candidate.rollNumber }?.answers
-        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback)
+        val report = generatePsychometricReport(
+            paperOverride = paper,
+            forceSimulation = forceSimulation,
+            allowSimulationFallback = allowSimulationFallback
+        )
         val cohortSize = report?.candidateCount ?: 1
         return PsychometricEngine.generateStudentReportCard(
             candidate = candidate,
@@ -1445,10 +1466,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun exportAllStudentReportCardsText(allowSimulationFallback: Boolean = true): String {
-        val paper = _currentPaper.value ?: return ""
-        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback) ?: return ""
-        val submissions = getCandidateSubmissions(allowSimulationFallback = allowSimulationFallback)
+    fun exportAllStudentReportCardsText(
+        paperOverride: QuestionPaper? = null,
+        forceSimulation: Boolean = false,
+        allowSimulationFallback: Boolean = true
+    ): String {
+        val paper = paperOverride ?: _currentPaper.value ?: return ""
+        val report = generatePsychometricReport(
+            paperOverride = paper,
+            forceSimulation = forceSimulation,
+            allowSimulationFallback = allowSimulationFallback
+        ) ?: return ""
+        val submissions = getCandidateSubmissions(
+            paperOverride = paper,
+            forceSimulation = forceSimulation,
+            allowSimulationFallback = allowSimulationFallback
+        )
         return PsychometricEngine.formatAllStudentReportCards(
             report = report,
             paper = paper,

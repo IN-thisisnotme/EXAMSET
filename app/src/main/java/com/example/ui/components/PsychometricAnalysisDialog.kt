@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import com.example.data.toQuestionPaper
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +39,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +51,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -79,13 +87,35 @@ import java.util.Locale
  */
 @Composable
 fun PsychometricAnalysisDialog(
-    paper: QuestionPaper,
+    paper: QuestionPaper?,
     viewModel: MainViewModel,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val colors = ExamTheme.colors
+    val savedPapers by viewModel.savedPapers.collectAsState()
+    val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
+
+    var selectedPaperEntityId by remember {
+        mutableStateOf<Long?>(
+            viewModel.currentPaperEntityId.value
+                ?: lastOpenedPaper?.id
+                ?: savedPapers.firstOrNull()?.id
+        )
+    }
+    var showPaperPickerDropdown by remember { mutableStateOf(false) }
+
+    // Resolve active paper
+    val effectivePaper: QuestionPaper? = remember(paper, selectedPaperEntityId, savedPapers) {
+        if (paper != null && (selectedPaperEntityId == null || selectedPaperEntityId == viewModel.currentPaperEntityId.value)) {
+            paper
+        } else if (selectedPaperEntityId != null) {
+            savedPapers.find { it.id == selectedPaperEntityId }?.toQuestionPaper() ?: paper
+        } else {
+            paper ?: savedPapers.firstOrNull()?.toQuestionPaper()
+        }
+    }
 
     var useSimulationMode by remember { mutableStateOf(false) }
     var activeTab by remember { mutableStateOf("ITEMS") } // "ITEMS" or "STUDENTS"
@@ -94,9 +124,17 @@ fun PsychometricAnalysisDialog(
     var selectedCandidateForReportCard by remember { mutableStateOf<PsychometricEngine.CandidateScorecard?>(null) }
 
     // Generate psychometric report (switches dynamically between scanned data and simulated cohort)
-    val report = remember(paper, useSimulationMode) {
-        viewModel.generatePsychometricReport(allowSimulationFallback = useSimulationMode)
-            ?: viewModel.generatePsychometricReport(allowSimulationFallback = true)
+    val report = remember(effectivePaper, useSimulationMode, selectedPaperEntityId) {
+        if (effectivePaper == null || effectivePaper.questions.isEmpty()) {
+            null
+        } else {
+            viewModel.generatePsychometricReport(
+                targetPaperId = selectedPaperEntityId,
+                paperOverride = effectivePaper,
+                forceSimulation = useSimulationMode,
+                allowSimulationFallback = true
+            )
+        }
     }
 
     Dialog(
@@ -120,13 +158,16 @@ fun PsychometricAnalysisDialog(
                     .fillMaxSize()
                     .padding(18.dp)
             ) {
-                // Top Header: Title, Paper Name, and Close Action
+                // Top Header: Title, Paper Selector / Name, and Close Action
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = Color(0xFF0284C7).copy(alpha = 0.12f),
@@ -142,13 +183,15 @@ fun PsychometricAnalysisDialog(
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "Psychometric & Item Analysis",
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
@@ -165,11 +208,76 @@ fun PsychometricAnalysisDialog(
                                     )
                                 }
                             }
-                            Text(
-                                text = "Course Chief Paper Setter Suite • ${paper.metadata.title.ifBlank { "Active Assessment" }}",
-                                fontSize = 11.5.sp,
-                                color = colors.muted
-                            )
+
+                            // Interactive Paper Selector or Display
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Box {
+                                Surface(
+                                    onClick = { if (savedPapers.isNotEmpty()) showPaperPickerDropdown = true },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, colors.border)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.FolderOpen,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = effectivePaper?.metadata?.title?.ifBlank { "Choose Exam Set" } ?: "Choose Exam Set",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (savedPapers.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "Switch Exam Set",
+                                                tint = colors.muted,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showPaperPickerDropdown,
+                                    onDismissRequest = { showPaperPickerDropdown = false }
+                                ) {
+                                    savedPapers.forEach { entity ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        text = entity.title,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.inkBold
+                                                    )
+                                                    Text(
+                                                        text = "${entity.setNumber} • ${entity.subject} (${entity.questionCount} Questions)",
+                                                        fontSize = 11.sp,
+                                                        color = colors.muted
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedPaperEntityId = entity.id
+                                                showPaperPickerDropdown = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -185,22 +293,64 @@ fun PsychometricAnalysisDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(color = colors.border, thickness = 0.8.dp)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                if (report == null) {
+                if (effectivePaper == null || effectivePaper.questions.isEmpty() || report == null) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "No questions found in active paper to analyze.",
-                            fontSize = 13.sp,
-                            color = colors.muted
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = colors.surfaceVariant,
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Assessment,
+                                        contentDescription = null,
+                                        tint = colors.muted,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "No Questions Available to Analyze",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = "Select an existing question set from your saved library, or load a sample assessment to inspect Classical Test Theory item metrics and student scorecards.",
+                                fontSize = 12.5.sp,
+                                color = colors.muted,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 17.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        viewModel.loadStarterSample("science")
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                                ) {
+                                    Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Analyze Science Sample", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 } else {
                     // Executive Metrics Cards Row
@@ -285,7 +435,7 @@ fun PsychometricAnalysisDialog(
                         "ITEMS" -> {
                             ItemAnalysisTabContent(
                                 report = report,
-                                paper = paper,
+                                paper = effectivePaper,
                                 itemFilter = itemFilter,
                                 onSelectFilter = { itemFilter = it },
                                 modifier = Modifier.weight(1f)
@@ -305,11 +455,16 @@ fun PsychometricAnalysisDialog(
                     // Footer Action Bar: Copy CTT CSV, Copy Roster CSV, Export All Cards, Share
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
                             onClick = {
-                                val csv = viewModel.exportPsychometricReportCsv(allowSimulationFallback = useSimulationMode)
+                                val csv = viewModel.exportPsychometricReportCsv(
+                                    paperOverride = effectivePaper,
+                                    forceSimulation = useSimulationMode,
+                                    allowSimulationFallback = true
+                                )
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("Psychometric Report CSV", csv)
                                 clipboard.setPrimaryClip(clip)
@@ -317,10 +472,13 @@ fun PsychometricAnalysisDialog(
                                 Toast.makeText(context, "Copied Item Analysis CSV to clipboard!", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (copiedReport) Color(0xFF059669) else Color(0xFF0284C7)
                             ),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
                         ) {
                             Icon(
                                 if (copiedReport) Icons.Default.Check else Icons.Default.ContentCopy,
@@ -328,46 +486,82 @@ fun PsychometricAnalysisDialog(
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (copiedReport) "Copied!" else "Item CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (copiedReport) "Copied!" else "Item CSV",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         Button(
                             onClick = {
-                                val csv = viewModel.exportCandidateScorecardsCsv(allowSimulationFallback = useSimulationMode)
+                                val csv = viewModel.exportCandidateScorecardsCsv(
+                                    paperOverride = effectivePaper,
+                                    forceSimulation = useSimulationMode,
+                                    allowSimulationFallback = true
+                                )
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("Student Scorecards CSV", csv)
                                 clipboard.setPrimaryClip(clip)
                                 Toast.makeText(context, "Copied Student Scorecards CSV to clipboard!", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Roster CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "Roster CSV",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         Button(
                             onClick = {
-                                val cardsText = viewModel.exportAllStudentReportCardsText(allowSimulationFallback = useSimulationMode)
+                                val cardsText = viewModel.exportAllStudentReportCardsText(
+                                    paperOverride = effectivePaper,
+                                    forceSimulation = useSimulationMode,
+                                    allowSimulationFallback = true
+                                )
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("All Student Report Cards", cardsText)
                                 clipboard.setPrimaryClip(clip)
                                 Toast.makeText(context, "Copied all student report cards to clipboard!", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE185D)),
-                            modifier = Modifier.weight(1.1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
                         ) {
                             Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(13.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("All Cards", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "All Cards",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         OutlinedButton(
                             onClick = {
-                                val csv = viewModel.exportPsychometricReportCsv(allowSimulationFallback = useSimulationMode)
+                                val csv = viewModel.exportPsychometricReportCsv(
+                                    paperOverride = effectivePaper,
+                                    forceSimulation = useSimulationMode,
+                                    allowSimulationFallback = true
+                                )
                                 val sendIntent = android.content.Intent().apply {
                                     action = android.content.Intent.ACTION_SEND
                                     putExtra(android.content.Intent.EXTRA_TEXT, csv)
@@ -377,11 +571,20 @@ fun PsychometricAnalysisDialog(
                                 context.startActivity(shareIntent)
                             },
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(0.8f)
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
                             Spacer(modifier = Modifier.width(3.dp))
-                            Text("Share", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "Share",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -389,11 +592,13 @@ fun PsychometricAnalysisDialog(
         }
 
         // Student Report Card Modal (Individual Candidate View)
-        if (selectedCandidateForReportCard != null) {
+        if (selectedCandidateForReportCard != null && effectivePaper != null) {
             val candidate = selectedCandidateForReportCard!!
             val reportCardText = viewModel.exportSingleStudentReportCard(
                 candidate = candidate,
-                allowSimulationFallback = useSimulationMode
+                paperOverride = effectivePaper,
+                forceSimulation = useSimulationMode,
+                allowSimulationFallback = true
             )
             StudentReportCardModal(
                 candidate = candidate,
@@ -633,7 +838,7 @@ private fun ItemAnalysisTabContent(
                             // Distractor Frequencies
                             Column(modifier = Modifier.weight(1.2f)) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf('A', 'B', 'C', 'D').forEach { opt ->
+                                    item.optionFrequencies.keys.sorted().forEach { opt ->
                                         val count = item.optionFrequencies[opt] ?: 0
                                         val isCorrect = opt.toString().equals(officialKey, ignoreCase = true)
                                         Surface(

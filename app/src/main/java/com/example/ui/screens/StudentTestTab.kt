@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.AttemptEntity
@@ -996,24 +997,45 @@ private fun ExamStartOverviewView(
                             color = colors.ink
                         )
                         Spacer(modifier = Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             OutlinedButton(
                                 onClick = onStartExam,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp),
                                 shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 border = BorderStroke(1.dp, colors.border)
                             ) {
-                                Text("Start Fresh", fontSize = 12.sp, color = colors.inkBold)
+                                Text(
+                                    text = "Start Fresh",
+                                    fontSize = 12.sp,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             Button(
                                 onClick = onResumeExam,
-                                modifier = Modifier.weight(1.2f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp),
                                 shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Resume Test", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = "Resume Test",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
@@ -1978,7 +2000,7 @@ private fun ExamResultAndReviewView(
                         selected = filter == ReviewFilter.INCORRECT,
                         badgeColor = colors.red,
                         onClick = { filter = ReviewFilter.INCORRECT },
-                        modifier = Modifier.weight(1.1f)
+                        modifier = Modifier.weight(1f)
                     )
                     ReviewFilterChip(
                         label = "Unattended",
@@ -1986,7 +2008,7 @@ private fun ExamResultAndReviewView(
                         selected = filter == ReviewFilter.UNANSWERED,
                         badgeColor = colors.muted,
                         onClick = { filter = ReviewFilter.UNANSWERED },
-                        modifier = Modifier.weight(1.2f)
+                        modifier = Modifier.weight(1f)
                     )
                     ReviewFilterChip(
                         label = "Correct",
@@ -2149,21 +2171,27 @@ private fun ReviewFilterChip(
 ) {
     val colors = ExamTheme.colors
     Surface(
-        modifier = modifier.clickable { onClick() },
+        modifier = modifier
+            .height(38.dp)
+            .clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) colors.teal else colors.surface,
         border = BorderStroke(1.dp, if (selected) colors.teal else colors.border)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = label,
-                fontSize = 11.5.sp,
+                fontSize = 11.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) colors.surface else colors.inkBold
+                color = if (selected) colors.surface else colors.inkBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.width(3.dp))
             Surface(
@@ -2175,7 +2203,7 @@ private fun ReviewFilterChip(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = if (selected) colors.surface else badgeColor,
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                 )
             }
         }
