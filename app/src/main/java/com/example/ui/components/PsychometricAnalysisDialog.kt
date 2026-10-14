@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -89,6 +91,7 @@ fun PsychometricAnalysisDialog(
     var activeTab by remember { mutableStateOf("ITEMS") } // "ITEMS" or "STUDENTS"
     var itemFilter by remember { mutableStateOf("ALL") } // "ALL", "FLAGGED", "HARD", "EASY", "DISCRIMINATING"
     var copiedReport by remember { mutableStateOf(false) }
+    var selectedCandidateForReportCard by remember { mutableStateOf<PsychometricEngine.CandidateScorecard?>(null) }
 
     // Generate psychometric report (switches dynamically between scanned data and simulated cohort)
     val report = remember(paper, useSimulationMode) {
@@ -291,6 +294,7 @@ fun PsychometricAnalysisDialog(
                         "STUDENTS" -> {
                             StudentScorecardsTabContent(
                                 report = report,
+                                onSelectCandidate = { selectedCandidateForReportCard = it },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -298,10 +302,10 @@ fun PsychometricAnalysisDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Footer Action Bar: Copy CSV, Save CSV, Share
+                    // Footer Action Bar: Copy CTT CSV, Copy Roster CSV, Export All Cards, Share
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Button(
                             onClick = {
@@ -321,10 +325,10 @@ fun PsychometricAnalysisDialog(
                             Icon(
                                 if (copiedReport) Icons.Default.Check else Icons.Default.ContentCopy,
                                 contentDescription = null,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(13.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (copiedReport) "Copied CSV!" else "Copy CTT CSV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (copiedReport) "Copied!" else "Item CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -337,11 +341,28 @@ fun PsychometricAnalysisDialog(
                             },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Roster CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val cardsText = viewModel.exportAllStudentReportCardsText(allowSimulationFallback = useSimulationMode)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("All Student Report Cards", cardsText)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Copied all student report cards to clipboard!", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE185D)),
                             modifier = Modifier.weight(1.1f)
                         ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(13.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Copy Roster CSV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("All Cards", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
@@ -358,13 +379,27 @@ fun PsychometricAnalysisDialog(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(0.8f)
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Share", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
+        }
+
+        // Student Report Card Modal (Individual Candidate View)
+        if (selectedCandidateForReportCard != null) {
+            val candidate = selectedCandidateForReportCard!!
+            val reportCardText = viewModel.exportSingleStudentReportCard(
+                candidate = candidate,
+                allowSimulationFallback = useSimulationMode
+            )
+            StudentReportCardModal(
+                candidate = candidate,
+                reportCardText = reportCardText,
+                onDismiss = { selectedCandidateForReportCard = null }
+            )
         }
     }
 }
@@ -653,6 +688,7 @@ private fun ItemAnalysisTabContent(
 @Composable
 private fun StudentScorecardsTabContent(
     report: PsychometricEngine.CohortPsychometricReport,
+    onSelectCandidate: (PsychometricEngine.CandidateScorecard) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -672,9 +708,9 @@ private fun StudentScorecardsTabContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("RANK & ROLL NUMBER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.8f))
-                Text("BOOKLET NO. & SET", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.5f))
-                Text("SCORE / MAX", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.2f))
-                Text("ACCURACY & BREAKDOWN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.5f))
+                Text("BOOKLET NO. & SET", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.4f))
+                Text("SCORE / MAX", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.1f))
+                Text("ACCURACY & REPORT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.7f))
             }
         }
 
@@ -692,7 +728,9 @@ private fun StudentScorecardsTabContent(
                     shape = RoundedCornerShape(6.dp),
                     color = colors.surface,
                     border = BorderStroke(0.6.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectCandidate(c) }
                 ) {
                     Row(
                         modifier = Modifier
@@ -731,7 +769,7 @@ private fun StudentScorecardsTabContent(
 
                         // Booklet Number & Set Code
                         Row(
-                            modifier = Modifier.weight(1.5f),
+                            modifier = Modifier.weight(1.4f),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -757,7 +795,7 @@ private fun StudentScorecardsTabContent(
                         }
 
                         // Score
-                        Column(modifier = Modifier.weight(1.2f)) {
+                        Column(modifier = Modifier.weight(1.1f)) {
                             Text(
                                 text = "${c.totalScore.toInt()}",
                                 fontSize = 14.sp,
@@ -767,20 +805,173 @@ private fun StudentScorecardsTabContent(
                             )
                         }
 
-                        // Accuracy & Breakdown
-                        Column(modifier = Modifier.weight(1.5f)) {
-                            Text(
-                                text = "${c.accuracyPercent}% Accuracy",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (c.accuracyPercent >= 70) Color(0xFF059669) else colors.inkBold
-                            )
-                            Text(
-                                text = "+${c.correctCount}  -${c.incorrectCount}  skip:${c.unansweredCount}",
-                                fontSize = 9.5.sp,
-                                color = colors.muted
-                            )
+                        // Accuracy & Report Card Action Badge
+                        Row(
+                            modifier = Modifier.weight(1.7f),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "${c.accuracyPercent}%",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (c.accuracyPercent >= 70) Color(0xFF059669) else colors.inkBold
+                                )
+                                Text(
+                                    text = "+${c.correctCount} -${c.incorrectCount}",
+                                    fontSize = 9.sp,
+                                    color = colors.muted
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFF0284C7).copy(alpha = 0.1f),
+                                border = BorderStroke(0.6.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+                                modifier = Modifier.clickable { onSelectCandidate(c) }
+                            ) {
+                                Text(
+                                    text = "Card →",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0284C7),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                            }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Modal dialog for inspecting and exporting an individual student examination report card.
+ */
+@Composable
+private fun StudentReportCardModal(
+    candidate: PsychometricEngine.CandidateScorecard,
+    reportCardText: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val colors = ExamTheme.colors
+    var copied by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = colors.surface,
+            border = BorderStroke(1.2.dp, colors.border)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Student Examination Report Card",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkBold
+                        )
+                        Text(
+                            text = "Roll: ${candidate.rollNumber} • Booklet: ${candidate.bookletNumber} (Set ${candidate.bookletCode})",
+                            fontSize = 11.5.sp,
+                            color = colors.muted
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.inkBold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Scrollable Monospace Report Card Text
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.surfaceVariant,
+                    border = BorderStroke(0.8.dp, colors.border),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = reportCardText,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = colors.inkBold,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Student Report Card", reportCardText)
+                            clipboard.setPrimaryClip(clip)
+                            copied = true
+                            Toast.makeText(context, "Copied Report Card to clipboard!", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (copied) Color(0xFF059669) else Color(0xFF0284C7)
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (copied) "Copied!" else "Copy Report Card", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_TEXT, reportCardText)
+                                type = "text/plain"
+                            }
+                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Student Report Card")
+                            context.startActivity(shareIntent)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

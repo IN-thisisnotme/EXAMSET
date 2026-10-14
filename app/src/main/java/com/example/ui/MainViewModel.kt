@@ -1406,6 +1406,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return PsychometricEngine.formatCandidateScorecardsCsv(report, paper.metadata.title)
     }
 
+    fun getCandidateSubmissions(targetPaperId: Long? = null, allowSimulationFallback: Boolean = true): List<PsychometricEngine.CandidateSubmission> {
+        val paper = _currentPaper.value ?: return emptyList()
+        val pid = targetPaperId ?: _currentPaperEntityId.value ?: return emptyList()
+        val paperAttempts = allAttempts.value.filter { it.paperId == pid && it.isSubmitted }
+        if (paperAttempts.isNotEmpty()) {
+            return paperAttempts.mapIndexed { idx, att ->
+                val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
+                val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber }
+                val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
+                PsychometricEngine.CandidateSubmission(
+                    rollNumber = roll,
+                    bookletNumber = booklet,
+                    bookletCode = code,
+                    answers = answers,
+                    submittedAt = att.submittedAt ?: att.createdAt
+                )
+            }
+        }
+        return emptyList()
+    }
+
+    fun exportSingleStudentReportCard(
+        candidate: PsychometricEngine.CandidateScorecard,
+        allowSimulationFallback: Boolean = true
+    ): String {
+        val paper = _currentPaper.value ?: return ""
+        val submissions = getCandidateSubmissions(allowSimulationFallback = allowSimulationFallback)
+        val answers = submissions.find { it.rollNumber == candidate.rollNumber }?.answers
+        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback)
+        val cohortSize = report?.candidateCount ?: 1
+        return PsychometricEngine.generateStudentReportCard(
+            candidate = candidate,
+            paper = paper,
+            answers = answers,
+            totalCohortSize = cohortSize
+        )
+    }
+
+    fun exportAllStudentReportCardsText(allowSimulationFallback: Boolean = true): String {
+        val paper = _currentPaper.value ?: return ""
+        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback) ?: return ""
+        val submissions = getCandidateSubmissions(allowSimulationFallback = allowSimulationFallback)
+        return PsychometricEngine.formatAllStudentReportCards(
+            report = report,
+            paper = paper,
+            candidateSubmissions = submissions
+        )
+    }
+
     // --- Folders Management ---
 
     fun createFolder(name: String, color: String) {

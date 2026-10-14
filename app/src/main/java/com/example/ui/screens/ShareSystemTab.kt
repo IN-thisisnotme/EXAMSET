@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
@@ -62,6 +63,7 @@ import kotlinx.coroutines.launch
 fun ShareSystemTab(
     viewModel: MainViewModel,
     onNavigateToMaster: () -> Unit,
+    onOpenPsychometrics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -637,6 +639,109 @@ fun ShareSystemTab(
                             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // SECTION: PSYCHOMETRIC & CLASSICAL TEST THEORY (CTT) ANALYSIS
+        item {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(0.8.dp, colors.border)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "PSYCHOMETRIC & ITEM ANALYSIS (CTT)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0284C7),
+                            letterSpacing = 0.5.sp
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFF0FDF4)
+                        ) {
+                            Text(
+                                text = "CALIBRATION READY",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF16A34A),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Analyzes item facility / difficulty (p-value), point-biserial discrimination (r_pb), distractor efficacy, Cronbach's alpha test reliability, and candidate scorecards with individual report card export.",
+                        fontSize = 11.5.sp,
+                        color = colors.inkMuted
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Button(
+                        onClick = onOpenPsychometrics,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open Psychometric Analysis Suite", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val csv = viewModel.exportPsychometricReportCsv(allowSimulationFallback = true)
+                                triggerExportToFile(csv, "item_psychometrics_report.csv", "text/csv")
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Item CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val csv = viewModel.exportCandidateScorecardsCsv(allowSimulationFallback = true)
+                                triggerExportToFile(csv, "student_scorecards_roster.csv", "text/csv")
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Roster CSV", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val cardsText = viewModel.exportAllStudentReportCardsText(allowSimulationFallback = true)
+                                triggerExportToFile(cardsText, "candidate_report_cards.txt", "text/plain")
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1.1f)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Report Cards", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

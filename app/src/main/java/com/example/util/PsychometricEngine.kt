@@ -432,4 +432,116 @@ object PsychometricEngine {
         }
         return sb.toString()
     }
+
+    /**
+     * Generates an official, comprehensive individual Student Report Card.
+     * Includes candidate metadata, scoring breakdown, penalty accounting,
+     * percentile rank, and question-by-question response audit.
+     */
+    fun generateStudentReportCard(
+        candidate: CandidateScorecard,
+        paper: QuestionPaper,
+        answers: Map<Int, Char?>? = null,
+        totalCohortSize: Int = 1
+    ): String {
+        val totalMarks = paper.questions.size * 4
+        val percentile = if (totalCohortSize > 1) {
+            val p = ((totalCohortSize - candidate.rank + 1).toDouble() / totalCohortSize.toDouble()) * 100.0
+            String.format(java.util.Locale.US, "%.1fth Percentile", p)
+        } else {
+            "N/A (Individual Assessment)"
+        }
+
+        val performanceBand = when {
+            candidate.accuracyPercent >= 85 -> "Distinction / Outstanding"
+            candidate.accuracyPercent >= 70 -> "First Class / Excellent"
+            candidate.accuracyPercent >= 50 -> "Second Class / Good"
+            candidate.accuracyPercent >= 35 -> "Pass / Needs Reinforcement"
+            else -> "Remedial Attention Required"
+        }
+
+        val dateStr = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.US).format(java.util.Date(candidate.submittedAt))
+
+        val sb = StringBuilder()
+        sb.append("================================================================================\n")
+        sb.append("                       OFFICIAL STUDENT EXAMINATION REPORT CARD                \n")
+        sb.append("================================================================================\n\n")
+
+        sb.append("EXAMINATION DETAILS:\n")
+        sb.append("  Examination Title : ${paper.metadata.title.ifBlank { "National Level Competitive Examination" }}\n")
+        sb.append("  Subject / Topic   : ${paper.metadata.subject.ifBlank { "General Sciences & Aptitude" }}\n")
+        sb.append("  Assessment Set    : Set ${candidate.bookletCode.ifBlank { paper.metadata.setNumber.ifBlank { "A" } }}\n")
+        sb.append("  Date Evaluated    : $dateStr\n\n")
+
+        sb.append("CANDIDATE IDENTIFICATION:\n")
+        sb.append("  Candidate Roll No : ${candidate.rollNumber.ifBlank { "UNASSIGNED" }}\n")
+        sb.append("  Test Booklet No.  : ${candidate.bookletNumber.ifBlank { "UNASSIGNED" }}\n")
+        sb.append("  Booklet Set Code  : Set ${candidate.bookletCode}\n\n")
+
+        sb.append("EXAMINATION PERFORMANCE SUMMARY:\n")
+        sb.append("  Overall Score     : ${candidate.totalScore.toInt()} / $totalMarks marks\n")
+        sb.append("  Cohort Rank       : Rank ${candidate.rank} of $totalCohortSize candidates\n")
+        sb.append("  Cohort Percentile : $percentile\n")
+        sb.append("  Accuracy Rate     : ${candidate.accuracyPercent}%\n")
+        sb.append("  Performance Band  : $performanceBand\n\n")
+
+        sb.append("SCORING & PENALTY BREAKDOWN (NEET / UPSC MARKING SCHEME):\n")
+        sb.append("  Correct Responses : ${candidate.correctCount}  [+${candidate.correctCount * 4} marks]\n")
+        sb.append("  Incorrect Responses : ${candidate.incorrectCount}  [-${candidate.incorrectCount} penalty marks]\n")
+        sb.append("  Unattempted / Skip  : ${candidate.unansweredCount}  [0 marks]\n")
+        sb.append("  Total Questions   : ${paper.questions.size}\n\n")
+
+        if (!answers.isNullOrEmpty()) {
+            sb.append("--------------------------------------------------------------------------------\n")
+            sb.append("                      DETAILED QUESTION AUDIT & RESPONSE LOG                    \n")
+            sb.append("--------------------------------------------------------------------------------\n")
+            sb.append("  Q#   Marked Option   Official Key   Marks Awarded   Evaluation Status\n")
+            sb.append("  ---  -------------   ------------   -------------   -----------------\n")
+
+            paper.questions.forEach { q ->
+                val chosen = answers[q.num]?.uppercaseChar()
+                val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
+                val (pts, status) = when {
+                    chosen == null -> Pair(" 0", "UNATTENDED / SKIPPED")
+                    chosen == correctChar -> Pair("+4", "CORRECT")
+                    else -> Pair("-1", "INCORRECT")
+                }
+                val markedDisplay = chosen?.toString() ?: "—"
+                val keyDisplay = correctChar?.toString() ?: "—"
+                sb.append(String.format(java.util.Locale.US, "  %03d      %-10s      %-8s        %-6s       %s\n",
+                    q.num, markedDisplay, keyDisplay, pts, status))
+            }
+            sb.append("--------------------------------------------------------------------------------\n")
+        }
+
+        sb.append("\n================================================================================\n")
+        sb.append("                  Generated by Exam Assessment & Psychometric Suite             \n")
+        sb.append("================================================================================\n")
+        return sb.toString()
+    }
+
+    /**
+     * Formats all student report cards into a single consolidated document for the cohort.
+     */
+    fun formatAllStudentReportCards(
+        report: CohortPsychometricReport,
+        paper: QuestionPaper,
+        candidateSubmissions: List<CandidateSubmission>? = null
+    ): String {
+        val submissionsMap = candidateSubmissions?.associateBy { it.rollNumber }
+        val sb = StringBuilder()
+        report.candidates.forEachIndexed { index, candidate ->
+            val answers = submissionsMap?.get(candidate.rollNumber)?.answers
+            sb.append(generateStudentReportCard(
+                candidate = candidate,
+                paper = paper,
+                answers = answers,
+                totalCohortSize = report.candidateCount
+            ))
+            if (index < report.candidates.size - 1) {
+                sb.append("\n\n\n")
+            }
+        }
+        return sb.toString()
+    }
 }

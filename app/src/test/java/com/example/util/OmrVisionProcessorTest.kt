@@ -214,6 +214,29 @@ class OmrVisionProcessorTest {
         val csv = PsychometricEngine.formatPsychometricReportCsv(report, "Psychometric Test")
         assertTrue("CSV contains Question_Num", csv.contains("Question_Num,Difficulty_P"))
         assertTrue("CSV contains Q1 stats", csv.contains("1,0.500"))
+
+        // Candidate Scorecards CSV
+        val scorecardsCsv = PsychometricEngine.formatCandidateScorecardsCsv(report, "Psychometric Test")
+        assertTrue("Contains header", scorecardsCsv.contains("Rank,Roll_Number,Booklet_Number"))
+        assertTrue("Contains candidates", scorecardsCsv.contains("2026100001"))
+
+        // Single Student Report Card Generation
+        val firstCandidate = report.candidates.first()
+        val reportCard = PsychometricEngine.generateStudentReportCard(
+            candidate = firstCandidate,
+            paper = paper,
+            answers = candidate1,
+            totalCohortSize = report.candidateCount
+        )
+        assertTrue("Contains Report Card title", reportCard.contains("OFFICIAL STUDENT EXAMINATION REPORT CARD"))
+        assertTrue("Contains candidate roll", reportCard.contains(firstCandidate.rollNumber))
+        assertTrue("Contains test booklet number", reportCard.contains(firstCandidate.bookletNumber))
+        assertTrue("Contains scoring breakdown", reportCard.contains("SCORING & PENALTY BREAKDOWN"))
+        assertTrue("Contains question audit", reportCard.contains("DETAILED QUESTION AUDIT & RESPONSE LOG"))
+
+        // Consolidated Cohort Report Cards
+        val allCards = PsychometricEngine.formatAllStudentReportCards(report, paper)
+        assertTrue("Contains all cards", allCards.contains(report.candidates.last().rollNumber))
     }
 }
 

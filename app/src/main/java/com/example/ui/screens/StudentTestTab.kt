@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -134,6 +135,7 @@ fun StudentTestTab(
     sessionSeed: Long = 0L,
     onToggleShuffleOptions: (Boolean) -> Unit = {},
     onScanOmr: () -> Unit = {},
+    onOpenPsychometrics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showHistoryDialog by remember { mutableStateOf(false) }
@@ -188,6 +190,7 @@ fun StudentTestTab(
                 onSelectAnswer = onSelectAnswer,
                 onOpenHistory = { showHistoryDialog = true },
                 onOpenAnalytics = { showHistoricalAnalyticsDialog = true },
+                onOpenPsychometrics = onOpenPsychometrics,
                 modifier = modifier
             )
         }
@@ -229,6 +232,7 @@ fun StudentTestTab(
                 onResumeExam = onResumeExam,
                 onOpenHistory = { showHistoryDialog = true },
                 onOpenAnalytics = { showHistoricalAnalyticsDialog = true },
+                onOpenPsychometrics = onOpenPsychometrics,
                 onLoadAttempt = onLoadAttempt,
                 onScanOmr = onScanOmr,
                 modifier = modifier
@@ -259,6 +263,7 @@ private fun ExamStartOverviewView(
     onResumeExam: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenAnalytics: () -> Unit,
+    onOpenPsychometrics: () -> Unit = {},
     onLoadAttempt: (AttemptEntity) -> Unit,
     onScanOmr: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -303,11 +308,19 @@ private fun ExamStartOverviewView(
                             )
                         }
 
-                        if (attempts.isNotEmpty()) {
-                            TextButton(onClick = onOpenHistory) {
-                                Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = onOpenPsychometrics) {
+                                Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF0284C7))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("History (${attempts.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Item CTT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                            }
+                            if (attempts.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                TextButton(onClick = onOpenHistory) {
+                                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("History (${attempts.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -1639,6 +1652,7 @@ private fun ExamResultAndReviewView(
     onSelectAnswer: (Int, String) -> Unit,
     onOpenHistory: () -> Unit,
     onOpenAnalytics: () -> Unit = {},
+    onOpenPsychometrics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -1905,6 +1919,12 @@ private fun ExamResultAndReviewView(
                             Text("Exam Overview", fontSize = 12.sp, color = colors.muted)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = onOpenPsychometrics) {
+                                Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0284C7))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Item CTT", fontSize = 12.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                             TextButton(onClick = onOpenAnalytics) {
                                 Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.teal)
                                 Spacer(modifier = Modifier.width(4.dp))

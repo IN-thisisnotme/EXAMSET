@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
@@ -117,6 +118,7 @@ import com.example.ui.components.EditMetadataDialog
 import com.example.ui.components.InputBottomSheet
 import com.example.ui.components.OmrScannerDialog
 import com.example.ui.components.PrintConfigDialog
+import com.example.ui.components.PsychometricAnalysisDialog
 import com.example.ui.components.SavedPapersDialog
 import com.example.ui.components.StudentHistoricalAnalysisDialog
 import com.example.ui.components.SubjectFolderDialog
@@ -158,6 +160,7 @@ fun HomeScreen(
     var showSavedDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
+    var showPsychometricDialog by remember { mutableStateOf(false) }
     var selectedSubjectFolder by remember { mutableStateOf<String?>(null) }
     var showConfirmExitDialog by remember { mutableStateOf(false) }
     var lastBackPressTime by remember { mutableStateOf(0L) }
@@ -165,6 +168,9 @@ fun HomeScreen(
     // Accidental Back Navigation Prevention
     BackHandler {
         when {
+            showPsychometricDialog -> {
+                showPsychometricDialog = false
+            }
             showHistoricalAnalyticsDialog -> {
                 showHistoricalAnalyticsDialog = false
             }
@@ -359,6 +365,18 @@ fun HomeScreen(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = "Edit Subject, Topic & Set No.",
                                 tint = colors.teal
+                            )
+                        }
+
+                        // Psychometric & Item Difficulty Analysis button
+                        IconButton(
+                            onClick = { showPsychometricDialog = true },
+                            modifier = Modifier.testTag("psychometrics_topbar_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Assessment,
+                                contentDescription = "Psychometric & Item Difficulty Analysis",
+                                tint = Color(0xFF0284C7)
                             )
                         }
                     }
@@ -671,7 +689,8 @@ fun HomeScreen(
                         shuffleOptions = viewModel.shuffleOptions.collectAsState().value,
                         sessionSeed = viewModel.examSessionSeed.collectAsState().value,
                         onToggleShuffleOptions = { viewModel.setShuffleOptions(it) },
-                        onScanOmr = { showOmrScannerDialog = true }
+                        onScanOmr = { showOmrScannerDialog = true },
+                        onOpenPsychometrics = { showPsychometricDialog = true }
                     )
                 } else {
                     NoPaperPlaceholder(
@@ -704,7 +723,8 @@ fun HomeScreen(
                 )
                 6 -> ShareSystemTab(
                     viewModel = viewModel,
-                    onNavigateToMaster = { viewModel.selectTab(1) }
+                    onNavigateToMaster = { viewModel.selectTab(1) },
+                    onOpenPsychometrics = { showPsychometricDialog = true }
                 )
             }
         }
@@ -863,6 +883,15 @@ fun HomeScreen(
                 )
                 viewModel.selectTab(2) // Jump to Student Test tab to see evaluated result review
             }
+        )
+    }
+
+    // Psychometric & Classical Test Theory Evaluation Dialog
+    if (showPsychometricDialog && currentPaper != null) {
+        PsychometricAnalysisDialog(
+            paper = currentPaper!!,
+            viewModel = viewModel,
+            onDismiss = { showPsychometricDialog = false }
         )
     }
 
