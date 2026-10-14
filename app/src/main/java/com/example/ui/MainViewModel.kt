@@ -28,6 +28,7 @@ import com.example.util.BatchExamImporter
 import com.example.util.ExamJsonHelper
 import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
+import com.example.util.PsychometricEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1341,6 +1342,68 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         return ExamNumberGenerator.generateOmrCohortManifestCsv(papers)
+    }
+
+    /**
+     * Generates a Classical Test Theory (CTT) psychometric report for the active paper or specified paperId.
+     * Evaluates actual student candidate attempts (with roll number, booklet number, and set code).
+     * If fewer than 2 student attempts exist, can generate a 40-student calibrated simulation
+     * so course chief question paper setters can evaluate predicted item discrimination and distractor curves.
+     */
+    fun generatePsychometricReport(
+        targetPaperId: Long? = null,
+        allowSimulationFallback: Boolean = true
+    ): PsychometricEngine.CohortPsychometricReport? {
+        val paper = _currentPaper.value ?: return null
+        val pid = targetPaperId ?: _currentPaperEntityId.value ?: return null
+        val paperAttempts = allAttempts.value.filter { it.paperId == pid && it.isSubmitted }
+
+        if (paperAttempts.size >= 2) {
+            val submissions = paperAttempts.mapIndexed { idx, att ->
+                val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
+                val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber }
+                val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
+                PsychometricEngine.CandidateSubmission(
+                    rollNumber = roll,
+                    bookletNumber = booklet,
+                    bookletCode = code,
+                    answers = answers,
+                    submittedAt = att.submittedAt ?: att.createdAt
+                )
+            }
+            return PsychometricEngine.evaluateCohortWithCandidates(submissions, paper)
+        } else if (allowSimulationFallback) {
+            return PsychometricEngine.generateSimulatedCohortCalibration(paper, 40)
+        } else if (paperAttempts.isNotEmpty()) {
+            val submissions = paperAttempts.mapIndexed { idx, att ->
+                val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
+                val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber }
+                val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
+                PsychometricEngine.CandidateSubmission(
+                    rollNumber = roll,
+                    bookletNumber = booklet,
+                    bookletCode = code,
+                    answers = answers,
+                    submittedAt = att.submittedAt ?: att.createdAt
+                )
+            }
+            return PsychometricEngine.evaluateCohortWithCandidates(submissions, paper)
+        }
+        return null
+    }
+
+    fun exportPsychometricReportCsv(allowSimulationFallback: Boolean = true): String {
+        val paper = _currentPaper.value ?: return ""
+        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback) ?: return ""
+        return PsychometricEngine.formatPsychometricReportCsv(report, paper.metadata.title)
+    }
+
+    fun exportCandidateScorecardsCsv(allowSimulationFallback: Boolean = true): String {
+        val paper = _currentPaper.value ?: return ""
+        val report = generatePsychometricReport(allowSimulationFallback = allowSimulationFallback) ?: return ""
+        return PsychometricEngine.formatCandidateScorecardsCsv(report, paper.metadata.title)
     }
 
     // --- Folders Management ---
