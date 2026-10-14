@@ -86,6 +86,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
@@ -888,15 +889,17 @@ fun InputBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "MCQ Practice Content",
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (textInput.isNotBlank()) {
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = colors.surfaceVariant
@@ -905,7 +908,8 @@ fun InputBottomSheet(
                                 text = "${textInput.lines().size} lines • ${textInput.length} chars",
                                 fontSize = 9.5.sp,
                                 color = colors.muted,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                maxLines = 1
                             )
                         }
                     }

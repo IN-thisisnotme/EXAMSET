@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Quiz
@@ -60,6 +61,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -162,6 +165,7 @@ fun HomeScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
     var showPsychometricDialog by remember { mutableStateOf(false) }
+    var showTopBarOverflowMenu by remember { mutableStateOf(false) }
     var selectedSubjectFolder by remember { mutableStateOf<String?>(null) }
     var showConfirmExitDialog by remember { mutableStateOf(false) }
     var lastBackPressTime by remember { mutableStateOf(0L) }
@@ -356,51 +360,64 @@ fun HomeScreen(
                         )
                     }
 
-                    // Edit Details button (if paper is loaded)
-                    if (currentPaper != null) {
+                    // Overflow Menu for Paper Operations (Edit Details, Psychometrics, Share)
+                    Box {
                         IconButton(
-                            onClick = { showEditDialog = true },
-                            modifier = Modifier.testTag("edit_topbar_button")
+                            onClick = { showTopBarOverflowMenu = true },
+                            modifier = Modifier.testTag("topbar_overflow_menu_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit Subject, Topic & Set No.",
-                                tint = colors.teal
-                            )
-                        }
-                    }
-
-                    // Psychometric & Item Difficulty Analysis button (always accessible)
-                    IconButton(
-                        onClick = { showPsychometricDialog = true },
-                        modifier = Modifier.testTag("psychometrics_topbar_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Assessment,
-                            contentDescription = "Psychometric & Item Difficulty Analysis",
-                            tint = Color(0xFF0284C7)
-                        )
-                    }
-
-                    // Share paper (if paper loaded)
-                    val activePaper = currentPaper
-                    if (activePaper != null) {
-                        IconButton(
-                            onClick = {
-                                val sendIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TITLE, activePaper.metadata.title)
-                                    putExtra(Intent.EXTRA_TEXT, activePaper.rawText)
-                                    type = "text/plain"
-                                }
-                                context.startActivity(Intent.createChooser(sendIntent, "Share Question Set"))
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share",
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
                                 tint = colors.inkBold
                             )
+                        }
+
+                        DropdownMenu(
+                            expanded = showTopBarOverflowMenu,
+                            onDismissRequest = { showTopBarOverflowMenu = false }
+                        ) {
+                            if (currentPaper != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Edit Paper Details", fontSize = 13.sp) },
+                                    onClick = {
+                                        showTopBarOverflowMenu = false
+                                        showEditDialog = true
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Edit, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Psychometric Analysis", fontSize = 13.sp) },
+                                onClick = {
+                                    showTopBarOverflowMenu = false
+                                    showPsychometricDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Assessment, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
+                                }
+                            )
+                            val activePaper = currentPaper
+                            if (activePaper != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Share Question Set", fontSize = 13.sp) },
+                                    onClick = {
+                                        showTopBarOverflowMenu = false
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TITLE, activePaper.metadata.title)
+                                            putExtra(Intent.EXTRA_TEXT, activePaper.rawText)
+                                            type = "text/plain"
+                                        }
+                                        context.startActivity(Intent.createChooser(sendIntent, "Share Question Set"))
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Share, contentDescription = null, tint = colors.inkBold, modifier = Modifier.size(18.dp))
+                                    }
+                                )
+                            }
                         }
                     }
                 },

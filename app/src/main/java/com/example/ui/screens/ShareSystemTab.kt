@@ -134,6 +134,7 @@ fun ShareSystemTab(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Spacer(modifier = Modifier.height(4.dp)) }
@@ -493,12 +494,13 @@ fun ShareSystemTab(
                             onClick = {
                                 multipleFilePicker.launch(arrayOf("application/json", "text/plain", "*/*"))
                             },
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.height(28.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
                         ) {
-                            Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Pick Files", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Pick Files", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
 

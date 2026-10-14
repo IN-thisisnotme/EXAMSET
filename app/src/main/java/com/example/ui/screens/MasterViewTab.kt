@@ -204,9 +204,9 @@ fun MasterViewTab(
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
                             onClick = { viewModel.loadStarterSample("science") },
@@ -215,18 +215,24 @@ fun MasterViewTab(
                                 containerColor = colors.primaryButtonBg,
                                 contentColor = colors.primaryButtonText
                             ),
-                            modifier = Modifier.testTag("master_load_starter_button")
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("master_load_starter_button")
                         ) {
-                            Text("Load Starter Exam", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
+                            Text("Load Starter Exam", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                         }
                         OutlinedButton(
                             onClick = { viewModel.selectTab(0) },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
                             border = BorderStroke(1.dp, colors.border),
-                            modifier = Modifier.testTag("master_browse_library_button")
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("master_browse_library_button")
                         ) {
-                            Text("Browse Question Library", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                            Text("Browse Question Library", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                         }
                     }
                 }

@@ -489,9 +489,9 @@ fun FolderManagerTab(
                             color = colors.inkMuted
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
                                 onClick = {
@@ -500,7 +500,10 @@ fun FolderManagerTab(
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                modifier = Modifier.testTag("load_starter_exam_button")
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .testTag("load_starter_exam_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
@@ -511,7 +514,7 @@ fun FolderManagerTab(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Load Starter Exam",
-                                    fontSize = 12.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color.White
                                 )
@@ -519,7 +522,10 @@ fun FolderManagerTab(
                             OutlinedButton(
                                 onClick = { viewModel.selectTab(4) },
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.testTag("create_paper_button")
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .testTag("create_paper_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
@@ -530,7 +536,7 @@ fun FolderManagerTab(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Create Questions",
-                                    fontSize = 12.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = colors.teal
                                 )

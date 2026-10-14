@@ -353,39 +353,49 @@ fun PsychometricAnalysisDialog(
                         }
                     }
                 } else {
-                    // Executive Metrics Cards Row
-                    Row(
+                    // Executive Metrics Cards 2x2 Grid
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ExecutiveMetricCard(
-                            label = "Candidates",
-                            value = "${report.candidateCount}",
-                            subtext = if (report.candidates.any { it.rollNumber.startsWith("202610") }) "Calibrated Cohort" else "Scanned Students",
-                            color = Color(0xFF0284C7),
-                            modifier = Modifier.weight(1f)
-                        )
-                        ExecutiveMetricCard(
-                            label = "Mean Score",
-                            value = String.format(Locale.US, "%.1f", report.meanScore),
-                            subtext = "±${String.format(Locale.US, "%.1f", report.standardDeviation)} SD",
-                            color = colors.teal,
-                            modifier = Modifier.weight(1f)
-                        )
-                        ExecutiveMetricCard(
-                            label = "Reliability (α)",
-                            value = String.format(Locale.US, "%.2f", report.cronbachAlpha),
-                            subtext = if (report.cronbachAlpha >= 0.8f) "High Consistency" else "Moderate",
-                            color = if (report.cronbachAlpha >= 0.8f) Color(0xFF059669) else Color(0xFFD97706),
-                            modifier = Modifier.weight(1f)
-                        )
-                        ExecutiveMetricCard(
-                            label = "Flagged Items",
-                            value = "${report.flaggedItemCount}",
-                            subtext = if (report.flaggedItemCount > 0) "Requires Review" else "Clean Instrument",
-                            color = if (report.flaggedItemCount > 0) Color(0xFFDC2626) else Color(0xFF059669),
-                            modifier = Modifier.weight(1f)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ExecutiveMetricCard(
+                                label = "Candidates",
+                                value = "${report.candidateCount}",
+                                subtext = if (report.candidates.any { it.rollNumber.startsWith("202610") }) "Calibrated Cohort" else "Scanned Students",
+                                color = Color(0xFF0284C7),
+                                modifier = Modifier.weight(1f)
+                            )
+                            ExecutiveMetricCard(
+                                label = "Mean Score",
+                                value = String.format(Locale.US, "%.1f", report.meanScore),
+                                subtext = "±${String.format(Locale.US, "%.1f", report.standardDeviation)} SD",
+                                color = colors.teal,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ExecutiveMetricCard(
+                                label = "Reliability (α)",
+                                value = String.format(Locale.US, "%.2f", report.cronbachAlpha),
+                                subtext = if (report.cronbachAlpha >= 0.8f) "High Consistency" else "Moderate",
+                                color = if (report.cronbachAlpha >= 0.8f) Color(0xFF059669) else Color(0xFFD97706),
+                                modifier = Modifier.weight(1f)
+                            )
+                            ExecutiveMetricCard(
+                                label = "Flagged Items",
+                                value = "${report.flaggedItemCount}",
+                                subtext = if (report.flaggedItemCount > 0) "Requires Review" else "Clean Instrument",
+                                color = if (report.flaggedItemCount > 0) Color(0xFFDC2626) else Color(0xFF059669),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -452,139 +462,150 @@ fun PsychometricAnalysisDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Footer Action Bar: Copy CTT CSV, Copy Roster CSV, Export All Cards, Share
-                    Row(
+                    // Footer Action Bar: 2x2 Grid of full-width paired export actions
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                val csv = viewModel.exportPsychometricReportCsv(
-                                    paperOverride = effectivePaper,
-                                    forceSimulation = useSimulationMode,
-                                    allowSimulationFallback = true
-                                )
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("Psychometric Report CSV", csv)
-                                clipboard.setPrimaryClip(clip)
-                                copiedReport = true
-                                Toast.makeText(context, "Copied Item Analysis CSV to clipboard!", Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copiedReport) Color(0xFF059669) else Color(0xFF0284C7)
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                if (copiedReport) Icons.Default.Check else Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (copiedReport) "Copied!" else "Item CSV",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Button(
+                                onClick = {
+                                    val csv = viewModel.exportPsychometricReportCsv(
+                                        paperOverride = effectivePaper,
+                                        forceSimulation = useSimulationMode,
+                                        allowSimulationFallback = true
+                                    )
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Psychometric Report CSV", csv)
+                                    clipboard.setPrimaryClip(clip)
+                                    copiedReport = true
+                                    Toast.makeText(context, "Copied Item Analysis CSV to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (copiedReport) Color(0xFF059669) else Color(0xFF0284C7)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(
+                                    if (copiedReport) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (copiedReport) "Copied!" else "Item CSV",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Button(
+                                onClick = {
+                                    val csv = viewModel.exportCandidateScorecardsCsv(
+                                        paperOverride = effectivePaper,
+                                        forceSimulation = useSimulationMode,
+                                        allowSimulationFallback = true
+                                    )
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Student Scorecards CSV", csv)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copied Student Scorecards CSV to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Roster CSV",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
 
-                        Button(
-                            onClick = {
-                                val csv = viewModel.exportCandidateScorecardsCsv(
-                                    paperOverride = effectivePaper,
-                                    forceSimulation = useSimulationMode,
-                                    allowSimulationFallback = true
-                                )
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("Student Scorecards CSV", csv)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "Copied Student Scorecards CSV to clipboard!", Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Roster CSV",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                            Button(
+                                onClick = {
+                                    val cardsText = viewModel.exportAllStudentReportCardsText(
+                                        paperOverride = effectivePaper,
+                                        forceSimulation = useSimulationMode,
+                                        allowSimulationFallback = true
+                                    )
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("All Student Report Cards", cardsText)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copied all student report cards to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE185D)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "All Cards",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
-                        Button(
-                            onClick = {
-                                val cardsText = viewModel.exportAllStudentReportCardsText(
-                                    paperOverride = effectivePaper,
-                                    forceSimulation = useSimulationMode,
-                                    allowSimulationFallback = true
+                            OutlinedButton(
+                                onClick = {
+                                    val csv = viewModel.exportPsychometricReportCsv(
+                                        paperOverride = effectivePaper,
+                                        forceSimulation = useSimulationMode,
+                                        allowSimulationFallback = true
+                                    )
+                                    val sendIntent = android.content.Intent().apply {
+                                        action = android.content.Intent.ACTION_SEND
+                                        putExtra(android.content.Intent.EXTRA_TEXT, csv)
+                                        type = "text/plain"
+                                    }
+                                    val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Psychometric Report CSV")
+                                    context.startActivity(shareIntent)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Share",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("All Student Report Cards", cardsText)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "Copied all student report cards to clipboard!", Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE185D)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                        ) {
-                            Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "All Cards",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                val csv = viewModel.exportPsychometricReportCsv(
-                                    paperOverride = effectivePaper,
-                                    forceSimulation = useSimulationMode,
-                                    allowSimulationFallback = true
-                                )
-                                val sendIntent = android.content.Intent().apply {
-                                    action = android.content.Intent.ACTION_SEND
-                                    putExtra(android.content.Intent.EXTRA_TEXT, csv)
-                                    type = "text/plain"
-                                }
-                                val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Psychometric Report CSV")
-                                context.startActivity(shareIntent)
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Share",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            }
                         }
                     }
                 }

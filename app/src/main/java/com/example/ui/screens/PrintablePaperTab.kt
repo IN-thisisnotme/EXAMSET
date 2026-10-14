@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.horizontalScroll
@@ -105,41 +106,49 @@ fun PrintablePaperTab(
             border = BorderStroke(1.dp, colors.border),
             shadowElevation = if (colors.isDark) 0.dp else 2.dp
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                // Title and Subtitle Row with full width
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = if (config.printMode == PrintMode.STUDENT_PAPER) "Student Question Paper" else "Master Examination Booklet",
-                        fontSize = 13.5.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "Formatted for ISO A4 Standard Printing",
-                        fontSize = 11.sp,
-                        color = colors.muted
+                        fontSize = 11.5.sp,
+                        color = colors.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
+                // Uniform Action Buttons Row with equal 1f weight
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Settings / Customize button
                     OutlinedButton(
                         onClick = onOpenConfig,
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.border),
                         modifier = Modifier
+                            .weight(1f)
                             .height(38.dp)
                             .testTag("configure_exam_button")
                     ) {
@@ -177,12 +186,13 @@ fun PrintablePaperTab(
                             )
                         },
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.teal),
                         modifier = Modifier
+                            .weight(1f)
                             .height(38.dp)
                             .testTag("quick_save_pdf_button")
                     ) {
@@ -201,13 +211,14 @@ fun PrintablePaperTab(
                         onClick = {
                             PrintDocumentHelper.printQuestionPaper(context, paper, config)
                         },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
                         ),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
+                            .weight(1f)
                             .height(38.dp)
                             .testTag("quick_print_button")
                     ) {
