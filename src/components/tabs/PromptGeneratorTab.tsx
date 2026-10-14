@@ -58,15 +58,17 @@ Language & Notation Specification:
 - Questions and options must be written entirely in ${qLang}.
 - Explanations must be written in ${effectiveExplanationLang}.
 - Universal Option Convention: Label options strictly as (A), (B), (C), and (D) across all languages to ensure uniform structural formatting.
+- Plain Text Anti-List & Zero-Indentation: Every single line must start flush-left at the margin (Column 0). Never use bullet points (•, *), list hyphens (-), blockquotes (>), or markdown table alignments for options. Never use markdown numbered lists like '1. ' so copying into Microsoft Word or Google Docs never triggers auto-lists.
 
 Execution Directives:
 1. Start directly with Phase 1 without any preamble, personalization, greetings, corrections, or introductory remarks.
 2. Output all phases in strict sequential order: Phase 1 (Questions) -> Phase 2 (Answer Key) -> Phase 3 (Detailed Explanations).
 3. After completing Phase 3, do NOT ask follow-up questions, request additional information, suggest further tasks, or add any closing remarks.
+4. No Markdown Code Fences: Do not wrap the output in ``` blocks.
 
 ## Phase 1: Questions
-1. Provide Questions 1 through ${questionCount} first, numbered sequentially from 1 to ${questionCount}.
-2. Every question must have exactly four options: (A), (B), (C), and (D).
+1. Provide Questions 1 through ${questionCount} first, labeled sequentially as Q1., Q2. through Q${questionCount}.
+2. Every question must have exactly four options: (A), (B), (C), and (D), each on its own fresh line flush-left with exactly one space: '(A) [Option text]'.
 3. Present ALL questions first without revealing answers, hints, explanations, or clues that make the correct option easy to guess.
 4. Option Quality & Anti-Bias Constraints:
    - Ensure all four options are distinct, academically plausible, and mutually exclusive.
@@ -79,11 +81,11 @@ Execution Directives:
 Immediately after Question ${questionCount}, output the answer key in this exact format:
 
 ## Answer Key
-1. (C)
-2. (A)
-3. (D)
+Q1: (C)
+Q2: (A)
+Q3: (D)
 ...
-${questionCount}. (B)
+Q${questionCount}: (B)
 
 Do NOT provide any explanations, comments, or notes in Phase 2.
 
@@ -99,17 +101,17 @@ Requirements for Phase 3:
 - Synchronization: Every question's explanation must strictly match the exact correct option letter specified in Phase 2.
 - Keep all explanations concise, precise, analytical, non-repetitive, and easy to remember.
 - Avoid unnecessary filler background information; include only what is necessary to understand the reasoning and distinguish the options.
+- All lines must be flush-left with zero indentation and NO bullet points.
 
-For each question (numbered sequentially 1 to ${questionCount}), follow this exact structure:
+For each question (numbered sequentially Q1 to Q${questionCount}), follow this exact structure:
 
-### 1. [Full question text]
+Q1.
 Core Concept & Principle: [Concise, conceptually complete explanation of the underlying governing concept, theory, formula, or law]
-Option Analysis:
-- (A) [Brief, non-repetitive explanation stating why this option is correct or incorrect, and the key distinction]
-- (B) [Why this option is correct or incorrect]
-- (C) [Why this option is correct or incorrect]
-- (D) [Why this option is correct or incorrect]
-Key Takeaway / Memory Anchor: [Highlight the essential fact, formula, distinction, or rule needed to remember the answer]
+Option (A) [Correct/Incorrect]: [Brief, non-repetitive explanation stating why this option is correct or incorrect, and the key distinction]
+Option (B) [Correct/Incorrect]: [Why this option is correct or incorrect]
+Option (C) [Correct/Incorrect]: [Why this option is correct or incorrect]
+Option (D) [Correct/Incorrect]: [Why this option is correct or incorrect]
+Memory Anchor: [Highlight the essential fact, formula, distinction, or rule needed to remember the answer]
 
 Explanation Rules:
 - Explain ALL FOUR options individually. Never skip an option.

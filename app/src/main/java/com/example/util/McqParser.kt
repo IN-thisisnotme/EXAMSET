@@ -648,7 +648,7 @@ object McqParser {
             } else {
                 ""
             }
-            val isOptionLine = Regex("""^\s*(?:[-*•]\s*)?(?:(?:\*\*)?(?:Option\s+|Opt\s+)?[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ](?:\*\*)?[\.\:\)\-–—]|\([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ]\)|\[[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ]\]|[①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ])""").containsMatchIn(currentLine)
+            val isOptionLine = Regex("""^\s*(?:\|\s*)?(?:[-*•]\s*)?(?:(?:\*\*)?(?:Option\s+|Opt\s+)?[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ](?:\*\*)?[\.\:\)\-–—]|\([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ]\)|\[[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ]\]|[①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ])""").containsMatchIn(currentLine)
             val isMarkdownTableRow = !isOptionLine && (currentLine.trim().startsWith("|") || Regex("""\s\|\s""").containsMatchIn(currentLine))
             if (isMarkdownTableRow) {
                 continue
@@ -664,14 +664,23 @@ object McqParser {
             }
 
             // Discard if preceded by Assertion, Reason, Statement, Column, List, Group, Part, etc.
+            val isParenthesized = matcher.group(1) != null || matcher.group(2) != null
             val prefixStart = maxOf(0, start - 25)
             val prefix = if (prefixStart in 0..start && start <= cleanBlock.length) {
                 cleanBlock.substring(prefixStart, start)
             } else {
                 ""
             }
-            if (Regex("""(?i)\b(?:Assertion|Reason|Statement|Column|List|Group|Set|Table|Figure|Fig|Eq|Equation|Part|Section|Claim|Task|Step)\s*$""").containsMatchIn(prefix)) {
-                continue
+            if (isParenthesized) {
+                // For parenthesized options like (A) or [A], only discard if explicitly labeled as Assertion (A) or Reason (R)
+                if (Regex("""(?i)\b(?:Assertion|Reason)\s*$""").containsMatchIn(prefix)) {
+                    continue
+                }
+            } else {
+                // For bare unparenthesized markers (e.g. A., B:, 1.), discard if preceded by structural labels
+                if (Regex("""(?i)(?:^|[\n\r;:\.!?])\s*(?:Assertion|Reason|Statement|Column|List|Group|Set|Table|Figure|Fig|Eq|Equation|Part|Section|Claim|Task|Step)\s*$""").containsMatchIn(prefix)) {
+                    continue
+                }
             }
 
             // Discard unparenthesized A. or 1. if preceded by common prepositions (strictly for letter A or 1, NEVER for B, C, D, E)
@@ -811,6 +820,12 @@ object McqParser {
                 )
                 // Strip decorative line separators (e.g. ---, ===, ___)
                 value = value.replace(Regex("""^\s*[-=_]{3,}\s*$""", RegexOption.MULTILINE), "")
+                // Strip markdown table pipes if option was in a table cell (e.g. "| 399.00 m |")
+                value = value.lines()
+                    .map { it.replace(Regex("""^\s*\|\s*|\s*\|\s*$"""), "").trim() }
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" ")
+                    .trim()
                 value = stripMarkdown(value).trim()
                 if (value.isNotEmpty()) {
                     found[letter] = value

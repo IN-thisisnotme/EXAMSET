@@ -107,6 +107,50 @@ Reason (R): Introns are removed from the primary RNA transcript during RNA proce
   }
 
   @Test
+  fun testSurveyQuestionWithPartOptionParsing() {
+    val raw = """
+Q1. A surveyor establishes a main framework before locating minor details. Which fundamental principle of surveying is being applied?
+(A) Work from part to whole (B) Work from whole to part (C) Independent measurement of every detail (D) Random selection of survey stations
+Answer: B
+
+Q2. Match the Following
+List I — Instrument
+Planimeter
+(A) 1-Q, 2-P, 3-S, 4-R
+(B) 1-S, 2-R, 3-P, 4-Q
+(C) 1-P, 2-Q, 3-R, 4-S
+(D) 1-R, 2-S, 3-Q, 4-P
+Answer: A
+
+Q3. A chain has a nominal length of 20 m but its actual length is 20.05 m. If the measured distance is 400 m, what is the corrected distance?
+| (A) | 399.00 m |
+| (B) | 400.00 m |
+| (C) | 400.50 m |
+| (D) | 401.00 m |
+Answer: C
+    """.trimIndent()
+
+    val paper = McqParser.parse(raw)
+    assertEquals(3, paper.questions.size)
+
+    val q1 = paper.questions[0]
+    assertEquals(1, q1.num)
+    assertEquals("Work from part to whole", q1.options.a)
+    assertEquals("Work from whole to part", q1.options.b)
+    assertEquals("Independent measurement of every detail", q1.options.c)
+    assertEquals("Random selection of survey stations", q1.options.d)
+    assertEquals("B", q1.correctAnswer)
+
+    val q3 = paper.questions[2]
+    assertEquals(3, q3.num)
+    assertEquals("399.00 m", q3.options.a)
+    assertEquals("400.00 m", q3.options.b)
+    assertEquals("400.50 m", q3.options.c)
+    assertEquals("401.00 m", q3.options.d)
+    assertEquals("C", q3.correctAnswer)
+  }
+
+  @Test
   fun testSciencePaperParsing() {
     val paper = McqParser.parse(com.example.data.SampleData.SAMPLE_SCIENCE_PAPER)
     assertEquals(10, paper.questions.size)
