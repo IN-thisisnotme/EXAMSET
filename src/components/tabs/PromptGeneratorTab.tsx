@@ -76,6 +76,15 @@ Execution Directives:
    - Strictly avoid 'All of the above', 'None of the above', repeated options, or obviously absurd distractors.
    - For numerical values, years, or quantities, arrange options in strictly ascending or descending numerical order.
    - Maintain a balanced distribution of correct answers across (A), (B), (C), and (D) without predictable patterns.
+5. Mandatory Format Diversity (Authentic Competitive Exam Blueprint):
+   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these ${questionCount} questions across authentic examination formats:
+   - Multi-Statement Questions (e.g., 'Consider the following statements: 1. [...] 2. [...] Which of the statements given above is/are correct? (A) 1 and 2 only (B) 2 and 3 only (C) 1 and 3 only (D) 1, 2 and 3')
+   - Assertion (A) & Reason (R) Questions (e.g., 'Assertion (A): [...] \nReason (R): [...] \n(A) Both A and R are true, and R is the correct explanation of A...')
+   - Match-the-Following (e.g., 'Match List-I with List-II: \nList-I \n1. [...] \n2. [...] \nList-II \nP. [...] \nQ. [...] \n(A) 1-P, 2-Q, 3-S, 4-R...')
+   - Chronological / Process Sequence Questions (e.g., 'Arrange the following stages/events in the correct order: 1. [...] 2. [...] (A) 1-2-3-4 (B) 2-1-4-3...')
+   - Quantitative / Numerical Calculation Questions
+   - Direct Conceptual & Scenario Analysis Questions
+   STRICT PROHIBITION ON CATEGORY LABELS: Do NOT print category headers, type prefixes, or bracketed tags (such as [Assertion-Reason], [Match the Following], [Statement-Based], or 'Type: ...') anywhere in the questions. Present every question naturally as an authentic examination item starting immediately with 'Q[N]. [Question text]'.
 
 ## Phase 2: Answer Key
 Immediately after Question ${questionCount}, output the answer key in this exact format:

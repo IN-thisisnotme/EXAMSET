@@ -167,9 +167,19 @@ fun PromptGeneratorTab(
                 when (questionType) {
                     "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
                     "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
-                    "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items including 'Assertion (A) & Reason (R)', 'Statement I & Statement II', and 'Which of the statements given above is/are correct?'.\n")
+                    "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'.\n")
                     "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
-                    else -> append("2. QUESTION FORMAT FOCUS: Dynamic mix of direct conceptual items, multi-statement questions, numerical application, and scenario analysis.\n")
+                    else -> {
+                        append("2. MANDATORY FORMAT DIVERSITY (AUTHENTIC COMPETITIVE EXAM BLUEPRINT):\n")
+                        append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across the diverse examination formats used in real papers:\n")
+                        append("   - Multi-Statement Questions (e.g., 'Consider the following statements: 1. [...] 2. [...] 3. [...] Which of the statements given above is/are correct? (A) 1 and 2 only (B) 2 and 3 only (C) 1 and 3 only (D) 1, 2 and 3')\n")
+                        append("   - Assertion (A) & Reason (R) Questions (e.g., 'Assertion (A): [...] \\nReason (R): [...] \\n(A) Both A and R are true and R is the correct explanation of A...')\n")
+                        append("   - Match-the-Following (e.g., 'Match List-I with List-II: \\nList-I \\n1. [...] \\n2. [...] \\nList-II \\nP. [...] \\nQ. [...] \\n(A) 1-P, 2-Q, 3-S, 4-R...')\n")
+                        append("   - Chronological / Process Sequence Questions (e.g., 'Arrange the following stages/events in the correct order: 1. [...] 2. [...] (A) 1-2-3-4 (B) 2-1-4-3...')\n")
+                        append("   - Quantitative / Numerical Calculation Questions (clear parameters, formula application, and numerical options)\n")
+                        append("   - Direct Conceptual & Scenario Analysis Questions\n")
+                        append("   STRICT PROHIBITION ON CATEGORY LABELS: Do NOT print category headers, type prefixes, or bracketed tags (such as [Assertion-Reason], [Match the Following], [Statement-Based], or 'Type: ...') anywhere in the questions. Present every question naturally as an authentic examination item starting immediately with 'Q[N]. [Question text]'.\n")
+                    }
                 }
                 append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
                 append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default. Maintain a tight word-count ratio across all 4 options (no option exceeding 1.25x the length of the shortest).\n")
