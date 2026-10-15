@@ -47,6 +47,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
 
@@ -80,6 +84,20 @@ fun EditMetadataDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        val view = LocalView.current
+        DisposableEffect(view, colors.isDark) {
+            var parent = view.parent
+            while (parent != null && parent !is DialogWindowProvider) {
+                parent = parent.parent
+            }
+            (parent as? DialogWindowProvider)?.window?.let { window ->
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = !colors.isDark
+                insetsController.isAppearanceLightNavigationBars = !colors.isDark
+            }
+            onDispose {}
+        }
+
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = colors.surface

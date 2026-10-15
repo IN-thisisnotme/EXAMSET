@@ -6,6 +6,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -25,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
@@ -62,6 +65,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -102,6 +106,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -144,6 +149,7 @@ import com.example.util.FeatureToggles
 import com.example.util.HandwrittenNotesExtractor
 import com.example.util.McqParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -295,14 +301,16 @@ fun InputBottomSheet(
         }
     }
 
+    val focusManager = LocalFocusManager.current
     val columnScrollState = rememberScrollState()
     // Measured height of the visible scroll area (screen minus keyboard, nav bar and header)
     var scrollViewportPx by remember { mutableIntStateOf(0) }
-    // Plain (non-state) holder so measuring never triggers recomposition while scrolling:
-    // [0]=viewport top, [1]=viewport bottom, [2]=MCQ section top, [3]=MCQ field bottom (all in window px)
-    val layoutHolder = remember { FloatArray(4) }
     val coroutineScope = rememberCoroutineScope()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
+
+    // Floating scroll indicator for text box: visible only while scrolling, auto-hides after a few moments
+    var isTextBoxScrolling by remember { mutableStateOf(false) }
+    var textBoxScrollHideJob by remember { mutableStateOf<Job?>(null) }
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var isOcrScanning by remember { mutableStateOf(false) }
@@ -381,15 +389,34 @@ fun InputBottomSheet(
     val textFieldNestedScroll = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (kotlin.math.abs(available.y) > 0.5f) {
+                    isTextBoxScrolling = true
+                    textBoxScrollHideJob?.cancel()
+                    textBoxScrollHideJob = coroutineScope.launch {
+                        delay(1500L)
+                        isTextBoxScrolling = false
+                    }
+                }
                 return Offset.Zero
             }
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                // Let leftover drag (text already at its top/bottom edge) chain to the parent page,
-                // so the user can always move the page viewport by dragging on the text field.
+                if (kotlin.math.abs(consumed.y) > 0.5f || kotlin.math.abs(available.y) > 0.5f) {
+                    isTextBoxScrolling = true
+                    textBoxScrollHideJob?.cancel()
+                    textBoxScrollHideJob = coroutineScope.launch {
+                        delay(1500L)
+                        isTextBoxScrolling = false
+                    }
+                }
                 return Offset.Zero
             }
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                // Still swallow leftover fling so the page doesn't jump after a text fling
+                isTextBoxScrolling = true
+                textBoxScrollHideJob?.cancel()
+                textBoxScrollHideJob = coroutineScope.launch {
+                    delay(1500L)
+                    isTextBoxScrolling = false
+                }
                 return available
             }
         }
@@ -403,12 +430,17 @@ fun InputBottomSheet(
         )
     ) {
         val view = LocalView.current
-        DisposableEffect(view) {
+        DisposableEffect(view, colors.isDark) {
             var parent = view.parent
             while (parent != null && parent !is DialogWindowProvider) {
                 parent = parent.parent
             }
-            (parent as? DialogWindowProvider)?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            (parent as? DialogWindowProvider)?.window?.let { window ->
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = !colors.isDark
+                insetsController.isAppearanceLightNavigationBars = !colors.isDark
+            }
             onDispose {}
         }
 
@@ -501,11 +533,6 @@ fun InputBottomSheet(
                             .weight(1f)
                             .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
                             .onSizeChanged { scrollViewportPx = it.height }
-                            .onGloballyPositioned { c ->
-                                val top = c.positionInRoot().y
-                                layoutHolder[0] = top
-                                layoutHolder[1] = top + c.size.height
-                            }
                             .padding(horizontal = 16.dp, vertical = 6.dp)
                             .verticalScroll(columnScrollState)
                     ) {
@@ -969,9 +996,7 @@ fun InputBottomSheet(
 
             // Text Area Input Header with Stable Height Status Pill (Prevents Screen Jumps)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { layoutHolder[2] = it.positionInRoot().y },
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1012,13 +1037,19 @@ fun InputBottomSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Paste Button
+                // Paste Button (Replaces content)
                 OutlinedButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
                         if (clipText.isNotBlank()) {
                             textInput = clipText
+                            Toast.makeText(context, "Pasted text from clipboard", Toast.LENGTH_SHORT).show()
+                            coroutineScope.launch {
+                                bringIntoViewRequester.bringIntoView()
+                            }
+                        } else {
+                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
                         }
                     },
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
@@ -1037,6 +1068,43 @@ fun InputBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                // Append Button (Appends clipboard content without replacing existing text)
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                        if (clipText.isNotBlank()) {
+                            textInput = if (textInput.isBlank()) {
+                                clipText
+                            } else {
+                                "${textInput.trimEnd()}\n\n$clipText"
+                            }
+                            Toast.makeText(context, "Appended text from clipboard", Toast.LENGTH_SHORT).show()
+                            coroutineScope.launch {
+                                bringIntoViewRequester.bringIntoView()
+                            }
+                        } else {
+                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
+                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .heightIn(min = 36.dp)
+                        .testTag("toolbar_append_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Append from clipboard",
+                        modifier = Modifier.size(15.dp),
+                        tint = colors.teal
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Append", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 if (textInput.isNotBlank()) {
@@ -1117,73 +1185,92 @@ fun InputBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Height is derived from the MEASURED visible viewport (screen minus keyboard/nav bar),
-            // so the box always fits above the keyboard and leaves room to drag the page.
+            // Height is constrained to the actual available viewport above the on-screen keyboard
             val fieldDensity = LocalDensity.current
             val imeOpen = WindowInsets.ime.getBottom(fieldDensity) > 0
             val viewportDp = with(fieldDensity) { scrollViewportPx.toDp() }
-            val normalFieldHeight = if (isTextAreaExpanded) 400.dp else 200.dp
-            // Keep the field well below the full viewport while the keyboard is open, so there is always
-            // room around it (toolbar above / actions below) to grab and drag the page.
-            val adaptiveFieldHeight = viewportDp * (
-                if (imeOpen) (if (isTextAreaExpanded) 0.62f else 0.5f)
-                else (if (isTextAreaExpanded) 0.85f else 0.55f)
-            )
-            val fieldHeight = if (scrollViewportPx == 0) normalFieldHeight
-                else maxOf(140.dp, minOf(normalFieldHeight, adaptiveFieldHeight))
+            val normalFieldHeight = if (isTextAreaExpanded) 380.dp else 200.dp
+            val maxAvailableFieldHeight = if (viewportDp > 0.dp) {
+                // Ensure room remains for header, toolbar, and bottom controls
+                (viewportDp - 70.dp).coerceAtLeast(80.dp)
+            } else {
+                normalFieldHeight
+            }
+            val targetFieldHeight = if (imeOpen) {
+                val ratio = if (isTextAreaExpanded) 0.50f else 0.42f
+                (viewportDp * ratio).coerceIn(80.dp, maxAvailableFieldHeight)
+            } else {
+                normalFieldHeight
+            }
+            val fieldHeight = if (scrollViewportPx == 0) {
+                normalFieldHeight
+            } else {
+                minOf(normalFieldHeight, targetFieldHeight, maxAvailableFieldHeight)
+            }
             var mcqFocused by remember { mutableStateOf(false) }
-            // Whenever the keyboard opens (or focus lands) scroll the page so the whole box is visible
-            val keyboardMarginPx = with(fieldDensity) { 16.dp.toPx() }
-            LaunchedEffect(imeOpen, mcqFocused) {
-                if (imeOpen && mcqFocused) {
-                    // Two passes: once after the keyboard animation, once after layout fully settles
-                    repeat(2) { pass ->
-                        delay(if (pass == 0) 350L else 150L)
-                        val viewportTop = layoutHolder[0]
-                        val viewportBottom = layoutHolder[1]
-                        val sectionTop = layoutHolder[2]
-                        val fieldBottom = layoutHolder[3]
-                        if (viewportBottom > viewportTop) {
-                            // Scroll needed so the whole field bottom clears the keyboard...
-                            val toShowBottom = fieldBottom + keyboardMarginPx - viewportBottom
-                            // ...but never push the section header ("MCQ Practice Content") off the top
-                            val toKeepHeader = sectionTop - viewportTop
-                            if (toShowBottom > 0f) {
-                                val delta = minOf(toShowBottom, maxOf(0f, toKeepHeader))
-                                val target = (columnScrollState.value + delta.toInt())
-                                    .coerceIn(0, columnScrollState.maxValue)
-                                columnScrollState.animateScrollTo(target)
-                            }
-                        }
-                    }
+
+            // Reliable BringIntoView triggered without arbitrary delays when field gains focus or keyboard/viewport changes
+            LaunchedEffect(imeOpen, scrollViewportPx, mcqFocused) {
+                if (mcqFocused && scrollViewportPx > 0) {
+                    bringIntoViewRequester.bringIntoView()
                 }
             }
 
-            // Dynamic Scrollable Text Area Input with Isolated Nested Scrolling and IME bring-into-view
-            OutlinedTextField(
-                value = textInput,
-                onValueChange = { textInput = it },
-                label = { Text(if (isTextAreaExpanded) "MCQ Practice Text (Expanded View)" else "MCQ Practice Text") },
-                placeholder = {
-                    Text(
-                        "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\n\nAnswer Key\n1: A\n\nDetailed Explanations\n1. (A) Reason...",
-                        color = colors.muted.copy(alpha = 0.6f),
-                        fontSize = 12.sp
-                    )
-                },
-                colors = fieldColors,
-                minLines = 1,
-                maxLines = Int.MAX_VALUE,
+            // Dynamic Scrollable Text Area Input with Isolated Nested Scrolling, IME bring-into-view and Floating Scroll Indicator
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(fieldHeight)
-                    .nestedScroll(textFieldNestedScroll)
-                    .bringIntoViewRequester(bringIntoViewRequester)
-                    .onGloballyPositioned { layoutHolder[3] = it.positionInRoot().y + it.size.height }
-                    .onFocusEvent { focusState -> mcqFocused = focusState.isFocused }
-                    .testTag("mcq_input_field"),
-                shape = RoundedCornerShape(10.dp)
-            )
+            ) {
+                OutlinedTextField(
+                    value = textInput,
+                    onValueChange = { textInput = it },
+                    label = { Text(if (isTextAreaExpanded) "MCQ Practice Text (Expanded View)" else "MCQ Practice Text") },
+                    placeholder = {
+                        Text(
+                            "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\n\nAnswer Key\n1: A\n\nDetailed Explanations\n1. (A) Reason...",
+                            color = colors.muted.copy(alpha = 0.6f),
+                            fontSize = 12.sp
+                        )
+                    },
+                    colors = fieldColors,
+                    minLines = 1,
+                    maxLines = Int.MAX_VALUE,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(textFieldNestedScroll)
+                        .bringIntoViewRequester(bringIntoViewRequester)
+                        .onFocusEvent { focusState ->
+                            mcqFocused = focusState.isFocused
+                            if (focusState.isFocused) {
+                                coroutineScope.launch {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            }
+                        }
+                        .testTag("mcq_input_field"),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                // Floating scrollbar for text box: visible only while scrolling, auto-hides after a few moments
+                val scrollAlpha by animateFloatAsState(
+                    targetValue = if (isTextBoxScrolling) 1f else 0f,
+                    animationSpec = tween(durationMillis = if (isTextBoxScrolling) 150 else 500),
+                    label = "textBoxScrollbarAlpha"
+                )
+                if (scrollAlpha > 0.01f) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = colors.teal.copy(alpha = 0.85f * scrollAlpha),
+                        shadowElevation = (3 * scrollAlpha).dp,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp, top = 12.dp, bottom = 12.dp)
+                            .width(5.dp)
+                            .fillMaxHeight(0.55f)
+                    ) {}
+                }
+            }
 
             // Live Parser Metrics Pill / Progress Indicator
             if (isParsingPreview) {
@@ -1459,7 +1546,7 @@ fun InputBottomSheet(
             }
 
             // While the keyboard is open, add scroll room below so the field can actually be lifted above it
-            Spacer(modifier = Modifier.height(if (imeOpen) viewportDp * 0.6f else 32.dp))
+            Spacer(modifier = Modifier.height(if (imeOpen) maxOf(viewportDp * 0.8f, 260.dp) else 80.dp))
         } else {
             // AI Prompt Generator Tab Content
             val parsedCount = promptMcqCount.trim().toIntOrNull() ?: 20
