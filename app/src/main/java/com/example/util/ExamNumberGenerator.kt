@@ -89,25 +89,25 @@ object ExamNumberGenerator {
     }
 
     /**
-     * Extracts or derives a single booklet code / letter (e.g. "A", "B", "C", "D") from set title or metadata.
+     * Extracts or derives a single booklet code / number (e.g. "1", "2", "3", "4", "A", "B") from set title or metadata.
      */
     fun extractBookletCode(raw: String): String {
         val trimmed = raw.trim().uppercase()
         if (trimmed.startsWith("SET ")) {
-            return trimmed.substring(4).trim().take(4).ifBlank { "A" }
+            return trimmed.substring(4).trim().take(4).ifBlank { "1" }
         }
         if (trimmed.startsWith("SET-")) {
-            return trimmed.substring(4).trim().take(4).ifBlank { "A" }
+            return trimmed.substring(4).trim().take(4).ifBlank { "1" }
         }
         if (trimmed.startsWith("SET")) {
-            return trimmed.substring(3).trim().take(4).ifBlank { "A" }
+            return trimmed.substring(3).trim().take(4).ifBlank { "1" }
         }
-        return trimmed.take(4).ifBlank { "A" }
+        return trimmed.take(4).ifBlank { "1" }
     }
 
     /**
-     * Derives a dynamic list of booklet set codes (e.g. ["A", "B", "C", "D"], ["1", "2", "3", "4"], or ["P", "Q", "R", "S"])
-     * accommodating sets beyond standard A-D.
+     * Derives a dynamic list of booklet set codes (e.g. ["1", "2", "3", "4"], ["A", "B", "C", "D"], or ["P", "Q", "R", "S"])
+     * accommodating arbitrary n number of sets beyond 4 or D.
      */
     fun resolveBookletSets(activeSetCode: String): List<String> {
         val code = extractBookletCode(activeSetCode)
@@ -122,10 +122,10 @@ object ExamNumberGenerator {
         }
         if (code.all { it.isDigit() } && code.isNotBlank()) {
             val num = code.toIntOrNull() ?: 1
-            val maxNum = maxOf(4, minOf(8, num))
+            val maxNum = maxOf(4, num)
             return (1..maxNum).map { it.toString() }
         }
-        return listOf("A", "B", "C", "D")
+        return listOf("1", "2", "3", "4")
     }
 
     /**

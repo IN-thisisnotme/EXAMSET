@@ -301,7 +301,7 @@ private fun ExamStartOverviewView(
                             color = colors.tealLight
                         ) {
                             Text(
-                                text = paper.metadata.setNumber.ifBlank { "SET - A" },
+                                text = paper.metadata.setNumber.ifBlank { "SET 1" },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal,

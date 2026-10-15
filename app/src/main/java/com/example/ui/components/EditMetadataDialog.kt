@@ -40,6 +40,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
 
@@ -66,53 +73,80 @@ fun EditMetadataDialog(
         )
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = colors.surface,
-            border = BorderStroke(1.dp, colors.border),
-            tonalElevation = 8.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
+            modifier = Modifier.fillMaxSize(),
+            color = colors.surface
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
+                    .fillMaxSize()
+                    .imePadding()
+                    .navigationBarsPadding()
             ) {
                 // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    color = colors.surfaceVariant,
+                    tonalElevation = 2.dp,
+                    border = BorderStroke(0.5.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.EditNote,
-                            contentDescription = null,
-                            tint = colors.teal,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Edit Question Set Details",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.inkBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.muted)
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EditNote,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Edit Question Set Details",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Update title, subject, set number and OMR codes",
+                                    fontSize = 11.sp,
+                                    color = colors.muted
+                                )
+                            }
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.muted)
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                // Scrollable Form Area
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
 
                 val textFieldColors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = colors.teal,
@@ -172,7 +206,7 @@ fun EditMetadataDialog(
                 OutlinedTextField(
                     value = setNumber,
                     onValueChange = { setNumber = it },
-                    label = { Text("Set No. (e.g. Set A, Set 1, Series B)") },
+                    label = { Text("Set No. (e.g. 01, 02)") },
                     singleLine = true,
                     colors = textFieldColors,
                     modifier = Modifier
@@ -313,35 +347,46 @@ fun EditMetadataDialog(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                // Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
+                }
+
+                // Pinned Bottom Action Bar
+                Surface(
+                    color = colors.surfaceVariant,
+                    tonalElevation = 3.dp,
+                    border = BorderStroke(0.5.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        border = BorderStroke(1.dp, colors.border),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.ink),
-                        modifier = Modifier.testTag("cancel_metadata_button")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Cancel")
-                    }
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            border = BorderStroke(1.dp, colors.border),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.ink),
+                            modifier = Modifier.testTag("cancel_metadata_button")
+                        ) {
+                            Text("Cancel")
+                        }
 
-                    Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
 
-                    Button(
-                        onClick = {
-                            onSave(title, subject, topic, setNumber, rollNumber, bookletNumber)
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.navyBanner,
-                            contentColor = colors.navyBannerText
-                        ),
-                        modifier = Modifier.testTag("save_metadata_button")
-                    ) {
-                        Text("Save Details")
+                        Button(
+                            onClick = {
+                                onSave(title, subject, topic, setNumber, rollNumber, bookletNumber)
+                                onDismiss()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.navyBanner,
+                                contentColor = colors.navyBannerText
+                            ),
+                            modifier = Modifier.testTag("save_metadata_button")
+                        ) {
+                            Text("Save Details")
+                        }
                     }
                 }
             }

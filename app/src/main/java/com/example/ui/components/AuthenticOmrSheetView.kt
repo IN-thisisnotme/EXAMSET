@@ -53,7 +53,7 @@ fun AuthenticOmrSheetView(
     modifier: Modifier = Modifier
 ) {
     val totalQuestions = paper.questions.size.coerceAtLeast(1)
-    val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "A" } }
+    val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "1" } }
     val setClean = ExamNumberGenerator.extractBookletCode(rawSet)
     val bookletSets = ExamNumberGenerator.resolveBookletSets(setClean)
 
@@ -350,7 +350,8 @@ fun AuthenticOmrSheetView(
                                 }
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.horizontalScroll(rememberScrollState())
                                 ) {
                                     bookletSets.forEach { code ->
                                         val isCurrent = code.equals(setClean, ignoreCase = true)

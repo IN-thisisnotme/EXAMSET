@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Refresh
@@ -943,28 +944,62 @@ fun PromptGeneratorTab(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
                             onClick = copyAction,
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                            modifier = Modifier.heightIn(min = 42.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 44.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copied) Color(0xFF059669) else Color(0xFF2563EB)
+                                containerColor = if (copied) Color(0xFF059669) else Color(0xFF2563EB),
+                                contentColor = Color.White
                             )
                         ) {
                             Icon(
                                 if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
                                 contentDescription = null,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (copied) "Prompt Copied to Clipboard!" else "Copy AI Prompt",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                text = if (copied) "Prompt Copied!" else "Copy AI Prompt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onNavigateToCreator,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 44.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = colors.tealDark,
+                                containerColor = colors.surface
+                            ),
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EditNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.teal
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Paste Response",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

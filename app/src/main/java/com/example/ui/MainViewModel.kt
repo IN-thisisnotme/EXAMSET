@@ -729,7 +729,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val cleanTitle = title.trim().ifBlank { "MCQ Practice Set" }
         val cleanSubject = subject.trim().ifBlank { "General Studies" }
         val cleanTopic = topic.trim()
-        val cleanSet = setNumber.trim().ifBlank { "Set A" }
+        val rawSet = setNumber.trim().ifBlank { active.metadata.setNumber.ifBlank { "01" } }
+        val setDigits = rawSet.filter { it.isDigit() }
+        val cleanSet = if (setDigits.isNotEmpty() && setDigits.length <= 4) {
+            val n = setDigits.toIntOrNull() ?: 1
+            String.format(java.util.Locale.US, "%02d", n)
+        } else rawSet
         val cleanRoll = rollNumber?.filter { it.isDigit() }?.take(10)?.ifBlank { null }
             ?: active.metadata.rollNumber.ifBlank { ExamNumberGenerator.generateRollNumber() }
         val cleanBooklet = bookletNumber?.filter { it.isDigit() }?.take(7)?.ifBlank { null }
@@ -769,21 +774,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.Default) {
             val result = McqParser.parseWithResult(text)
             val parsed = result.paper
+            val rawCustomSet = if (!customSetNumber.isNullOrBlank()) customSetNumber.trim() else parsed.metadata.setNumber
+            val customDigits = rawCustomSet.filter { it.isDigit() }
+            val formattedSet = if (customDigits.isNotEmpty() && customDigits.length <= 4) {
+                val n = customDigits.toIntOrNull() ?: 1
+                String.format(java.util.Locale.US, "%02d", n)
+            } else rawCustomSet
+
             val finalMetadata = parsed.metadata.copy(
                 title = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title,
                 subject = if (!customSubject.isNullOrBlank()) customSubject.trim() else parsed.metadata.subject,
                 topic = if (!customTopic.isNullOrBlank()) customTopic.trim() else parsed.metadata.topic,
-                setNumber = if (!customSetNumber.isNullOrBlank()) customSetNumber.trim() else parsed.metadata.setNumber
+                setNumber = formattedSet.ifBlank { "01" }
             )
             val finalPaper = parsed.copy(metadata = finalMetadata)
 
             val existing = paperDao.findPaperByRawText(text.trim())
             val entityId: Long = if (existing != null) {
+                // When an existing set is re-saved or moved to another folder, preserve its existing set number
+                // so it remains tightly coupled to booklet and roll numbers
+                val preservedSet = if (existing.setNumber.isNotBlank()) existing.setNumber else finalMetadata.setNumber
                 val updated = existing.copy(
                     title = finalMetadata.title,
                     subject = finalMetadata.subject,
                     topic = finalMetadata.topic,
-                    setNumber = finalMetadata.setNumber,
+                    setNumber = preservedSet,
                     questionCount = finalPaper.questions.size,
                     answerKeyCount = finalPaper.quickAnswersCount,
                     explanationCount = finalPaper.explanationsCount,
@@ -832,7 +847,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _examConfig.value = _examConfig.value.copy(
                     examTitle = finalMetadata.title,
                     subject = finalMetadata.subject,
-                    seriesCode = finalMetadata.setNumber.ifBlank { "SET - A" },
+                    seriesCode = finalMetadata.setNumber.ifBlank { "SET - 1" },
                     timeAllowed = "$autoMinutes Minutes",
                     maxMarks = "${finalPaper.questions.size}",
                     rollNumber = finalMetadata.rollNumber,
@@ -873,7 +888,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 title = entity.title,
                 subject = entity.subject,
                 topic = entity.topic,
-                setNumber = entity.setNumber.ifBlank { "Set A" },
+                setNumber = entity.setNumber.ifBlank { "Set 1" },
                 exam = entity.exam,
                 folderId = entity.folderId,
                 rollNumber = finalRoll,
@@ -925,7 +940,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _examConfig.value = _examConfig.value.copy(
                 examTitle = entity.title,
                 subject = entity.subject,
-                seriesCode = entity.setNumber.ifBlank { "SET - A" },
+                seriesCode = entity.setNumber.ifBlank { "SET - 1" },
                 timeAllowed = "$autoMinutes Minutes",
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
@@ -1057,7 +1072,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     title = entity.title,
                     subject = entity.subject,
                     topic = entity.topic,
-                    setNumber = entity.setNumber.ifBlank { "Set A" },
+                    setNumber = entity.setNumber.ifBlank { "Set 1" },
                     exam = entity.exam,
                     folderId = entity.folderId,
                     rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
@@ -1083,7 +1098,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     title = entity.title,
                     subject = entity.subject,
                     topic = entity.topic,
-                    setNumber = entity.setNumber.ifBlank { "Set A" },
+                    setNumber = entity.setNumber.ifBlank { "Set 1" },
                     exam = entity.exam,
                     folderId = entity.folderId,
                     rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
@@ -1134,7 +1149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         title = p.metadata.title,
                         subject = p.metadata.subject.ifBlank { "General Knowledge" },
                         topic = p.metadata.topic,
-                        setNumber = p.metadata.setNumber.ifBlank { "Set A" },
+                        setNumber = p.metadata.setNumber.ifBlank { "Set 1" },
                         exam = p.metadata.exam,
                         questionCount = p.questions.size,
                         answerKeyCount = p.quickAnswersCount,
@@ -1357,7 +1372,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val submissions = paperAttempts.mapIndexed { idx, att ->
                 val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
                 val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
-                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber.ifBlank { "A" } }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber.ifBlank { "1" } }
                 val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
                 PsychometricEngine.CandidateSubmission(
                     rollNumber = roll,
@@ -1422,7 +1437,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return paperAttempts.mapIndexed { idx, att ->
                 val roll = att.getCandidateRollNumber().ifBlank { String.format(java.util.Locale.US, "202610%04d", idx + 1) }
                 val booklet = att.getCandidateBookletNumber().ifBlank { String.format(java.util.Locale.US, "710%04d", idx + 1) }
-                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber.ifBlank { "A" } }
+                val code = att.getCandidateBookletCode().ifBlank { paper.metadata.setNumber.ifBlank { "1" } }
                 val answers = att.getAnswersMap().mapValues { it.value.firstOrNull() }
                 PsychometricEngine.CandidateSubmission(
                     rollNumber = roll,

@@ -55,7 +55,7 @@ data class PaperMetadata(
     val title: String = "MCQ Practice Set",
     val subject: String = "Objective Multiple Choice Questions",
     val topic: String = "",
-    val setNumber: String = "Set A",
+    val setNumber: String = "01",
     val exam: String = "",
     val folderId: String? = null,
     val rollNumber: String = ExamNumberGenerator.generateRollNumber(),

@@ -236,7 +236,14 @@ object McqParser {
             val setMatch = Regex("""\b(?:set(?:\s*no\.?|\s*code)?|series)\s*[:\-]?\s*([A-Za-z0-9\-]+)""", RegexOption.IGNORE_CASE).find(clean)
             if (setMatch != null && setNumber.isEmpty()) {
                 val foundSet = setMatch.groupValues[1].trim()
-                setNumber = if (!foundSet.startsWith("Set", ignoreCase = true)) "Set $foundSet" else foundSet
+                setNumber = if (foundSet.all { it.isDigit() }) {
+                    val n = foundSet.toIntOrNull() ?: 1
+                    String.format(java.util.Locale.US, "%02d", n)
+                } else if (!foundSet.startsWith("Set", ignoreCase = true)) {
+                    "Set $foundSet"
+                } else {
+                    foundSet
+                }
                 continue
             }
 
@@ -281,9 +288,21 @@ object McqParser {
         }
 
         if (setNumber.isEmpty()) {
-            // Check if title mentions Set A/B/C/etc.
-            val titleSetMatch = Regex("""\b(Set\s*[\-A-Za-z0-9]+)\b""", RegexOption.IGNORE_CASE).find(title)
-            setNumber = titleSetMatch?.value?.trim() ?: "Set A"
+            // Check if title mentions Set A/B/C/etc. or numeric set
+            val titleSetMatch = Regex("""\b(?:Set|Series)\s*[\-:]?\s*([A-Za-z0-9\-]+)\b""", RegexOption.IGNORE_CASE).find(title)
+            if (titleSetMatch != null) {
+                val rawVal = titleSetMatch.groupValues[1].trim()
+                setNumber = if (rawVal.all { it.isDigit() }) {
+                    val n = rawVal.toIntOrNull() ?: 1
+                    String.format(java.util.Locale.US, "%02d", n)
+                } else if (!rawVal.startsWith("Set", ignoreCase = true)) {
+                    "Set $rawVal"
+                } else {
+                    rawVal
+                }
+            } else {
+                setNumber = "01"
+            }
         }
 
         return PaperMetadata(
@@ -333,15 +352,17 @@ object McqParser {
         }
 
         // Fallback: If no explicit heading found, check for a trailing answers/explanations sequence
-        // e.g. after questions end, a line like "1 (B) detail_1" or "1. (B) detail" or "1: A"
+        // e.g. after questions end, a line like "1 (B) detail_1" or "1. (B) detail" or "21: A"
         if (answerStart == null && explanationStart == null) {
             val trailingStartRegex = Pattern.compile(
-                """^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|Explanation|Exp|Sol|Solution)\.?\s*(?:No\.?|#)?\s*)?1\s*(?:[\.\:\)\-]|(?=\s*[\(\[]?[ABCD][\)\]]?))\s*[\(\[]?[ABCD][\)\]]?""",
+                """^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|Explanation|Exp|Sol|Solution)\.?\s*(?:No\.?|#)?\s*)?\b1\b\s*(?:[\.\:\)\-]\s*)?[\(\[]?[A-Da-d1-4][\)\]]?(?:\s|$|[\.\:\)\-])""",
                 Pattern.CASE_INSENSITIVE
             )
-            // Look for this pattern after at least 5 lines of questions
-            for (i in 5 until lines.size) {
-                if (trailingStartRegex.matcher(lines[i].trim()).find()) {
+            // Look for this pattern after at least 4 lines of questions
+            for (i in 4 until lines.size) {
+                val lineTrimmed = lines[i].trim()
+                // Never treat a line containing a question mark or clear question wording as answer key start
+                if (!lineTrimmed.contains("?") && trailingStartRegex.matcher(lineTrimmed).find()) {
                     answerStart = i - 1 // Include potential subheader or split from here
                     explanationStart = i - 1
                     break

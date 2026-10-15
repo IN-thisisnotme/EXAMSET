@@ -89,6 +89,18 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.CircularProgressIndicator
+import com.example.util.McqParser
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import com.example.ui.components.AttachmentEditorSection
 import com.example.ui.components.QuestionAttachmentView
 import com.example.ui.components.EditMetadataDialog
@@ -1451,12 +1463,17 @@ private fun MasterQuestionCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddQuestionDialog(
     viewModel: MainViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val colors = ExamTheme.colors
+    val currentPaper by viewModel.currentPaper.collectAsState()
+    val totalExistingQuestions = currentPaper?.questions?.size ?: 0
+
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Form Entry, 1: Paste & Append
 
     // Single Question Form State
@@ -1483,6 +1500,40 @@ private fun AddQuestionDialog(
         } else null
     }
 
+    // Debounced real-time parser telemetry for Paste & Append tab
+    val existingNorms = remember(currentPaper) {
+        currentPaper?.questions?.map { viewModel.normalizeQuestionText(it.question) }?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+    }
+
+    var parsedBatchResult by remember { mutableStateOf<com.example.model.ParseResult?>(null) }
+    var isParsingBatch by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pastedBatchText) {
+        if (pastedBatchText.isBlank()) {
+            parsedBatchResult = null
+            isParsingBatch = false
+        } else {
+            isParsingBatch = true
+            delay(280L)
+            val res = withContext(Dispatchers.Default) {
+                McqParser.parseWithResult(pastedBatchText)
+            }
+            parsedBatchResult = res
+            isParsingBatch = false
+        }
+    }
+
+    val duplicatesCount = remember(parsedBatchResult, existingNorms) {
+        parsedBatchResult?.paper?.questions?.count { q ->
+            val norm = viewModel.normalizeQuestionText(q.question)
+            norm.isNotBlank() && existingNorms.contains(norm)
+        } ?: 0
+    }
+    val parsedQuestionsCount = parsedBatchResult?.paper?.questions?.size ?: 0
+    val newQuestionsCount = (parsedQuestionsCount - duplicatesCount).coerceAtLeast(0)
+    val nextStartNumber = totalExistingQuestions + 1
+    val nextEndNumber = totalExistingQuestions + newQuestionsCount
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -1490,67 +1541,108 @@ private fun AddQuestionDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.55f))
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .imePadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colors.surface
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = colors.surface,
-                tonalElevation = 8.dp,
-                border = BorderStroke(1.dp, colors.border),
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 560.dp)
+                    .fillMaxSize()
+                    .imePadding()
+                    .navigationBarsPadding()
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp)
+                // Header Bar
+                Surface(
+                    color = colors.surfaceVariant,
+                    tonalElevation = 2.dp,
+                    border = BorderStroke(0.5.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Add Questions to Paper",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TabRow(
-                        selectedTabIndex = selectedTab,
-                        containerColor = Color.Transparent,
-                        contentColor = Color(0xFF2563EB),
-                        indicator = { tabPositions ->
-                            TabRowDefaults.SecondaryIndicator(
-                                Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                                color = Color(0xFF2563EB)
-                            )
-                        }
-                    ) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            text = { Text("Manual Form", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            text = { Text("Paste & Append", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Scrollable content area: contracts smoothly when soft keyboard appears
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f, fill = false)
+                            .statusBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Add Questions to Paper",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = "Current Set: ${currentPaper?.metadata?.title.takeIf { !it.isNullOrBlank() } ?: "Question Paper"} (Q1–Q$totalExistingQuestions)",
+                                fontSize = 11.5.sp,
+                                color = colors.muted
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (selectedTab == 1) {
+                                IconButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                        if (clipText.isNotBlank()) {
+                                            pastedBatchText = clipText
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentPaste,
+                                        contentDescription = "Paste from clipboard",
+                                        tint = colors.teal
+                                    )
+                                }
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = colors.muted
+                                )
+                            }
+                        }
+                    }
+                }
+
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = colors.surfaceVariant.copy(alpha = 0.5f),
+                    contentColor = colors.tealDark,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = colors.teal
+                        )
+                    }
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Manual Form", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Paste & Append", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 18.dp)
+                ) {
                         if (selectedTab == 0) {
                             // Manual Form
                             LazyColumn(
@@ -1740,111 +1832,315 @@ private fun AddQuestionDialog(
                                 }
                             }
                         } else {
-                            // Batch Paste
+                            // Batch Paste & Append with Real-Time Parser Telemetry & Duplicate Preview
                             Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .fillMaxSize()
                                     .verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
+                                // Telemetry & Parsing Status Chips
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFFEFF6FF),
-                                    border = BorderStroke(0.8.dp, Color(0xFFBFDBFE)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(1.dp, colors.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.ContentPaste, contentDescription = null, tint = Color(0xFF1D4ED8), modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Paste questions in standard format. Repeated/duplicate questions will be automatically filtered out!",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF1E40AF)
-                                        )
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ContentPaste,
+                                                    contentDescription = null,
+                                                    tint = colors.teal,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Parser & Duplicate Telemetry",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.inkBold
+                                                )
+                                            }
+
+                                            if (pastedBatchText.isNotBlank()) {
+                                                TextButton(
+                                                    onClick = { pastedBatchText = "" },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.muted)
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text("Clear", fontSize = 11.sp, color = colors.muted)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        if (isParsingBatch) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.padding(vertical = 4.dp)
+                                            ) {
+                                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = colors.teal)
+                                                Text("Analyzing pasted questions...", fontSize = 11.sp, color = colors.muted)
+                                            }
+                                        } else if (pastedBatchText.isBlank()) {
+                                            Text(
+                                                text = "Paste questions in any standard format (questions, options, answers & solutions). Real-time telemetry will appear automatically.",
+                                                fontSize = 11.sp,
+                                                color = colors.muted,
+                                                lineHeight = 15.sp
+                                            )
+                                        } else {
+                                            // Live metrics flow
+                                            FlowRow(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                // Parsed count
+                                                Surface(
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = if (parsedQuestionsCount > 0) Color(0xFFEFF6FF) else Color(0xFFFEF2F2),
+                                                    border = BorderStroke(0.6.dp, if (parsedQuestionsCount > 0) Color(0xFFBFDBFE) else Color(0xFFFCA5A5))
+                                                ) {
+                                                    Text(
+                                                        text = "$parsedQuestionsCount Questions Parsed",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (parsedQuestionsCount > 0) Color(0xFF1D4ED8) else Color(0xFFDC2626),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+
+                                                // Keys count
+                                                val keysCount = parsedBatchResult?.paper?.questions?.count { it.correctAnswer != null } ?: 0
+                                                Surface(
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = Color(0xFFF0FDF4),
+                                                    border = BorderStroke(0.6.dp, Color(0xFFBBF7D0))
+                                                ) {
+                                                    Text(
+                                                        text = "$keysCount Answer Keys",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF15803D),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+
+                                                // Explanations count
+                                                val expCount = parsedBatchResult?.paper?.questions?.count { !it.explanation.isNullOrBlank() } ?: 0
+                                                Surface(
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    color = Color(0xFFF8FAFC),
+                                                    border = BorderStroke(0.6.dp, Color(0xFFCBD5E1))
+                                                ) {
+                                                    Text(
+                                                        text = "$expCount Explanations",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = Color(0xFF475569),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+
+                                                // Duplicates status
+                                                if (duplicatesCount > 0) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = Color(0xFFFEF3C7),
+                                                        border = BorderStroke(0.6.dp, Color(0xFFFDE68A))
+                                                    ) {
+                                                        Text(
+                                                            text = "$duplicatesCount Duplicate${if (duplicatesCount > 1) "s" else ""} (will be filtered)",
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFFB45309),
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                // Numbering range
+                                                if (newQuestionsCount > 0) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = Color(0xFFEEF2FF),
+                                                        border = BorderStroke(0.6.dp, Color(0xFFC7D2FE))
+                                                    ) {
+                                                        Text(
+                                                            text = "Will append as Q$nextStartNumber – Q$nextEndNumber",
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF4338CA),
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
+                                // Quick Format helper / Sample loader row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Batch Question Input",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.inkBold
+                                    )
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        TextButton(
+                                            onClick = {
+                                                pastedBatchText = """
+1. What is the SI unit of electric current?
+(A) Volt
+(B) Ampere
+(C) Ohm
+(D) Watt
+Answer: B
+Explanation: The SI unit of electric current is the ampere (A).
+
+2. Which organelle is called the powerhouse of the cell?
+(A) Nucleus
+(B) Ribosome
+(C) Mitochondria
+(D) Golgi apparatus
+Answer: C
+Explanation: Mitochondria generate most of the cell's ATP.
+                                                """.trimIndent()
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("Load Sample", fontSize = 11.sp, color = colors.teal)
+                                        }
+
+                                        TextButton(
+                                            onClick = {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                                val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                                if (clipText.isNotBlank()) {
+                                                    pastedBatchText = clipText
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.teal)
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text("Paste", fontSize = 11.sp, color = colors.teal)
+                                        }
+                                    }
+                                }
+
+                                // Text area
                                 OutlinedTextField(
                                     value = pastedBatchText,
                                     onValueChange = { pastedBatchText = it },
                                     placeholder = {
                                         Text(
                                             "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\nAnswer: B\nExplanation: Explanation text...",
-                                            fontSize = 11.sp
+                                            fontSize = 11.5.sp,
+                                            lineHeight = 16.sp
                                         )
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(200.dp),
-                                    maxLines = 14
+                                        .heightIn(min = 220.dp, max = 340.dp)
+                                        .testTag("paste_append_text_field"),
+                                    shape = RoundedCornerShape(8.dp)
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Dialog Actions: Pinned at bottom, always visible above keyboard!
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                    // Pinned Bottom Action Bar
+                    Surface(
+                        color = colors.surfaceVariant,
+                        tonalElevation = 3.dp,
+                        border = BorderStroke(0.5.dp, colors.border),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        TextButton(
-                            onClick = onDismiss,
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            modifier = Modifier.heightIn(min = 40.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Cancel", fontSize = 12.sp, color = colors.ink)
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        if (selectedTab == 0) {
-                            val canAdd = questionText.isNotBlank() && optA.isNotBlank() && optB.isNotBlank() && duplicateNum == null
-                            Button(
-                                onClick = {
-                                    val res = viewModel.addCustomQuestion(
-                                        questionText = questionText,
-                                        optionA = optA,
-                                        optionB = optB,
-                                        optionC = optC,
-                                        optionD = optD,
-                                        correctAnswer = selectedAnswer,
-                                        explanation = explanationText,
-                                        questionType = questionType,
-                                        diagramUrl = customDiagramUrl,
-                                        diagramLabel = customDiagramLabel,
-                                        formula = customFormula
-                                    )
-                                    if (res.first) {
-                                        onDismiss()
-                                    }
-                                },
-                                enabled = canAdd,
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                modifier = Modifier.heightIn(min = 40.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                            TextButton(
+                                onClick = onDismiss,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                modifier = Modifier.heightIn(min = 40.dp)
                             ) {
-                                Text("Add Question", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Cancel", fontSize = 12.sp, color = colors.ink)
                             }
-                        } else {
-                            Button(
-                                onClick = {
-                                    if (pastedBatchText.isNotBlank()) {
-                                        viewModel.appendQuestionsFromRawText(pastedBatchText)
-                                        onDismiss()
-                                    }
-                                },
-                                enabled = pastedBatchText.isNotBlank(),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                modifier = Modifier.heightIn(min = 40.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                            ) {
-                                Text("Append Questions", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            if (selectedTab == 0) {
+                                val canAdd = questionText.isNotBlank() && optA.isNotBlank() && optB.isNotBlank() && duplicateNum == null
+                                Button(
+                                    onClick = {
+                                        val res = viewModel.addCustomQuestion(
+                                            questionText = questionText,
+                                            optionA = optA,
+                                            optionB = optB,
+                                            optionC = optC,
+                                            optionD = optD,
+                                            correctAnswer = selectedAnswer,
+                                            explanation = explanationText,
+                                            questionType = questionType,
+                                            diagramUrl = customDiagramUrl,
+                                            diagramLabel = customDiagramLabel,
+                                            formula = customFormula
+                                        )
+                                        if (res.first) {
+                                            onDismiss()
+                                        }
+                                    },
+                                    enabled = canAdd,
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    modifier = Modifier.heightIn(min = 40.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                                ) {
+                                    Text("Add Question", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            } else {
+                                val buttonText = when {
+                                    newQuestionsCount > 0 -> "Append $newQuestionsCount Questions (Q$nextStartNumber–Q$nextEndNumber)"
+                                    parsedQuestionsCount > 0 && duplicatesCount == parsedQuestionsCount -> "All $parsedQuestionsCount Questions are Duplicates"
+                                    else -> "Append Questions"
+                                }
+                                Button(
+                                    onClick = {
+                                        if (pastedBatchText.isNotBlank()) {
+                                            viewModel.appendQuestionsFromRawText(pastedBatchText)
+                                            onDismiss()
+                                        }
+                                    },
+                                    enabled = pastedBatchText.isNotBlank() && (newQuestionsCount > 0 || parsedQuestionsCount == 0),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    modifier = Modifier.heightIn(min = 40.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                                ) {
+                                    Text(buttonText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                     }
@@ -1852,7 +2148,6 @@ private fun AddQuestionDialog(
             }
         }
     }
-}
 
 @Composable
 private fun FilterChip(

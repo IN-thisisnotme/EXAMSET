@@ -1102,6 +1102,8 @@ object PrintDocumentHelper {
         .code-bubbles {
             display: flex;
             gap: 1.5mm;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         /* Answer Sheet No Area (with L-bracket corner marks) */
@@ -1341,7 +1343,7 @@ object PrintDocumentHelper {
 
     private fun generateOmrSectionHtml(paper: QuestionPaper, config: ExamConfig, isStandalone: Boolean = false): String {
         val questionCount = paper.questions.size.coerceAtLeast(1)
-        val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "A" } }.trim().uppercase()
+        val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "1" } }.trim().uppercase()
         val setClean = ExamNumberGenerator.extractBookletCode(rawSet)
         val bookletLetters = ExamNumberGenerator.resolveBookletSets(setClean)
 
@@ -1437,7 +1439,7 @@ object PrintDocumentHelper {
                     <div class="booklet-code-box">
                         <div class="booklet-code-header">Test Booklet Code</div>
                         <div class="booklet-code-inner">
-                            <div class="booklet-code-large">${escapeHtml(setClean.ifBlank { "A" })}</div>
+                            <div class="booklet-code-large">${escapeHtml(setClean.ifBlank { "1" })}</div>
                             <div class="code-bubbles">
                                 ${bookletLetters.joinToString("") { code ->
                                     val isDark = (config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && code.equals(setClean, ignoreCase = true))
