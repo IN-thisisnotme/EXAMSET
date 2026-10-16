@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.TextUnit
 import com.example.util.LatexHelper
 import com.example.util.RichTextHelper
 
+
 /**
  * Step 3: Dedicated LaTeX & Math-enabled Text Composable.
  * - Seamlessly parses and displays inline and display LaTeX math expressions ($...$, $$...$$).
