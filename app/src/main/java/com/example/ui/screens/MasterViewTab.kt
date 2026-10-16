@@ -41,7 +41,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.Icons 
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -289,6 +289,7 @@ fun MasterViewTab(
         val matchesFilter = when (filterMode) {
             "missing_key" -> q.correctAnswer == null
             "missing_exp" -> q.explanation.isNullOrBlank()
+            "missing_option" -> q.options.hasMissingOptions
             else -> true
         }
         matchesSearch && matchesFilter
@@ -345,7 +346,8 @@ fun MasterViewTab(
                                         fontWeight = FontWeight.Bold,
                                         color = colors.inkBold,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                     if (isEditMode) {
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -359,6 +361,8 @@ fun MasterViewTab(
                                                 fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.teal,
+                                                maxLines = 1,
+                                                softWrap = false,
                                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                             )
                                         }
@@ -534,6 +538,7 @@ fun MasterViewTab(
                     ) {
                         val missingKeyCount = questions.count { it.correctAnswer == null }
                         val missingExpCount = questions.count { it.explanation.isNullOrBlank() }
+                        val missingOptionCount = questions.count { it.options.hasMissingOptions }
 
                         FilterChip(
                             label = "All (${questions.size})",
@@ -553,6 +558,13 @@ fun MasterViewTab(
                             isSelected = filterMode == "missing_exp",
                             onClick = { filterMode = "missing_exp" },
                             accentColor = if (missingExpCount > 0) Color(0xFF2563EB) else null
+                        )
+
+                        FilterChip(
+                            label = "Missing Option ($missingOptionCount)",
+                            isSelected = filterMode == "missing_option",
+                            onClick = { filterMode = "missing_option" },
+                            accentColor = if (missingOptionCount > 0) colors.amber else null
                         )
                     }
                 }
@@ -1199,6 +1211,33 @@ private fun MasterQuestionCard(
                                 },
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
+                        }
+                    }
+
+                    if (question.options.hasMissingOptions) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.amberLight,
+                            border = BorderStroke(0.8.dp, colors.amber)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = colors.amber,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Missing Option (${question.options.missingOptions.joinToString(",")})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.amber
+                                )
+                            }
                         }
                     }
                 }

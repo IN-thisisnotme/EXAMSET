@@ -7,7 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.tween 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -101,6 +101,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1212,6 +1213,7 @@ fun InputBottomSheet(
             // Reliable BringIntoView triggered without arbitrary delays when field gains focus or keyboard/viewport changes
             LaunchedEffect(imeOpen, scrollViewportPx, mcqFocused) {
                 if (mcqFocused && scrollViewportPx > 0) {
+                    withFrameNanos { }
                     bringIntoViewRequester.bringIntoView()
                 }
             }
@@ -1244,6 +1246,7 @@ fun InputBottomSheet(
                             mcqFocused = focusState.isFocused
                             if (focusState.isFocused) {
                                 coroutineScope.launch {
+                                    withFrameNanos { }
                                     bringIntoViewRequester.bringIntoView()
                                 }
                             }
@@ -2418,7 +2421,7 @@ fun InputBottomSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }

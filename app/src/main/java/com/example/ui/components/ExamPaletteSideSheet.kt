@@ -69,6 +69,7 @@ private enum class MasterFilterMode {
     ALL,
     MISSING_KEY,
     MISSING_EXP,
+    MISSING_OPTION,
     MODIFIED
 }
 
@@ -115,6 +116,7 @@ fun ExamPaletteSideSheet(
                 MasterFilterMode.ALL -> true
                 MasterFilterMode.MISSING_KEY -> q.correctAnswer.isNullOrBlank()
                 MasterFilterMode.MISSING_EXP -> q.explanation.isNullOrBlank()
+                MasterFilterMode.MISSING_OPTION -> q.options.hasMissingOptions
                 MasterFilterMode.MODIFIED -> modifiedQuestionNums.contains(q.num)
             }
         }
@@ -124,6 +126,7 @@ fun ExamPaletteSideSheet(
     val totalCount = questions.size
     val missingKeyCount = remember(questions) { questions.count { it.correctAnswer.isNullOrBlank() } }
     val missingExpCount = remember(questions) { questions.count { it.explanation.isNullOrBlank() } }
+    val missingOptionCount = remember(questions) { questions.count { it.options.hasMissingOptions } }
     val completeCount = remember(questions) { questions.count { !it.correctAnswer.isNullOrBlank() && !it.explanation.isNullOrBlank() } }
 
     val answeredCount = remember(questions, answers) { questions.count { answers.containsKey(it.num) } }
@@ -319,6 +322,17 @@ fun ExamPaletteSideSheet(
                                 )
                             )
                         }
+                        item {
+                            FilterChip(
+                                selected = masterFilter == MasterFilterMode.MISSING_OPTION,
+                                onClick = { masterFilter = MasterFilterMode.MISSING_OPTION },
+                                label = { Text("No Option ($missingOptionCount)", fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = colors.amberLight,
+                                    selectedLabelColor = colors.amber
+                                )
+                            )
+                        }
                         if (isEditMode && modifiedQuestionNums.isNotEmpty()) {
                             item {
                                 FilterChip(
@@ -419,6 +433,7 @@ fun ExamPaletteSideSheet(
                             // Master Editorial State
                             val hasKey = !q.correctAnswer.isNullOrBlank()
                             val hasExp = !q.explanation.isNullOrBlank()
+                            val hasMissingOption = q.options.hasMissingOptions
                             val isModified = modifiedQuestionNums.contains(q.num)
 
                             when {
@@ -431,6 +446,11 @@ fun ExamPaletteSideSheet(
                                     colors.badgeDangerBg,
                                     colors.red,
                                     colors.badgeDangerText
+                                )
+                                hasMissingOption -> Triple(
+                                    colors.badgeWarningBg,
+                                    colors.amber,
+                                    colors.badgeWarningText
                                 )
                                 !hasExp -> Triple(
                                     colors.badgeWarningBg,

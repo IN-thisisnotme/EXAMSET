@@ -28,6 +28,17 @@ data class QuestionOptions(
             listOf("A" to a, "B" to b, "C" to c, "D" to d)
         }
 
+    val missingOptions: List<String>
+        get() = buildList {
+            if (a.isBlank()) add("A")
+            if (b.isBlank()) add("B")
+            if (c.isBlank()) add("C")
+            if (d.isBlank() && e.isBlank()) add("D")
+        }
+
+    val hasMissingOptions: Boolean
+        get() = missingOptions.isNotEmpty()
+
     val isValid: Boolean
         get() = a.isNotBlank() && b.isNotBlank() && c.isNotBlank() && (d.isNotBlank() || e.isNotBlank())
 }
@@ -45,7 +56,10 @@ data class McqQuestion(
     val diagramUrl: String? = null,
     val diagramLabel: String? = null,
     val formula: String? = null
-)
+) {
+    val hasMissingOptions: Boolean
+        get() = options.hasMissingOptions
+}
 
 /**
  * Extracted header metadata.

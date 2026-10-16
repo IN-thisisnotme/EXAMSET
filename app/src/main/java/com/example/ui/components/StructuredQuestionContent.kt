@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -124,10 +128,10 @@ fun StructuredQuestionContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Options Layout: Stacked if multi-line / Assertion-Reason / long text, else 2x2 grid
-        val hasOptions = question.options.asList.any { it.second.isNotBlank() }
-        if (hasOptions) {
-            val shouldStack = QuestionFormatter.shouldStackOptions(question)
+        val hasAnyOptions = question.options.asList.any { it.second.isNotBlank() }
+        val hasMissingOptions = question.options.hasMissingOptions
+        if (hasAnyOptions || hasMissingOptions) {
+            val shouldStack = QuestionFormatter.shouldStackOptions(question) || hasMissingOptions
             if (shouldStack) {
                 StackedOptionsList(
                     question = question,
@@ -347,62 +351,112 @@ private fun StackedOptionsList(
 ) {
     val colors = ExamTheme.colors
 
-    val validOptions = question.options.asList.filter { it.second.isNotBlank() }
-    if (validOptions.isEmpty()) return
+    val allOptions = question.options.asList
+    if (allOptions.all { it.second.isBlank() }) return
 
     val canonicalAnswer = question.correctAnswer?.let {
         McqParser.canonicalOption(it) ?: it.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]").removePrefix("OPTION").trim().removeSuffix(".")
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        validOptions.forEach { (letter, text) ->
-            val isCorrect = showAnswerIndicator && (
-                letter.equals(canonicalAnswer, ignoreCase = true) ||
-                question.correctAnswer.equals(letter, ignoreCase = true) ||
-                question.correctAnswer?.split(Regex("[,; ]+"))?.any { token ->
-                    val cToken = McqParser.canonicalOption(token) ?: token.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]")
-                    cToken.equals(letter, ignoreCase = true)
-                } == true
-            )
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (isCorrect) colors.greenLight else colors.surfaceVariant.copy(alpha = 0.35f),
-                border = BorderStroke(if (isCorrect) 1.dp else 0.8.dp, if (isCorrect) colors.green else colors.border),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.Top
+        allOptions.forEach { (letter, text) ->
+            val isBlank = text.isBlank()
+            if (isBlank) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.amberLight.copy(alpha = 0.5f),
+                    border = BorderStroke(0.8.dp, colors.amber.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Uniform Option Badge
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isCorrect) colors.greenLight else colors.tealLight,
-                        border = BorderStroke(0.8.dp, if (isCorrect) colors.green else colors.teal),
-                        modifier = Modifier.width(34.dp).height(28.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = letter,
-                                fontFamily = RobotoMonoFontFamily,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isCorrect) colors.green else colors.tealDark,
-                                textAlign = TextAlign.Center
-                            )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.amberLight,
+                            border = BorderStroke(0.8.dp, colors.amber),
+                            modifier = Modifier.width(34.dp).height(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = letter,
+                                    fontFamily = RobotoMonoFontFamily,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.amber,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Missing Option",
+                            tint = colors.amber,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Option ($letter) is blank or missing",
+                            color = colors.amber,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontStyle = FontStyle.Italic
+                        )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    LatexText(
-                        text = text,
-                        color = if (isCorrect) colors.green else colors.ink,
-                        fontSize = 16.sp,
-                        isBold = isCorrect,
-                        lineHeight = 24.sp,
-                        modifier = Modifier.weight(1f)
-                    )
+                }
+            } else {
+                val isCorrect = showAnswerIndicator && (
+                    letter.equals(canonicalAnswer, ignoreCase = true) ||
+                    question.correctAnswer.equals(letter, ignoreCase = true) ||
+                    question.correctAnswer?.split(Regex("[,; ]+"))?.any { token ->
+                        val cToken = McqParser.canonicalOption(token) ?: token.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]")
+                        cToken.equals(letter, ignoreCase = true)
+                    } == true
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isCorrect) colors.greenLight else colors.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(if (isCorrect) 1.dp else 0.8.dp, if (isCorrect) colors.green else colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        // Uniform Option Badge
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isCorrect) colors.greenLight else colors.tealLight,
+                            border = BorderStroke(0.8.dp, if (isCorrect) colors.green else colors.teal),
+                            modifier = Modifier.width(34.dp).height(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = letter,
+                                    fontFamily = RobotoMonoFontFamily,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCorrect) colors.green else colors.tealDark,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        LatexText(
+                            text = text,
+                            color = if (isCorrect) colors.green else colors.ink,
+                            fontSize = 16.sp,
+                            isBold = isCorrect,
+                            lineHeight = 24.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
         }
@@ -466,22 +520,35 @@ private fun CompactOptionItem(
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
+    val isBlank = text.isBlank()
 
     Row(
         modifier = modifier,
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
             shape = RoundedCornerShape(5.dp),
-            color = if (isCorrect) colors.greenLight else colors.tealLight,
-            border = BorderStroke(0.6.dp, if (isCorrect) colors.green else colors.teal),
+            color = when {
+                isCorrect -> colors.greenLight
+                isBlank -> colors.amberLight
+                else -> colors.tealLight
+            },
+            border = BorderStroke(0.6.dp, when {
+                isCorrect -> colors.green
+                isBlank -> colors.amber
+                else -> colors.teal
+            }),
             modifier = Modifier.size(24.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = letter,
                     fontFamily = RobotoMonoFontFamily,
-                    color = if (isCorrect) colors.green else colors.tealDark,
+                    color = when {
+                        isCorrect -> colors.green
+                        isBlank -> colors.amber
+                        else -> colors.tealDark
+                    },
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -489,13 +556,23 @@ private fun CompactOptionItem(
             }
         }
         Spacer(modifier = Modifier.width(8.dp))
-        LatexText(
-            text = text,
-            color = if (isCorrect) colors.green else colors.ink,
-            fontSize = 15.5.sp,
-            isBold = isCorrect,
-            lineHeight = 23.sp
-        )
+        if (isBlank) {
+            Text(
+                text = "[Missing]",
+                color = colors.amber,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Medium,
+                fontStyle = FontStyle.Italic
+            )
+        } else {
+            LatexText(
+                text = text,
+                color = if (isCorrect) colors.green else colors.ink,
+                fontSize = 15.5.sp,
+                isBold = isCorrect,
+                lineHeight = 23.sp
+            )
+        }
     }
 }
 
