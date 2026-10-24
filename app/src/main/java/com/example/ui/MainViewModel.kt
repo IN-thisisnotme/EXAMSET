@@ -1647,44 +1647,131 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // --- Folders Management ---
+    // --- Folders Management (Hierarchical & Multi-Level Subfolders) ---
 
-    fun createFolder(name: String, color: String) {
-        if (name.isBlank()) return
+    fun createFolder(name: String, color: String, parentId: String? = null): FolderItem? {
+        if (name.isBlank()) return null
         val newFolder = FolderItem(
             id = "f-${System.currentTimeMillis().toString(36)}",
             name = name.trim(),
-            color = color
+            color = color,
+            parentId = parentId
         )
         val updated = _folders.value + newFolder
         _folders.value = updated
         appPreferences.saveCustomFolders(updated)
-        _statusMessage.value = "Folder created: ${newFolder.name}"
+        val parentName = _folders.value.find { it.id == parentId }?.name
+        _statusMessage.value = if (parentName != null) {
+            "Sub-folder \"${newFolder.name}\" created in $parentName"
+        } else {
+            "Folder created: ${newFolder.name}"
+        }
+        return newFolder
     }
 
+    /**
+     * Returns immediate child subfolders for a given parent folder ID (or root folders if parentId == null).
+     */
+    fun getSubfolders(parentId: String?): List<FolderItem> {
+        return _folders.value.filter { it.parentId == parentId }
+    }
+
+    /**
+     * Recursively collects all descendant folder IDs (including folderId itself).
+     */
+    fun getAllDescendantFolderIds(folderId: String): Set<String> {
+        val result = mutableSetOf(folderId)
+        val queue = ArrayDeque<String>()
+        queue.add(folderId)
+        while (queue.isNotEmpty()) {
+            val curr = queue.removeFirst()
+            val children = _folders.value.filter { it.parentId == curr }.map { it.id }
+            for (child in children) {
+                if (result.add(child)) {
+                    queue.add(child)
+                }
+            }
+        }
+        return result
+    }
+
+    /**
+     * Builds breadcrumb chain from root ancestor down to current folder.
+     */
+    fun getBreadcrumbPath(folderId: String?): List<FolderItem> {
+        if (folderId == null || folderId == "all") return emptyList()
+        val path = mutableListOf<FolderItem>()
+        var curr = _folders.value.find { it.id == folderId }
+        val visited = mutableSetOf<String>()
+        while (curr != null && visited.add(curr.id)) {
+            path.add(0, curr)
+            curr = if (curr.parentId != null) _folders.value.find { it.id == curr.parentId } else null
+        }
+        return path
+    }
+
+    /**
+     * Formats full path string (e.g., "UPSC CSE > Prelims > CSAT")
+     */
+    fun getFullFolderPath(folderId: String?): String {
+        val crumbs = getBreadcrumbPath(folderId)
+        return if (crumbs.isEmpty()) {
+            "General"
+        } else {
+            crumbs.joinToString(" > ") { it.name }
+        }
+    }
+
+    /**
+     * Deletes folder and all nested subfolders, and updates papers in those folders.
+     */
     fun deleteFolder(folderId: String) {
-        val updated = _folders.value.filter { it.id != folderId }
-        _folders.value = updated
-        appPreferences.saveCustomFolders(updated)
-        _statusMessage.value = "Folder deleted"
+        val idsToDelete = getAllDescendantFolderIds(folderId)
+        val updatedFolders = _folders.value.filter { it.id !in idsToDelete }
+        _folders.value = updatedFolders
+        appPreferences.saveCustomFolders(updatedFolders)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val allPapers = paperDao.getAllPapers().first()
+            allPapers.filter { it.folderId in idsToDelete }.forEach { paper ->
+                paperDao.updatePaper(
+                    paper.copy(
+                        folderId = null,
+                        subject = "General",
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+        _statusMessage.value = "Folder and subfolders deleted"
     }
 
-    fun assignPaperToFolder(paper: PaperEntity, folderName: String) {
+    fun assignPaperToFolder(paper: PaperEntity, folderId: String?, displaySubject: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val updated = paper.copy(
-                subject = folderName.trim(),
+                folderId = folderId,
+                subject = displaySubject.trim(),
                 updatedAt = System.currentTimeMillis()
             )
             paperDao.updatePaper(updated)
             if (_currentPaperEntityId.value == paper.id) {
                 val currentP = _currentPaper.value
                 if (currentP != null) {
-                    val updatedMeta = currentP.metadata.copy(subject = folderName.trim())
+                    val updatedMeta = currentP.metadata.copy(
+                        folderId = folderId,
+                        subject = displaySubject.trim()
+                    )
                     _currentPaper.value = currentP.copy(metadata = updatedMeta)
                 }
             }
-            _statusMessage.value = "Assigned to folder: $folderName"
+            _statusMessage.value = "Moved to $displaySubject"
         }
+    }
+
+    fun assignPaperToFolder(paper: PaperEntity, folderName: String) {
+        val targetFolder = _folders.value.find { it.name.equals(folderName, ignoreCase = true) }
+        val targetId = targetFolder?.id
+        assignPaperToFolder(paper, targetId, folderName)
     }
 
     fun selectTab(index: Int) {

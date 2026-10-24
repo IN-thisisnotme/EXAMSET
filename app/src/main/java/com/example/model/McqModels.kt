@@ -108,6 +108,7 @@ data class FolderItem(
     val id: String,
     val name: String,
     val color: String,
+    val parentId: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 

@@ -52,11 +52,16 @@ class ExamSetPreferences(context: Context) {
                     hadLegacy = true
                     continue
                 }
+                val parentId = if (obj.has("parentId") && !obj.isNull("parentId")) {
+                    obj.getString("parentId").ifBlank { null }
+                } else null
+
                 list.add(
                     FolderItem(
                         id = id,
                         name = name,
                         color = obj.optString("color", "#0284C7"),
+                        parentId = parentId,
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                 )
@@ -77,6 +82,9 @@ class ExamSetPreferences(context: Context) {
                 put("id", f.id)
                 put("name", f.name)
                 put("color", f.color)
+                if (f.parentId != null) {
+                    put("parentId", f.parentId)
+                }
                 put("createdAt", f.createdAt)
             }
             arr.put(obj)
