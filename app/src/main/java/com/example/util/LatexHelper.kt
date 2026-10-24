@@ -360,16 +360,52 @@ object LatexHelper {
     }
 
     /**
+     * Pre-normalizes input text:
+     * 1. Converts double-escaped LaTeX keywords (\\frac -> \frac, \\sqrt -> \sqrt, \\times -> \times, Greek letters, etc.)
+     *    while preserving LaTeX matrix line breaks (\\\\).
+     * 2. Cleans up escaped markdown characters so \*\*Bold\*\* -> **Bold**, \*italic\* -> *italic*, \_\_bold\_\_ -> __bold__.
+     * 3. Cleans stray escaped pipes (\|) that may prevent markdown headings or tables from parsing cleanly.
+     */
+    fun normalizeLatexAndMarkdown(text: String): String {
+        if (text.isBlank()) return text
+        var res = text
+
+        // 1. Normalize escaped markdown bold and formatting:
+        // \*\*Heading:\*\* -> **Heading:**
+        res = res.replace("""\*\*""", "**")
+        // \_\_bold\_\_ -> __bold__
+        res = res.replace("""\_\_""", "__")
+        // \*italic\* -> *italic* (not followed or preceded by *)
+        res = res.replace(Regex("""(?<!\\)\\\*(?!\*)"""), "*")
+        // Clean escaped vertical bars \|Heading\| -> |Heading|
+        res = res.replace("""\|""", "|")
+
+        // Clean pseudo table pipes enclosing a single phrase like |Core Concept:| -> **Core Concept:**
+        res = res.replace(Regex("""(?m)^\|\s*([A-Za-z\u0900-\u097F\s&:\-]+?)\s*\|$""")) {
+            "**${it.groupValues[1]}**"
+        }
+
+        // 2. Normalize multi-escaped LaTeX commands and delimiters:
+        // e.g. \\\frac, \\frac -> \frac; \\\[, \\\[ -> \[; \\\], \\\] -> \]; \\\(, \\( -> \(; \\\), \\) -> \)
+        // Preserves matrix row breaks (\\\\ followed by space, digits, or newline)
+        res = res.replace(Regex("""\\{2,}(?!(?:hline\b|cr\b))([a-zA-Z]+)""")) { "\\${it.groupValues[1]}" }
+        res = res.replace(Regex("""\\{2,}([\[\]\(\),;!:\{\}])""")) { "\\${it.groupValues[1]}" }
+
+        return res
+    }
+
+    /**
      * Checks if a string contains any LaTeX math delimiters or commands (both explicit and bare).
      */
     fun hasLatex(text: String): Boolean {
         if (text.isBlank()) return false
+        val normalized = normalizeLatexAndMarkdown(text)
 
         try {
             // Explicit LaTeX delimiters: $...$, $$...$$, \(...\), \[...\]
-            if (text.contains("$") ||
-                text.contains("\\(") ||
-                text.contains("\\[")
+            if (normalized.contains("$") ||
+                normalized.contains("\\(") ||
+                normalized.contains("\\[")
             ) {
                 return true
             }
@@ -378,23 +414,23 @@ object LatexHelper {
             val commonMathCommandRegex = Regex(
                 """\\(?:text|mathrm|operatorname|mathbf|mathit|textbf|textit|frac|dfrac|sqrt|binom|vec|bar|hat|dot|mathbb|ce|begin|end|degree|circ|displaystyle|displaytext|boxed|boldsymbol|array)\b"""
             )
-            if (commonMathCommandRegex.containsMatchIn(text)) {
+            if (commonMathCommandRegex.containsMatchIn(normalized)) {
                 return true
             }
 
-            if (Regex("""(?m)^[ \t]*\[[ \t]*$""").containsMatchIn(text) && text.contains("\\")) {
+            if (Regex("""(?m)^[ \t]*\[[ \t]*$""").containsMatchIn(normalized) && normalized.contains("\\")) {
                 return true
             }
 
             // Greek symbols or Math operators
             val commandRegex = Regex("""\\[A-Za-z]+|\\[,;!:]""")
-            if (commandRegex.findAll(text).any { match -> ALL_SYMBOL_MAP.containsKey(match.value) }) {
+            if (commandRegex.findAll(normalized).any { match -> ALL_SYMBOL_MAP.containsKey(match.value) }) {
                 return true
             }
 
             // Subscript/superscript syntax (e.g., x^2, 10^-3, H_2O, 5^\circ)
             val subSuperRegex = Regex("""(?:[A-Za-z0-9)\]\}])(?:\^|_)(?:\{[^{}]+\}|[A-Za-z0-9+\-]+|\\[A-Za-z]+)""")
-            if (subSuperRegex.containsMatchIn(text)) {
+            if (subSuperRegex.containsMatchIn(normalized)) {
                 return true
             }
         } catch (_: Throwable) {
@@ -422,7 +458,7 @@ object LatexHelper {
         if (!hasLatex(text)) return listOf(MathSegment(text, isMath = false))
 
         val segments = mutableListOf<MathSegment>()
-        val pattern = Regex("""(\$\$(.+?)\$\$|\\\[(.+?)\\\]|\$(.+?)\$|\\\((.+?)\\\))""", RegexOption.DOT_MATCHES_ALL)
+        val pattern = Regex("""(\$\$(.+?)\$\$|\\+\[(.+?)\\+\]|\$(.+?)\$|\\+\((.+?)\\+\))""", RegexOption.DOT_MATCHES_ALL)
 
         var lastIndex = 0
         try {
@@ -437,9 +473,13 @@ object LatexHelper {
                 val rawMatch = match.value
                 val (formulaContent, isDisplay) = when {
                     rawMatch.startsWith("$$") -> rawMatch.removeSurrounding("$$") to true
-                    rawMatch.startsWith("\\[") -> rawMatch.removeSurrounding("\\[", "\\]") to true
-                    rawMatch.startsWith("\\(") -> rawMatch.removeSurrounding("\\(", "\\)") to false
                     rawMatch.startsWith("$") -> rawMatch.removeSurrounding("$") to false
+                    rawMatch.matches(Regex("""^\\+\[[\s\S]*""")) -> {
+                        rawMatch.replace(Regex("""^\\+\[|\\+\]$"""), "") to true
+                    }
+                    rawMatch.matches(Regex("""^\\+\([\s\S]*""")) -> {
+                        rawMatch.replace(Regex("""^\\+\(|\\+\)$"""), "") to false
+                    }
                     else -> rawMatch to false
                 }
 
@@ -518,7 +558,7 @@ object LatexHelper {
     private fun replaceFractionsWithBalancedBraces(text: String): String {
         var expr = text
         var loop = 0
-        while ((expr.contains("\\frac") || expr.contains("\\dfrac")) && loop < 15) {
+        while ((expr.contains("\\frac") || expr.contains("\\dfrac")) && loop < 50) {
             loop++
             var changed = false
             for (cmd in listOf("\\frac", "\\dfrac")) {
@@ -596,7 +636,12 @@ object LatexHelper {
      */
     fun formatMathExpression(latex: String): String {
         try {
-            var expr = latex.trim().replace("\\[", "").replace("\\]", "")
+            val normalized = normalizeLatexAndMarkdown(latex)
+            var expr = normalized.trim()
+                .replace(Regex("""^\\+\[|\\+\]$"""), "")
+                .replace(Regex("""^\\+\(|\\+\)$"""), "")
+                .replace("\\[", "").replace("\\]", "")
+                .replace("\\(", "").replace("\\)", "")
 
             // Handle structured environments first
             expr = replaceStructuredLatex(expr)
@@ -648,11 +693,17 @@ object LatexHelper {
             }
 
             // 7. Unbraced Superscripts & Subscripts (supporting Latin, Greek, and Prime ′ / ' characters)
-            expr = expr.replace(Regex("""([A-Za-z0-9)\]\}\'\u2032\p{IsGreek}\u0370-\u03FF])\^([+-]?[0-9a-zA-Z\p{IsGreek}\u0370-\u03FF]+)""")) {
+            // Non-greedy for digits or single variable letter so w^2L^3 becomes w²L³ without consuming 2L.
+            expr = expr.replace(Regex("""([A-Za-z0-9)\]\}\'\u2032\p{IsGreek}\u0370-\u03FF])\^([+-]?[0-9]+|[a-zA-Z\p{IsGreek}\u0370-\u03FF])""")) {
                 "${it.groupValues[1]}<sup>${it.groupValues[2]}</sup>"
             }
             expr = expr.replace(Regex("""([A-Za-z0-9)\]\}\'\u2032\p{IsGreek}\u0370-\u03FF])_([0-9]+|[a-zA-Z\p{IsGreek}\u0370-\u03FF]+\b)""")) {
                 "${it.groupValues[1]}<sub>${it.groupValues[2]}</sub>"
+            }
+
+            // 7b. Format bracketed slash fractions like /(24P^2) or numerator / (denominator) with clean spacing
+            expr = expr.replace(Regex("""(?<=[A-Za-z0-9>\]\)])\s*/\s*\(([^()]+)\)""")) {
+                " / (${it.groupValues[1]})"
             }
 
             // 8. Spacing & bracket cleanup
@@ -682,10 +733,11 @@ object LatexHelper {
      * into a formatted string ready for RichTextHelper.buildRichText.
      */
     fun toRichTextString(text: String): String {
-        if (!hasLatex(text)) return text
+        val preprocessed = normalizeLatexAndMarkdown(text)
+        if (!hasLatex(preprocessed)) return preprocessed
 
         try {
-            val normalized = text
+            val normalized = preprocessed
                 // Normalize unescaped standalone [ ... ] containing LaTeX commands to \[ ... \]
                 .replace(Regex("""(?m)^[ \t]*\[[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\][ \t]*$""")) { match ->
                     val inner = match.groupValues[1]
@@ -713,12 +765,12 @@ object LatexHelper {
                     }
                 } else {
                     val cleanSegment = seg.content
-                        .replace(Regex("""(?m)^\s*\\\[\s*$\r?\n?"""), "")
-                        .replace(Regex("""(?m)^\s*\\\]\s*$\r?\n?"""), "")
-                        .replace("\\[", "")
-                        .replace("\\]", "")
-                        .replace("\\(", "")
-                        .replace("\\)", "")
+                        .replace(Regex("""(?m)^\s*\\+\[\s*$\r?\n?"""), "")
+                        .replace(Regex("""(?m)^\s*\\+\]\s*$\r?\n?"""), "")
+                        .replace(Regex("""\\+\["""), "")
+                        .replace(Regex("""\\+\]"""), "")
+                        .replace(Regex("""\\+\("""), "")
+                        .replace(Regex("""\\+\)"""), "")
                     if (cleanSegment.isNotEmpty()) {
                         if (hasBareLatex(cleanSegment)) {
                             sb.append(formatBareLatex(cleanSegment))

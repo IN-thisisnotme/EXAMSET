@@ -133,14 +133,23 @@ fun QuestionAttachmentView(
                             .border(BorderStroke(0.6.dp, colors.border.copy(alpha = 0.6f)), RoundedCornerShape(6.dp))
                             .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        LatexText(
-                            text = formulaText,
-                            color = colors.inkBold,
-                            fontSize = 14.5.sp,
-                            isBold = true,
-                            lineHeight = 22.sp,
-                            modifier = Modifier.align(Alignment.CenterStart)
-                        )
+                        if (MathFormulaParser.has2DMath(formulaText)) {
+                            MathFormulaView(
+                                formula = formulaText,
+                                color = colors.inkBold,
+                                fontSize = 15.sp,
+                                modifier = Modifier.align(Alignment.CenterStart)
+                            )
+                        } else {
+                            LatexText(
+                                text = formulaText,
+                                color = colors.inkBold,
+                                fontSize = 14.5.sp,
+                                isBold = true,
+                                lineHeight = 22.sp,
+                                modifier = Modifier.align(Alignment.CenterStart)
+                            )
+                        }
                     }
                 }
             }

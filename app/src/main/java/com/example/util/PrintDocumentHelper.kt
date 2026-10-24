@@ -530,16 +530,21 @@ object PrintDocumentHelper {
                     escapeRichHtml(normalizeQuestionSpacing(q.question))
                 }
 
+                // Question type badge (Conceptual, Numerical, etc.) commented out per user request:
+                /*
                 val effectiveType = QuestionFormatter.displayType(q) ?: "Multiple Choice"
+                */
 
                 append("""
                 <div class="q-card">
                     <div class="q-text">
                         <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
                             <strong>${q.num}.</strong>
+                            <!-- Question type badge commented out per user request:
                             <span style="font-size: 7.5pt; font-weight: 700; color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; padding: 1px 5px; border-radius: 4px;">
-                                $effectiveType
+                                ${QuestionFormatter.displayType(q) ?: "Multiple Choice"}
                             </span>
+                            -->
                         </div>
                         $stemHtml
                     </div>

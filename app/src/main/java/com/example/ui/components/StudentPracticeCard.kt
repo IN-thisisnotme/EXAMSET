@@ -116,6 +116,8 @@ fun StudentPracticeCard(
                         color = colors.inkBold
                     )
 
+                    // Question type badge (Conceptual, Numerical, etc.) commented out per user request:
+                    /*
                     if (!qType.isNullOrBlank()) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
@@ -150,6 +152,7 @@ fun StudentPracticeCard(
                             )
                         }
                     }
+                    */
                 }
 
                 if (showResult) {
@@ -508,11 +511,9 @@ fun StudentPracticeCard(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        LatexText(
-                            text = q.explanation,
-                            color = colors.ink,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
+                        StructuredExplanationContent(
+                            rawExplanation = q.explanation,
+                            correctLetter = q.correctAnswer,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

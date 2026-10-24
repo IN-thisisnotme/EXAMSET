@@ -237,4 +237,113 @@ Explanation 2
         assertFalse(formattedTimesDen.contains("\\frac"))
         assertTrue(formattedTimesDen.contains("625 / (9.81×300)") || formattedTimesDen.contains("625 / (9.81 × 300)"))
     }
+
+    @Test
+    fun testDoubleEscapedLatexKeywordsAndNormalization() {
+        val input = "\\\\frac{1}{2} + \\\\sqrt{16} \\\\times \\\\Delta t"
+        assertTrue(LatexHelper.hasLatex(input))
+        val output = LatexHelper.toRichTextString(input)
+        assertFalse(output.contains("\\frac"))
+        assertFalse(output.contains("\\sqrt"))
+        assertFalse(output.contains("\\times"))
+        assertFalse(output.contains("\\Delta"))
+        assertFalse(output.contains("\\1 / 2"))
+        assertTrue(output.contains("1 / 2"))
+        assertTrue(output.contains("√(16)"))
+        assertTrue(output.contains("×"))
+        assertTrue(output.contains("Δ"))
+    }
+
+    @Test
+    fun testCompoundEquationsAndMultipleFractions() {
+        val eq = "\\frac{3EI}{8} + \\frac{3EI}{16} = \\frac{9EI}{16}"
+        val output = LatexHelper.toRichTextString(eq)
+        assertFalse(output.contains("\\frac"))
+        assertTrue(output.contains("3EI / 8"))
+        assertTrue(output.contains("3EI / 16"))
+        assertTrue(output.contains("9EI / 16"))
+    }
+
+    @Test
+    fun testSlashFractionsAndUnbracedExponents() {
+        val formula = "C_s = -w^2L^3/(24P^2)"
+        val output = LatexHelper.toRichTextString(formula)
+        assertTrue(output.contains("C<sub>s</sub>"))
+        assertTrue(output.contains("w<sup>2</sup>"))
+        assertTrue(output.contains("L<sup>3</sup>"))
+        assertTrue(output.contains("P<sup>2</sup>"))
+        assertFalse(output.contains("w<sup>2L</sup>"))
+        assertTrue(output.contains("/ (24P<sup>2</sup>)") || output.contains("/ (24 P<sup>2</sup>)") || output.contains("24P<sup>2</sup>"))
+    }
+
+    @Test
+    fun testEscapedMarkdownAndCoreConceptNormalization() {
+        val input = "\\*\\*Core Concept:\\*\\* The beam has rigid support."
+        val normalized = LatexHelper.normalizeLatexAndMarkdown(input)
+        assertTrue(normalized.startsWith("**Core Concept:**"))
+        assertFalse(normalized.contains("\\*"))
+
+        val pipeInput = "|Core Concept:|"
+        val normalizedPipe = LatexHelper.normalizeLatexAndMarkdown(pipeInput)
+        assertTrue(normalizedPipe.contains("Core Concept:"))
+        assertFalse(normalizedPipe.startsWith("|"))
+    }
+
+    @Test
+    fun testPedagogicalSectionBreakdown() {
+        val rawExp = """
+            \*\*Core Concept:\*\*
+            A stepped fixed-ended beam ABC has flexural rigidity.
+
+            \*\*Formula:\*\*
+            C_s = -w^2L^3/(24P^2)
+
+            \*\*Key Idea:\*\*
+            Stiffness ratio determines moment distribution.
+
+            \*\*Memory Anchor:\*\*
+            Remember that fixed ends carry rotational restraint.
+
+            (A) Incorrect: Uses wrong stiffness.
+            (B) Correct: Accurately computed.
+        """.trimIndent()
+
+        val parsed = com.example.ui.components.ExplanationBreakdownParser.parse(rawExp, "B")
+        assertEquals(4, parsed.pedagogicalSections.size)
+        assertEquals(com.example.ui.components.PedagogicalSectionType.CORE_CONCEPT, parsed.pedagogicalSections[0].type)
+        assertEquals(com.example.ui.components.PedagogicalSectionType.FORMULA, parsed.pedagogicalSections[1].type)
+        assertEquals(com.example.ui.components.PedagogicalSectionType.KEY_IDEA, parsed.pedagogicalSections[2].type)
+        assertEquals(com.example.ui.components.PedagogicalSectionType.MEMORY_ANCHOR, parsed.pedagogicalSections[3].type)
+        assertEquals(2, parsed.options.size)
+        assertTrue(parsed.options[1].isCorrect)
+    }
+
+    @Test
+    fun testMathFormulaParser2DFractionsAndRoots() {
+        val singleSlashFrac = "\\frac{3EI}{8} + \\frac{3EI}{16} = \\frac{9EI}{16}"
+        assertTrue(com.example.ui.components.MathFormulaParser.has2DMath(singleSlashFrac))
+        val nodes1 = com.example.ui.components.MathFormulaParser.parseMathNodes(singleSlashFrac)
+        assertTrue(nodes1.any { it is com.example.ui.components.MathNode.FractionNode })
+
+        val doubleSlashFrac = "\\\\frac{w^2 L^3}{24 P^2}"
+        assertTrue(com.example.ui.components.MathFormulaParser.has2DMath(doubleSlashFrac))
+        val nodes2 = com.example.ui.components.MathFormulaParser.parseMathNodes(doubleSlashFrac)
+        val fracNode = nodes2.filterIsInstance<com.example.ui.components.MathNode.FractionNode>().firstOrNull()
+        assertNotNull(fracNode)
+
+        val rootExpr = "\\sqrt[3]{8} + \\sqrt{25}"
+        assertTrue(com.example.ui.components.MathFormulaParser.has2DMath(rootExpr))
+        val nodes3 = com.example.ui.components.MathFormulaParser.parseMathNodes(rootExpr)
+        val rootNode = nodes3.filterIsInstance<com.example.ui.components.MathNode.RootNode>().firstOrNull()
+        assertNotNull(rootNode)
+        assertEquals("3", rootNode?.degree)
+
+        val matrixExpr = "\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}"
+        assertTrue(com.example.ui.components.MathFormulaParser.has2DMath(matrixExpr))
+        val nodes4 = com.example.ui.components.MathFormulaParser.parseMathNodes(matrixExpr)
+        val matrixNode = nodes4.filterIsInstance<com.example.ui.components.MathNode.MatrixNode>().firstOrNull()
+        assertNotNull(matrixNode)
+        assertEquals("pmatrix", matrixNode?.environment)
+        assertEquals(2, matrixNode?.rows?.size)
+    }
 }

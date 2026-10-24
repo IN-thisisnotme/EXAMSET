@@ -54,8 +54,18 @@ object RichTextHelper {
     ): AnnotatedString {
         if (text.isEmpty()) return AnnotatedString("")
 
+        // Pre-normalize escaped markdown characters (\*\* -> **, \* -> *, \_\_ -> __, \| -> |)
+        var prepared = text
+            .replace("""\*\*""", "**")
+            .replace("""\_\_""", "__")
+            .replace(Regex("""(?<!\\)\\\*(?!\*)"""), "*")
+            .replace("""\|""", "|")
+            .replace(Regex("""(?m)^\|\s*([A-Za-z\u0900-\u097F\s&:\-]+?)\s*\|$""")) {
+                "**${it.groupValues[1]}**"
+            }
+
         // First convert raw Unicode sub/sup into standard tags so tokenizer can parse them uniformly
-        var tagged = sanitizeSubSuper(text)
+        var tagged = sanitizeSubSuper(prepared)
 
         // Convert paired markdown bold (__bold__) to <b>bold</b> so that fill-in-the-blank patterns
         // like ______ or ___ are not mistakenly consumed by the bold tokenizer.
@@ -82,10 +92,10 @@ object RichTextHelper {
                     color = baseColor,
                     fontWeight = if (currentBold) FontWeight.Bold else FontWeight.Normal,
                     fontStyle = if (currentItalic) FontStyle.Italic else FontStyle.Normal,
-                    fontSize = if (currentSub || currentSup) (baseFontSize.value * 0.75f).sp else baseFontSize,
+                    fontSize = if (currentSub || currentSup) (baseFontSize.value * 0.72f).sp else baseFontSize,
                     baselineShift = when {
-                        currentSub -> BaselineShift.Subscript
-                        currentSup -> BaselineShift.Superscript
+                        currentSub -> BaselineShift(-0.22f)
+                        currentSup -> BaselineShift(0.35f)
                         else -> BaselineShift.None
                     }
                 )

@@ -53,9 +53,9 @@ fun StructuredQuestionContent(
     val arParts = QuestionFormatter.parseAssertionReason(question.question)
 
     Column(modifier = modifier) {
-        // Question Header: Number + Type Badge (if enabled and detected)
+        // Question Header: Number + Type Badge (Type badge commented out per user request)
         val qType = if (showTypeBadge) QuestionFormatter.displayType(question) else null
-        val shouldShowHeaderRow = showNumber || !qType.isNullOrBlank()
+        val shouldShowHeaderRow = showNumber
 
         if (shouldShowHeaderRow) {
             Row(
@@ -72,6 +72,8 @@ fun StructuredQuestionContent(
                     )
                 }
 
+                // Question type badge (e.g. Conceptual, Numerical, etc.) commented out per user request:
+                /*
                 if (!qType.isNullOrBlank()) {
                     if (showNumber) {
                         Spacer(modifier = Modifier.width(10.dp))
@@ -108,6 +110,7 @@ fun StructuredQuestionContent(
                         )
                     }
                 }
+                */
             }
 
             Spacer(modifier = Modifier.height(8.dp))

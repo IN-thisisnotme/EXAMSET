@@ -541,14 +541,10 @@ fun ShareSystemTab(
                         onClick = {
                             if (pastedJson.isNotBlank()) {
                                 coroutineScope.launch {
-                                    if (pastedJson.trim().startsWith("[")) {
-                                        viewModel.importMultiplePapersFromJson(pastedJson)
-                                    } else {
-                                        val success = viewModel.importPaperFromJson(pastedJson)
-                                        if (success) {
-                                            pastedJson = ""
-                                            onNavigateToMaster()
-                                        }
+                                    val success = viewModel.importPaperFromJson(pastedJson)
+                                    if (success) {
+                                        pastedJson = ""
+                                        onNavigateToMaster()
                                     }
                                 }
                             }

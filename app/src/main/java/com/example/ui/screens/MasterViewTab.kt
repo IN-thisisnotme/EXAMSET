@@ -1180,6 +1180,8 @@ private fun MasterQuestionCard(
                         )
                     }
 
+                    // Question category badge (Conceptual, Numerical, etc.) commented out per user request:
+                    /*
                     if (!qType.isNullOrBlank()) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
@@ -1213,6 +1215,7 @@ private fun MasterQuestionCard(
                             )
                         }
                     }
+                    */
 
                     if (question.options.hasMissingOptions) {
                         Surface(

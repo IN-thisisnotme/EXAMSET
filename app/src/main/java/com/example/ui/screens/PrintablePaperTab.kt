@@ -306,7 +306,29 @@ fun PrintablePaperTab(
         ) {
             when (previewMode) {
                 1 -> {
-                    // Dedicated Full A4 OMR Sheet View
+                    // Dedicated Full A4 OMR Sheet View — renders the authentic official A4 OMR HTML
+                    // scaled to fit screen via WebView just like Live A4 Print HTML:
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.apply {
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                    builtInZoomControls = true
+                                    displayZoomControls = false
+                                }
+                            }
+                        },
+                        update = { webView ->
+                            val omrConfig = config.copy(printMode = PrintMode.OMR_ONLY, includeOmrSheet = true)
+                            val html = PrintDocumentHelper.generatePrintHtml(paper, omrConfig)
+                            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Previous custom AuthenticOmrSheetView retained in comments per preservation rule:
+                    /*
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -319,6 +341,7 @@ fun PrintablePaperTab(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    */
                 }
                 3 -> {
                     // Live Print HTML rendered via native WebView
@@ -811,6 +834,8 @@ fun PrintablePaperTab(
                 }
 
                 // Attached Official A4 OMR Response Sheet Preview (Authentic NEET / UPSC Theme)
+                // Commented out per user request: OMR preview is omitted from question paper preview
+                /*
                 if (config.includeOmrSheet && (previewMode == 0 || config.printMode == PrintMode.STUDENT_PAPER)) {
                     item {
                         Spacer(modifier = Modifier.height(14.dp))
@@ -831,6 +856,7 @@ fun PrintablePaperTab(
                         )
                     }
                 }
+                */
 
                 item {
                     Text(

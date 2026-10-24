@@ -3883,6 +3883,177 @@ Explanation: PCR primers
     assertEquals("A", q6.correctAnswer)
     assertTrue(q6.question.contains("PCR"))
   }
+
+  @Test
+  fun testMultiPhasePartitioningAndHashtagPreservation() {
+    val raw = """
+# Phase 1: Conceptual Questions
+Q1. What is the fundamental property of inertia?
+(A) Mass
+(B) Velocity
+(C) Weight
+(D) Acceleration
+
+Q2. Which code header is required for standard input/output in C?
+(A) #include <stdio.h>
+(B) #include <math.h>
+(C) #define MAX 100
+(D) #include <stdlib.h>
+
+Q3. Which of the following is an enforceable fundamental right?
+(A) Right to Equality
+(B) Right to Property
+(C) Right to Privacy
+(D) Right to Work
+
+# Phase 1B: Questions 4–6
+## Mathematics — Formula-Based Questions
+
+4. A 30 m tape was found to be 0.1 m too long. What is the true length of a line measured as 300 m?
+(A) 299 m
+(B) 300 m
+(C) 301 m
+(D) 302 m
+
+5. Calculate the population density if total population is 50,000 and area is 250 sq km.
+(A) 100 persons/sq km
+(B) 200 persons/sq km
+(C) 250 persons/sq km
+(D) 500 persons/sq km
+
+#phase1c
+6. In Python programming, which character is used for a single-line comment?
+(A) # comment
+(B) // comment
+(C) /* comment */
+(D) <!-- comment -->
+
+Answer Key
+1. A
+2. A
+3. A
+4. C
+5. B
+6. A
+
+Detailed Explanations
+1. Mass is the measure of inertia.
+2. In C programming, #include <stdio.h> provides printf and scanf.
+3. Right to Equality is enforceable under Article 32.
+4. Correct tape calculation: True Length = (L' / L) * measured length.
+5. Formula: Population density = Total population / Total land area.
+6. Single-line comments in Python begin with #.
+    """.trimIndent()
+
+    val paper = McqParser.parse(raw)
+    // All 6 questions across Phase 1, Phase 1B, and Phase 1C must be parsed
+    assertEquals(6, paper.questions.size)
+
+    // Verify Option D of Q3 does NOT have "# Phase 1B" or "Mathematics" leaked into it
+    val q3 = paper.questions[2]
+    assertEquals(3, q3.num)
+    assertEquals("Right to Work", q3.options.d.trim())
+    assertFalse(q3.options.d.contains("#"))
+    assertFalse(q3.options.d.contains("Phase 1B"))
+
+    // Verify coding preprocessor directives like #include and #define are strictly preserved
+    val q2 = paper.questions[1]
+    assertEquals(2, q2.num)
+    assertTrue(q2.options.a.contains("#include <stdio.h>"))
+    assertTrue(q2.options.c.contains("#define MAX 100"))
+
+    // Verify Q6 in phase1c preserved # comment
+    val q6 = paper.questions[5]
+    assertEquals(6, q6.num)
+    assertTrue(q6.options.a.contains("# comment"))
+
+    // Verify Phase 1B questions were not abandoned
+    val q4 = paper.questions[3]
+    assertEquals(4, q4.num)
+    assertTrue(q4.question.contains("30 m tape"))
+    assertEquals("301 m", q4.options.c)
+    assertEquals("C", q4.correctAnswer)
+
+    val q5 = paper.questions[4]
+    assertEquals(5, q5.num)
+    assertEquals("B", q5.correctAnswer)
+  }
+
+  @Test
+  fun testPhaseNumberingRestartSequentialRenumbering() {
+    // Test case where Phase 1 and Phase 2 each number questions 1..3
+    val raw = """
+# Phase 1
+1. First question
+(A) Opt 1A
+(B) Opt 1B
+(C) Opt 1C
+(D) Opt 1D
+
+2. Second question
+(A) Opt 2A
+(B) Opt 2B
+(C) Opt 2C
+(D) Opt 2D
+
+# Phase 2
+1. Third question (Restarted numbering)
+(A) Opt 3A
+(B) Opt 3B
+(C) Opt 3C
+(D) Opt 3D
+
+2. Fourth question
+(A) Opt 4A
+(B) Opt 4B
+(C) Opt 4C
+(D) Opt 4D
+    """.trimIndent()
+
+    val paper = McqParser.parse(raw)
+    assertEquals(4, paper.questions.size)
+    assertEquals(1, paper.questions[0].num)
+    assertEquals(2, paper.questions[1].num)
+    assertEquals(3, paper.questions[2].num)
+    assertEquals(4, paper.questions[3].num)
+    assertTrue(paper.questions[2].question.contains("Third question"))
+    assertTrue(paper.questions[3].question.contains("Fourth question"))
+  }
+
+  @Test
+  fun testEscapedLatexAndDistractorAnalysisParsing() {
+    val rawExp = """
+**Core Concept:**
+Thermal expansion causes increase in length: \(\Delta L = L_0 \alpha \Delta T\).
+
+**Formula:**
+Population density = Total population / Total land area
+
+**Answer and Distractor Analysis:**
+- **A:** Incorrect because it ignores temperature rise.
+- **B:** Correct: Accurately calculated via \(180^\circ - 135^\circ = 45^\circ\).
+- **C:** Incorrect: Formula applied in reverse.
+- **D:** Incorrect: Assumes constant volume.
+    """.trimIndent()
+
+    val parsed = com.example.ui.components.ExplanationBreakdownParser.parse(rawExp, "B")
+    assertEquals(2, parsed.pedagogicalSections.size)
+    assertEquals(com.example.ui.components.PedagogicalSectionType.CORE_CONCEPT, parsed.pedagogicalSections[0].type)
+    assertEquals(com.example.ui.components.PedagogicalSectionType.FORMULA, parsed.pedagogicalSections[1].type)
+
+    // Verify 4 distinct option explanation items were extracted
+    assertEquals(4, parsed.options.size)
+    assertEquals("A", parsed.options[0].letter)
+    assertFalse(parsed.options[0].isCorrect)
+    assertEquals("B", parsed.options[1].letter)
+    assertTrue(parsed.options[1].isCorrect)
+    val richContent = com.example.util.LatexHelper.toRichTextString(parsed.options[1].content)
+    assertTrue(richContent.contains("180°") || richContent.contains("45°"))
+
+    // Verify Formula has2DMath recognizes text equation with division
+    val formulaContent = parsed.pedagogicalSections[1].content
+    assertTrue(com.example.ui.components.MathFormulaParser.has2DMath(formulaContent))
+  }
 }
 
 

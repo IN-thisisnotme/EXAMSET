@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import android.content.Intent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,7 +54,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.input.KeyboardType
+import com.example.data.AttemptEntity
+import com.example.data.PaperEntity
+import com.example.data.toQuestionPaper
 import com.example.util.CameraCaptureHelper
+import com.example.util.ExamJsonHelper
 import com.example.util.ExamNumberGenerator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -87,6 +93,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun OmrScannerDialog(
     paper: QuestionPaper,
+    allPapers: List<PaperEntity> = emptyList(),
+    allAttempts: List<AttemptEntity> = emptyList(),
+    onSwitchPaper: ((PaperEntity) -> Unit)? = null,
     onDismiss: () -> Unit,
     onSubmitResult: (OmrVisionProcessor.OmrScanOutput) -> Unit,
     modifier: Modifier = Modifier
@@ -95,13 +104,16 @@ fun OmrScannerDialog(
     val coroutineScope = rememberCoroutineScope()
     val colors = ExamTheme.colors
 
+    var activePaper by remember(paper) { mutableStateOf(paper) }
+    var cachedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
     var processingStage by remember { mutableStateOf("") }
     var scanResult by remember { mutableStateOf<OmrVisionProcessor.OmrScanOutput?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
-    fun processBitmap(bitmap: Bitmap) {
+    fun processBitmap(bitmap: Bitmap, targetPaper: QuestionPaper = activePaper) {
+        cachedBitmap = bitmap
         isProcessing = true
         errorMessage = null
         processingStage = "Analyzing image and optical registration anchors..."
@@ -120,7 +132,7 @@ fun OmrScannerDialog(
 
                 val result = OmrVisionProcessor.processOmr(
                     bitmap = argbBitmap,
-                    paper = paper
+                    paper = targetPaper
                 )
 
                 withContext(Dispatchers.Main) {
@@ -316,7 +328,17 @@ fun OmrScannerDialog(
                     currentResult != null -> {
                         ScannedResultReviewView(
                             result = currentResult,
-                            paper = paper,
+                            paper = activePaper,
+                            allPapers = allPapers,
+                            allAttempts = allAttempts,
+                            onSwitchToPaper = { targetEntity ->
+                                val newPaper = targetEntity.toQuestionPaper()
+                                activePaper = newPaper
+                                onSwitchPaper?.invoke(targetEntity)
+                                cachedBitmap?.let { bmp ->
+                                    processBitmap(bmp, newPaper)
+                                }
+                            },
                             onRescan = {
                                 scanResult = null
                                 errorMessage = null
@@ -332,7 +354,7 @@ fun OmrScannerDialog(
                     else -> {
                         // Image capture / upload picker options
                         ScannerUploadPromptsView(
-                            paper = paper,
+                            paper = activePaper,
                             errorMessage = errorMessage,
                             onPickCamera = {
                                 val tempUri = CameraCaptureHelper.createTempPictureUri(context)
@@ -591,10 +613,14 @@ private fun OmrTipItem(
 private fun ScannedResultReviewView(
     result: OmrVisionProcessor.OmrScanOutput,
     paper: QuestionPaper,
+    allPapers: List<PaperEntity> = emptyList(),
+    allAttempts: List<AttemptEntity> = emptyList(),
+    onSwitchToPaper: (PaperEntity) -> Unit = {},
     onRescan: () -> Unit,
     onSubmit: (OmrVisionProcessor.OmrScanOutput) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val colors = ExamTheme.colors
     val totalQuestions = result.totalQuestions
     val score = result.totalScore
@@ -617,6 +643,18 @@ private fun ScannedResultReviewView(
     // Check if booklet code matches active paper
     val activePaperSet = paper.metadata.setNumber.trim()
     val isSetMatching = activePaperSet.contains(editableBookletCode, ignoreCase = true)
+
+    // Profound Paper Matching: Search database for paper matching detected booklet number or set code
+    val cleanBooklet = editableBookletNumber.filter { it.isDigit() }
+    val cleanCode = editableBookletCode.trim().uppercase()
+    val matchedPaperEntity = remember(editableBookletNumber, editableBookletCode, allPapers) {
+        allPapers.firstOrNull { p ->
+            (cleanBooklet.isNotBlank() && p.bookletNumber.trim() == cleanBooklet) ||
+            (cleanCode.isNotBlank() && (p.setNumber.contains(cleanCode, ignoreCase = true) ||
+                ExamNumberGenerator.extractBookletCode(p.setNumber).equals(cleanCode, ignoreCase = true)) &&
+                (paper.metadata.folderId == null || p.folderId == paper.metadata.folderId))
+        }
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Summary & Candidate Header Card
@@ -712,6 +750,41 @@ private fun ScannedResultReviewView(
                             fontWeight = FontWeight.Medium,
                             color = if (result.cornersLocked) Color(0xFF065F46) else Color(0xFF92400E)
                         )
+                    }
+                }
+
+                // Profound Matching Alert Card (if sheet belongs to another saved set)
+                if (matchedPaperEntity != null && matchedPaperEntity.id != paper.id) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.2.dp, Color(0xFF3B82F6)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("PROFOUND MATCH DETECTED IN DATABASE", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+                                }
+                                Text("${matchedPaperEntity.title} (Set ${matchedPaperEntity.setNumber})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                                Text("Booklet #${matchedPaperEntity.bookletNumber} • ${matchedPaperEntity.questionCount} Questions", fontSize = 10.5.sp, color = colors.muted)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = { onSwitchToPaper(matchedPaperEntity) },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                            ) {
+                                Text("Score for Set ${matchedPaperEntity.setNumber}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
 
@@ -815,7 +888,7 @@ private fun ScannedResultReviewView(
                                 )
                             }
                         } else {
-                            // Read-only presentation with confidence
+                            // Read-only presentation with confidence & candidate profile
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -830,6 +903,13 @@ private fun ScannedResultReviewView(
                                         fontFamily = FontFamily.Monospace,
                                         color = Color(0xFF0284C7)
                                     )
+                                    val rollConf = result.headerResult?.rollNumberConfidence ?: 1.0f
+                                    Text(
+                                        text = "Conf: ${(rollConf * 100).toInt()}%",
+                                        fontSize = 9.sp,
+                                        color = if (rollConf >= 0.75f) Color(0xFF16A34A) else Color(0xFFD97706),
+                                        fontWeight = FontWeight.Medium
+                                    )
                                 }
                                 Column {
                                     Text("BOOKLET NO.", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.muted)
@@ -839,6 +919,13 @@ private fun ScannedResultReviewView(
                                         fontWeight = FontWeight.Black,
                                         fontFamily = FontFamily.Monospace,
                                         color = Color(0xFFBE185D)
+                                    )
+                                    val bookletConf = result.headerResult?.bookletNumberConfidence ?: 1.0f
+                                    Text(
+                                        text = "Conf: ${(bookletConf * 100).toInt()}%",
+                                        fontSize = 9.sp,
+                                        color = if (bookletConf >= 0.75f) Color(0xFF16A34A) else Color(0xFFD97706),
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
@@ -854,6 +941,43 @@ private fun ScannedResultReviewView(
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFBE185D),
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    val codeConf = result.headerResult?.bookletCodeConfidence ?: 1.0f
+                                    Text(
+                                        text = "Conf: ${(codeConf * 100).toInt()}%",
+                                        fontSize = 9.sp,
+                                        color = if (codeConf >= 0.75f) Color(0xFF16A34A) else Color(0xFFD97706),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            // Profound Candidate Profile Fetching from database attempts
+                            val candidateAttempts = remember(editableRollNumber, allAttempts) {
+                                if (editableRollNumber.isNotBlank()) {
+                                    allAttempts.filter { it.getCandidateRollNumber() == editableRollNumber && it.isSubmitted }
+                                } else emptyList()
+                            }
+                            if (candidateAttempts.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = BorderStroke(0.6.dp, Color(0xFF22C55E).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Candidate Profile: ${candidateAttempts.size} prior attempt(s) • Best Score: ${candidateAttempts.maxOf { it.score }.toInt()} marks",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF15803D)
                                         )
                                     }
                                 }
@@ -1035,15 +1159,15 @@ private fun ScannedResultReviewView(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Action Buttons: Re-scan vs Save Verified Result
+        // Action Buttons: Re-scan vs Share vs Save Verified Result
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(
                 onClick = onRescan,
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(0.9f)
                     .height(48.dp),
                 shape = RoundedCornerShape(10.dp),
                 border = BorderStroke(1.dp, colors.border)
@@ -1051,11 +1175,67 @@ private fun ScannedResultReviewView(
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(15.dp),
                     tint = colors.inkBold
                 )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Scan Another", fontSize = 12.5.sp, color = colors.inkBold)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Re-Scan", fontSize = 11.5.sp, color = colors.inkBold)
+            }
+
+            OutlinedButton(
+                onClick = {
+                    val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
+                        rollNumber = editableRollNumber,
+                        bookletNumber = editableBookletNumber,
+                        bookletCode = editableBookletCode
+                    )).copy(
+                        rollNumber = editableRollNumber,
+                        bookletNumber = editableBookletNumber,
+                        bookletCode = editableBookletCode
+                    )
+                    val answersSnapshot = mutableMapOf<Int, String>()
+                    for ((qNum, qResult) in result.questionResults) {
+                        val mark = qResult.selectedOption?.toString()
+                        if (!mark.isNullOrBlank() && !qResult.isMultipleMarked) {
+                            answersSnapshot[qNum] = mark
+                        }
+                    }
+                    val payload = ExamJsonHelper.OmrExportPayload(
+                        candidateRollNumber = verifiedHeader.rollNumber,
+                        candidateBookletNumber = verifiedHeader.bookletNumber,
+                        candidateSetCode = verifiedHeader.bookletCode,
+                        paperTitle = paper.metadata.title,
+                        paperId = paper.id,
+                        totalQuestions = result.totalQuestions,
+                        score = result.totalScore.toDouble().coerceAtLeast(0.0),
+                        correctCount = result.correctCount,
+                        incorrectCount = result.incorrectCount + result.multipleMarkedCount,
+                        unattemptedCount = result.unattemptedCount,
+                        answers = answersSnapshot
+                    )
+                    val json = ExamJsonHelper.omrEvaluationToJson(payload)
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, json)
+                        type = "application/json"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, "Share OMR Candidate Evaluation")
+                    context.startActivity(shareIntent)
+                },
+                modifier = Modifier
+                    .weight(0.9f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share Evaluation",
+                    modifier = Modifier.size(15.dp),
+                    tint = Color(0xFF0284C7)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Share", fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
             }
 
             Button(
@@ -1073,7 +1253,7 @@ private fun ScannedResultReviewView(
                     onSubmit(verifiedResult)
                 },
                 modifier = Modifier
-                    .weight(1.4f)
+                    .weight(1.3f)
                     .height(48.dp)
                     .testTag("omr_save_score_button"),
                 shape = RoundedCornerShape(10.dp),

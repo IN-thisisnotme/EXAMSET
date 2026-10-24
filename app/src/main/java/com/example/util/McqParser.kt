@@ -23,12 +23,12 @@ object McqParser {
     )
 
     private val QUESTION_START_REGEX = Pattern.compile(
-        """^\s*(?:#+\s*)?(?:\*\*|__)?\s*(?:第\s*(\d{1,4}|[\p{Nd}]{1,4})\s*[問题문]|제\s*(\d{1,4}|[\p{Nd}]{1,4})\s*문|(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|問題|题|Вопрос|Задание|№|Задача|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]]?|[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]\.\:\-])\s*[\:\-\.]?\s*(?:\*\*|__)?\s*(.*?)(?:\*\*|__)?\s*$""",
+        """^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:第\s*(\d{1,4}|[\p{Nd}]{1,4})\s*[問题문]|제\s*(\d{1,4}|[\p{Nd}]{1,4})\s*문|(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|問題|题|Вопрос|Задание|№|Задача|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]]?|[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]\.\:\-])\s*[\:\-\.]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(.*?)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*$""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val OPTION_REGEX = Pattern.compile(
-        """(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*)?(?:Option\s+|Opt\s+)?(?:\(([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\)|\[([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\]|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])(?:\*\*|\*)?\s*[\)\.\:\-–—](?=\s+\S|$)|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\b(?=\s*[:\-–—]))(?:\*\*)?\s*|(?m)^\s*(?:[-*•]\s*)?(?:\*\*)?(?:Option\s+|Opt\s+)?([1-5१-५])(?:\*\*)?\s*[\)\.](?=\s+\S|$)|(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*)?([①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ㈎-㈒])(?:\*\*)?\s*""",
+        """(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*|\\[*]\\[*]|\*|\\\*)?(?:Option\s+|Opt\s+)?(?:\(([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\)|\[([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅஆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\]|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*[\)\.\:\-–—](?=\s+\S|$)|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\b(?=\s*[:\-–—]))(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*|(?m)^\s*(?:[-*•]\s*)?(?:\*\*|\\[*]\\[*]|\*|\\\*)?(?:Option\s+|Opt\s+)?([1-5१-५])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*[\)\.](?=\s+\S|$)|(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*|\\[*]\\[*]|\*|\\\*)?([①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ㈎-㈒])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -68,7 +68,7 @@ object McqParser {
                 line
             } else {
                 val inlineQuestionPattern = Regex(
-                    """([.!?\u2713\u2714\'\"]|(?:(?:\([dD4घ]\)|\[[dD4घ]\]|[dD4घ][\.\):])\s*[^\n]{1,60}?))\s{1,}((?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Item)\.?\s*(?:No\.?|#)?\s*\d{1,4}\b|\b\d{1,4}\s*[\.\):])\s+[A-Za-z\u0900-\u097F\(\[\"\'])""",
+                    """([.!?\u2713\u2714\'\"]|(?:(?:\([dD4घ]\)|\[[dD4घ]\]|[dD4घ][\.\):])\s*[^\n]{1,60}?))\s{1,}((?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Item)\.?\s*(?:No\.?|#)?\s*\d{1,4}\b|\b\d{1,4}\s*[\.\):])\s+[A-Za-z\u0900-\u097F\(\[\"\'])""",
                     RegexOption.IGNORE_CASE
                 )
                 inlineQuestionPattern.replace(line, "$1\n$2")
@@ -77,7 +77,7 @@ object McqParser {
     }
 
     private val PAIR_ANSWER_REGEX = Pattern.compile(
-        """(?<!\w)(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__)?\s*[\:\-\.]\s*(?:\*\*|__)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?\s*(?:\*\*|__)?(?!\w)""",
+        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -155,6 +155,13 @@ object McqParser {
         // Remove markdown code fences ```markdown / ```text / ```
         text = text.replace(Regex("""^```[a-zA-Z0-9_-]*\s*""", RegexOption.MULTILINE), "")
         text = text.replace(Regex("""^```\s*$""", RegexOption.MULTILINE), "")
+
+        // Normalize escaped markdown asterisks/underscores (\*\*Q1.\*\* -> **Q1.**, \*(A)\* -> *(A)*)
+        text = text.replace(Regex("""\\\*\\\*"""), "**")
+        text = text.replace(Regex("""\\_\\_"""), "__")
+        text = text.replace(Regex("""(?m)^(\s*)\\\*"""), "$1*")
+        text = text.replace(Regex("""\\\*(?=\s*[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])"""), "*")
+        text = text.replace(Regex("""(?<=[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])\s*\\\*"""), "*")
         
         val lines = text.lines()
         val cleanedLines = mutableListOf<String>()
@@ -198,6 +205,8 @@ object McqParser {
         var topic = ""
         var setNumber = ""
         var exam = ""
+        var rollNumber = ""
+        var bookletNumber = ""
 
         val scanLimit = minOf(35, lines.size)
         for (i in 0 until scanLimit) {
@@ -244,6 +253,18 @@ object McqParser {
                 } else {
                     foundSet
                 }
+                continue
+            }
+
+            val rollMatch = Regex("""\b(?:roll\s*(?:no\.?|number)?)\s*[:\-]?\s*([0-9]{6,12})""", RegexOption.IGNORE_CASE).find(clean)
+            if (rollMatch != null && rollNumber.isEmpty()) {
+                rollNumber = rollMatch.groupValues[1].trim()
+                continue
+            }
+
+            val bookletMatch = Regex("""\b(?:booklet\s*(?:no\.?|number)?|test\s*booklet\s*(?:no\.?|number)?)\s*[:\-]?\s*([0-9]{5,10})""", RegexOption.IGNORE_CASE).find(clean)
+            if (bookletMatch != null && bookletNumber.isEmpty()) {
+                bookletNumber = bookletMatch.groupValues[1].trim()
                 continue
             }
 
@@ -305,13 +326,21 @@ object McqParser {
             }
         }
 
-        return PaperMetadata(
+        val meta = PaperMetadata(
             title = title,
             subject = subject,
             topic = topic,
             setNumber = setNumber,
             exam = exam
         )
+        return if (rollNumber.isNotBlank() || bookletNumber.isNotBlank()) {
+            meta.copy(
+                rollNumber = if (rollNumber.isNotBlank()) rollNumber else meta.rollNumber,
+                bookletNumber = if (bookletNumber.isNotBlank()) bookletNumber else meta.bookletNumber
+            )
+        } else {
+            meta
+        }
     }
 
     fun findSections(rawText: String): Triple<String, String, String> {
@@ -361,8 +390,13 @@ object McqParser {
             // Look for this pattern after at least 4 lines of questions
             for (i in 4 until lines.size) {
                 val lineTrimmed = lines[i].trim()
-                // Never treat a line containing a question mark or clear question wording as answer key start
-                if (!lineTrimmed.contains("?") && trailingStartRegex.matcher(lineTrimmed).find()) {
+                // Never treat a line containing a question mark or clear question wording as answer key start.
+                // Guard: If this line or upcoming lines contain question options like (A), (B), (C), (D), it is a question in a subsequent phase, NOT an answer key!
+                val hasOptionsAhead = (i until minOf(lines.size, i + 8)).any { idx ->
+                    val l = lines[idx].trim()
+                    Regex("""^\s*[\(\[]?[A-Da-d1-4][\)\]\.\-]\s+\S+""").containsMatchIn(l)
+                }
+                if (!lineTrimmed.contains("?") && !hasOptionsAhead && trailingStartRegex.matcher(lineTrimmed).find()) {
                     answerStart = i - 1 // Include potential subheader or split from here
                     explanationStart = i - 1
                     break
@@ -398,8 +432,8 @@ object McqParser {
     private fun isExplicitQuestionMarker(line: String): Boolean {
         val trimmed = line.trim()
         return trimmed.startsWith("#") ||
-                Regex("""(?i)^\s*(?:#+\s*)?(?:\*\*|__)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item)(?:\b|[\d\p{Nd}\.\:\)])""").containsMatchIn(trimmed) ||
-                Regex("""^\s*(?:\*\*|__)\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item)\.?\s*(?:No\.?|#)?\s*)?[\d\p{Nd}]{1,4}\s*[\.:\)]\s*(?:\*\*|__)""").containsMatchIn(trimmed)
+                Regex("""(?i)^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item)(?:\b|[\d\p{Nd}\.\:\)])""").containsMatchIn(trimmed) ||
+                Regex("""^\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item)\.?\s*(?:No\.?|#)?\s*)?[\d\p{Nd}]{1,4}\s*[\.:\)]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)""").containsMatchIn(trimmed)
     }
 
     private fun parseQuestions(questionText: String): List<McqQuestion> {
@@ -414,7 +448,7 @@ object McqParser {
             if (optPair != null) {
                 val textBeforeOpt = line.substring(0, optPair.second).trim()
                 val stemWords = textBeforeOpt.replace(
-                    Regex("""^\s*(?:#+\s*)?(?:\*\*|__)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)?\.?\s*(?:No\.?|#)?\s*[\(\[]?\d+[\)\]\.\:\-]?\s*""", RegexOption.IGNORE_CASE),
+                    Regex("""^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)?\.?\s*(?:No\.?|#)?\s*[\(\[]?\d+[\)\]\.\:\-]?\s*""", RegexOption.IGNORE_CASE),
                     ""
                 ).trim()
                 if (textBeforeOpt.isEmpty() || stemWords.isEmpty() || !QUESTION_START_REGEX.matcher(textBeforeOpt).matches()) {
@@ -438,11 +472,28 @@ object McqParser {
 
         val effectiveStarts = if (explicitStarts.isNotEmpty()) {
             val firstExplicitIdx = allStarts.indexOfFirst { isExplicitQuestionMarker(lines[it.first]) }
+            val startsList = mutableListOf<Triple<Int, Int, String>>()
             if (firstExplicitIdx > 0 && allStarts[0].second == 1) {
-                listOf(allStarts[0]) + explicitStarts
-            } else {
-                explicitStarts
+                startsList.add(allStarts[0])
             }
+            startsList.addAll(explicitStarts)
+
+            // Also include candidate questions that follow a structural partition header and have options
+            for (cand in allStarts) {
+                if (startsList.any { it.first == cand.first }) continue
+                val textBefore = lines.subList(0, cand.first).takeLast(10).joinToString("\n")
+                val followsPartition = Regex(
+                    """(?im)^\s*#+\s*(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series)\b|^\s*#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b"""
+                ).containsMatchIn(textBefore)
+                if (followsPartition) {
+                    val nextStart = allStarts.firstOrNull { it.first > cand.first }?.first ?: lines.size
+                    val block = lines.subList(cand.first, nextStart).joinToString("\n")
+                    if (extractOptionsFromBlock(block) != null || recoverEmbeddedOptions(block) != null) {
+                        startsList.add(cand)
+                    }
+                }
+            }
+            startsList.sortedBy { it.first }
         } else {
             allStarts
         }
@@ -505,7 +556,12 @@ object McqParser {
                 }
 
                 // If not an explicit header, a new question number must be strictly greater than the previous question number
-                if (!isExplicitHeader && candidate.second <= previous.second) {
+                // UNLESS a structural partition / phase header intervened between previous and candidate
+                val hasPartitionHeader = Regex(
+                    """(?im)^\s*#+\s*(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series)\b|^\s*#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b"""
+                ).containsMatchIn(previousBlock)
+
+                if (!isExplicitHeader && !hasPartitionHeader && candidate.second <= previous.second) {
                     continue
                 }
 
@@ -641,7 +697,12 @@ object McqParser {
             )
         }
 
-        return questions.distinctBy { it.num }.sortedBy { it.num }
+        val hasDuplicates = questions.map { it.num }.toSet().size < questions.size
+        return if (hasDuplicates) {
+            questions.mapIndexed { index, q -> q.copy(num = index + 1) }
+        } else {
+            questions.distinctBy { it.num }.sortedBy { it.num }
+        }
     }
 
     private fun extractOptionsFromBlock(block: String): Pair<QuestionOptions, Int>? {
@@ -812,7 +873,7 @@ object McqParser {
             val start = matchEnd
             var end = if (i + 1 < selected.size) selected[i + 1].second else cleanBlock.length
 
-            // For last option, truncate before any inline Answer / Explanation section
+            // For last option, truncate before any inline Answer / Explanation section or structural partition header
             if (i == selected.size - 1 && start in 0..end && end <= cleanBlock.length) {
                 val sub = cleanBlock.substring(start, end)
                 val inlineDivider = Regex(
@@ -821,6 +882,15 @@ object McqParser {
                 ).find(sub)
                 if (inlineDivider != null) {
                     end = start + inlineDivider.range.first
+                }
+
+                val currentSub = cleanBlock.substring(start, end)
+                val partitionDivider = Regex(
+                    """(?m)^\s*#+\s*(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b.*$|^\s*#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b.*$""",
+                    RegexOption.IGNORE_CASE
+                ).find(currentSub)
+                if (partitionDivider != null) {
+                    end = start + partitionDivider.range.first
                 }
             }
 
@@ -841,8 +911,15 @@ object McqParser {
                 )
                 // Strip decorative line separators (e.g. ---, ===, ___)
                 value = value.replace(Regex("""^\s*[-=_]{3,}\s*$""", RegexOption.MULTILINE), "")
+                // Strip structural partition heading lines while strictly preserving coding directives like #include, #define, #comment
+                val optionLines = value.lines().filterNot { line ->
+                    val t = line.trim()
+                    val isHashHeading = Regex("""^#+\s+(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)
+                    val isPhaseHashTag = Regex("""^#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)
+                    isHashHeading || isPhaseHashTag
+                }
                 // Strip markdown table pipes if option was in a table cell (e.g. "| 399.00 m |")
-                value = value.lines()
+                value = optionLines
                     .map { it.replace(Regex("""^\s*\|\s*|\s*\|\s*$"""), "").trim() }
                     .filter { it.isNotEmpty() }
                     .joinToString(" ")
@@ -1375,11 +1452,13 @@ object McqParser {
 
     fun cleanQuestionNumbered(text: String): String {
         var clean = text.replace(Regex("""^\s*#+\s*"""), "")
-        // Strip leading question numbering: 1., (1), [1], Q1., **Q1.**, Question 1:, Q. 1 -, प्रश्न 1, etc.
+        // Strip leading question numbering: 1., (1), [1], Q1., **Q1.**, \*\*Q1.\*\*, Question 1:, Q. 1 -, प्रश्न 1, etc.
         clean = clean.replace(
-            Regex("""^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*)?(?:[\(\[]?\d+\s*[\)\]\.\:\-–—]|(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*\d+)\s*[\:\-\.–—]?\s*(?:\*\*|__)?\s*""", RegexOption.IGNORE_CASE),
+            Regex("""^\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*)?(?:[\(\[]?\d+\s*[\)\]\.\:\-–—]|(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*\d+)\s*[\:\-\.–—]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*""", RegexOption.IGNORE_CASE),
             ""
         )
+        // Clean any leftover leading or trailing bold/escaped markdown artifacts from number stripping
+        clean = clean.replace(Regex("""^\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)+\s*"""), "")
         clean = clean.replace(Regex("""^\s*[-–—:]\s*"""), "")
         // Strip leading section / part headers embedded with questions (e.g. SECTION - A, PART 1 - PHYSICS)
         clean = clean.replace(
@@ -1424,8 +1503,16 @@ object McqParser {
     }
 
     fun stripMarkdown(text: String): String {
-        var res = text.replace(Regex("""^\s*#+\s*"""), "")
+        // Only strip structural markdown headings while preserving code directives and comments (# comment, #include, #define, #tag)
+        var res = text.replace(Regex("""^\s*#+\s+(?=(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?|Topic|Subject|Set|Series)\b)""", RegexOption.IGNORE_CASE), "")
+        // Escaped bold: \*\*...\*\*
+        res = res.replace(Regex("""\\[*]\\[*](.*?)\\[*]\\[*]"""), "$1")
+        // Standard bold: **...**
         res = res.replace(Regex("""\*\*(.*?)\*\*"""), "$1")
+        // Escaped italic: \*...\*
+        res = res.replace(Regex("""(?<!\\)\\[*]([^*\n]+?)\\[*]"""), "$1")
+        // Escaped underline: \_\_...\_\_
+        res = res.replace(Regex("""\\_\\_(.*?)\\_\\_"""), "$1")
         res = res.replace(Regex("""(?<!_)__([^\s_](?:[\s\S]*?[^\s_])?)__(?!_)"""), "$1")
         res = res.replace(Regex("""`([^`]*)`"""), "$1")
         return normalizeSpace(res)
@@ -1498,7 +1585,14 @@ object McqParser {
         if (paper.metadata.topic.isNotBlank()) {
             sb.append("Topic: ").append(paper.metadata.topic).append("\n")
         }
-        sb.append("Series: ").append(paper.metadata.setNumber).append("\n\n")
+        sb.append("Series: ").append(paper.metadata.setNumber).append("\n")
+        if (paper.metadata.rollNumber.isNotBlank()) {
+            sb.append("Roll No: ").append(paper.metadata.rollNumber).append("\n")
+        }
+        if (paper.metadata.bookletNumber.isNotBlank()) {
+            sb.append("Booklet No: ").append(paper.metadata.bookletNumber).append("\n")
+        }
+        sb.append("\n")
 
         paper.questions.forEach { q ->
             sb.append("${q.num}. ").append(q.question).append("\n")

@@ -127,11 +127,13 @@ object ExamJsonHelper {
 
         val metaObj = root.optJSONObject("metadata")
         val metadata = if (metaObj != null) {
-            val rawRoll = metaObj.optString("rollNumber", root.optString("rollNumber", "")).trim()
+            val rawRoll = metaObj.optString("rollNumber", "").ifBlank { root.optString("rollNumber", "") }.trim()
             val finalRoll = if (rawRoll.isNotBlank()) rawRoll else ExamNumberGenerator.generateRollNumber()
 
-            val rawBooklet = metaObj.optString("bookletNumber", root.optString("bookletNumber", "")).trim()
+            val rawBooklet = metaObj.optString("bookletNumber", "").ifBlank { root.optString("bookletNumber", "") }.trim()
             val finalBooklet = if (rawBooklet.isNotBlank()) rawBooklet else ExamNumberGenerator.generateBookletNumber()
+
+            val rawSet = metaObj.optString("setNumber", "").ifBlank { root.optString("setNumber", "Set A") }.trim()
 
             val folder = if (metaObj.has("folderId") && !metaObj.isNull("folderId")) {
                 metaObj.optString("folderId").ifBlank { null }
@@ -144,7 +146,7 @@ object ExamJsonHelper {
                 title = metaObj.optString("title", root.optString("title", "Exam Paper")),
                 subject = metaObj.optString("subject", root.optString("subject", "General Knowledge")),
                 topic = metaObj.optString("topic", root.optString("topic", "")),
-                setNumber = metaObj.optString("setNumber", root.optString("setNumber", "Set A")),
+                setNumber = if (rawSet.isNotBlank()) rawSet else "Set A",
                 exam = metaObj.optString("targetExam", root.optString("exam", "")),
                 folderId = folder,
                 rollNumber = finalRoll,
@@ -158,6 +160,7 @@ object ExamJsonHelper {
             val rawBooklet = root.optString("bookletNumber", "").trim()
             val finalBooklet = if (rawBooklet.isNotBlank()) rawBooklet else ExamNumberGenerator.generateBookletNumber()
 
+            val rawSet = root.optString("setNumber", "Set A").trim()
             val folder = if (root.has("folderId") && !root.isNull("folderId")) root.optString("folderId").ifBlank { null } else null
 
             PaperMetadata(
@@ -165,7 +168,7 @@ object ExamJsonHelper {
                 title = root.optString("title", "Exam Paper"),
                 subject = root.optString("subject", "General Knowledge"),
                 topic = root.optString("topic", ""),
-                setNumber = root.optString("setNumber", "Set A"),
+                setNumber = if (rawSet.isNotBlank()) rawSet else "Set A",
                 exam = root.optString("exam", root.optString("targetExam", "")),
                 folderId = folder,
                 rollNumber = finalRoll,
@@ -264,5 +267,42 @@ object ExamJsonHelper {
         }
 
         return listOf(fromJson(trimmed))
+    }
+
+    data class OmrExportPayload(
+        val candidateRollNumber: String,
+        val candidateBookletNumber: String,
+        val candidateSetCode: String,
+        val paperTitle: String,
+        val paperId: Long,
+        val totalQuestions: Int,
+        val score: Double,
+        val correctCount: Int,
+        val incorrectCount: Int,
+        val unattemptedCount: Int,
+        val answers: Map<Int, String>,
+        val evaluatedAt: Long = System.currentTimeMillis()
+    )
+
+    fun omrEvaluationToJson(payload: OmrExportPayload): String {
+        val root = JSONObject().apply {
+            put("exportType", "OMR_EVALUATION_RECORD")
+            put("schemaVersion", CURRENT_SCHEMA_VERSION)
+            put("rollNumber", payload.candidateRollNumber)
+            put("bookletNumber", payload.candidateBookletNumber)
+            put("setCode", payload.candidateSetCode)
+            put("paperTitle", payload.paperTitle)
+            put("paperId", payload.paperId)
+            put("totalQuestions", payload.totalQuestions)
+            put("score", payload.score)
+            put("correctCount", payload.correctCount)
+            put("incorrectCount", payload.incorrectCount)
+            put("unattemptedCount", payload.unattemptedCount)
+            put("evaluatedAt", payload.evaluatedAt)
+            val ansObj = JSONObject()
+            payload.answers.forEach { (q, a) -> ansObj.put(q.toString(), a) }
+            put("answers", ansObj)
+        }
+        return root.toString(2)
     }
 }

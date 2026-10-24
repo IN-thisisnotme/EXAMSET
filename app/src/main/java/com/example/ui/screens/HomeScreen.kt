@@ -144,6 +144,7 @@ fun HomeScreen(
     val isExamSubmitted by viewModel.isExamSubmitted.collectAsState()
     val examConfig by viewModel.examConfig.collectAsState()
     val savedPapers by viewModel.savedPapers.collectAsState()
+    val allAttempts by viewModel.allAttempts.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isCardBoxed by viewModel.isCardBoxed.collectAsState()
 
@@ -897,6 +898,11 @@ fun HomeScreen(
     if (showOmrScannerDialog && currentPaper != null) {
         OmrScannerDialog(
             paper = currentPaper!!,
+            allPapers = savedPapers,
+            allAttempts = allAttempts,
+            onSwitchPaper = { matchedEntity ->
+                viewModel.loadSavedPaper(matchedEntity)
+            },
             onDismiss = { showOmrScannerDialog = false },
             onSubmitResult = { scoringResult ->
                 viewModel.submitScannedOmrResult(

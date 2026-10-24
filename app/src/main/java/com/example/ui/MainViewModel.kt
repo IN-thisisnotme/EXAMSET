@@ -769,7 +769,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customTitle: String? = null,
         customSubject: String? = null,
         customTopic: String? = null,
-        customSetNumber: String? = null
+        customSetNumber: String? = null,
+        customRollNumber: String? = null,
+        customBookletNumber: String? = null,
+        customFolderId: String? = null
     ) {
         viewModelScope.launch(Dispatchers.Default) {
             val result = McqParser.parseWithResult(text)
@@ -781,11 +784,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 String.format(java.util.Locale.US, "%02d", n)
             } else rawCustomSet
 
+            val finalRoll = if (!customRollNumber.isNullOrBlank()) customRollNumber.trim() else parsed.metadata.rollNumber
+            val finalBooklet = if (!customBookletNumber.isNullOrBlank()) customBookletNumber.trim() else parsed.metadata.bookletNumber
+            val finalFolder = if (!customFolderId.isNullOrBlank()) customFolderId.trim() else parsed.metadata.folderId
+
             val finalMetadata = parsed.metadata.copy(
                 title = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title,
                 subject = if (!customSubject.isNullOrBlank()) customSubject.trim() else parsed.metadata.subject,
                 topic = if (!customTopic.isNullOrBlank()) customTopic.trim() else parsed.metadata.topic,
-                setNumber = formattedSet.ifBlank { "01" }
+                setNumber = formattedSet.ifBlank { "01" },
+                folderId = finalFolder,
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet
             )
             val finalPaper = parsed.copy(metadata = finalMetadata)
 
@@ -793,7 +803,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val entityId: Long = if (existing != null) {
                 // When an existing set is re-saved or moved to another folder, preserve its existing set number
                 // so it remains tightly coupled to booklet and roll numbers
-                val preservedSet = if (existing.setNumber.isNotBlank()) existing.setNumber else finalMetadata.setNumber
+                val preservedSet = if (!customSetNumber.isNullOrBlank()) formattedSet else (if (existing.setNumber.isNotBlank()) existing.setNumber else finalMetadata.setNumber)
                 val updated = existing.copy(
                     title = finalMetadata.title,
                     subject = finalMetadata.subject,
@@ -803,8 +813,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     answerKeyCount = finalPaper.quickAnswersCount,
                     explanationCount = finalPaper.explanationsCount,
                     folderId = finalMetadata.folderId ?: existing.folderId,
-                    rollNumber = if (existing.rollNumber.isNotBlank()) existing.rollNumber else finalMetadata.rollNumber,
-                    bookletNumber = if (existing.bookletNumber.isNotBlank()) existing.bookletNumber else finalMetadata.bookletNumber,
+                    rollNumber = if (!customRollNumber.isNullOrBlank()) customRollNumber.trim() else (if (existing.rollNumber.isNotBlank()) existing.rollNumber else finalMetadata.rollNumber),
+                    bookletNumber = if (!customBookletNumber.isNullOrBlank()) customBookletNumber.trim() else (if (existing.bookletNumber.isNotBlank()) existing.bookletNumber else finalMetadata.bookletNumber),
                     updatedAt = System.currentTimeMillis()
                 )
                 paperDao.updatePaper(updated)
@@ -1044,15 +1054,145 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun importPaperFromJson(jsonStr: String): Boolean {
         return try {
-            val paper = ExamJsonHelper.fromJson(jsonStr)
-            val raw = McqParser.reconstructToRaw(paper)
-            parseAndSetPaper(raw, paper.metadata.title, paper.metadata.subject, paper.metadata.topic, paper.metadata.setNumber)
-            _statusMessage.value = "Imported: ${paper.metadata.title} (${paper.questions.size} questions)"
-            true
+            val trimmed = jsonStr.trim()
+            val isBundleOrArray = trimmed.startsWith("[") || (trimmed.startsWith("{") && (trimmed.contains("\"questionSets\"") || trimmed.contains("\"sets\"") || trimmed.contains("MULTI_SET_EXAM_BUNDLE")))
+
+            if (isBundleOrArray) {
+                val papers = ExamJsonHelper.bundleFromJson(trimmed)
+                if (papers.isEmpty()) {
+                    _statusMessage.value = "No question sets found in JSON"
+                    return false
+                }
+                viewModelScope.launch(Dispatchers.IO) {
+                    var importedCount = 0
+                    papers.forEach { paper ->
+                        val raw = McqParser.reconstructToRaw(paper)
+                        val existing = paperDao.findPaperByMetadata(paper.metadata.title, paper.metadata.subject, paper.metadata.setNumber)
+                            ?: if (paper.metadata.bookletNumber.isNotBlank()) paperDao.findPaperByBookletNumber(paper.metadata.bookletNumber) else null
+                        val entity = PaperEntity(
+                            id = existing?.id ?: 0L,
+                            title = paper.metadata.title,
+                            subject = paper.metadata.subject.ifBlank { "General Knowledge" },
+                            topic = paper.metadata.topic,
+                            setNumber = paper.metadata.setNumber.ifBlank { "Set A" },
+                            exam = paper.metadata.exam,
+                            questionCount = paper.questions.size,
+                            answerKeyCount = paper.quickAnswersCount,
+                            explanationCount = paper.explanationsCount,
+                            rawText = raw,
+                            createdAt = if (paper.createdAt > 0) paper.createdAt else (existing?.createdAt ?: System.currentTimeMillis()),
+                            updatedAt = System.currentTimeMillis(),
+                            folderId = paper.metadata.folderId ?: existing?.folderId,
+                            rollNumber = if (paper.metadata.rollNumber.isNotBlank()) paper.metadata.rollNumber else (existing?.rollNumber ?: ExamNumberGenerator.generateRollNumber()),
+                            bookletNumber = if (paper.metadata.bookletNumber.isNotBlank()) paper.metadata.bookletNumber else (existing?.bookletNumber ?: ExamNumberGenerator.generateBookletNumber())
+                        )
+                        val insertedId = paperDao.insertPaper(entity)
+                        importedCount++
+                        if (importedCount == 1) {
+                            val activePaper = paper.copy(id = insertedId)
+                            withContext(Dispatchers.Main) {
+                                _currentPaper.value = activePaper
+                                _currentPaperEntityId.value = insertedId
+                                appPreferences.setLastActivePaperId(insertedId)
+                            }
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        _statusMessage.value = "Imported $importedCount question set(s) with Roll, Booklet & Set numbers intact!"
+                    }
+                }
+                true
+            } else {
+                val paper = ExamJsonHelper.fromJson(trimmed)
+                val raw = McqParser.reconstructToRaw(paper)
+                parseAndSetPaper(
+                    text = raw,
+                    customTitle = paper.metadata.title,
+                    customSubject = paper.metadata.subject,
+                    customTopic = paper.metadata.topic,
+                    customSetNumber = paper.metadata.setNumber,
+                    customRollNumber = paper.metadata.rollNumber,
+                    customBookletNumber = paper.metadata.bookletNumber,
+                    customFolderId = paper.metadata.folderId
+                )
+                _statusMessage.value = "Imported: ${paper.metadata.title} (${paper.metadata.setNumber} | Roll: ${paper.metadata.rollNumber} | Booklet: ${paper.metadata.bookletNumber})"
+                true
+            }
         } catch (e: Exception) {
             _statusMessage.value = "Import failed: ${e.localizedMessage}"
             false
         }
+    }
+
+    /**
+     * Looks up the best matching saved question set for an OMR sheet based on detected
+     * 7-digit booklet number, booklet code (set A/B/C/D), or 10-digit roll number.
+     */
+    fun findMatchingPaperForScannedSheet(bookletNumber: String, setCode: String, rollNumber: String): PaperEntity? {
+        val papers = savedPapers.value
+        if (papers.isEmpty()) return null
+
+        // 1. Direct match on 7-digit booklet number
+        val cleanBooklet = bookletNumber.filter { it.isDigit() }
+        if (cleanBooklet.length >= 6) {
+            val byBooklet = papers.firstOrNull { it.bookletNumber.trim() == cleanBooklet }
+            if (byBooklet != null) return byBooklet
+        }
+
+        // 2. Match on Set code / number (e.g. Set B / 02)
+        val cleanCode = setCode.trim().uppercase()
+        if (cleanCode.isNotBlank()) {
+            val current = _currentPaper.value
+            val currentFolder = current?.metadata?.folderId
+            val bySetInFolder = papers.firstOrNull { p ->
+                (currentFolder == null || p.folderId == currentFolder) &&
+                (p.setNumber.contains(cleanCode, ignoreCase = true) ||
+                 ExamNumberGenerator.extractBookletCode(p.setNumber).equals(cleanCode, ignoreCase = true))
+            }
+            if (bySetInFolder != null) return bySetInFolder
+        }
+
+        // 3. Match on 10-digit roll number
+        val cleanRoll = rollNumber.filter { it.isDigit() }
+        if (cleanRoll.length >= 8) {
+            val byRoll = papers.firstOrNull { it.rollNumber.trim() == cleanRoll }
+            if (byRoll != null) return byRoll
+        }
+
+        return null
+    }
+
+    /**
+     * Exports a scanned OMR evaluation result as a standardized JSON payload for syncing across devices.
+     */
+    fun exportScannedOmrEvaluationJson(
+        result: OmrVisionProcessor.OmrScanOutput,
+        paper: QuestionPaper,
+        candidateRollNumber: String? = null,
+        candidateBookletNumber: String? = null,
+        candidateBookletCode: String? = null
+    ): String {
+        val answersSnapshot = mutableMapOf<Int, String>()
+        for ((qNum, qResult) in result.questionResults) {
+            val mark = qResult.selectedOption?.toString()
+            if (!mark.isNullOrBlank() && !qResult.isMultipleMarked) {
+                answersSnapshot[qNum] = mark
+            }
+        }
+        val payload = ExamJsonHelper.OmrExportPayload(
+            candidateRollNumber = candidateRollNumber ?: result.headerResult?.rollNumber ?: paper.metadata.rollNumber,
+            candidateBookletNumber = candidateBookletNumber ?: result.headerResult?.bookletNumber ?: paper.metadata.bookletNumber,
+            candidateSetCode = candidateBookletCode ?: result.headerResult?.bookletCode ?: paper.metadata.setNumber,
+            paperTitle = paper.metadata.title,
+            paperId = paper.id,
+            totalQuestions = result.totalQuestions,
+            score = result.totalScore.toDouble().coerceAtLeast(0.0),
+            correctCount = result.correctCount,
+            incorrectCount = result.incorrectCount + result.multipleMarkedCount,
+            unattemptedCount = result.unattemptedCount,
+            answers = answersSnapshot
+        )
+        return ExamJsonHelper.omrEvaluationToJson(payload)
     }
 
     fun exportCurrentPaperAsJson(): String? {
@@ -1145,21 +1285,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val p = item.paper!!
                     val rawText = McqParser.reconstructToRaw(p)
+                    val existing = paperDao.findPaperByMetadata(p.metadata.title, p.metadata.subject, p.metadata.setNumber)
+                        ?: if (p.metadata.bookletNumber.isNotBlank()) paperDao.findPaperByBookletNumber(p.metadata.bookletNumber) else null
                     val entity = PaperEntity(
+                        id = existing?.id ?: 0L,
                         title = p.metadata.title,
                         subject = p.metadata.subject.ifBlank { "General Knowledge" },
                         topic = p.metadata.topic,
-                        setNumber = p.metadata.setNumber.ifBlank { "Set 1" },
+                        setNumber = p.metadata.setNumber.ifBlank { "Set A" },
                         exam = p.metadata.exam,
                         questionCount = p.questions.size,
                         answerKeyCount = p.quickAnswersCount,
                         explanationCount = p.explanationsCount,
                         rawText = rawText,
-                        createdAt = if (p.createdAt > 0) p.createdAt else System.currentTimeMillis(),
+                        createdAt = if (p.createdAt > 0) p.createdAt else (existing?.createdAt ?: System.currentTimeMillis()),
                         updatedAt = System.currentTimeMillis(),
-                        folderId = p.metadata.folderId,
-                        rollNumber = if (p.metadata.rollNumber.isNotBlank()) p.metadata.rollNumber else ExamNumberGenerator.generateRollNumber(),
-                        bookletNumber = if (p.metadata.bookletNumber.isNotBlank()) p.metadata.bookletNumber else ExamNumberGenerator.generateBookletNumber()
+                        folderId = p.metadata.folderId ?: existing?.folderId,
+                        rollNumber = if (p.metadata.rollNumber.isNotBlank()) p.metadata.rollNumber else (existing?.rollNumber ?: ExamNumberGenerator.generateRollNumber()),
+                        bookletNumber = if (p.metadata.bookletNumber.isNotBlank()) p.metadata.bookletNumber else (existing?.bookletNumber ?: ExamNumberGenerator.generateBookletNumber())
                     )
                     paperDao.insertPaper(entity)
                     success++

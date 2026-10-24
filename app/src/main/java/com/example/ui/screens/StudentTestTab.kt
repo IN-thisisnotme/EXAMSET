@@ -1761,7 +1761,60 @@ private fun ExamResultAndReviewView(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Candidate Identification Badges (Roll No., Booklet No., Set Code)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFEFF6FF),
+                            border = BorderStroke(0.6.dp, Color(0xFF3B82F6).copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "Roll: ${paper.metadata.rollNumber}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1D4ED8),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFFDF2F8),
+                            border = BorderStroke(0.6.dp, Color(0xFFEC4899).copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "Booklet: ${paper.metadata.bookletNumber}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFBE185D),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = colors.tealLight,
+                            border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = "Set: ${paper.metadata.setNumber}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.teal,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
                         text = "Official Score: ${stats.formattedScore} / $total ($percentage%)",

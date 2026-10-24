@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -11,6 +12,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.util.LatexHelper
 import com.example.util.RichTextHelper
 
@@ -36,17 +39,43 @@ fun LatexText(
 ) {
     val style = LocalTextStyle.current
     val targetFontSize = if (fontSize != TextUnit.Unspecified) fontSize else style.fontSize
+    val trimmed = text.trim()
+    val isPureDisplayMath = (trimmed.startsWith("\\[") && trimmed.endsWith("\\]")) ||
+            (trimmed.startsWith("$$") && trimmed.endsWith("$$")) ||
+            (trimmed.startsWith("\\begin{") && trimmed.contains("\\end{"))
 
-    val annotatedString = remember(text, color, targetFontSize, isBold) {
-        try {
-            if (LatexHelper.hasLatex(text)) {
-                LatexHelper.buildLatexAnnotatedString(
-                    text = text,
-                    baseColor = color,
-                    baseFontSize = targetFontSize,
-                    isBold = isBold
-                )
-            } else {
+    val effectiveLineHeight = when {
+        lineHeight != TextUnit.Unspecified -> lineHeight
+        targetFontSize != TextUnit.Unspecified -> (targetFontSize.value * 1.58f).sp
+        else -> 23.sp
+    }
+
+    if (isPureDisplayMath && MathFormulaParser.has2DMath(trimmed)) {
+        MathFormulaView(
+            formula = trimmed,
+            color = color,
+            fontSize = targetFontSize,
+            modifier = modifier.padding(vertical = 5.dp)
+        )
+    } else {
+        val annotatedString = remember(text, color, targetFontSize, isBold) {
+            try {
+                if (LatexHelper.hasLatex(text)) {
+                    LatexHelper.buildLatexAnnotatedString(
+                        text = text,
+                        baseColor = color,
+                        baseFontSize = targetFontSize,
+                        isBold = isBold
+                    )
+                } else {
+                    RichTextHelper.buildRichText(
+                        text = text,
+                        baseColor = color,
+                        baseFontSize = targetFontSize,
+                        isBold = isBold
+                    )
+                }
+            } catch (e: Exception) {
                 RichTextHelper.buildRichText(
                     text = text,
                     baseColor = color,
@@ -54,24 +83,17 @@ fun LatexText(
                     isBold = isBold
                 )
             }
-        } catch (e: Exception) {
-            RichTextHelper.buildRichText(
-                text = text,
-                baseColor = color,
-                baseFontSize = targetFontSize,
-                isBold = isBold
-            )
         }
-    }
 
-    Text(
-        text = annotatedString,
-        modifier = modifier,
-        fontWeight = fontWeight,
-        fontStyle = fontStyle,
-        lineHeight = lineHeight,
-        textAlign = textAlign,
-        maxLines = maxLines,
-        overflow = overflow
-    )
+        Text(
+            text = annotatedString,
+            modifier = modifier,
+            fontWeight = fontWeight,
+            fontStyle = fontStyle,
+            lineHeight = effectiveLineHeight,
+            textAlign = textAlign,
+            maxLines = maxLines,
+            overflow = overflow
+        )
+    }
 }

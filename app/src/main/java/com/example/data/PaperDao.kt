@@ -23,6 +23,15 @@ interface PaperDao {
     @Query("SELECT * FROM question_papers WHERE title = :title AND subject = :subject AND setNumber = :setNumber LIMIT 1")
     suspend fun findPaperByMetadata(title: String, subject: String, setNumber: String): PaperEntity?
 
+    @Query("SELECT * FROM question_papers WHERE bookletNumber = :bookletNumber LIMIT 1")
+    suspend fun findPaperByBookletNumber(bookletNumber: String): PaperEntity?
+
+    @Query("SELECT * FROM question_papers WHERE rollNumber = :rollNumber LIMIT 1")
+    suspend fun findPaperByRollNumber(rollNumber: String): PaperEntity?
+
+    @Query("SELECT * FROM question_papers WHERE folderId = :folderId AND setNumber = :setNumber LIMIT 1")
+    suspend fun findPaperByFolderAndSet(folderId: String, setNumber: String): PaperEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPaper(paper: PaperEntity): Long
 
