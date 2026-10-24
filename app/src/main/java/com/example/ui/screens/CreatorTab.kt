@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
@@ -108,6 +109,7 @@ fun CreatorTab(
     onNavigateToTests: () -> Unit = {},
     onNavigateToPrint: () -> Unit = {},
     onEditMetadata: () -> Unit = {},
+    onScanOmr: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -296,41 +298,21 @@ fun CreatorTab(
                                     .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                if (FeatureToggles.ENABLE_CAMERA_NOTES_SCANNER) {
-                                    Button(
-                                        onClick = {
-                                            val tempUri = CameraCaptureHelper.createTempPictureUri(context)
-                                            if (tempUri != null) {
-                                                pendingCameraUri = tempUri
-                                                takePhotoLauncher.launch(tempUri)
-                                            } else {
-                                                Toast.makeText(context, "Unable to access camera storage.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.primaryButtonBg,
-                                            contentColor = colors.primaryButtonText
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                                        modifier = Modifier
-                                            .heightIn(min = 38.dp)
-                                            .testTag("scan_notes_quick_button")
-                                    ) {
-                                        if (isOcrScanning) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(14.dp),
-                                                strokeWidth = 2.dp,
-                                                color = colors.primaryButtonText
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Scanning...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
-                                        } else {
-                                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Scan Notes", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
-                                        }
-                                    }
+                                Button(
+                                    onClick = onScanOmr,
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFBE185D),
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .testTag("scan_omr_quick_button")
+                                ) {
+                                    Icon(Icons.Default.DocumentScanner, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Scan OMR", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
 
                                 Button(

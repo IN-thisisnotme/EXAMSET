@@ -304,23 +304,25 @@ object OmrGeometry {
             }
         }
 
-        // 3. Booklet Code bubbles (A, B, C, D...)
-        val codeTop = bookletTopStart + (10 * bookletRowPitch) + 12.0f
-        val codePitch = 6.0f
-        val codeStartX = leftPanelStart + (LEFT_PANEL_WIDTH_MM / 2f)
-        sets.take(4).forEachIndexed { idx, s ->
-            val char = s.firstOrNull() ?: 'A'
-            val cx = codeStartX + (idx * codePitch)
-            list.add(
-                HeaderBubblePoint(
-                    fieldType = HeaderFieldType.BOOKLET_CODE,
-                    columnIndex = idx,
-                    digitOrChar = char,
-                    centerXMm = cx,
-                    centerYMm = codeTop,
-                    radiusMm = microRadius
+        // 3. Set Number / Booklet Code: Strictly 2 numeric columns (Tens & Units), 10 rows (0..9)
+        val setColPitch = 6.0f
+        val setTopStart = bookletTopStart + (10 * bookletRowPitch) + 9.0f
+        val setStartX = leftPanelStart + (LEFT_PANEL_WIDTH_MM - (2 * setColPitch)) / 2f
+        for (c in 0 until 2) {
+            val cx = setStartX + (c * setColPitch) + (setColPitch / 2f)
+            for (d in 0..9) {
+                val cy = setTopStart + (d * bookletRowPitch) + (bookletRowPitch / 2f)
+                list.add(
+                    HeaderBubblePoint(
+                        fieldType = HeaderFieldType.BOOKLET_CODE,
+                        columnIndex = c,
+                        digitOrChar = ('0' + d),
+                        centerXMm = cx,
+                        centerYMm = cy,
+                        radiusMm = microRadius
+                    )
                 )
-            )
+            }
         }
 
         return list
@@ -330,10 +332,9 @@ object OmrGeometry {
      * Converts physical millimeter header bubble coordinates into canonical pixel space.
      */
     fun getCanonicalHeaderPixelCoordinates(
-        sets: List<String> = listOf("A", "B", "C", "D"),
         scalePxPerMm: Float = CANONICAL_SCALE_PX_PER_MM
     ): List<HeaderBubblePixelPoint> {
-        return getHeaderBubbleCoordinates(sets).map { hp ->
+        return getHeaderBubbleCoordinates().map { hp ->
             HeaderBubblePixelPoint(
                 fieldType = hp.fieldType,
                 columnIndex = hp.columnIndex,

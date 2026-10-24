@@ -133,7 +133,7 @@ object ExamJsonHelper {
             val rawBooklet = metaObj.optString("bookletNumber", "").ifBlank { root.optString("bookletNumber", "") }.trim()
             val finalBooklet = if (rawBooklet.isNotBlank()) rawBooklet else ExamNumberGenerator.generateBookletNumber()
 
-            val rawSet = metaObj.optString("setNumber", "").ifBlank { root.optString("setNumber", "Set A") }.trim()
+            val rawSet = metaObj.optString("setNumber", "").ifBlank { root.optString("setNumber", "01") }.trim()
 
             val folder = if (metaObj.has("folderId") && !metaObj.isNull("folderId")) {
                 metaObj.optString("folderId").ifBlank { null }
@@ -146,7 +146,7 @@ object ExamJsonHelper {
                 title = metaObj.optString("title", root.optString("title", "Exam Paper")),
                 subject = metaObj.optString("subject", root.optString("subject", "General Knowledge")),
                 topic = metaObj.optString("topic", root.optString("topic", "")),
-                setNumber = if (rawSet.isNotBlank()) rawSet else "Set A",
+                setNumber = if (rawSet.isNotBlank()) ExamNumberGenerator.normalizeSetNumber(rawSet) else "01",
                 exam = metaObj.optString("targetExam", root.optString("exam", "")),
                 folderId = folder,
                 rollNumber = finalRoll,
@@ -160,7 +160,7 @@ object ExamJsonHelper {
             val rawBooklet = root.optString("bookletNumber", "").trim()
             val finalBooklet = if (rawBooklet.isNotBlank()) rawBooklet else ExamNumberGenerator.generateBookletNumber()
 
-            val rawSet = root.optString("setNumber", "Set A").trim()
+            val rawSet = root.optString("setNumber", "01").trim()
             val folder = if (root.has("folderId") && !root.isNull("folderId")) root.optString("folderId").ifBlank { null } else null
 
             PaperMetadata(
@@ -168,7 +168,7 @@ object ExamJsonHelper {
                 title = root.optString("title", "Exam Paper"),
                 subject = root.optString("subject", "General Knowledge"),
                 topic = root.optString("topic", ""),
-                setNumber = if (rawSet.isNotBlank()) rawSet else "Set A",
+                setNumber = if (rawSet.isNotBlank()) ExamNumberGenerator.normalizeSetNumber(rawSet) else "01",
                 exam = root.optString("exam", root.optString("targetExam", "")),
                 folderId = folder,
                 rollNumber = finalRoll,

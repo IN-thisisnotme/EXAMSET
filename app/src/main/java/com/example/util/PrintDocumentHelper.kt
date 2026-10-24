@@ -860,7 +860,7 @@ object PrintDocumentHelper {
         <html>
         <head>
             <meta charset="utf-8">
-            <title>OMR Response Sheet - ${escapeHtml(paper.metadata.setNumber.ifBlank { "Set A" })}</title>
+            <title>OMR Response Sheet - Set ${escapeHtml(paper.metadata.setNumber.ifBlank { "01" })}</title>
             <link rel="preconnect" href="https://fonts.googleapis.com">
             <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Roboto+Mono:wght@500;700&display=swap">
             <style>
@@ -1348,9 +1348,12 @@ object PrintDocumentHelper {
 
     private fun generateOmrSectionHtml(paper: QuestionPaper, config: ExamConfig, isStandalone: Boolean = false): String {
         val questionCount = paper.questions.size.coerceAtLeast(1)
-        val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "1" } }.trim().uppercase()
+        val rawSet = paper.metadata.setNumber.ifBlank { config.seriesCode.ifBlank { "01" } }.trim().uppercase()
         val setClean = ExamNumberGenerator.extractBookletCode(rawSet)
-        val bookletLetters = ExamNumberGenerator.resolveBookletSets(setClean)
+        val setStr = ExamNumberGenerator.normalizeSetNumber(setClean)
+        val showSetDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS ||
+                config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES) && setStr.length == 2
+        val darkenSetBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && setStr.length == 2
 
         val rollStr = if (config.rollNumber.isNotBlank()) {
             ExamNumberGenerator.normalizeRollNumber(config.rollNumber, 10)
@@ -1440,18 +1443,24 @@ object PrintDocumentHelper {
                         </div>
                     </div>
 
-                    <!-- Test Booklet Code -->
-                    <div class="booklet-code-box">
-                        <div class="booklet-code-header">Test Booklet Code</div>
-                        <div class="booklet-code-inner">
-                            <div class="booklet-code-large">${escapeHtml(setClean.ifBlank { "1" })}</div>
-                            <div class="code-bubbles">
-                                ${bookletLetters.joinToString("") { code ->
-                                    val isDark = (config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES && code.equals(setClean, ignoreCase = true))
-                                    val darkStyle = if (isDark) "background:#000000; color:#ffffff; border-color:#000000;" else "background:#ffffff; color:#be185d;"
-                                    "<span class=\"micro-bubble\" style=\"width:3.3mm; height:3.3mm; $darkStyle\">$code</span>"
-                                }}
-                            </div>
+                    <!-- Set Number Grid (2 Columns x 10 Rows with 2 Digit Boxes) -->
+                    <div class="panel-box">
+                        <div class="grid-header-title">SET NO.</div>
+                        <div class="digit-entry-row" style="justify-content: center; gap: 4px;">
+                            ${(0 until 2).joinToString("") { colIdx ->
+                                val ch = if (showSetDigits && setStr.length == 2) setStr[colIdx].toString() else ""
+                                "<div class=\"digit-box\" style=\"width: 6mm;\">$ch</div>"
+                            }}
+                        </div>
+                        <div class="bubble-grid-cols">
+                            ${(0..9).joinToString("") { d ->
+                                "<div class=\"bubble-grid-row\" style=\"justify-content: center; gap: 4px;\">" +
+                                (0 until 2).joinToString("") { colIdx ->
+                                    val isDarkened = darkenSetBubbles && setStr.length == 2 && (setStr[colIdx] - '0') == d
+                                    val cls = if (isDarkened) "micro-bubble micro-bubble-darkened" else "micro-bubble"
+                                    "<span class=\"$cls\" style=\"width:3.3mm; height:3.3mm;\">$d</span>"
+                                } + "</div>"
+                            }}
                         </div>
                     </div>
 

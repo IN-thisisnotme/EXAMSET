@@ -166,4 +166,29 @@ class OmrGeometryTest {
             assertEquals(19.0f, pb.radiusPx, 0.001f) // 1.9mm * 10 px/mm = 19.0 px
         }
     }
+
+    @Test
+    fun testHeaderBubbleCoordinatesStrictlyNumeric() {
+        val headerBubbles = OmrGeometry.getHeaderBubbleCoordinates()
+        val rollBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.ROLL_NUMBER }
+        val bookletBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.BOOKLET_NUMBER }
+        val setBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.BOOKLET_CODE }
+
+        assertEquals(100, rollBubbles.size)
+        assertEquals(70, bookletBubbles.size)
+        assertEquals(20, setBubbles.size) // 2 numeric columns x 10 rows (0..9)
+
+        // Column 0 and Column 1 each have 10 digits ('0'..'9')
+        val col0 = setBubbles.filter { it.columnIndex == 0 }
+        val col1 = setBubbles.filter { it.columnIndex == 1 }
+        assertEquals(10, col0.size)
+        assertEquals(10, col1.size)
+        assertEquals((0..9).map { ('0' + it) }, col0.map { it.digitOrChar })
+        assertEquals((0..9).map { ('0' + it) }, col1.map { it.digitOrChar })
+
+        // Uniform micro-bubble radius 1.65mm
+        for (b in setBubbles) {
+            assertEquals(1.65f, b.radiusMm, 0.001f)
+        }
+    }
 }

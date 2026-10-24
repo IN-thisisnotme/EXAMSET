@@ -130,14 +130,37 @@ fun OmrScannerDialog(
                     processingStage = "Projecting homography unwarping & drop-out filter..."
                 }
 
-                val result = OmrVisionProcessor.processOmr(
+                val initialResult = OmrVisionProcessor.processOmr(
                     bitmap = argbBitmap,
                     paper = targetPaper
                 )
 
+                var finalPaper = targetPaper
+                var finalResult = initialResult
+                val header = initialResult.headerResult
+                if (header != null && allPapers.isNotEmpty()) {
+                    val candidateBooklet = header.bookletNumber.trim()
+                    val candidateSet = header.bookletCode.trim()
+                    val candidateRoll = header.rollNumber.trim()
+                    val matchedEntity = allPapers.firstOrNull { entity ->
+                        (candidateBooklet.isNotBlank() && candidateBooklet != "0000000" && entity.bookletNumber.trim() == candidateBooklet) ||
+                        (candidateSet.isNotBlank() && (entity.setNumber.contains(candidateSet, ignoreCase = true) || ExamNumberGenerator.extractBookletCode(entity.setNumber) == candidateSet)) ||
+                        (candidateRoll.isNotBlank() && candidateRoll != "0000000000" && entity.rollNumber.trim() == candidateRoll)
+                    }
+                    if (matchedEntity != null && matchedEntity.id != targetPaper.id) {
+                        val matchedPaper = matchedEntity.toQuestionPaper()
+                        finalPaper = matchedPaper
+                        finalResult = OmrVisionProcessor.processOmr(bitmap = argbBitmap, paper = matchedPaper)
+                        withContext(Dispatchers.Main) {
+                            activePaper = matchedPaper
+                            onSwitchPaper?.invoke(matchedEntity)
+                        }
+                    }
+                }
+
                 withContext(Dispatchers.Main) {
                     isProcessing = false
-                    scanResult = result
+                    scanResult = finalResult
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {

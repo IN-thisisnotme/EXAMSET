@@ -38,20 +38,28 @@ class ExamNumberGeneratorTest {
 
     @Test
     fun testExtractBookletCode() {
-        assertEquals("A", ExamNumberGenerator.extractBookletCode("Set A"))
-        assertEquals("B", ExamNumberGenerator.extractBookletCode("SET-B"))
-        assertEquals("C", ExamNumberGenerator.extractBookletCode("SET C"))
-        assertEquals("P", ExamNumberGenerator.extractBookletCode("Set P"))
-        assertEquals("1", ExamNumberGenerator.extractBookletCode("Set 1"))
+        assertEquals("01", ExamNumberGenerator.extractBookletCode("Set A"))
+        assertEquals("02", ExamNumberGenerator.extractBookletCode("SET-B"))
+        assertEquals("03", ExamNumberGenerator.extractBookletCode("SET C"))
+        assertEquals("01", ExamNumberGenerator.extractBookletCode("Set 1"))
+        assertEquals("05", ExamNumberGenerator.extractBookletCode("Set 5"))
+        assertEquals("15", ExamNumberGenerator.extractBookletCode("Set 15"))
+    }
+
+    @Test
+    fun testNormalizeSetNumber() {
+        assertEquals("01", ExamNumberGenerator.normalizeSetNumber("1"))
+        assertEquals("02", ExamNumberGenerator.normalizeSetNumber("Set 2"))
+        assertEquals("05", ExamNumberGenerator.normalizeSetNumber("5"))
+        assertEquals("15", ExamNumberGenerator.normalizeSetNumber("15"))
+        assertEquals("01", ExamNumberGenerator.normalizeSetNumber("Set A"))
+        assertEquals("02", ExamNumberGenerator.normalizeSetNumber("B"))
     }
 
     @Test
     fun testResolveBookletSets() {
-        assertEquals(listOf("A", "B", "C", "D"), ExamNumberGenerator.resolveBookletSets("Set A"))
-        assertEquals(listOf("P", "Q", "R", "S"), ExamNumberGenerator.resolveBookletSets("Set P"))
-        assertEquals(listOf("1", "2", "3", "4"), ExamNumberGenerator.resolveBookletSets("Set 1"))
-        val extended = ExamNumberGenerator.resolveBookletSets("Set F")
-        assertTrue("Extended sets should contain F", extended.contains("F"))
+        assertEquals(listOf("01", "02", "03", "04"), ExamNumberGenerator.resolveBookletSets("Set 1"))
+        assertEquals(listOf("01", "02", "03", "04", "05"), ExamNumberGenerator.resolveBookletSets("Set 5"))
     }
 
     @Test
@@ -72,7 +80,7 @@ class ExamNumberGeneratorTest {
             metadata = com.example.model.PaperMetadata(
                 title = "Biology Assessment",
                 subject = "Genetics",
-                setNumber = "Set A",
+                setNumber = "01",
                 rollNumber = "2026100001",
                 bookletNumber = "7100001"
             ),

@@ -89,43 +89,43 @@ object ExamNumberGenerator {
     }
 
     /**
-     * Extracts or derives a single booklet code / number (e.g. "1", "2", "3", "4", "A", "B") from set title or metadata.
+     * Extracts or derives a numeric booklet set code from set title or metadata.
      */
     fun extractBookletCode(raw: String): String {
-        val trimmed = raw.trim().uppercase()
-        if (trimmed.startsWith("SET ")) {
-            return trimmed.substring(4).trim().take(4).ifBlank { "1" }
-        }
-        if (trimmed.startsWith("SET-")) {
-            return trimmed.substring(4).trim().take(4).ifBlank { "1" }
-        }
-        if (trimmed.startsWith("SET")) {
-            return trimmed.substring(3).trim().take(4).ifBlank { "1" }
-        }
-        return trimmed.take(4).ifBlank { "1" }
+        return normalizeSetNumber(raw)
     }
 
     /**
-     * Derives a dynamic list of booklet set codes (e.g. ["1", "2", "3", "4"], ["A", "B", "C", "D"], or ["P", "Q", "R", "S"])
-     * accommodating arbitrary n number of sets beyond 4 or D.
+     * Normalizes any set reference into a strict 2-digit numerical string from "00" to "99".
+     * E.g. "1" -> "01", "01" -> "01", "Set 2" -> "02", "15" -> "15", "Set A" -> "01", "B" -> "02".
+     */
+    fun normalizeSetNumber(raw: String): String {
+        val trimmed = raw.trim().uppercase()
+        val digits = trimmed.filter { it.isDigit() }
+        if (digits.isNotBlank()) {
+            val num = digits.toIntOrNull() ?: 1
+            val clamped = num.coerceIn(0, 99)
+            return String.format(java.util.Locale.US, "%02d", clamped)
+        }
+        val clean = if (trimmed.startsWith("SET ")) trimmed.substring(4).trim()
+            else if (trimmed.startsWith("SET-")) trimmed.substring(4).trim()
+            else if (trimmed.startsWith("SET")) trimmed.substring(3).trim()
+            else trimmed
+        if (clean.length == 1 && clean[0] in 'A'..'Z') {
+            val letterNum = (clean[0] - 'A' + 1).coerceIn(1, 99)
+            return String.format(java.util.Locale.US, "%02d", letterNum)
+        }
+        return "01"
+    }
+
+    /**
+     * Derives a dynamic list of numeric booklet set codes (e.g. ["01", "02", "03", "04"]).
      */
     fun resolveBookletSets(activeSetCode: String): List<String> {
-        val code = extractBookletCode(activeSetCode)
-        if (code.length == 1 && code[0] in 'A'..'Z') {
-            val char = code[0]
-            return when {
-                char in 'P'..'S' -> listOf("P", "Q", "R", "S")
-                char in 'W'..'Z' -> listOf("W", "X", "Y", "Z")
-                char > 'D' -> ('A'..minOf('H', char)).map { it.toString() }
-                else -> listOf("A", "B", "C", "D")
-            }
-        }
-        if (code.all { it.isDigit() } && code.isNotBlank()) {
-            val num = code.toIntOrNull() ?: 1
-            val maxNum = maxOf(4, num)
-            return (1..maxNum).map { it.toString() }
-        }
-        return listOf("1", "2", "3", "4")
+        val numStr = normalizeSetNumber(activeSetCode)
+        val num = numStr.toIntOrNull() ?: 1
+        val maxNum = maxOf(4, num)
+        return (1..minOf(99, maxNum)).map { String.format(java.util.Locale.US, "%02d", it) }
     }
 
     /**

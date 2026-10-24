@@ -1074,7 +1074,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             title = paper.metadata.title,
                             subject = paper.metadata.subject.ifBlank { "General Knowledge" },
                             topic = paper.metadata.topic,
-                            setNumber = paper.metadata.setNumber.ifBlank { "Set A" },
+                            setNumber = paper.metadata.setNumber.ifBlank { "01" },
                             exam = paper.metadata.exam,
                             questionCount = paper.questions.size,
                             answerKeyCount = paper.quickAnswersCount,
@@ -1292,7 +1292,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         title = p.metadata.title,
                         subject = p.metadata.subject.ifBlank { "General Knowledge" },
                         topic = p.metadata.topic,
-                        setNumber = p.metadata.setNumber.ifBlank { "Set A" },
+                        setNumber = p.metadata.setNumber.ifBlank { "01" },
                         exam = p.metadata.exam,
                         questionCount = p.questions.size,
                         answerKeyCount = p.quickAnswersCount,
@@ -1917,17 +1917,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         candidateBookletNumber: String? = null,
         candidateBookletCode: String? = null
     ) {
-        val paperId = _currentPaperEntityId.value ?: return
-        val paper = _currentPaper.value ?: return
+        val finalRoll = candidateRollNumber ?: result.headerResult?.rollNumber ?: ""
+        val finalBooklet = candidateBookletNumber ?: result.headerResult?.bookletNumber ?: ""
+        val finalCode = candidateBookletCode ?: result.headerResult?.bookletCode ?: ""
+
+        val paper = _currentPaper.value
+            ?: findMatchingPaperForScannedSheet(finalBooklet, finalCode, finalRoll)?.let { matched ->
+                loadSavedPaper(matched)
+                matched.toQuestionPaper()
+            }
+            ?: savedPapers.value.firstOrNull()?.let { first ->
+                loadSavedPaper(first)
+                first.toQuestionPaper()
+            }
+            ?: return
+        val paperId = _currentPaperEntityId.value ?: paper.id
 
         stopTimerTicker()
         _isExamStarted.value = false
         _isExamSubmitted.value = true
         _retryQuestionNumbers.value = null
-
-        val finalRoll = candidateRollNumber ?: result.headerResult?.rollNumber ?: ""
-        val finalBooklet = candidateBookletNumber ?: result.headerResult?.bookletNumber ?: ""
-        val finalCode = candidateBookletCode ?: result.headerResult?.bookletCode ?: ""
 
         // Map detected answers (only valid single marks)
         val answersSnapshot = mutableMapOf<Int, String>()

@@ -113,6 +113,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.verticalScroll
 import com.example.data.AttemptEntity
 import com.example.data.PaperEntity
+import com.example.data.toQuestionPaper
+import com.example.util.McqParser
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -295,7 +297,7 @@ fun HomeScreen(
                             )
                             currentPaper?.let { paper ->
                                 Text(
-                                    text = "${paper.metadata.setNumber.ifBlank { "Set A" }} • ${paper.metadata.subject}",
+                                    text = "Set ${paper.metadata.setNumber.ifBlank { "01" }} • ${paper.metadata.subject}",
                                     fontSize = 10.5.sp,
                                     color = colors.tealDark,
                                     fontWeight = FontWeight.Medium,
@@ -740,7 +742,8 @@ fun HomeScreen(
                     onNavigateToMaster = { viewModel.selectTab(1) },
                     onNavigateToTests = { viewModel.selectTab(2) },
                     onNavigateToPrint = { viewModel.selectTab(3) },
-                    onEditMetadata = { showEditDialog = true }
+                    onEditMetadata = { showEditDialog = true },
+                    onScanOmr = { showOmrScannerDialog = true }
                 )
                 5 -> PromptGeneratorTab(
                     viewModel = viewModel,
@@ -895,9 +898,14 @@ fun HomeScreen(
     }
 
     // Optical OMR Scanner Dialog
-    if (showOmrScannerDialog && currentPaper != null) {
+    if (showOmrScannerDialog) {
+        val scannerPaper = currentPaper
+            ?: savedPapers.firstOrNull()?.toQuestionPaper()
+            ?: viewModel.lastOpenedPaper.collectAsState().value?.toQuestionPaper()
+            ?: com.example.util.McqParser.parse(com.example.data.SampleData.SAMPLE_STARTER_PROMPT)
+
         OmrScannerDialog(
-            paper = currentPaper!!,
+            paper = scannerPaper,
             allPapers = savedPapers,
             allAttempts = allAttempts,
             onSwitchPaper = { matchedEntity ->

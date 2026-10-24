@@ -394,7 +394,8 @@ fun EditMetadataDialog(
 
                         Button(
                             onClick = {
-                                onSave(title, subject, topic, setNumber, rollNumber, bookletNumber)
+                                val normalizedSet = com.example.util.ExamNumberGenerator.normalizeSetNumber(setNumber)
+                                onSave(title, subject, topic, normalizedSet, rollNumber, bookletNumber)
                                 onDismiss()
                             },
                             colors = ButtonDefaults.buttonColors(

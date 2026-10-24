@@ -259,7 +259,7 @@ fun FolderManagerTab(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "${lastPaper.setNumber.ifBlank { "Set A" }} • ${lastPaper.subject} • ${lastPaper.questionCount} Questions",
+                                    text = "Set ${lastPaper.setNumber.ifBlank { "01" }} • ${lastPaper.subject} • ${lastPaper.questionCount} Questions",
                                     fontSize = 11.5.sp,
                                     color = colors.inkMuted,
                                     maxLines = 1,
@@ -827,7 +827,7 @@ private fun PaperCardItem(
                         border = BorderStroke(0.5.dp, colors.border)
                     ) {
                         Text(
-                            text = paper.setNumber.ifBlank { "Set A" },
+                            text = "Set ${paper.setNumber.ifBlank { "01" }}",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.ink,

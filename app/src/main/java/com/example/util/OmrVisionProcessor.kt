@@ -464,9 +464,9 @@ object OmrVisionProcessor {
         bitmap: Bitmap,
         canonicalToSourceH: HomographyMatrix?,
         baselineDarkness: Float,
-        expectedSets: List<String> = listOf("A", "B", "C", "D")
+        expectedSets: List<String> = listOf("01", "02", "03", "04")
     ): OmrHeaderScanResult {
-        val headerBubbles = OmrGeometry.getCanonicalHeaderPixelCoordinates(expectedSets)
+        val headerBubbles = OmrGeometry.getCanonicalHeaderPixelCoordinates()
         val rollBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.ROLL_NUMBER }
         val bookletBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.BOOKLET_NUMBER }
         val codeBubbles = headerBubbles.filter { it.fieldType == OmrGeometry.HeaderFieldType.BOOKLET_CODE }
@@ -535,30 +535,47 @@ object OmrVisionProcessor {
             bookletConfSum += conf
         }
 
-        // Decode Booklet Code
-        var bestCode = expectedSets.firstOrNull() ?: "A"
-        var maxCodeDensity = 0f
-        for (p in codeBubbles) {
-            val (srcX, srcY) = canonicalToSourceH?.transform(p.centerXPx.toDouble(), p.centerYPx.toDouble())
-                ?: Pair(
-                    (p.centerXPx / OmrGeometry.CANONICAL_WIDTH_PX.toFloat()) * bitmap.width.toDouble(),
-                    (p.centerYPx / OmrGeometry.CANONICAL_HEIGHT_PX.toFloat()) * bitmap.height.toDouble()
-                )
-            val density = measureBubbleDarkness(bitmap, srcX.toFloat(), srcY.toFloat(), (p.radiusPx * 0.75f).coerceAtLeast(2.5f))
-            val effDensity = (density - baselineDarkness).coerceIn(0.0f, 1.0f)
-            if (effDensity > maxCodeDensity) {
-                maxCodeDensity = effDensity
-                bestCode = p.digitOrChar.toString()
+        // Decode 2-digit numeric Set Number / Booklet Code (Column 0: tens, Column 1: units)
+        val setChars = CharArray(2) { '0' }
+        val setConfs = FloatArray(2) { 1.0f }
+        var setConfSum = 0f
+        for (col in 0 until 2) {
+            val colPoints = codeBubbles.filter { it.columnIndex == col }
+            var bestDigit = '0'
+            var maxDensity = 0f
+            var secondMaxDensity = 0f
+            for (p in colPoints) {
+                val (srcX, srcY) = canonicalToSourceH?.transform(p.centerXPx.toDouble(), p.centerYPx.toDouble())
+                    ?: Pair(
+                        (p.centerXPx / OmrGeometry.CANONICAL_WIDTH_PX.toFloat()) * bitmap.width.toDouble(),
+                        (p.centerYPx / OmrGeometry.CANONICAL_HEIGHT_PX.toFloat()) * bitmap.height.toDouble()
+                    )
+                val density = measureBubbleDarkness(bitmap, srcX.toFloat(), srcY.toFloat(), (p.radiusPx * 0.75f).coerceAtLeast(2.5f))
+                val effDensity = (density - baselineDarkness).coerceIn(0.0f, 1.0f)
+                if (effDensity > maxDensity) {
+                    secondMaxDensity = maxDensity
+                    maxDensity = effDensity
+                    bestDigit = p.digitOrChar
+                } else if (effDensity > secondMaxDensity) {
+                    secondMaxDensity = effDensity
+                }
             }
+            setChars[col] = bestDigit
+            val margin = (maxDensity - secondMaxDensity).coerceAtLeast(0f)
+            val conf = ((maxDensity / 0.25f) * 0.6f + (margin / 0.15f) * 0.4f).coerceIn(0f, 1f)
+            setConfs[col] = conf
+            setConfSum += conf
         }
+        val decodedSetNumber = String(setChars)
+        val decodedSetConfidence = (setConfSum / 2f).coerceIn(0f, 1f)
 
         return OmrHeaderScanResult(
             rollNumber = String(rollChars),
             bookletNumber = String(bookletChars),
-            bookletCode = bestCode,
+            bookletCode = decodedSetNumber,
             rollNumberConfidence = (rollConfSum / 10f).coerceIn(0f, 1f),
             bookletNumberConfidence = (bookletConfSum / 7f).coerceIn(0f, 1f),
-            bookletCodeConfidence = (maxCodeDensity / 0.25f).coerceIn(0f, 1f),
+            bookletCodeConfidence = decodedSetConfidence,
             rollDigitConfidences = rollConfs.toList(),
             bookletDigitConfidences = bookletConfs.toList()
         )

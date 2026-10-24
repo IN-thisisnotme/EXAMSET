@@ -222,7 +222,7 @@ fun HeaderBanner(
                     fontSize = 11.sp
                 )
                 Text(
-                    text = metadata.setNumber.ifBlank { "Set A" },
+                    text = if (metadata.setNumber.isNotBlank()) "Set ${metadata.setNumber}" else "Set 01",
                     color = colors.navyBannerText.copy(alpha = 0.85f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium

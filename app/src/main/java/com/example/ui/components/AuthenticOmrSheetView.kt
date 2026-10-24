@@ -330,37 +330,81 @@ fun AuthenticOmrSheetView(
                                 }
                             }
 
-                            // Test Booklet Code Box
-                            Row(
+                            // 2-Digit Numeric Set Number Grid (Tens & Units 0..9)
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .border(BorderStroke(1.dp, OMR_MAGENTA))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Test Booklet Code", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = OMR_MAGENTA)
-                                    Text(
-                                        text = setClean,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = OMR_MAGENTA
-                                    )
-                                }
+                                Text(
+                                    text = "SET NO.",
+                                    fontSize = 7.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = OMR_MAGENTA,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White)
+                                        .padding(vertical = 1.5.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                                HorizontalDivider(thickness = 0.8.dp, color = OMR_MAGENTA)
+
+                                val setStr = ExamNumberGenerator.normalizeSetNumber(setClean)
+                                val showSetDigits = (config.omrBubblingMode == OmrBubblingMode.PRE_PRINTED_DIGITS ||
+                                        config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES)
+                                val darkenSetBubbles = config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES
+
+                                // Digit entry row (2 boxes)
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
-                                    bookletSets.forEach { code ->
-                                        val isCurrent = code.equals(setClean, ignoreCase = true)
-                                        val isDark = isCurrent && config.omrBubblingMode == OmrBubblingMode.PRE_DARKENED_BUBBLES
-                                        MicroBubble(
-                                            text = code,
-                                            isDarkened = isDark,
-                                            sizeDp = 15
-                                        )
+                                    for (colIdx in 0 until 2) {
+                                        val digitChar = if (showSetDigits && setStr.length == 2) setStr[colIdx].toString() else ""
+                                        Box(
+                                            modifier = Modifier
+                                                .width(26.dp)
+                                                .height(18.dp)
+                                                .border(BorderStroke(0.5.dp, OMR_MAGENTA)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = digitChar,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = Color.Black
+                                            )
+                                        }
+                                    }
+                                }
+                                HorizontalDivider(thickness = 0.8.dp, color = OMR_MAGENTA)
+
+                                // 0..9 Bubbles Grid (2 columns: Tens and Units with uniform sizeDp = 13)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalArrangement = Arrangement.spacedBy(1.5.dp)
+                                ) {
+                                    for (d in 0..9) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            for (colIdx in 0 until 2) {
+                                                val isDarkened = darkenSetBubbles && setStr.length == 2 && (setStr[colIdx] - '0') == d
+                                                MicroBubble(
+                                                    text = d.toString(),
+                                                    isDarkened = isDarkened,
+                                                    sizeDp = 13
+                                                )
+                                                if (colIdx == 0) {
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
