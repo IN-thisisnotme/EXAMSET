@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import android.content.Intent
@@ -74,6 +75,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -246,6 +248,7 @@ fun OmrScannerDialog(
         Surface(
             modifier = modifier
                 .fillMaxSize()
+                .systemBarsPadding()
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
             color = colors.surface,
@@ -262,7 +265,10 @@ fun OmrScannerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = Color(0xFFBE185D).copy(alpha = 0.12f),
@@ -278,20 +284,26 @@ fun OmrScannerDialog(
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Optical OMR Sheet Scanner",
-                                fontSize = 17.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.inkBold
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = "Auto-evaluates NEET 200 MCQ magenta answer sheets",
-                                fontSize = 12.sp,
-                                color = colors.muted
+                                fontSize = 11.5.sp,
+                                color = colors.muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     IconButton(
                         onClick = onDismiss,
@@ -397,6 +409,7 @@ fun OmrScannerDialog(
                                     galleryLauncher.launch("image/*")
                                 }
                             },
+                            onDismiss = onDismiss,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -415,6 +428,7 @@ private fun ScannerUploadPromptsView(
     errorMessage: String?,
     onPickCamera: () -> Unit,
     onPickGallery: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -580,6 +594,35 @@ private fun ScannerUploadPromptsView(
                     )
                 }
             }
+        }
+
+        item {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("omr_scanner_bottom_close_button"),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.2.dp, colors.border),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = colors.inkBold
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = colors.muted
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Close Scanner",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
