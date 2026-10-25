@@ -39,9 +39,11 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewList
@@ -154,6 +156,15 @@ enum class PaperSegregationMode(val label: String, val icon: ImageVector) {
     BY_SET_SERIES("By Set Number", Icons.Default.ViewAgenda)
 }
 
+/**
+ * Ordering options for child folders and categories (Step 8).
+ */
+enum class FolderSortOrder(val label: String) {
+    DEFAULT("Default"),
+    A_TO_Z("A-Z"),
+    MOST_SETS("Most Sets")
+}
+
 @Composable
 fun FolderManagerTab(
     viewModel: MainViewModel,
@@ -172,6 +183,7 @@ fun FolderManagerTab(
     var activeFolderId by remember { mutableStateOf("all") }
     var searchQuery by remember { mutableStateOf("") }
     var segregationMode by remember { mutableStateOf(PaperSegregationMode.ALL) }
+    var includeSubfolderPapers by remember { mutableStateOf(true) }
 
     // Selection & Batch Move states
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -180,6 +192,16 @@ fun FolderManagerTab(
     var isDeepSearchAcrossAllFolders by remember { mutableStateOf(false) }
     var showFolderExportMenu by remember { mutableStateOf(false) }
     var showSelectionExportMenu by remember { mutableStateOf(false) }
+
+    // Step 8: Folder Quick Management states (Rename, Recolor, Reparent, Sort)
+    var folderToRename by remember { mutableStateOf<FolderItem?>(null) }
+    var renameFolderName by remember { mutableStateOf("") }
+    var folderToRecolor by remember { mutableStateOf<FolderItem?>(null) }
+    var recolorFolderHex by remember { mutableStateOf("#0284C7") }
+    var folderToReparent by remember { mutableStateOf<FolderItem?>(null) }
+    var showActiveFolderMenu by remember { mutableStateOf(false) }
+    var activeMenuFolderId by remember { mutableStateOf<String?>(null) }
+    var folderSortOrder by remember { mutableStateOf(FolderSortOrder.DEFAULT) }
 
     val context = LocalContext.current
     val triggerShare: (String, String) -> Unit = remember(context) {
@@ -213,11 +235,26 @@ fun FolderManagerTab(
     }
 
     // Immediate child subfolders for current view
-    val immediateSubfolders = remember(activeFolderId, folders) {
+    val immediateSubfoldersRaw = remember(activeFolderId, folders) {
         if (activeFolderId == "all") {
             folders.filter { it.parentId == null }
         } else {
             folders.filter { it.parentId == activeFolderId }
+        }
+    }
+
+    // Sorted subfolders according to selected FolderSortOrder
+    val immediateSubfolders = remember(immediateSubfoldersRaw, folderSortOrder, savedPapers) {
+        when (folderSortOrder) {
+            FolderSortOrder.DEFAULT -> immediateSubfoldersRaw
+            FolderSortOrder.A_TO_Z -> immediateSubfoldersRaw.sortedBy { it.name.lowercase(Locale.getDefault()) }
+            FolderSortOrder.MOST_SETS -> immediateSubfoldersRaw.sortedByDescending { sub ->
+                savedPapers.count { p ->
+                    p.folderId == sub.id ||
+                    p.subject.equals(sub.name, ignoreCase = true) ||
+                    p.topic.contains(sub.name, ignoreCase = true)
+                }
+            }
         }
     }
 
@@ -228,7 +265,7 @@ fun FolderManagerTab(
     }
 
     // Filtered papers matching unified search query and active folder hierarchy
-    val filteredPapers = remember(savedPapers, folders, activeFolderId, searchQuery, descendantIds, isDeepSearchAcrossAllFolders) {
+    val filteredPapers = remember(savedPapers, folders, activeFolderId, searchQuery, descendantIds, isDeepSearchAcrossAllFolders, includeSubfolderPapers) {
         savedPapers.filter { paper ->
             val folderPath = paper.folderId?.let { viewModel.getFullFolderPath(it) } ?: ""
 
@@ -245,11 +282,16 @@ fun FolderManagerTab(
                 val f = folders.find { it.id == activeFolderId }
                 if (f == null) true
                 else {
-                    (paper.folderId != null && paper.folderId in descendantIds) ||
-                    paper.subject.equals(f.name, ignoreCase = true) ||
-                    paper.subject.contains(f.name, ignoreCase = true) ||
-                    paper.topic.contains(f.name, ignoreCase = true) ||
-                    paper.title.contains(f.name, ignoreCase = true)
+                    if (includeSubfolderPapers) {
+                        (paper.folderId != null && paper.folderId in descendantIds) ||
+                        paper.subject.equals(f.name, ignoreCase = true) ||
+                        paper.subject.contains(f.name, ignoreCase = true) ||
+                        paper.topic.contains(f.name, ignoreCase = true) ||
+                        paper.title.contains(f.name, ignoreCase = true)
+                    } else {
+                        paper.folderId == activeFolderId ||
+                        (paper.folderId == null && paper.subject.equals(f.name, ignoreCase = true))
+                    }
                 }
             }
             matchesSearch && matchesFolder
@@ -380,6 +422,77 @@ fun FolderManagerTab(
                                         }
                                     }
                                 )
+                            }
+                        }
+
+                        if (currentFolder != null) {
+                            Box {
+                                IconButton(
+                                    onClick = { showActiveFolderMenu = true },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Folder Actions",
+                                        tint = colors.inkBold,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showActiveFolderMenu,
+                                    onDismissRequest = { showActiveFolderMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Add Sub-Folder here") },
+                                        leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            parentFolderForNew = currentFolder
+                                            newFolderName = ""
+                                            showNewFolderDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Rename Folder") },
+                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            folderToRename = currentFolder
+                                            renameFolderName = currentFolder.name
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Change Color") },
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .background(parseHexColor(currentFolder.color), CircleShape)
+                                            )
+                                        },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            folderToRecolor = currentFolder
+                                            recolorFolderHex = currentFolder.color
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Move (Change Parent)") },
+                                        leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            folderToReparent = currentFolder
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete Folder", color = Color(0xFFDC2626)) },
+                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            folderToDelete = currentFolder
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -570,21 +683,56 @@ fun FolderManagerTab(
                             }
                         }
 
-                        TextButton(
-                            onClick = {
-                                parentFolderForNew = currentFolder
-                                newFolderName = ""
-                                showNewFolderDialog = true
-                            },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = if (currentFolder != null) "+ Sub-Folder" else "+ Main Folder",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            // Sort folders pill
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (folderSortOrder != FolderSortOrder.DEFAULT) colors.navyBanner.copy(alpha = 0.12f) else colors.surfaceVariant,
+                                border = BorderStroke(0.6.dp, if (folderSortOrder != FolderSortOrder.DEFAULT) colors.navyBanner else colors.border),
+                                modifier = Modifier.clickable {
+                                    folderSortOrder = when (folderSortOrder) {
+                                        FolderSortOrder.DEFAULT -> FolderSortOrder.A_TO_Z
+                                        FolderSortOrder.A_TO_Z -> FolderSortOrder.MOST_SETS
+                                        FolderSortOrder.MOST_SETS -> FolderSortOrder.DEFAULT
+                                    }
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SortByAlpha,
+                                        contentDescription = "Sort folders",
+                                        tint = if (folderSortOrder != FolderSortOrder.DEFAULT) colors.navyBanner else colors.inkMuted,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = folderSortOrder.label,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (folderSortOrder != FolderSortOrder.DEFAULT) colors.navyBanner else colors.inkMuted
+                                    )
+                                }
+                            }
+
+                            TextButton(
+                                onClick = {
+                                    parentFolderForNew = currentFolder
+                                    newFolderName = ""
+                                    showNewFolderDialog = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = if (currentFolder != null) "+ Sub-Folder" else "+ Main Folder",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
 
@@ -634,16 +782,73 @@ fun FolderManagerTab(
                                                 }
                                             }
 
-                                            IconButton(
-                                                onClick = { folderToDelete = sub },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Clear,
-                                                    contentDescription = "Delete subfolder",
-                                                    tint = colors.inkMuted,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
+                                            Box {
+                                                IconButton(
+                                                    onClick = { activeMenuFolderId = sub.id },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.MoreVert,
+                                                        contentDescription = "Folder options",
+                                                        tint = colors.inkMuted,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = activeMenuFolderId == sub.id,
+                                                    onDismissRequest = { activeMenuFolderId = null }
+                                                ) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Add Sub-Folder") },
+                                                        leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            parentFolderForNew = sub
+                                                            newFolderName = ""
+                                                            showNewFolderDialog = true
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Rename") },
+                                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            folderToRename = sub
+                                                            renameFolderName = sub.name
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Change Color") },
+                                                        leadingIcon = {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(12.dp)
+                                                                    .background(subColor, CircleShape)
+                                                            )
+                                                        },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            folderToRecolor = sub
+                                                            recolorFolderHex = sub.color
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Move (Change Parent)") },
+                                                        leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            folderToReparent = sub
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Delete Folder", color = Color(0xFFDC2626)) },
+                                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            folderToDelete = sub
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
 
@@ -671,7 +876,58 @@ fun FolderManagerTab(
                         }
                     }
                 }
+        } else if (currentFolder != null) {
+            // Slim sub-folder indicator and action when inside a folder with 0 child sub-folders
+            item {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.surfaceVariant,
+                    border = BorderStroke(1.dp, colors.border.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.SubdirectoryArrowRight,
+                                contentDescription = null,
+                                tint = colors.inkMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "0 Sub-Folders in ${currentFolder?.name ?: ""}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.inkMuted
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                parentFolderForNew = currentFolder
+                                newFolderName = ""
+                                showNewFolderDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.teal)
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "+ Add Sub-Folder",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.teal
+                            )
+                        }
+                    }
+                }
             }
+        }
 
         // Dynamic hierarchy tip when no custom folders exist yet
         if (folders.isEmpty()) {
@@ -870,49 +1126,99 @@ fun FolderManagerTab(
             )
         }
 
-        // Deep Search Across All Folders Filter Chip (Step 7)
+        // Subtree-Aware Filtering & Deep Search Controls (Step 7)
         if (activeFolderId != "all" || searchQuery.isNotBlank()) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isDeepSearchAcrossAllFolders) colors.teal.copy(alpha = 0.15f) else colors.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(0.6.dp, if (isDeepSearchAcrossAllFolders) colors.teal else colors.border),
-                        modifier = Modifier.clickable {
-                            isDeepSearchAcrossAllFolders = !isDeepSearchAcrossAllFolders
-                        }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = if (isDeepSearchAcrossAllFolders) colors.teal else colors.inkMuted,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isDeepSearchAcrossAllFolders) "Deep Search Active: All Sub-Folders" else "Deep Search: Search all folders & sub-folders",
-                                fontSize = 11.sp,
-                                fontWeight = if (isDeepSearchAcrossAllFolders) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isDeepSearchAcrossAllFolders) colors.tealDark else colors.ink
-                            )
+                        // Subtree Toggle when inside a folder with child subfolders
+                        if (activeFolderId != "all") {
+                            val subCount = descendantIds.size - 1
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (includeSubfolderPapers) colors.teal.copy(alpha = 0.14f) else colors.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(0.6.dp, if (includeSubfolderPapers) colors.teal else colors.border),
+                                modifier = Modifier.clickable {
+                                    includeSubfolderPapers = !includeSubfolderPapers
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (includeSubfolderPapers) Icons.Default.Check else Icons.Default.Layers,
+                                        contentDescription = null,
+                                        tint = if (includeSubfolderPapers) colors.teal else colors.inkMuted,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (includeSubfolderPapers) {
+                                            if (subCount > 0) "Include $subCount Sub-Folders" else "Subtree Active"
+                                        } else {
+                                            "Direct Folder Only"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = if (includeSubfolderPapers) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (includeSubfolderPapers) colors.tealDark else colors.ink
+                                    )
+                                }
+                            }
                         }
-                    }
 
-                    if (searchQuery.isNotBlank()) {
-                        Text(
-                            text = "${filteredPapers.size} match${if (filteredPapers.size == 1) "" else "es"}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.teal
-                        )
+                        // Deep Search Across All Folders Toggle
+                        if (searchQuery.isNotBlank() && activeFolderId != "all") {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isDeepSearchAcrossAllFolders) colors.teal.copy(alpha = 0.15f) else colors.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(0.6.dp, if (isDeepSearchAcrossAllFolders) colors.teal else colors.border),
+                                modifier = Modifier.clickable {
+                                    isDeepSearchAcrossAllFolders = !isDeepSearchAcrossAllFolders
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = if (isDeepSearchAcrossAllFolders) colors.teal else colors.inkMuted,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (isDeepSearchAcrossAllFolders) "Global Search (All Library)" else "Search Current Hierarchy",
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isDeepSearchAcrossAllFolders) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isDeepSearchAcrossAllFolders) colors.tealDark else colors.ink
+                                    )
+                                }
+                            }
+                        }
+
+                        if (searchQuery.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.teal.copy(alpha = 0.1f),
+                                modifier = Modifier.padding(start = 2.dp)
+                            ) {
+                                Text(
+                                    text = "${filteredPapers.size} match${if (filteredPapers.size == 1) "" else "es"}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.tealDark,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1164,34 +1470,9 @@ fun FolderManagerTab(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = {
-                                    viewModel.loadStarterSample("science")
-                                    onNavigateToMaster()
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(42.dp)
-                                    .testTag("load_starter_exam_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = Color.White
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Load Starter Exam",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
-                                )
-                            }
-                            OutlinedButton(
                                 onClick = { viewModel.selectTab(4) },
                                 shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(42.dp)
@@ -1200,15 +1481,15 @@ fun FolderManagerTab(
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = null,
-                                    modifier = Modifier.size(15.dp),
-                                    tint = colors.teal
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color.White
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Create Questions",
+                                    text = "Create New Question Set",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = colors.teal
+                                    color = Color.White
                                 )
                             }
                         }
@@ -1388,37 +1669,125 @@ fun FolderManagerTab(
             },
             text = {
                 Column {
-                    if (isSubFolder) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = colors.tealLight,
-                            modifier = Modifier.fillMaxWidth()
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isSubFolder) colors.tealLight else colors.blueLight,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.SubdirectoryArrowRight, contentDescription = null, tint = colors.teal, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Parent: ${parentFolderForNew?.name}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.tealDark
-                                )
-                            }
+                            Icon(
+                                imageVector = if (isSubFolder) Icons.Default.SubdirectoryArrowRight else Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (isSubFolder) colors.teal else colors.navyBanner,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isSubFolder) "Destination: Sub-Folder under ${parentFolderForNew?.name}" else "Destination: Top-Level Folder (Main Category)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSubFolder) colors.tealDark else colors.inkBold
+                            )
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
                     }
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = newFolderName,
                         onValueChange = { newFolderName = it },
                         label = { Text(if (isSubFolder) "Sub-Folder Name" else "Folder Name") },
-                        placeholder = { Text(if (isSubFolder) "e.g. GS Paper 1, CSAT, Prelims" else "e.g. UPSC CSE, State PSC") },
+                        placeholder = { Text(if (isSubFolder) "e.g. GS Paper 1, CSAT or Prelims/CSAT" else "e.g. UPSC CSE, State PSC or UPSC/Prelims") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    val delimiterPlaceholder = "\u0000LITERAL_SLASH\u0000"
+                    val normalizedPreview = newFolderName.trim().replace("//", delimiterPlaceholder)
+                    val hasHierarchy = normalizedPreview.contains("/") || normalizedPreview.contains(">")
+                    val hasEscapedSlash = newFolderName.contains("//")
+                    val previewSegments = normalizedPreview.split("/", ">")
+                        .map { it.replace(delimiterPlaceholder, "/").trim() }
+                        .filter { it.isNotBlank() }
+
+                    if (hasHierarchy && previewSegments.size > 1) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.blueLight,
+                            border = BorderStroke(1.dp, colors.navyBanner.copy(alpha = 0.25f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.SubdirectoryArrowRight,
+                                        contentDescription = null,
+                                        tint = colors.navyBanner,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Hierarchy Preview (${previewSegments.size} Levels)",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.navyBanner
+                                    )
+                                }
+                                val fullPreviewChain = if (isSubFolder && parentFolderForNew != null) {
+                                    "${parentFolderForNew?.name} > " + previewSegments.joinToString(" > ")
+                                } else {
+                                    previewSegments.joinToString(" > ")
+                                }
+                                Text(
+                                    text = fullPreviewChain,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.inkBold
+                                )
+                            }
+                        }
+                    } else if (hasEscapedSlash && !hasHierarchy && previewSegments.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.tealLight,
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = colors.tealDark,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Literal slash: \"${previewSegments.first()}\"",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.tealDark
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "Tip: Use '/' or '>' to create subfolders (e.g. Prelims/CSAT). Use '//' for literal '/' (e.g. Paper//1).",
+                        fontSize = 10.sp,
+                        color = colors.inkMuted,
+                        lineHeight = 13.sp,
+                        modifier = Modifier.padding(top = 4.dp, start = 2.dp)
+                    )
+
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("Select Color Tag", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
                     Spacer(modifier = Modifier.height(6.dp))
@@ -1546,6 +1915,161 @@ fun FolderManagerTab(
             onDismiss = { showBatchMoveDialog = false }
         )
     }
+
+    // Step 8: Rename Folder Dialog
+    if (folderToRename != null) {
+        val target = folderToRename!!
+        AlertDialog(
+            onDismissRequest = { folderToRename = null },
+            icon = {
+                Icon(Icons.Default.Edit, contentDescription = null, tint = colors.navyBanner)
+            },
+            title = {
+                Text("Rename Folder", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter a new name for \"${target.name}\". Contained test sets will automatically update.",
+                        fontSize = 12.5.sp,
+                        color = colors.inkMuted
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = renameFolderName,
+                        onValueChange = { renameFolderName = it },
+                        label = { Text("Folder Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (renameFolderName.isNotBlank()) {
+                            viewModel.renameFolder(target.id, renameFolderName.trim())
+                            folderToRename = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+                ) {
+                    Text("Rename", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderToRename = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Step 8: Recolor Folder Dialog
+    if (folderToRecolor != null) {
+        val target = folderToRecolor!!
+        val colorOptions = listOf(
+            "#0284C7", "#16A34A", "#D97706", "#7C3AED", "#DC2626",
+            "#0D9488", "#E11D48", "#2563EB", "#059669", "#475569"
+        )
+        AlertDialog(
+            onDismissRequest = { folderToRecolor = null },
+            title = {
+                Text("Change Folder Color", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Choose a color badge for \"${target.name}\":",
+                        fontSize = 12.5.sp,
+                        color = colors.inkMuted
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        colorOptions.take(5).forEach { hex ->
+                            val col = parseHexColor(hex)
+                            val isSelected = recolorFolderHex.equals(hex, ignoreCase = true)
+                            Surface(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clickable { recolorFolderHex = hex },
+                                shape = CircleShape,
+                                color = col,
+                                border = if (isSelected) BorderStroke(2.5.dp, colors.inkBold) else null
+                            ) {
+                                if (isSelected) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        colorOptions.drop(5).forEach { hex ->
+                            val col = parseHexColor(hex)
+                            val isSelected = recolorFolderHex.equals(hex, ignoreCase = true)
+                            Surface(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clickable { recolorFolderHex = hex },
+                                shape = CircleShape,
+                                color = col,
+                                border = if (isSelected) BorderStroke(2.5.dp, colors.inkBold) else null
+                            ) {
+                                if (isSelected) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.recolorFolder(target.id, recolorFolderHex)
+                        folderToRecolor = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+                ) {
+                    Text("Apply Color", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderToRecolor = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Step 8: Reparent Folder Dialog
+    if (folderToReparent != null) {
+        val target = folderToReparent!!
+        val targetDescendants = remember(target, folders) {
+            viewModel.getAllDescendantFolderIds(target.id)
+        }
+        ReparentFolderDialog(
+            folderToReparent = target,
+            folders = folders,
+            descendantIds = targetDescendants,
+            onReparent = { newParentId ->
+                viewModel.reparentFolder(target.id, newParentId)
+                folderToReparent = null
+            },
+            onDismiss = { folderToReparent = null }
+        )
+    }
 }
 
 /**
@@ -1636,8 +2160,28 @@ private fun getSetSeriesCategory(paper: PaperEntity): String {
     }
 }
 
+private data class FlattenedFolderNode(
+    val folder: FolderItem,
+    val depth: Int,
+    val fullPath: String
+)
+
+private fun flattenFolderHierarchy(folders: List<FolderItem>): List<FlattenedFolderNode> {
+    val result = mutableListOf<FlattenedFolderNode>()
+    fun traverse(parentId: String?, currentDepth: Int, currentPathPrefix: String) {
+        val children = folders.filter { it.parentId == parentId }
+        for (child in children) {
+            val path = if (currentPathPrefix.isEmpty()) child.name else "$currentPathPrefix > ${child.name}"
+            result.add(FlattenedFolderNode(child, currentDepth, path))
+            traverse(child.id, currentDepth + 1, path)
+        }
+    }
+    traverse(null, 0, "")
+    return result
+}
+
 /**
- * Step 5: Hierarchical Folder Assignment Tree Dialog
+ * Step 5 & 6: Hierarchical Folder Assignment Tree Dialog
  */
 @Composable
 private fun AssignFolderTreeDialog(
@@ -1649,7 +2193,7 @@ private fun AssignFolderTreeDialog(
     onDismiss: () -> Unit
 ) {
     val colors = ExamTheme.colors
-    val rootFolders = remember(folders) { folders.filter { it.parentId == null } }
+    val flattenedFolders = remember(folders) { flattenFolderHierarchy(folders) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1697,44 +2241,16 @@ private fun AssignFolderTreeDialog(
                         }
                     }
 
-                    // Hierarchical Folder Tree
-                    rootFolders.forEach { root ->
-                        item {
+                    // Hierarchical Folder Tree for any arbitrary nesting depth
+                    flattenedFolders.forEach { node ->
+                        item(key = node.folder.id) {
                             FolderTreeItem(
-                                folder = root,
-                                depth = 0,
-                                isSelected = targetPaper != null && targetPaper.folderId == root.id,
-                                onSelect = { onAssign(root.id, root.name) },
-                                onAddSub = { onCreateNewFolder(root) }
+                                folder = node.folder,
+                                depth = node.depth,
+                                isSelected = targetPaper != null && targetPaper.folderId == node.folder.id,
+                                onSelect = { onAssign(node.folder.id, node.fullPath) },
+                                onAddSub = { onCreateNewFolder(node.folder) }
                             )
-                        }
-
-                        // Child sub-folders
-                        val children = folders.filter { it.parentId == root.id }
-                        children.forEach { child ->
-                            item {
-                                FolderTreeItem(
-                                    folder = child,
-                                    depth = 1,
-                                    isSelected = targetPaper != null && targetPaper.folderId == child.id,
-                                    onSelect = { onAssign(child.id, "${root.name} > ${child.name}") },
-                                    onAddSub = { onCreateNewFolder(child) }
-                                )
-                            }
-
-                            // Grandchildren
-                            val grandChildren = folders.filter { it.parentId == child.id }
-                            grandChildren.forEach { grand ->
-                                item {
-                                    FolderTreeItem(
-                                        folder = grand,
-                                        depth = 2,
-                                        isSelected = targetPaper != null && targetPaper.folderId == grand.id,
-                                        onSelect = { onAssign(grand.id, "${root.name} > ${child.name} > ${grand.name}") },
-                                        onAddSub = { onCreateNewFolder(grand) }
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -1754,6 +2270,206 @@ private fun AssignFolderTreeDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Close")
+            }
+        }
+    )
+}
+
+/**
+ * Step 8: Re-parenting Dialog to move folder in hierarchy without cycle loops
+ */
+@Composable
+private fun ReparentFolderDialog(
+    folderToReparent: FolderItem,
+    folders: List<FolderItem>,
+    descendantIds: Set<String>,
+    onReparent: (targetParentId: String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    var selectedParentId by remember { mutableStateOf<String?>(folderToReparent.parentId) }
+
+    // Exclude folder itself and all of its descendants from destinations
+    val invalidIds = remember(folderToReparent, descendantIds) {
+        descendantIds + folderToReparent.id
+    }
+
+    val candidates = remember(folders, invalidIds) {
+        flattenFolderHierarchy(folders).filter { it.folder.id !in invalidIds }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Move Folder",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+            ) {
+                Text(
+                    text = "Select a new parent folder for \"${folderToReparent.name}\":",
+                    fontSize = 12.5.sp,
+                    color = colors.inkMuted
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Option 1: Root / Top-Level
+                    item {
+                        val isSelected = selectedParentId == null
+                        val isCurrentParent = folderToReparent.parentId == null
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedParentId = null },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) colors.navyBanner.copy(alpha = 0.12f) else colors.surfaceVariant.copy(alpha = 0.4f),
+                            border = if (isSelected) BorderStroke(1.5.dp, colors.navyBanner) else BorderStroke(0.5.dp, colors.border)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = if (isSelected) colors.navyBanner else colors.inkMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Root Level (Top Level / Main Exam)",
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) colors.navyBanner else colors.inkBold
+                                    )
+                                    if (isCurrentParent) {
+                                        Text(
+                                            text = "Current Parent",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.tealDark
+                                        )
+                                    }
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = colors.navyBanner,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Candidate destination folders
+                    candidates.forEach { node ->
+                        item(key = node.folder.id) {
+                            val isSelected = selectedParentId == node.folder.id
+                            val isCurrentParent = folderToReparent.parentId == node.folder.id
+                            val nodeColor = parseHexColor(node.folder.color)
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedParentId = node.folder.id },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) colors.navyBanner.copy(alpha = 0.12f) else colors.surface,
+                                border = if (isSelected) BorderStroke(1.5.dp, colors.navyBanner) else BorderStroke(0.5.dp, colors.border.copy(alpha = 0.6f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = (10 + (node.depth * 14)).dp,
+                                            end = 10.dp,
+                                            top = 8.dp,
+                                            bottom = 8.dp
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (node.depth > 0) {
+                                        Icon(
+                                            imageVector = Icons.Default.SubdirectoryArrowRight,
+                                            contentDescription = null,
+                                            tint = colors.inkMuted,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(nodeColor, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = node.folder.name,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) colors.navyBanner else colors.inkBold
+                                        )
+                                        if (node.depth > 0) {
+                                            Text(
+                                                text = node.fullPath,
+                                                fontSize = 9.5.sp,
+                                                color = colors.inkMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        if (isCurrentParent) {
+                                            Text(
+                                                text = "Current Parent",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.tealDark
+                                            )
+                                        }
+                                    }
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = colors.navyBanner,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onReparent(selectedParentId) },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+            ) {
+                Text("Move Here", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         }
     )

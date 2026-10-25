@@ -222,7 +222,7 @@ fun MasterViewTab(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = { viewModel.loadStarterSample("science") },
+                            onClick = { viewModel.selectTab(0) },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colors.primaryButtonBg,
@@ -231,21 +231,25 @@ fun MasterViewTab(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(42.dp)
-                                .testTag("master_load_starter_button")
+                                .testTag("master_browse_library_button")
                         ) {
-                            Text("Load Starter Exam", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
+                            Icon(Icons.Default.ListAlt, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primaryButtonText)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Browse Question Library", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                         }
                         OutlinedButton(
-                            onClick = { viewModel.selectTab(0) },
+                            onClick = { viewModel.selectTab(4) },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
                             border = BorderStroke(1.dp, colors.border),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(42.dp)
-                                .testTag("master_browse_library_button")
+                                .testTag("master_create_set_button")
                         ) {
-                            Text("Browse Question Library", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.inkBold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Create New Question Set", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                         }
                     }
                 }

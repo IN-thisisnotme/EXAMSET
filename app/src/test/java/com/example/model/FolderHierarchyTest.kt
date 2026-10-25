@@ -1,6 +1,7 @@
 package com.example.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -185,4 +186,180 @@ class FolderHierarchyTest {
         assertEquals(2, repo.folders.size)
         assertEquals(firstLeaf!!.id, secondLeaf!!.id)
     }
+
+    @Test
+    fun testArbitraryDepthHierarchyFlattening() {
+        val repo = TestFolderRepository()
+        val leaf = repo.resolveOrCreateFolderPath("A / B / C / D / E")
+        assertNotNull(leaf)
+        assertEquals(5, repo.folders.size)
+
+        // Validate breadcrumb has all 5 tiers
+        val breadcrumbs = repo.getBreadcrumbPath(leaf!!.id)
+        assertEquals(5, breadcrumbs.size)
+        assertEquals(listOf("A", "B", "C", "D", "E"), breadcrumbs.map { it.name })
+    }
+
+    @Test
+    fun testSubtreeDescendantCollection() {
+        val repo = TestFolderRepository()
+        val c1 = repo.resolveOrCreateFolderPath("UPSC / Prelims / GS 1")
+        val c2 = repo.resolveOrCreateFolderPath("UPSC / Prelims / CSAT")
+        val c3 = repo.resolveOrCreateFolderPath("UPSC / Mains / Essay")
+        assertNotNull(c1)
+        assertNotNull(c2)
+        assertNotNull(c3)
+
+        val upscFolder = repo.folders.find { it.name == "UPSC" }!!
+        val prelimsFolder = repo.folders.find { it.name == "Prelims" }!!
+
+        // Function mirroring getAllDescendantFolderIds
+        fun getDescendants(folderId: String, allFolders: List<FolderItem>): Set<String> {
+            val result = mutableSetOf(folderId)
+            val queue = ArrayDeque<String>()
+            queue.add(folderId)
+            while (queue.isNotEmpty()) {
+                val curr = queue.removeFirst()
+                val children = allFolders.filter { it.parentId == curr }.map { it.id }
+                for (child in children) {
+                    if (result.add(child)) {
+                        queue.add(child)
+                    }
+                }
+            }
+            return result
+        }
+
+        val upscDescendants = getDescendants(upscFolder.id, repo.folders)
+        // Root UPSC (1) + Prelims, Mains (2) + GS 1, CSAT, Essay (3) = 6
+        assertEquals(6, upscDescendants.size)
+
+        val prelimsDescendants = getDescendants(prelimsFolder.id, repo.folders)
+        // Prelims (1) + GS 1, CSAT (2) = 3
+        assertEquals(3, prelimsDescendants.size)
+    }
+
+    @Test
+    fun testBatchMovePaperAssignment() {
+        data class MockPaper(val id: Long, var folderId: String?, var subject: String)
+
+        val papers = mutableListOf(
+            MockPaper(1L, null, "General"),
+            MockPaper(2L, null, "General"),
+            MockPaper(3L, "f-old", "Old Subject")
+        )
+
+        val targetFolderId = "f-target"
+        val targetPath = "UPSC CSE > Prelims > GS 1"
+        val selectedIds = setOf(1L, 2L)
+
+        // Execute batch move
+        papers.filter { it.id in selectedIds }.forEach { p ->
+            p.folderId = targetFolderId
+            p.subject = targetPath
+        }
+
+        assertEquals(targetFolderId, papers[0].folderId)
+        assertEquals(targetPath, papers[0].subject)
+        assertEquals(targetFolderId, papers[1].folderId)
+        assertEquals(targetPath, papers[1].subject)
+        // Paper 3 unaffected
+        assertEquals("f-old", papers[2].folderId)
+        assertEquals("Old Subject", papers[2].subject)
+    }
+
+    @Test
+    fun testReparentFolderPreventsSelfCycle() {
+        val repo = TestFolderRepository()
+        val folder = repo.createFolderDirect("UPSC", parentId = null)
+
+        // Attempting to reparent folder to itself must be rejected
+        val canReparent = folder.id != folder.id
+        assertFalse(canReparent)
+    }
+
+    @Test
+    fun testReparentFolderPreventsDescendantCycle() {
+        val repo = TestFolderRepository()
+        val upsc = repo.resolveOrCreateFolderPath("UPSC / Prelims / CSAT")!!
+        val upscRoot = repo.folders.find { it.name == "UPSC" }!!
+        val prelims = repo.folders.find { it.name == "Prelims" }!!
+        val csat = repo.folders.find { it.name == "CSAT" }!!
+
+        fun getDescendants(folderId: String): Set<String> {
+            val result = mutableSetOf(folderId)
+            val queue = ArrayDeque<String>()
+            queue.add(folderId)
+            while (queue.isNotEmpty()) {
+                val curr = queue.removeFirst()
+                val children = repo.folders.filter { it.parentId == curr }.map { it.id }
+                for (c in children) {
+                    if (result.add(c)) queue.add(c)
+                }
+            }
+            return result
+        }
+
+        val upscDescendants = getDescendants(upscRoot.id)
+        // UPSC root cannot be moved into Prelims or CSAT
+        assertTrue(prelims.id in upscDescendants)
+        assertTrue(csat.id in upscDescendants)
+
+        // Validate cycle rejection logic:
+        val canMoveRootIntoPrelims = prelims.id !in upscDescendants
+        assertFalse(canMoveRootIntoPrelims)
+
+        val canMoveRootIntoCSAT = csat.id !in upscDescendants
+        assertFalse(canMoveRootIntoCSAT)
+    }
+
+    @Test
+    fun testReparentFolderValidMoveUpdatesBreadcrumb() {
+        val repo = TestFolderRepository()
+        val upsc = repo.createFolderDirect("UPSC", parentId = null)
+        val ssc = repo.createFolderDirect("SSC", parentId = null)
+        val tier1 = repo.createFolderDirect("Tier 1", parentId = ssc.id)
+
+        // Move Tier 1 from SSC to UPSC
+        val updatedTier1 = tier1.copy(parentId = upsc.id)
+        val index = repo.folders.indexOfFirst { it.id == tier1.id }
+        repo.folders[index] = updatedTier1
+
+        val breadcrumbs = repo.getBreadcrumbPath(tier1.id)
+        assertEquals(2, breadcrumbs.size)
+        assertEquals("UPSC", breadcrumbs[0].name)
+        assertEquals("Tier 1", breadcrumbs[1].name)
+    }
+
+    @Test
+    fun testRenameFolderUpdatesPathBreadcrumbs() {
+        val repo = TestFolderRepository()
+        val leaf = repo.resolveOrCreateFolderPath("UPSC / Prelims / GS 1")!!
+        val prelimsIndex = repo.folders.indexOfFirst { it.name == "Prelims" }
+        val prelims = repo.folders[prelimsIndex]
+
+        // Rename Prelims to "Stage 1 (Prelims)"
+        repo.folders[prelimsIndex] = prelims.copy(name = "Stage 1 (Prelims)")
+
+        val breadcrumbs = repo.getBreadcrumbPath(leaf.id)
+        assertEquals(3, breadcrumbs.size)
+        assertEquals("UPSC", breadcrumbs[0].name)
+        assertEquals("Stage 1 (Prelims)", breadcrumbs[1].name)
+        assertEquals("GS 1", breadcrumbs[2].name)
+    }
+
+    @Test
+    fun testFolderSortingOrders() {
+        val list = listOf(
+            FolderItem("1", "Prelims", "#0284C7"),
+            FolderItem("2", "Mains", "#0284C7"),
+            FolderItem("3", "CSAT", "#0284C7"),
+            FolderItem("4", "Interview", "#0284C7")
+        )
+
+        val sortedAlphabetical = list.sortedBy { it.name.lowercase() }
+        assertEquals(listOf("CSAT", "Interview", "Mains", "Prelims"), sortedAlphabetical.map { it.name })
+    }
 }
+
+

@@ -1740,7 +1740,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // If it contains structural unescaped '/' or '>', resolve as hierarchy
         if (normalized.contains("/") || normalized.contains(">")) {
-            return resolveOrCreateFolderPath(cleanName, baseParentId = parentId)
+            return resolveOrCreateFolderPath(cleanName, baseParentId = parentId, preferredColor = color)
         }
 
         val actualName = normalized.replace(placeholder, "/").trim()
@@ -1798,6 +1798,103 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             crumbs.joinToString(" > ") { it.name }
         }
+    }
+
+    /**
+     * Renames a folder and propagates the updated hierarchical path to all contained papers.
+     */
+    fun renameFolder(folderId: String, newName: String): Boolean {
+        val cleanName = newName.trim()
+        if (cleanName.isBlank()) return false
+        val target = _folders.value.find { it.id == folderId } ?: return false
+        if (target.name == cleanName) return true
+
+        val updatedFolders = _folders.value.map {
+            if (it.id == folderId) it.copy(name = cleanName) else it
+        }
+        _folders.value = updatedFolders
+        appPreferences.saveCustomFolders(updatedFolders)
+
+        val affectedIds = getAllDescendantFolderIds(folderId)
+        viewModelScope.launch(Dispatchers.IO) {
+            val allPapers = paperDao.getAllPapers().first()
+            allPapers.filter { it.folderId in affectedIds }.forEach { paper ->
+                val newPath = getFullFolderPath(paper.folderId)
+                paperDao.updatePaper(
+                    paper.copy(
+                        subject = newPath,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+        _statusMessage.value = "Renamed folder to \"$cleanName\""
+        return true
+    }
+
+    /**
+     * Updates the color badge for a folder.
+     */
+    fun recolorFolder(folderId: String, newColor: String) {
+        val target = _folders.value.find { it.id == folderId } ?: return
+        if (target.color == newColor) return
+
+        val updatedFolders = _folders.value.map {
+            if (it.id == folderId) it.copy(color = newColor) else it
+        }
+        _folders.value = updatedFolders
+        appPreferences.saveCustomFolders(updatedFolders)
+        _statusMessage.value = "Folder color updated"
+    }
+
+    /**
+     * Re-parents a folder to another parent or root level.
+     * Prevents cyclic dependencies (cannot move folder into self or any of its descendants).
+     */
+    fun reparentFolder(folderId: String, newParentId: String?): Boolean {
+        val target = _folders.value.find { it.id == folderId } ?: return false
+        if (target.parentId == newParentId) return true
+
+        if (newParentId != null) {
+            if (newParentId == folderId) {
+                _statusMessage.value = "Cannot move folder into itself"
+                return false
+            }
+            val descendants = getAllDescendantFolderIds(folderId)
+            if (newParentId in descendants) {
+                _statusMessage.value = "Cannot move folder into its own sub-folder"
+                return false
+            }
+            val parentExists = _folders.value.any { it.id == newParentId }
+            if (!parentExists) {
+                _statusMessage.value = "Target parent folder not found"
+                return false
+            }
+        }
+
+        val updatedFolders = _folders.value.map {
+            if (it.id == folderId) it.copy(parentId = newParentId) else it
+        }
+        _folders.value = updatedFolders
+        appPreferences.saveCustomFolders(updatedFolders)
+
+        val affectedIds = getAllDescendantFolderIds(folderId)
+        viewModelScope.launch(Dispatchers.IO) {
+            val allPapers = paperDao.getAllPapers().first()
+            allPapers.filter { it.folderId in affectedIds }.forEach { paper ->
+                val newPath = getFullFolderPath(paper.folderId)
+                paperDao.updatePaper(
+                    paper.copy(
+                        subject = newPath,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+
+        val parentName = if (newParentId != null) _folders.value.find { it.id == newParentId }?.name ?: "Parent" else "Root"
+        _statusMessage.value = "Moved \"${target.name}\" to $parentName"
+        return true
     }
 
     /**
@@ -1885,7 +1982,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * verifies or creates each folder in the hierarchy on-the-fly, and returns the leaf FolderItem.
      * Supports `//` as an escaped literal slash (e.g. "UPSC//Interview" creates a single folder named "UPSC/Interview").
      */
-    fun resolveOrCreateFolderPath(path: String, baseParentId: String? = null): FolderItem? {
+    fun resolveOrCreateFolderPath(
+        path: String,
+        baseParentId: String? = null,
+        preferredColor: String? = null
+    ): FolderItem? {
         val cleanPath = path.trim()
         if (cleanPath.isBlank() || cleanPath.equals("General", ignoreCase = true)) return null
 
@@ -1910,13 +2011,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastFolder = existing
                 currentParentId = existing.id
             } else {
-                val color = pickFolderColorForSegment(segment)
+                val color = preferredColor ?: pickFolderColorForSegment(segment)
                 val created = createFolderDirect(name = segment, color = color, parentId = currentParentId)
                 if (created != null) {
                     lastFolder = created
                     currentParentId = created.id
                 }
             }
+        }
+
+        if (segments.size > 1 && lastFolder != null) {
+            val fullPath = getFullFolderPath(lastFolder.id)
+            _statusMessage.value = "Created hierarchy: $fullPath"
         }
 
         return lastFolder
