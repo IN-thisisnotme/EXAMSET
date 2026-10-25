@@ -826,21 +826,121 @@ fun InputBottomSheet(
 
                     AnimatedVisibility(visible = showCategorizationSection) {
                         Column(modifier = Modifier.padding(top = 10.dp)) {
-                            // Title & Set No in one row
+                            // Title field full width
+                            OutlinedTextField(
+                                value = customTitle,
+                                onValueChange = { customTitle = it },
+                                label = { Text("Title", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                singleLine = true,
+                                colors = fieldColors,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 56.dp)
+                                    .testTag("import_title_field"),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Subject / Exam Path full width
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                val catalogueSuggestions = remember(customSubject, folders) {
+                                    ExamCatalogueRegistry.searchCatalogue(customSubject, folders, maxResults = 12)
+                                }
+
+                                OutlinedTextField(
+                                    value = customSubject,
+                                    onValueChange = { newSub ->
+                                        customSubject = newSub
+                                        isSubjectDropdownOpen = true
+                                        if (existingSubjectFolders.any { it.equals(newSub.trim(), ignoreCase = true) }) {
+                                            customSetNumber = computeNextSetForSubject(newSub, savedPapers)
+                                        }
+                                    },
+                                    label = { Text("Subject / Exam Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    placeholder = { Text("e.g. UPSC CSE / Prelims", fontSize = 11.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    singleLine = true,
+                                    colors = fieldColors,
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "Subject & Exam Autocomplete",
+                                                tint = colors.muted
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                        .testTag("import_subject_field"),
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+
+                                DropdownMenu(
+                                    expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
+                                    onDismissRequest = { isSubjectDropdownOpen = false },
+                                    modifier = Modifier.heightIn(max = 300.dp)
+                                ) {
+                                    catalogueSuggestions.forEach { entry ->
+                                        DropdownMenuItem(
+                                            leadingIcon = {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = colors.teal.copy(alpha = 0.12f)
+                                                ) {
+                                                    Text(
+                                                        text = entry.category,
+                                                        fontSize = 9.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.teal,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            },
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        text = entry.fullPath,
+                                                        fontSize = 12.5.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = colors.inkBold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                customSubject = entry.fullPath
+                                                val leaf = entry.leafFolder
+                                                customSetNumber = computeNextSetForSubject(leaf, savedPapers)
+                                                isSubjectDropdownOpen = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Topic & Set No in one row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedTextField(
-                                    value = customTitle,
-                                    onValueChange = { customTitle = it },
-                                    label = { Text("Title", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    value = customTopic,
+                                    onValueChange = { customTopic = it },
+                                    label = { Text("Topic", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     singleLine = true,
                                     colors = fieldColors,
                                     modifier = Modifier
-                                        .weight(2f)
+                                        .weight(2.5f)
                                         .heightIn(min = 56.dp)
-                                        .testTag("import_title_field"),
+                                        .testTag("import_topic_field"),
                                     shape = RoundedCornerShape(6.dp)
                                 )
 
@@ -854,108 +954,6 @@ fun InputBottomSheet(
                                         .weight(1f)
                                         .heightIn(min = 56.dp)
                                         .testTag("import_set_number_field"),
-                                    shape = RoundedCornerShape(6.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Subject & Topic in one row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(modifier = Modifier.weight(1f)) {
-                                    val catalogueSuggestions = remember(customSubject, folders) {
-                                        ExamCatalogueRegistry.searchCatalogue(customSubject, folders, maxResults = 12)
-                                    }
-
-                                    OutlinedTextField(
-                                        value = customSubject,
-                                        onValueChange = { newSub ->
-                                            customSubject = newSub
-                                            isSubjectDropdownOpen = true
-                                            if (existingSubjectFolders.any { it.equals(newSub.trim(), ignoreCase = true) }) {
-                                                customSetNumber = computeNextSetForSubject(newSub, savedPapers)
-                                            }
-                                        },
-                                        label = { Text("Subject / Exam Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                        placeholder = { Text("e.g. UPSC CSE / Prelims, SSC / CGL, BPSC", fontSize = 11.sp, color = colors.muted) },
-                                        singleLine = true,
-                                        colors = fieldColors,
-                                        trailingIcon = {
-                                            IconButton(
-                                                onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ArrowDropDown,
-                                                    contentDescription = "Subject & Exam Autocomplete",
-                                                    tint = colors.muted
-                                                )
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(min = 56.dp)
-                                            .testTag("import_subject_field"),
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-
-                                    DropdownMenu(
-                                        expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
-                                        onDismissRequest = { isSubjectDropdownOpen = false },
-                                        modifier = Modifier.heightIn(max = 300.dp)
-                                    ) {
-                                        catalogueSuggestions.forEach { entry ->
-                                            DropdownMenuItem(
-                                                leadingIcon = {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(4.dp),
-                                                        color = colors.teal.copy(alpha = 0.12f)
-                                                    ) {
-                                                        Text(
-                                                            text = entry.category,
-                                                            fontSize = 9.5.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = colors.teal,
-                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                },
-                                                text = {
-                                                    Column {
-                                                        Text(
-                                                            text = entry.fullPath,
-                                                            fontSize = 12.5.sp,
-                                                            fontWeight = FontWeight.Medium,
-                                                            color = colors.inkBold,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                },
-                                                onClick = {
-                                                    customSubject = entry.fullPath
-                                                    val leaf = entry.leafFolder
-                                                    customSetNumber = computeNextSetForSubject(leaf, savedPapers)
-                                                    isSubjectDropdownOpen = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                OutlinedTextField(
-                                    value = customTopic,
-                                    onValueChange = { customTopic = it },
-                                    label = { Text("Topic", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    singleLine = true,
-                                    colors = fieldColors,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 56.dp)
-                                        .testTag("import_topic_field"),
                                     shape = RoundedCornerShape(6.dp)
                                 )
                             }
