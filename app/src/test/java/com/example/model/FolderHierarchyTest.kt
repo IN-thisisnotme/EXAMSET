@@ -1,16 +1,20 @@
 package com.example.model
 
+import com.example.util.ExamJsonHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * Unit tests validating folder hierarchy parsing, literal slash escaping (`//` vs `/`),
  * multi-tier nesting, and case-insensitive resolution.
  */
+@RunWith(RobolectricTestRunner::class)
 class FolderHierarchyTest {
 
     private val placeholder = "\u0000LITERAL_SLASH\u0000"
@@ -359,6 +363,150 @@ class FolderHierarchyTest {
 
         val sortedAlphabetical = list.sortedBy { it.name.lowercase() }
         assertEquals(listOf("CSAT", "Interview", "Mains", "Prelims"), sortedAlphabetical.map { it.name })
+    }
+
+    @Test
+    fun testSubtreeCloningWithPreservedParentIdHierarchy() {
+        val repo = TestFolderRepository()
+        val c1 = repo.resolveOrCreateFolderPath("UPSC / Prelims / GS 1")!!
+        val c2 = repo.resolveOrCreateFolderPath("UPSC / Prelims / CSAT")!!
+        val upsc = repo.folders.find { it.name == "UPSC" }!!
+        val prelims = repo.folders.find { it.name == "Prelims" }!!
+        val gs1 = repo.folders.find { it.name == "GS 1" }!!
+        val csat = repo.folders.find { it.name == "CSAT" }!!
+
+        // Clone "Prelims" and all subfolders
+        val idMap = mutableMapOf<String, String>()
+        val newRootId = "f-clone-root"
+        idMap[prelims.id] = newRootId
+
+        val cloned = mutableListOf<FolderItem>()
+        cloned.add(
+            prelims.copy(
+                id = newRootId,
+                name = "${prelims.name} (Copy)",
+                parentId = prelims.parentId // UPSC
+            )
+        )
+
+        val queue = ArrayDeque<String>()
+        queue.add(prelims.id)
+        var counter = 1
+        while (queue.isNotEmpty()) {
+            val currOldId = queue.removeFirst()
+            val children = repo.folders.filter { it.parentId == currOldId }
+            for (child in children) {
+                val newChildId = "f-clone-child-${counter++}"
+                idMap[child.id] = newChildId
+                cloned.add(
+                    child.copy(
+                        id = newChildId,
+                        parentId = idMap[currOldId]
+                    )
+                )
+                queue.add(child.id)
+            }
+        }
+
+        // Validate cloned count
+        assertEquals(3, cloned.size) // Prelims (Copy), GS 1, CSAT
+
+        val clonedRoot = cloned.find { it.id == newRootId }!!
+        assertEquals("Prelims (Copy)", clonedRoot.name)
+        assertEquals(upsc.id, clonedRoot.parentId) // Still under UPSC
+
+        val clonedGs1 = cloned.find { it.name == "GS 1" }!!
+        assertEquals(newRootId, clonedGs1.parentId) // Points to Prelims (Copy), NOT old Prelims
+
+        val clonedCsat = cloned.find { it.name == "CSAT" }!!
+        assertEquals(newRootId, clonedCsat.parentId) // Points to Prelims (Copy), NOT old Prelims
+    }
+
+    @Test
+    fun testSubtreeCloningWithoutSubfolders() {
+        val repo = TestFolderRepository()
+        val c1 = repo.resolveOrCreateFolderPath("UPSC / Prelims / GS 1")!!
+        val prelims = repo.folders.find { it.name == "Prelims" }!!
+
+        // Clone only the folder itself (includeSubfolders = false)
+        val newRootId = "f-clone-single"
+        val clonedSingle = prelims.copy(
+            id = newRootId,
+            name = "${prelims.name} (Copy)",
+            parentId = prelims.parentId
+        )
+
+        assertEquals("Prelims (Copy)", clonedSingle.name)
+        assertEquals(prelims.parentId, clonedSingle.parentId)
+    }
+
+    @Test
+    fun testSubtreeExportJsonStructureAndRoundTrip() {
+        val root = FolderItem("f-root", "UPSC CSE", "#0284C7", parentId = null)
+        val child = FolderItem("f-child", "Prelims", "#10B981", parentId = "f-root")
+        val tree = listOf(root, child)
+
+        val paper = QuestionPaper(
+            id = 101L,
+            metadata = PaperMetadata(
+                id = "paper-101",
+                title = "GS Mock Test 1",
+                subject = "UPSC CSE > Prelims",
+                setNumber = "01",
+                folderId = "f-child"
+            ),
+            questions = listOf(
+                McqQuestion(
+                    num = 1,
+                    question = "Which article deals with Fundamental Duties?",
+                    options = QuestionOptions(a = "Article 51A", b = "Article 21", c = "Article 19", d = "Article 32"),
+                    correctAnswer = "A",
+                    explanation = "Article 51A inserted by 42nd Amendment"
+                )
+            )
+        )
+
+        val jsonStr = ExamJsonHelper.subtreeBundleToJson(root, tree, listOf(paper))
+        assertTrue(jsonStr.contains("FOLDER_SUBTREE_BUNDLE"))
+        assertTrue(jsonStr.contains("UPSC CSE"))
+        assertTrue(jsonStr.contains("Prelims"))
+        assertTrue(jsonStr.contains("Which article deals with Fundamental Duties?"))
+
+        // Validate round-trip capability via bundleFromJson
+        val parsedSets = ExamJsonHelper.bundleFromJson(jsonStr)
+        assertEquals(1, parsedSets.size)
+        assertEquals("GS Mock Test 1", parsedSets[0].metadata.title)
+        assertEquals(1, parsedSets[0].questions.size)
+        assertEquals("A", parsedSets[0].questions[0].correctAnswer)
+    }
+
+    @Test
+    fun testSubtreeFormattedOutlineDiagram() {
+        val root = FolderItem("f-root", "UPSC CSE", "#0284C7", parentId = null)
+        val p1 = FolderItem("f-prelims", "Prelims", "#10B981", parentId = "f-root")
+        val gs1 = FolderItem("f-gs1", "GS Paper 1", "#0284C7", parentId = "f-prelims")
+        val mains = FolderItem("f-mains", "Mains", "#EC4899", parentId = "f-root")
+        val allFolders = listOf(root, p1, gs1, mains)
+
+        val outline = buildString {
+            append("📁 ${root.name}\n")
+            fun printTree(parentId: String?, indent: String) {
+                val children = allFolders.filter { it.parentId == parentId }
+                children.forEachIndexed { idx, child ->
+                    val isLast = idx == children.size - 1
+                    val prefix = if (isLast) "└── " else "├── "
+                    append("$indent$prefix${child.name}\n")
+                    val nextIndent = indent + if (isLast) "    " else "│   "
+                    printTree(child.id, nextIndent)
+                }
+            }
+            printTree(root.id, "   ")
+        }
+
+        assertTrue(outline.contains("📁 UPSC CSE"))
+        assertTrue(outline.contains("├── Prelims"))
+        assertTrue(outline.contains("│   └── GS Paper 1"))
+        assertTrue(outline.contains("└── Mains"))
     }
 }
 

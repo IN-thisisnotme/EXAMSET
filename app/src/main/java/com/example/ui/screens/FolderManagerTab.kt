@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -199,6 +200,7 @@ fun FolderManagerTab(
     var folderToRecolor by remember { mutableStateOf<FolderItem?>(null) }
     var recolorFolderHex by remember { mutableStateOf("#0284C7") }
     var folderToReparent by remember { mutableStateOf<FolderItem?>(null) }
+    var folderToDuplicate by remember { mutableStateOf<FolderItem?>(null) }
     var showActiveFolderMenu by remember { mutableStateOf(false) }
     var activeMenuFolderId by remember { mutableStateOf<String?>(null) }
     var folderSortOrder by remember { mutableStateOf(FolderSortOrder.DEFAULT) }
@@ -392,8 +394,32 @@ fun FolderManagerTab(
                             ) {
                                 val isFolder = currentFolder != null
                                 val targetName = currentFolder?.name ?: "All Sets"
+                                if (isFolder) {
+                                    DropdownMenuItem(
+                                        text = { Text("Export Subtree Bundle (JSON)") },
+                                        leadingIcon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                        onClick = {
+                                            showFolderExportMenu = false
+                                            val json = viewModel.exportSubtreeAsJson(currentFolder!!.id)
+                                            if (!json.isNullOrBlank()) {
+                                                triggerShare(json, "$targetName Subtree Bundle")
+                                            }
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Export Subtree Outline (Text)") },
+                                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                        onClick = {
+                                            showFolderExportMenu = false
+                                            val txt = viewModel.exportSubtreeAsFormattedText(currentFolder!!.id)
+                                            if (!txt.isNullOrBlank()) {
+                                                triggerShare(txt, "$targetName Subtree Outline")
+                                            }
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
-                                    text = { Text(if (isFolder) "Export '$targetName' (JSON)" else "Backup All Sets (JSON)") },
+                                    text = { Text(if (isFolder) "Export Sets Only (JSON)" else "Backup All Sets (JSON)") },
                                     leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                     onClick = {
                                         showFolderExportMenu = false
@@ -408,7 +434,7 @@ fun FolderManagerTab(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (isFolder) "Export '$targetName' (Text)" else "Export All Sets (Text)") },
+                                    text = { Text(if (isFolder) "Export Sets Only (Text)" else "Export All Sets (Text)") },
                                     leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                     onClick = {
                                         showFolderExportMenu = false
@@ -453,6 +479,14 @@ fun FolderManagerTab(
                                         }
                                     )
                                     DropdownMenuItem(
+                                        text = { Text("Duplicate Folder") },
+                                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            folderToDuplicate = currentFolder
+                                        }
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text("Rename Folder") },
                                         leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                         onClick = {
@@ -482,6 +516,28 @@ fun FolderManagerTab(
                                         onClick = {
                                             showActiveFolderMenu = false
                                             folderToReparent = currentFolder
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Export Subtree (JSON)") },
+                                        leadingIcon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            val json = viewModel.exportSubtreeAsJson(currentFolder.id)
+                                            if (!json.isNullOrBlank()) {
+                                                triggerShare(json, "${currentFolder.name} Subtree Bundle")
+                                            }
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Export Subtree (Outline)") },
+                                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showActiveFolderMenu = false
+                                            val txt = viewModel.exportSubtreeAsFormattedText(currentFolder.id)
+                                            if (!txt.isNullOrBlank()) {
+                                                triggerShare(txt, "${currentFolder.name} Subtree Outline")
+                                            }
                                         }
                                     )
                                     DropdownMenuItem(
@@ -833,11 +889,41 @@ fun FolderManagerTab(
                                                         }
                                                     )
                                                     DropdownMenuItem(
+                                                        text = { Text("Duplicate Folder") },
+                                                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            folderToDuplicate = sub
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
                                                         text = { Text("Move (Change Parent)") },
                                                         leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                                         onClick = {
                                                             activeMenuFolderId = null
                                                             folderToReparent = sub
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Export Subtree (JSON)") },
+                                                        leadingIcon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            val json = viewModel.exportSubtreeAsJson(sub.id)
+                                                            if (!json.isNullOrBlank()) {
+                                                                triggerShare(json, "${sub.name} Subtree Bundle")
+                                                            }
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Export Subtree (Outline)") },
+                                                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                                        onClick = {
+                                                            activeMenuFolderId = null
+                                                            val txt = viewModel.exportSubtreeAsFormattedText(sub.id)
+                                                            if (!txt.isNullOrBlank()) {
+                                                                triggerShare(txt, "${sub.name} Subtree Outline")
+                                                            }
                                                         }
                                                     )
                                                     DropdownMenuItem(
@@ -2070,6 +2156,23 @@ fun FolderManagerTab(
             onDismiss = { folderToReparent = null }
         )
     }
+
+    // Step 9: Duplicate Folder Dialog
+    if (folderToDuplicate != null) {
+        val target = folderToDuplicate!!
+        val hasChildren = remember(target, folders) {
+            folders.any { it.parentId == target.id }
+        }
+        DuplicateFolderDialog(
+            folder = target,
+            hasSubfolders = hasChildren,
+            onDuplicate = { newName, includePapers, includeSubfolders ->
+                viewModel.duplicateFolder(target.id, newName, includePapers, includeSubfolders)
+                folderToDuplicate = null
+            },
+            onDismiss = { folderToDuplicate = null }
+        )
+    }
 }
 
 /**
@@ -2465,6 +2568,123 @@ private fun ReparentFolderDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
             ) {
                 Text("Move Here", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Step 9: Duplicate Folder Dialog
+ * Enables cloning a folder branch with option to duplicate all contained question sets and subfolders.
+ */
+@Composable
+private fun DuplicateFolderDialog(
+    folder: FolderItem,
+    hasSubfolders: Boolean,
+    onDuplicate: (newName: String, includePapers: Boolean, includeSubfolders: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    var newName by remember { mutableStateOf("${folder.name} (Copy)") }
+    var includePapers by remember { mutableStateOf(true) }
+    var includeSubfolders by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = null,
+                    tint = colors.teal,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Duplicate Folder", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Create a full copy of \"${folder.name}\":",
+                    fontSize = 13.sp,
+                    color = colors.inkMuted
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Cloned Folder Name") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.teal,
+                        unfocusedBorderColor = colors.border,
+                        focusedLabelColor = colors.teal
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Checkbox: Include question sets
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { includePapers = !includePapers }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = includePapers,
+                        onCheckedChange = { includePapers = it },
+                        colors = CheckboxDefaults.colors(checkedColor = colors.teal)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Include all question sets", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = colors.inkBold)
+                        Text("Duplicates contained exam papers with new set bindings", fontSize = 11.sp, color = colors.inkMuted)
+                    }
+                }
+
+                // Checkbox: Include nested subfolders (if any exist)
+                if (hasSubfolders) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { includeSubfolders = !includeSubfolders }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = includeSubfolders,
+                            onCheckedChange = { includeSubfolders = it },
+                            colors = CheckboxDefaults.colors(checkedColor = colors.teal)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("Include nested subfolders", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = colors.inkBold)
+                            Text("Recursively clones child hierarchy and branch structure", fontSize = 11.sp, color = colors.inkMuted)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (newName.isNotBlank()) {
+                        onDuplicate(newName.trim(), includePapers, includeSubfolders)
+                    }
+                },
+                enabled = newName.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+            ) {
+                Text("Duplicate", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

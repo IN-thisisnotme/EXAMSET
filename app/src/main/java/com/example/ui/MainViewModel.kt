@@ -1289,6 +1289,93 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Exports an entire folder subtree including hierarchy metadata and papers as a structured JSON bundle.
+     */
+    fun exportSubtreeAsJson(folderId: String): String? {
+        val rootFolder = _folders.value.find { it.id == folderId } ?: return null
+        val descendantIds = getAllDescendantFolderIds(folderId)
+        val folderTree = _folders.value.filter { it.id in descendantIds }
+        val papers = savedPapers.value.filter { it.folderId != null && it.folderId in descendantIds }
+
+        val questionPapers = papers.map { entity ->
+            val parsed = McqParser.parse(entity.rawText)
+            parsed.copy(
+                id = entity.id,
+                metadata = PaperMetadata(
+                    id = "paper-${entity.id}",
+                    title = entity.title,
+                    subject = entity.subject,
+                    topic = entity.topic,
+                    setNumber = entity.setNumber.ifBlank { "Set 1" },
+                    exam = entity.exam,
+                    folderId = entity.folderId,
+                    rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                    bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
+                    createdAt = entity.createdAt
+                )
+            )
+        }
+
+        return ExamJsonHelper.subtreeBundleToJson(rootFolder, folderTree, questionPapers)
+    }
+
+    /**
+     * Exports an entire folder subtree as an indented hierarchical outline with question set contents.
+     */
+    fun exportSubtreeAsFormattedText(folderId: String): String? {
+        val rootFolder = _folders.value.find { it.id == folderId } ?: return null
+        val descendantIds = getAllDescendantFolderIds(folderId)
+        val subtreeFolders = _folders.value.filter { it.id in descendantIds }
+        val papers = savedPapers.value.filter { it.folderId != null && it.folderId in descendantIds }
+
+        val dateFormatter = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault())
+
+        return buildString {
+            append("========================================\n")
+            append("FOLDER SUBTREE EXPORT: ${rootFolder.name}\n")
+            append("Total Folders: ${subtreeFolders.size} | Total Sets: ${papers.size}\n")
+            append("Exported: ${dateFormatter.format(java.util.Date())}\n")
+            append("========================================\n\n")
+
+            append("HIERARCHICAL STRUCTURE:\n")
+            fun printTree(parentId: String?, indent: String) {
+                val children = subtreeFolders.filter { it.parentId == parentId }
+                children.forEachIndexed { idx, child ->
+                    val isLast = idx == children.size - 1
+                    val prefix = if (isLast) "└── " else "├── "
+                    val childSetsCount = papers.count { it.folderId == child.id }
+                    append("$indent$prefix${child.name} ($childSetsCount sets)\n")
+                    val nextIndent = indent + if (isLast) "    " else "│   "
+                    printTree(child.id, nextIndent)
+                }
+            }
+
+            val rootSetsCount = papers.count { it.folderId == rootFolder.id }
+            append("📁 ${rootFolder.name} ($rootSetsCount sets)\n")
+            printTree(rootFolder.id, "   ")
+            append("\n========================================\n\n")
+
+            // Paper contents grouped by folder
+            subtreeFolders.forEach { folder ->
+                val folderPapers = papers.filter { it.folderId == folder.id }
+                if (folderPapers.isNotEmpty()) {
+                    val fullPath = getFullFolderPath(folder.id)
+                    append(">>> FOLDER: $fullPath (${folderPapers.size} sets)\n")
+                    append("----------------------------------------\n\n")
+                    folderPapers.forEachIndexed { pIdx, entity ->
+                        val parsed = McqParser.parse(entity.rawText)
+                        append("[Set ${pIdx + 1}] ${entity.title}\n")
+                        append("Set Code: ${entity.setNumber} | Roll: ${entity.rollNumber} | Questions: ${parsed.questions.size}\n")
+                        if (entity.topic.isNotBlank()) append("Topic: ${entity.topic}\n")
+                        append("\n${entity.rawText.trim()}\n\n")
+                    }
+                    append("\n")
+                }
+            }
+        }
+    }
+
+    /**
      * Exports a single paper entity as structured JSON string.
      */
     fun exportSinglePaperAsJson(paper: PaperEntity): String {
@@ -1919,6 +2006,89 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         _statusMessage.value = "Folder and subfolders deleted"
+    }
+
+    /**
+     * Clones/Duplicates a folder and optionally all its nested subfolders and question sets.
+     */
+    fun duplicateFolder(
+        sourceFolderId: String,
+        newName: String,
+        includePapers: Boolean = true,
+        includeSubfolders: Boolean = true
+    ): Boolean {
+        val source = _folders.value.find { it.id == sourceFolderId } ?: return false
+        val cleanName = newName.trim().ifBlank { "${source.name} (Copy)" }
+
+        val idMap = mutableMapOf<String, String>()
+        val newRootId = java.util.UUID.randomUUID().toString()
+        idMap[source.id] = newRootId
+
+        val clonedFolders = mutableListOf<FolderItem>()
+        clonedFolders.add(
+            source.copy(
+                id = newRootId,
+                name = cleanName,
+                parentId = source.parentId,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+
+        if (includeSubfolders) {
+            val queue = ArrayDeque<String>()
+            queue.add(source.id)
+            while (queue.isNotEmpty()) {
+                val currOldId = queue.removeFirst()
+                val children = _folders.value.filter { it.parentId == currOldId }
+                for (child in children) {
+                    val newChildId = java.util.UUID.randomUUID().toString()
+                    idMap[child.id] = newChildId
+                    val parentNewId = idMap[currOldId]
+                    clonedFolders.add(
+                        child.copy(
+                            id = newChildId,
+                            parentId = parentNewId,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    )
+                    queue.add(child.id)
+                }
+            }
+        }
+
+        val updatedFolders = _folders.value + clonedFolders
+        _folders.value = updatedFolders
+        appPreferences.saveCustomFolders(updatedFolders)
+
+        if (includePapers) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val allPapers = paperDao.getAllPapers().first()
+                val targetPapers = allPapers.filter { it.folderId != null && it.folderId in idMap.keys }
+                for (paper in targetPapers) {
+                    val targetNewFolderId = idMap[paper.folderId]
+                    val newSubject = getFullFolderPath(targetNewFolderId)
+                    val clonedTitle = if (paper.folderId == source.id && !includeSubfolders) {
+                        "${paper.title} (Copy)"
+                    } else {
+                        paper.title
+                    }
+                    val clonedPaper = paper.copy(
+                        id = 0L,
+                        title = clonedTitle,
+                        folderId = targetNewFolderId,
+                        subject = newSubject,
+                        rollNumber = ExamNumberGenerator.generateRollNumber(),
+                        bookletNumber = ExamNumberGenerator.generateBookletNumber(),
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    paperDao.insertPaper(clonedPaper)
+                }
+            }
+        }
+
+        _statusMessage.value = "Duplicated \"${source.name}\" (${clonedFolders.size} folder${if (clonedFolders.size > 1) "s" else ""})"
+        return true
     }
 
     fun assignPaperToFolder(paper: PaperEntity, folderId: String?, displaySubject: String) {

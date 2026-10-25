@@ -1,5 +1,6 @@
 package com.example.util
 
+import com.example.model.FolderItem
 import com.example.model.McqQuestion
 import com.example.model.PaperMetadata
 import com.example.model.QuestionOptions
@@ -95,6 +96,45 @@ object ExamJsonHelper {
         }
         root.put("totalSets", papers.size)
         root.put("exportedAt", System.currentTimeMillis())
+
+        val setsArray = JSONArray()
+        papers.forEach { paper ->
+            setsArray.put(JSONObject(toJson(paper)))
+        }
+        root.put("questionSets", setsArray)
+
+        return root.toString(2)
+    }
+
+    /**
+     * Exports an entire folder subtree including folder hierarchy metadata and all contained question sets.
+     */
+    fun subtreeBundleToJson(
+        rootFolder: FolderItem,
+        folderTree: List<FolderItem>,
+        papers: List<QuestionPaper>
+    ): String {
+        val root = JSONObject()
+        root.put("schemaVersion", CURRENT_SCHEMA_VERSION)
+        root.put("exportType", "FOLDER_SUBTREE_BUNDLE")
+        root.put("rootFolderId", rootFolder.id)
+        root.put("rootFolderName", rootFolder.name)
+        root.put("totalFolders", folderTree.size)
+        root.put("totalSets", papers.size)
+        root.put("exportedAt", System.currentTimeMillis())
+
+        val foldersArray = JSONArray()
+        folderTree.forEach { f ->
+            val fObj = JSONObject().apply {
+                put("id", f.id)
+                put("name", f.name)
+                put("color", f.color)
+                if (f.parentId != null) put("parentId", f.parentId) else put("parentId", JSONObject.NULL)
+                put("createdAt", f.createdAt)
+            }
+            foldersArray.put(fObj)
+        }
+        root.put("folders", foldersArray)
 
         val setsArray = JSONArray()
         papers.forEach { paper ->
