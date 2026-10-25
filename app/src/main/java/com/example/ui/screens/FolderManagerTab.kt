@@ -204,6 +204,7 @@ fun FolderManagerTab(
     var showActiveFolderMenu by remember { mutableStateOf(false) }
     var activeMenuFolderId by remember { mutableStateOf<String?>(null) }
     var folderSortOrder by remember { mutableStateOf(FolderSortOrder.DEFAULT) }
+    var showQuickJumpDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val triggerShare: (String, String) -> Unit = remember(context) {
@@ -631,70 +632,104 @@ fun FolderManagerTab(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Root / All Folders pill
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (activeFolderId == "all") colors.inkBold else Color.Transparent,
-                        modifier = Modifier.clickable { activeFolderId = "all" }
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = if (activeFolderId == "all") colors.surface else colors.inkMuted,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "All Folders",
-                                fontSize = 11.sp,
-                                fontWeight = if (activeFolderId == "all") FontWeight.Bold else FontWeight.Medium,
-                                color = if (activeFolderId == "all") colors.surface else colors.ink
-                            )
-                        }
-                    }
-
-                    // Ancestor Breadcrumbs
-                    breadcrumbPath.forEachIndexed { index, crumb ->
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = colors.inkMuted,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        val isLast = index == breadcrumbPath.lastIndex
-                        val crumbColor = parseHexColor(crumb.color)
+                        // Root / All Folders pill
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = if (isLast) crumbColor.copy(alpha = 0.15f) else Color.Transparent,
-                            border = if (isLast) BorderStroke(0.8.dp, crumbColor) else null,
-                            modifier = Modifier.clickable { activeFolderId = crumb.id }
+                            color = if (activeFolderId == "all") colors.inkBold else Color.Transparent,
+                            modifier = Modifier.clickable { activeFolderId = "all" }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .background(crumbColor, CircleShape)
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = if (activeFolderId == "all") colors.surface else colors.inkMuted,
+                                    modifier = Modifier.size(13.dp)
                                 )
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = crumb.name,
+                                    text = "All Folders",
                                     fontSize = 11.sp,
-                                    fontWeight = if (isLast) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isLast) crumbColor else colors.inkBold
+                                    fontWeight = if (activeFolderId == "all") FontWeight.Bold else FontWeight.Medium,
+                                    color = if (activeFolderId == "all") colors.surface else colors.ink
                                 )
                             }
+                        }
+
+                        // Ancestor Breadcrumbs
+                        breadcrumbPath.forEachIndexed { index, crumb ->
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = colors.inkMuted,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            val isLast = index == breadcrumbPath.lastIndex
+                            val crumbColor = parseHexColor(crumb.color)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isLast) crumbColor.copy(alpha = 0.15f) else Color.Transparent,
+                                border = if (isLast) BorderStroke(0.8.dp, crumbColor) else null,
+                                modifier = Modifier.clickable { activeFolderId = crumb.id }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .background(crumbColor, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = crumb.name,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isLast) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isLast) crumbColor else colors.inkBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Jump button
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (showQuickJumpDialog) colors.teal.copy(alpha = 0.18f) else colors.surface,
+                        border = BorderStroke(0.7.dp, if (showQuickJumpDialog) colors.teal else colors.border),
+                        modifier = Modifier.clickable { showQuickJumpDialog = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "Quick Jump Folder Tree",
+                                tint = colors.teal,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Tree",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.teal
+                            )
                         }
                     }
                 }
@@ -806,6 +841,12 @@ fun FolderManagerTab(
                                     p.folderId == sub.id ||
                                     p.subject.equals(sub.name, ignoreCase = true) ||
                                     p.topic.contains(sub.name, ignoreCase = true)
+                                }
+                                val subDescendantIds = remember(sub.id, folders) {
+                                    viewModel.getAllDescendantFolderIds(sub.id)
+                                }
+                                val subTotalSubtreeSets = remember(subDescendantIds, savedPapers) {
+                                    savedPapers.count { it.folderId in subDescendantIds }
                                 }
 
                                 Surface(
@@ -952,7 +993,11 @@ fun FolderManagerTab(
                                         Spacer(modifier = Modifier.height(3.dp))
 
                                         Text(
-                                            text = "$subPapersCount sets" + if (subChildCount > 0) " • $subChildCount sub" else "",
+                                            text = if (subChildCount > 0 && subTotalSubtreeSets > subPapersCount) {
+                                                "$subPapersCount direct • $subTotalSubtreeSets total"
+                                            } else {
+                                                "$subPapersCount sets" + if (subChildCount > 0) " • $subChildCount sub" else ""
+                                            },
                                             fontSize = 10.5.sp,
                                             color = colors.inkMuted
                                         )
@@ -2173,6 +2218,21 @@ fun FolderManagerTab(
             onDismiss = { folderToDuplicate = null }
         )
     }
+
+    // Step 10: Folder Hierarchy Quick Search & Quick-Jump Dialog
+    if (showQuickJumpDialog) {
+        FolderQuickJumpDialog(
+            currentFolderId = activeFolderId,
+            folders = folders,
+            papers = savedPapers,
+            viewModel = viewModel,
+            onSelectFolder = { selectedId ->
+                activeFolderId = selectedId
+                showQuickJumpDialog = false
+            },
+            onDismiss = { showQuickJumpDialog = false }
+        )
+    }
 }
 
 /**
@@ -2690,6 +2750,233 @@ private fun DuplicateFolderDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Step 10: Folder Hierarchy Quick Search & Quick-Jump Dialog
+ * Enables 1-tap navigation directly to any nested folder across the entire hierarchy with instant live search and folder set counts.
+ */
+@Composable
+private fun FolderQuickJumpDialog(
+    currentFolderId: String,
+    folders: List<FolderItem>,
+    papers: List<PaperEntity>,
+    viewModel: MainViewModel,
+    onSelectFolder: (folderId: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    var searchQuery by remember { mutableStateOf("") }
+    val allNodes = remember(folders) { flattenFolderHierarchy(folders) }
+
+    val filteredNodes = remember(searchQuery, allNodes) {
+        if (searchQuery.isBlank()) {
+            allNodes
+        } else {
+            val q = searchQuery.trim().lowercase()
+            allNodes.filter { it.folder.name.lowercase().contains(q) || it.fullPath.lowercase().contains(q) }
+        }
+    }
+
+    val totalLibraryPapers = remember(papers) { papers.size }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Layers,
+                    contentDescription = null,
+                    tint = colors.teal,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text("Library Quick-Jump", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Jump directly to any folder across the tree", fontSize = 11.sp, color = colors.inkMuted)
+                }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search folders or path...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.teal,
+                        unfocusedBorderColor = colors.border,
+                        focusedLabelColor = colors.teal
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 340.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Option 0: Root / All Sets
+                    if (searchQuery.isBlank() || "all folders".contains(searchQuery.lowercase()) || "root".contains(searchQuery.lowercase())) {
+                        item(key = "root-all") {
+                            val isSelected = currentFolderId == "all"
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSelectFolder("all")
+                                        onDismiss()
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) colors.navyBanner.copy(alpha = 0.12f) else colors.surface,
+                                border = if (isSelected) BorderStroke(1.2.dp, colors.navyBanner) else BorderStroke(0.5.dp, colors.border.copy(alpha = 0.6f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Folder, contentDescription = null, tint = colors.inkBold, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("All Folders (Root)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                                        Text("Complete library overview", fontSize = 10.sp, color = colors.inkMuted)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = colors.surfaceVariant
+                                    ) {
+                                        Text(
+                                            text = "$totalLibraryPapers sets",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkMuted,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Nodes
+                    filteredNodes.forEach { node ->
+                        item(key = node.folder.id) {
+                            val isSelected = currentFolderId == node.folder.id
+                            val nodeColor = parseHexColor(node.folder.color)
+                            val directSets = remember(node.folder.id, papers) {
+                                papers.count { it.folderId == node.folder.id }
+                            }
+                            val descendantIds = remember(node.folder.id, folders) {
+                                viewModel.getAllDescendantFolderIds(node.folder.id)
+                            }
+                            val totalSubtreeSets = remember(descendantIds, papers) {
+                                papers.count { it.folderId in descendantIds }
+                            }
+                            val hasChildren = descendantIds.size > 1
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSelectFolder(node.folder.id)
+                                        onDismiss()
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) colors.navyBanner.copy(alpha = 0.12f) else colors.surface,
+                                border = if (isSelected) BorderStroke(1.2.dp, colors.navyBanner) else BorderStroke(0.5.dp, colors.border.copy(alpha = 0.6f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = (8 + (node.depth * 14)).dp,
+                                            end = 10.dp,
+                                            top = 7.dp,
+                                            bottom = 7.dp
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (node.depth > 0) {
+                                        Icon(
+                                            imageVector = Icons.Default.SubdirectoryArrowRight,
+                                            contentDescription = null,
+                                            tint = colors.inkMuted,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(nodeColor, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = node.folder.name,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) colors.navyBanner else colors.inkBold
+                                        )
+                                        if (node.depth > 0) {
+                                            Text(
+                                                text = node.fullPath,
+                                                fontSize = 9.sp,
+                                                color = colors.inkMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) colors.navyBanner.copy(alpha = 0.15f) else colors.surfaceVariant
+                                        ) {
+                                            Text(
+                                                text = if (hasChildren && totalSubtreeSets > directSets) "$directSets direct • $totalSubtreeSets total" else "$directSets sets",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (isSelected) colors.navyBanner else colors.inkMuted,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Active Folder",
+                                                tint = colors.navyBanner,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
         }
     )

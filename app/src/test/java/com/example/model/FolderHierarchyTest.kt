@@ -508,6 +508,115 @@ class FolderHierarchyTest {
         assertTrue(outline.contains("│   └── GS Paper 1"))
         assertTrue(outline.contains("└── Mains"))
     }
+
+    @Test
+    fun testSubtreeSetAndFolderCountCalculations() {
+        val root = FolderItem("f-root", "UPSC", "#0284C7", parentId = null)
+        val prelims = FolderItem("f-prelims", "Prelims", "#10B981", parentId = "f-root")
+        val gs1 = FolderItem("f-gs1", "GS 1", "#0284C7", parentId = "f-prelims")
+        val csat = FolderItem("f-csat", "CSAT", "#F59E0B", parentId = "f-prelims")
+        val mains = FolderItem("f-mains", "Mains", "#EC4899", parentId = "f-root")
+        val allFolders = listOf(root, prelims, gs1, csat, mains)
+
+        // Mock paper mapping
+        data class TestPaper(val id: Long, val folderId: String)
+        val papers = listOf(
+            TestPaper(1, "f-root"),     // 1 direct in Root
+            TestPaper(2, "f-prelims"),  // 1 direct in Prelims
+            TestPaper(3, "f-gs1"),      // 1 in GS 1
+            TestPaper(4, "f-gs1"),      // 1 in GS 1
+            TestPaper(5, "f-csat"),     // 1 in CSAT
+            TestPaper(6, "f-mains")     // 1 in Mains
+        )
+
+        fun getDescendantIds(folderId: String): Set<String> {
+            val result = mutableSetOf(folderId)
+            val queue = ArrayDeque<String>()
+            queue.add(folderId)
+            while (queue.isNotEmpty()) {
+                val curr = queue.removeFirst()
+                val children = allFolders.filter { it.parentId == curr }.map { it.id }
+                for (c in children) {
+                    if (result.add(c)) queue.add(c)
+                }
+            }
+            return result
+        }
+
+        // Direct vs Subtree totals for Prelims
+        val prelimsDirect = papers.count { it.folderId == "f-prelims" }
+        assertEquals(1, prelimsDirect)
+
+        val prelimsDescendantIds = getDescendantIds("f-prelims")
+        val prelimsSubtreeTotal = papers.count { it.folderId in prelimsDescendantIds }
+        // 1 in Prelims + 2 in GS1 + 1 in CSAT = 4 total sets
+        assertEquals(4, prelimsSubtreeTotal)
+
+        // Root direct vs Subtree total
+        val rootDirect = papers.count { it.folderId == "f-root" }
+        assertEquals(1, rootDirect)
+
+        val rootDescendantIds = getDescendantIds("f-root")
+        val rootSubtreeTotal = papers.count { it.folderId in rootDescendantIds }
+        // All 6 papers belong to Root or its descendants
+        assertEquals(6, rootSubtreeTotal)
+    }
+
+    @Test
+    fun testFlattenedFolderHierarchyPathGeneration() {
+        data class FlatNode(val folder: FolderItem, val depth: Int, val fullPath: String)
+
+        val root = FolderItem("1", "UPSC CSE", "#0284C7", parentId = null)
+        val prelims = FolderItem("2", "Prelims", "#10B981", parentId = "1")
+        val gs1 = FolderItem("3", "GS Paper 1", "#0284C7", parentId = "2")
+        val allFolders = listOf(root, prelims, gs1)
+
+        val result = mutableListOf<FlatNode>()
+        fun traverse(parentId: String?, currentDepth: Int, currentPathPrefix: String) {
+            val children = allFolders.filter { it.parentId == parentId }
+            for (child in children) {
+                val path = if (currentPathPrefix.isEmpty()) child.name else "$currentPathPrefix > ${child.name}"
+                result.add(FlatNode(child, currentDepth, path))
+                traverse(child.id, currentDepth + 1, path)
+            }
+        }
+        traverse(null, 0, "")
+
+        assertEquals(3, result.size)
+        assertEquals(0, result[0].depth)
+        assertEquals("UPSC CSE", result[0].fullPath)
+
+        assertEquals(1, result[1].depth)
+        assertEquals("UPSC CSE > Prelims", result[1].fullPath)
+
+        assertEquals(2, result[2].depth)
+        assertEquals("UPSC CSE > Prelims > GS Paper 1", result[2].fullPath)
+    }
+
+    @Test
+    fun testQuickJumpFilterMatchesNameAndPath() {
+        data class FlatNode(val name: String, val fullPath: String)
+        val nodes = listOf(
+            FlatNode("UPSC CSE", "UPSC CSE"),
+            FlatNode("Prelims", "UPSC CSE > Prelims"),
+            FlatNode("GS Paper 1", "UPSC CSE > Prelims > GS Paper 1"),
+            FlatNode("State PSC", "State PSC")
+        )
+
+        fun search(q: String): List<FlatNode> {
+            val query = q.trim().lowercase()
+            return nodes.filter { it.name.lowercase().contains(query) || it.fullPath.lowercase().contains(query) }
+        }
+
+        // Search by direct folder name
+        val matchGs = search("GS Paper")
+        assertEquals(1, matchGs.size)
+        assertEquals("GS Paper 1", matchGs[0].name)
+
+        // Search by parent path finds descendants
+        val matchPrelims = search("Prelims")
+        assertEquals(2, matchPrelims.size) // Prelims itself + GS Paper 1 (whose path contains Prelims)
+    }
 }
 
 
