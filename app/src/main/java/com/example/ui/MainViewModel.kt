@@ -361,6 +361,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         answerKeyCount = updatedPaper.questions.count { it.correctAnswer != null },
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
+                        folderId = updatedPaper.metadata.folderId ?: existing.folderId,
                         updatedAt = System.currentTimeMillis()
                     )
                     paperDao.updatePaper(updated)
@@ -740,13 +741,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val cleanBooklet = bookletNumber?.filter { it.isDigit() }?.take(7)?.ifBlank { null }
             ?: active.metadata.bookletNumber.ifBlank { ExamNumberGenerator.generateBookletNumber() }
 
+        val resolvedFolder = if (cleanSubject.contains("/") || cleanSubject.contains(">")) {
+            resolveOrCreateFolderPath(cleanSubject)
+        } else null
+        val targetFolderId = resolvedFolder?.id ?: active.metadata.folderId
+
         val newMetadata = active.metadata.copy(
             title = cleanTitle,
             subject = cleanSubject,
             topic = cleanTopic,
             setNumber = cleanSet,
             rollNumber = cleanRoll,
-            bookletNumber = cleanBooklet
+            bookletNumber = cleanBooklet,
+            folderId = targetFolderId
         )
         val updatedPaper = active.copy(metadata = newMetadata)
 
@@ -786,14 +793,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val finalRoll = if (!customRollNumber.isNullOrBlank()) customRollNumber.trim() else parsed.metadata.rollNumber
             val finalBooklet = if (!customBookletNumber.isNullOrBlank()) customBookletNumber.trim() else parsed.metadata.bookletNumber
-            val finalFolder = if (!customFolderId.isNullOrBlank()) customFolderId.trim() else parsed.metadata.folderId
+            val finalSubject = if (!customSubject.isNullOrBlank()) customSubject.trim() else parsed.metadata.subject
+
+            // Automatically resolve slash-separated folder hierarchies (e.g. UPSC CSE / Prelims / GS 1)
+            val effectiveFolderId: String? = if (!customFolderId.isNullOrBlank()) {
+                customFolderId.trim()
+            } else if (finalSubject.isNotBlank() && (finalSubject.contains("/") || finalSubject.contains(">"))) {
+                resolveOrCreateFolderPath(finalSubject)?.id ?: parsed.metadata.folderId
+            } else {
+                parsed.metadata.folderId
+            }
 
             val finalMetadata = parsed.metadata.copy(
                 title = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title,
-                subject = if (!customSubject.isNullOrBlank()) customSubject.trim() else parsed.metadata.subject,
+                subject = finalSubject,
                 topic = if (!customTopic.isNullOrBlank()) customTopic.trim() else parsed.metadata.topic,
                 setNumber = formattedSet.ifBlank { "01" },
-                folderId = finalFolder,
+                folderId = effectiveFolderId,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet
             )
@@ -1250,6 +1266,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val firstTitle = questionPapers.firstOrNull()?.metadata?.title ?: "Examination Package"
         val firstFolder = questionPapers.firstOrNull()?.metadata?.folderId
         return ExamJsonHelper.bundleToJson(firstTitle, firstFolder, questionPapers)
+    }
+
+    /**
+     * Exports all papers residing within a folder (and its descendant subfolders) as structured JSON string.
+     */
+    fun exportFolderPapersAsJson(folderId: String): String? {
+        val descendantIds = getAllDescendantFolderIds(folderId)
+        val papers = savedPapers.value.filter { it.folderId != null && it.folderId in descendantIds }
+        if (papers.isEmpty()) return null
+        return exportSelectedPapersAsJson(papers.map { it.id }.toSet())
+    }
+
+    /**
+     * Exports all papers residing within a folder (and its descendant subfolders) as formatted text summary.
+     */
+    fun exportFolderPapersAsFormattedText(folderId: String): String? {
+        val descendantIds = getAllDescendantFolderIds(folderId)
+        val papers = savedPapers.value.filter { it.folderId != null && it.folderId in descendantIds }
+        if (papers.isEmpty()) return null
+        return exportPapersAsFormattedText(papers.map { it.id }.toSet())
+    }
+
+    /**
+     * Exports a single paper entity as structured JSON string.
+     */
+    fun exportSinglePaperAsJson(paper: PaperEntity): String {
+        val parsed = McqParser.parse(paper.rawText)
+        val questionPaper = parsed.copy(
+            id = paper.id,
+            metadata = PaperMetadata(
+                id = "paper-${paper.id}",
+                title = paper.title,
+                subject = paper.subject,
+                topic = paper.topic,
+                setNumber = paper.setNumber.ifBlank { "Set 1" },
+                exam = paper.exam,
+                folderId = paper.folderId,
+                rollNumber = if (paper.rollNumber.isNotBlank()) paper.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                bookletNumber = if (paper.bookletNumber.isNotBlank()) paper.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
+                createdAt = paper.createdAt
+            )
+        )
+        return ExamJsonHelper.toJson(questionPaper)
     }
 
     fun exportPapersAsFormattedText(selectedPaperIds: Set<Long>? = null): String? {
@@ -1772,6 +1831,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val targetFolder = _folders.value.find { it.name.equals(folderName, ignoreCase = true) }
         val targetId = targetFolder?.id
         assignPaperToFolder(paper, targetId, folderName)
+    }
+
+    fun movePapersToFolder(paperIds: Set<Long>, folderId: String?, displaySubject: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allPapers = savedPapers.value
+            val targets = allPapers.filter { it.id in paperIds }
+            targets.forEach { p ->
+                val updated = p.copy(
+                    folderId = folderId,
+                    subject = displaySubject.trim(),
+                    updatedAt = System.currentTimeMillis()
+                )
+                paperDao.updatePaper(updated)
+            }
+            val currentId = _currentPaperEntityId.value
+            if (currentId != null && currentId in paperIds) {
+                val currentP = _currentPaper.value
+                if (currentP != null) {
+                    val updatedMeta = currentP.metadata.copy(
+                        folderId = folderId,
+                        subject = displaySubject.trim()
+                    )
+                    _currentPaper.value = currentP.copy(metadata = updatedMeta)
+                }
+            }
+            _statusMessage.value = "Moved ${targets.size} sets to $displaySubject"
+        }
+    }
+
+    /**
+     * Dynamically parses a slash-separated or arrow-separated folder path
+     * (e.g. "UPSC CSE / Prelims / GS Paper 1" or "SSC / CGL / Tier 1" or "State PSC / Bihar (BPSC) / CCE Prelims"),
+     * verifies or creates each folder in the hierarchy on-the-fly, and returns the leaf FolderItem.
+     */
+    fun resolveOrCreateFolderPath(path: String): FolderItem? {
+        val cleanPath = path.trim()
+        if (cleanPath.isBlank() || cleanPath.equals("General", ignoreCase = true)) return null
+
+        val segments = cleanPath.split("/", ">")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+        if (segments.isEmpty()) return null
+
+        var currentParentId: String? = null
+        var lastFolder: FolderItem? = null
+
+        for (segment in segments) {
+            val existing = _folders.value.find { f ->
+                f.parentId == currentParentId && f.name.equals(segment, ignoreCase = true)
+            }
+
+            if (existing != null) {
+                lastFolder = existing
+                currentParentId = existing.id
+            } else {
+                val color = pickFolderColorForSegment(segment)
+                val created = createFolder(name = segment, color = color, parentId = currentParentId)
+                if (created != null) {
+                    lastFolder = created
+                    currentParentId = created.id
+                }
+            }
+        }
+
+        return lastFolder
+    }
+
+    private fun pickFolderColorForSegment(segment: String): String {
+        val s = segment.lowercase()
+        return when {
+            "upsc" in s || "civil" in s || "ias" in s -> "#0284C7"
+            "ssc" in s || "cgl" in s || "chsl" in s -> "#2563EB"
+            "rrb" in s || "railway" in s || "ntpc" in s || "alp" in s -> "#D97706"
+            "engineering" in s || "je" in s || "ae" in s || "gate" in s || "ese" in s || "pwd" in s -> "#0D9488"
+            "state" in s || "psc" in s || "bpsc" in s || "uppsc" in s || "mppsc" in s || "ras" in s || "mpsc" in s || "tnpsc" in s -> "#059669"
+            "bank" in s || "ibps" in s || "sbi" in s || "rbi" in s -> "#7C3AED"
+            "medical" in s || "neet" in s || "aiims" in s || "norcet" in s -> "#059669"
+            "defence" in s || "defense" in s || "nda" in s || "cds" in s || "police" in s || "si" in s -> "#DC2626"
+            "teaching" in s || "net" in s || "tet" in s -> "#4F46E5"
+            else -> "#0284C7"
+        }
     }
 
     fun selectTab(index: Int) {

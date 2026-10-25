@@ -41,7 +41,10 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material.icons.filled.Tag
+import com.example.model.FolderItem
+import com.example.util.ExamCatalogueRegistry
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -194,6 +197,7 @@ fun computeNextSetForSubject(subject: String, papers: List<PaperEntity>): String
 fun InputBottomSheet(
     initialText: String,
     savedPapers: List<PaperEntity> = emptyList(),
+    folders: List<FolderItem> = emptyList(),
     onDismiss: () -> Unit,
     onGenerate: (text: String, title: String, subject: String, topic: String, setNumber: String) -> Unit,
     onPickFile: () -> Unit,
@@ -862,29 +866,33 @@ fun InputBottomSheet(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Box(modifier = Modifier.weight(1f)) {
+                                    val catalogueSuggestions = remember(customSubject, folders) {
+                                        ExamCatalogueRegistry.searchCatalogue(customSubject, folders, maxResults = 12)
+                                    }
+
                                     OutlinedTextField(
                                         value = customSubject,
                                         onValueChange = { newSub ->
                                             customSubject = newSub
+                                            isSubjectDropdownOpen = true
                                             if (existingSubjectFolders.any { it.equals(newSub.trim(), ignoreCase = true) }) {
                                                 customSetNumber = computeNextSetForSubject(newSub, savedPapers)
                                             }
                                         },
-                                        label = { Text("Subject", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        label = { Text("Subject / Exam Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        placeholder = { Text("e.g. UPSC CSE / Prelims, SSC / CGL, BPSC", fontSize = 11.sp, color = colors.muted) },
                                         singleLine = true,
                                         colors = fieldColors,
                                         trailingIcon = {
-                                            if (existingSubjectFolders.isNotEmpty()) {
-                                                IconButton(
-                                                    onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
-                                                    modifier = Modifier.size(24.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.ArrowDropDown,
-                                                        contentDescription = "Subject Folders",
-                                                        tint = colors.muted
-                                                    )
-                                                }
+                                            IconButton(
+                                                onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ArrowDropDown,
+                                                    contentDescription = "Subject & Exam Autocomplete",
+                                                    tint = colors.muted
+                                                )
                                             }
                                         },
                                         modifier = Modifier
@@ -895,37 +903,42 @@ fun InputBottomSheet(
                                     )
 
                                     DropdownMenu(
-                                        expanded = isSubjectDropdownOpen,
-                                        onDismissRequest = { isSubjectDropdownOpen = false }
+                                        expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
+                                        onDismissRequest = { isSubjectDropdownOpen = false },
+                                        modifier = Modifier.heightIn(max = 300.dp)
                                     ) {
-                                        val filteredFolders = if (customSubject.isBlank()) {
-                                            existingSubjectFolders
-                                        } else {
-                                            existingSubjectFolders.filter {
-                                                it.contains(customSubject, ignoreCase = true)
-                                            }.ifEmpty { existingSubjectFolders }
-                                        }
-
-                                        filteredFolders.forEach { folder ->
-                                            val count = savedPapers.count { it.subject.trim().equals(folder, ignoreCase = true) }
+                                        catalogueSuggestions.forEach { entry ->
                                             DropdownMenuItem(
                                                 leadingIcon = {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Folder,
-                                                        contentDescription = null,
-                                                        tint = colors.teal,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = colors.teal.copy(alpha = 0.12f)
+                                                    ) {
+                                                        Text(
+                                                            text = entry.category,
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = colors.teal,
+                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                        )
+                                                    }
                                                 },
                                                 text = {
-                                                    Text(folder, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                                },
-                                                trailingIcon = {
-                                                    Text("$count sets", fontSize = 11.sp, color = colors.muted)
+                                                    Column {
+                                                        Text(
+                                                            text = entry.fullPath,
+                                                            fontSize = 12.5.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = colors.inkBold,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
                                                 },
                                                 onClick = {
-                                                    customSubject = folder
-                                                    customSetNumber = computeNextSetForSubject(folder, savedPapers)
+                                                    customSubject = entry.fullPath
+                                                    val leaf = entry.leafFolder
+                                                    customSetNumber = computeNextSetForSubject(leaf, savedPapers)
                                                     isSubjectDropdownOpen = false
                                                 }
                                             )
@@ -986,6 +999,44 @@ fun InputBottomSheet(
                                             fontWeight = FontWeight.Medium,
                                             color = if (isSetDuplicate) colors.red else colors.inkBold
                                         )
+                                    }
+                                }
+
+                                if (customSubject.contains("/") || customSubject.contains(">")) {
+                                    val pathSegments = customSubject.split("/", ">").map { it.trim() }.filter { it.isNotBlank() }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = colors.teal.copy(alpha = 0.08f),
+                                        border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.3f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.SubdirectoryArrowRight,
+                                                contentDescription = null,
+                                                tint = colors.teal,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Auto-Hierarchy: ",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.tealDark
+                                            )
+                                            Text(
+                                                text = pathSegments.joinToString("  ↳  "),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.inkBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }

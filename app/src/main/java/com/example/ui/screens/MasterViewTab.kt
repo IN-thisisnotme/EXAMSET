@@ -146,6 +146,7 @@ fun MasterViewTab(
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val autoSaveStatus by viewModel.autoSaveStatus.collectAsState()
     val lastSavedTime by viewModel.lastSavedTime.collectAsState()
+    val folders by viewModel.folders.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var filterMode by remember { mutableStateOf("all") } // "all", "missing_key", "missing_exp"
@@ -1086,6 +1087,7 @@ fun MasterViewTab(
     if (showEditMetadataDialog) {
         EditMetadataDialog(
             initialMetadata = paper.metadata,
+            folders = folders,
             onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
                 viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
             },

@@ -51,12 +51,22 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.SubdirectoryArrowRight
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import com.example.model.FolderItem
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
+import com.example.util.ExamCatalogueRegistry
 
 @Composable
 fun EditMetadataDialog(
     initialMetadata: PaperMetadata,
+    folders: List<FolderItem> = emptyList(),
     onSave: (title: String, subject: String, topic: String, setNumber: String, rollNumber: String, bookletNumber: String) -> Unit,
     onDismiss: () -> Unit,
     onEnterQuestionEditMode: (() -> Unit)? = null
@@ -190,18 +200,120 @@ fun EditMetadataDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Subject Input
-                OutlinedTextField(
-                    value = subject,
-                    onValueChange = { subject = it },
-                    label = { Text("Subject (e.g. Science, Mathematics, History)") },
-                    singleLine = true,
-                    colors = textFieldColors,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("edit_subject_field"),
-                    shape = RoundedCornerShape(8.dp)
-                )
+                // Subject Input with Exam Catalogue Autocomplete & Hierarchy
+                var isSubjectDropdownOpen by remember { mutableStateOf(false) }
+                val catalogueSuggestions = remember(subject, folders) {
+                    ExamCatalogueRegistry.searchCatalogue(subject, folders, maxResults = 12)
+                }
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = subject,
+                        onValueChange = {
+                            subject = it
+                            isSubjectDropdownOpen = true
+                        },
+                        label = { Text("Subject / Exam Path (e.g. UPSC CSE / Prelims, SSC / CGL)") },
+                        placeholder = { Text("e.g. UPSC CSE / Prelims, SSC / CGL, BPSC", fontSize = 12.sp, color = colors.muted) },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Subject & Exam Autocomplete",
+                                    tint = colors.muted
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_subject_field"),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
+                    DropdownMenu(
+                        expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
+                        onDismissRequest = { isSubjectDropdownOpen = false },
+                        modifier = Modifier.heightIn(max = 280.dp)
+                    ) {
+                        catalogueSuggestions.forEach { entry ->
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = colors.teal.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = entry.category,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.teal,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                },
+                                text = {
+                                    Text(
+                                        text = entry.fullPath,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.inkBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                onClick = {
+                                    subject = entry.fullPath
+                                    isSubjectDropdownOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (subject.contains("/") || subject.contains(">")) {
+                    val pathSegments = subject.split("/", ">").map { it.trim() }.filter { it.isNotBlank() }
+                    if (pathSegments.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.teal.copy(alpha = 0.08f),
+                            border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SubdirectoryArrowRight,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Auto-Hierarchy: ",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.tealDark
+                                )
+                                Text(
+                                    text = pathSegments.joinToString(" ↳ "),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 

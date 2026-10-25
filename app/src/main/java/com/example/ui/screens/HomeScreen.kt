@@ -149,6 +149,7 @@ fun HomeScreen(
     val allAttempts by viewModel.allAttempts.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isCardBoxed by viewModel.isCardBoxed.collectAsState()
+    val folders by viewModel.folders.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -853,6 +854,7 @@ fun HomeScreen(
         InputBottomSheet(
             initialText = "",
             savedPapers = savedPapers,
+            folders = folders,
             onDismiss = { showInputSheet = false },
             onGenerate = { text, title, subject, topic, setNumber ->
                 viewModel.parseAndSetPaper(
@@ -880,6 +882,7 @@ fun HomeScreen(
     if (showEditDialog && currentPaper != null) {
         EditMetadataDialog(
             initialMetadata = currentPaper!!.metadata,
+            folders = folders,
             onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
                 viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
             },

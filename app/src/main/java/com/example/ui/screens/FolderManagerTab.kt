@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,17 +27,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewList
@@ -45,6 +50,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -65,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +85,65 @@ import com.example.ui.theme.ExamTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/**
+ * Quick filter chips by examination stage and subject discipline (Step 8).
+ */
+enum class ExamStageFilter(val label: String) {
+    ALL("All"),
+    PRELIMS_TIER1("Prelims / Tier 1"),
+    MAINS_TIER2("Mains / Tier 2"),
+    GS_PAPERS("GS Papers"),
+    CSAT_APTITUDE("CSAT / Aptitude"),
+    TECHNICAL_OPTIONAL("Technical / Optional")
+}
+
+/**
+ * Checks whether a paper matches the selected exam stage filter.
+ */
+fun matchesStageFilter(paper: PaperEntity, filter: ExamStageFilter, folderPath: String = ""): Boolean {
+    if (filter == ExamStageFilter.ALL) return true
+    val combined = "${paper.title} ${paper.subject} ${paper.topic} ${paper.exam} $folderPath".lowercase(Locale.getDefault())
+    return when (filter) {
+        ExamStageFilter.ALL -> true
+        ExamStageFilter.PRELIMS_TIER1 -> {
+            combined.contains("prelim") || combined.contains("tier 1") || combined.contains("tier-1") ||
+            combined.contains("tier i") || combined.contains("stage 1") || combined.contains("stage-1") ||
+            combined.contains("cbt 1") || combined.contains("cbt-1") || combined.contains(" pt ") ||
+            combined.contains("pt-") || combined.contains("preliminary") || combined.contains("tier1") ||
+            combined.contains("paper 1") || combined.contains("paper i")
+        }
+        ExamStageFilter.MAINS_TIER2 -> {
+            combined.contains("main") || combined.contains("tier 2") || combined.contains("tier-2") ||
+            combined.contains("tier ii") || combined.contains("stage 2") || combined.contains("stage-2") ||
+            combined.contains("cbt 2") || combined.contains("cbt-2") || combined.contains("tier2") ||
+            combined.contains("descriptive")
+        }
+        ExamStageFilter.GS_PAPERS -> {
+            combined.contains("gs") || combined.contains("general studies") ||
+            combined.contains("general knowledge") || combined.contains("gk") ||
+            combined.contains("general awareness") || combined.contains("ga") ||
+            combined.contains("polity") || combined.contains("history") ||
+            combined.contains("geography") || combined.contains("economy") ||
+            combined.contains("environment")
+        }
+        ExamStageFilter.CSAT_APTITUDE -> {
+            combined.contains("csat") || combined.contains("aptitude") ||
+            combined.contains("reasoning") || combined.contains("mental ability") ||
+            combined.contains("quant") || combined.contains("english") ||
+            combined.contains("comprehension") || combined.contains("verbal")
+        }
+        ExamStageFilter.TECHNICAL_OPTIONAL -> {
+            combined.contains("technical") || combined.contains("optional") ||
+            combined.contains("engineering") || combined.contains("civil") ||
+            combined.contains("mechanical") || combined.contains("electrical") ||
+            combined.contains("electronics") || combined.contains("computer") ||
+            combined.contains("gate") || combined.contains("ese") ||
+            combined.contains("je") || combined.contains("ae") ||
+            combined.contains("science")
+        }
+    }
+}
 
 /**
  * Segregation modes for organizing papers inside folders.
@@ -105,6 +172,28 @@ fun FolderManagerTab(
     var activeFolderId by remember { mutableStateOf("all") }
     var searchQuery by remember { mutableStateOf("") }
     var segregationMode by remember { mutableStateOf(PaperSegregationMode.ALL) }
+
+    // Selection & Batch Move states
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedPaperIds by remember { mutableStateOf(setOf<Long>()) }
+    var showBatchMoveDialog by remember { mutableStateOf(false) }
+    var isDeepSearchAcrossAllFolders by remember { mutableStateOf(false) }
+    var selectedStageFilter by remember { mutableStateOf(ExamStageFilter.ALL) }
+    var showFolderExportMenu by remember { mutableStateOf(false) }
+    var showSelectionExportMenu by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val triggerShare: (String, String) -> Unit = remember(context) {
+        { data, title ->
+            val sendIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_TEXT, data)
+                putExtra(Intent.EXTRA_SUBJECT, title)
+                type = "text/plain"
+            }
+            context.startActivity(Intent.createChooser(sendIntent, title))
+        }
+    }
 
     // Dialog states
     var showNewFolderDialog by remember { mutableStateOf(false) }
@@ -139,16 +228,21 @@ fun FolderManagerTab(
         else viewModel.getAllDescendantFolderIds(activeFolderId)
     }
 
-    // Filtered papers matching search query and active folder hierarchy
-    val filteredPapers = remember(savedPapers, folders, activeFolderId, searchQuery, descendantIds) {
+    // Filtered papers matching search query, stage filter, and active folder hierarchy
+    val filteredPapers = remember(savedPapers, folders, activeFolderId, searchQuery, descendantIds, isDeepSearchAcrossAllFolders, selectedStageFilter) {
         savedPapers.filter { paper ->
+            val folderPath = paper.folderId?.let { viewModel.getFullFolderPath(it) } ?: ""
+            val matchesStage = matchesStageFilter(paper, selectedStageFilter, folderPath)
+            if (!matchesStage) return@filter false
+
             val matchesSearch = searchQuery.isBlank() ||
                     paper.title.contains(searchQuery, ignoreCase = true) ||
                     paper.subject.contains(searchQuery, ignoreCase = true) ||
                     paper.topic.contains(searchQuery, ignoreCase = true) ||
-                    paper.setNumber.contains(searchQuery, ignoreCase = true)
+                    paper.setNumber.contains(searchQuery, ignoreCase = true) ||
+                    folderPath.contains(searchQuery, ignoreCase = true)
 
-            val matchesFolder = if (activeFolderId == "all") {
+            val matchesFolder = if (activeFolderId == "all" || (isDeepSearchAcrossAllFolders && searchQuery.isNotBlank())) {
                 true
             } else {
                 val f = folders.find { it.id == activeFolderId }
@@ -236,7 +330,87 @@ fun FolderManagerTab(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box {
+                            IconButton(
+                                onClick = { showFolderExportMenu = true },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Export Folder or Library",
+                                    tint = colors.inkBold,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showFolderExportMenu,
+                                onDismissRequest = { showFolderExportMenu = false }
+                            ) {
+                                val isFolder = currentFolder != null
+                                val targetName = currentFolder?.name ?: "All Sets"
+                                DropdownMenuItem(
+                                    text = { Text(if (isFolder) "Export '$targetName' (JSON)" else "Backup All Sets (JSON)") },
+                                    leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                    onClick = {
+                                        showFolderExportMenu = false
+                                        val json = if (isFolder) {
+                                            viewModel.exportFolderPapersAsJson(currentFolder!!.id)
+                                        } else {
+                                            viewModel.exportAllPapersAsJson()
+                                        }
+                                        if (!json.isNullOrBlank()) {
+                                            triggerShare(json, "$targetName Backup (${filteredPapers.size} Sets)")
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (isFolder) "Export '$targetName' (Text)" else "Export All Sets (Text)") },
+                                    leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                    onClick = {
+                                        showFolderExportMenu = false
+                                        val txt = if (isFolder) {
+                                            viewModel.exportFolderPapersAsFormattedText(currentFolder!!.id)
+                                        } else {
+                                            viewModel.exportPapersAsFormattedText()
+                                        }
+                                        if (!txt.isNullOrBlank()) {
+                                            triggerShare(txt, "$targetName Summary (${filteredPapers.size} Sets)")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                isSelectionMode = !isSelectionMode
+                                if (!isSelectionMode) selectedPaperIds = emptySet()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelectionMode) colors.teal else colors.surfaceVariant,
+                                contentColor = if (isSelectionMode) colors.surface else colors.inkBold
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 34.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isSelectionMode) Icons.Default.Check else Icons.Default.Checklist,
+                                contentDescription = "Select Sets",
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isSelectionMode) "Done" else "Select",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
                         Button(
                             onClick = {
                                 parentFolderForNew = currentFolder
@@ -519,7 +693,7 @@ fun FolderManagerTab(
             }
         }
 
-        // Empty state banner if no custom folders exist at all
+        // Dynamic hierarchy tip when no custom folders exist yet
         if (folders.isEmpty()) {
             item {
                 Surface(
@@ -528,57 +702,30 @@ fun FolderManagerTab(
                     border = BorderStroke(0.7.dp, colors.border),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = colors.teal,
-                                modifier = Modifier.size(20.dp)
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = colors.teal,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Dynamic Multi-Level Folders",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Organize with UPSC / Competitive Exam Folders",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-                                Text(
-                                    text = "Create nested hierarchies (e.g. UPSC CSE > Prelims > GS Paper 1 / CSAT)",
-                                    fontSize = 11.sp,
-                                    color = colors.inkMuted
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Button(
-                            onClick = {
-                                // Seed starter UPSC CSE hierarchy directly
-                                val upscRoot = viewModel.createFolder("UPSC CSE", "#0284C7")
-                                if (upscRoot != null) {
-                                    val prelims = viewModel.createFolder("Prelims", "#16A34A", upscRoot.id)
-                                    if (prelims != null) {
-                                        viewModel.createFolder("GS Paper 1", "#0284C7", prelims.id)
-                                        viewModel.createFolder("CSAT Paper 2", "#7C3AED", prelims.id)
-                                    }
-                                    val mains = viewModel.createFolder("Mains", "#D97706", upscRoot.id)
-                                    if (mains != null) {
-                                        viewModel.createFolder("GS Paper I - IV", "#D97706", mains.id)
-                                        viewModel.createFolder("Essay & Mixed Sets", "#0D9488", mains.id)
-                                    }
-                                    activeFolderId = upscRoot.id
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.CreateNewFolder, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Create UPSC CSE Multi-Level Hierarchy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Folders are created automatically as you file question papers. Type or select exam paths like 'UPSC CSE / Prelims / GS 1' or 'SSC / CGL' during set creation or import to auto-nest folders on the fly.",
+                                fontSize = 11.sp,
+                                color = colors.inkMuted
+                            )
                         }
                     }
                 }
@@ -741,6 +888,195 @@ fun FolderManagerTab(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+
+        // Deep Search Across All Folders Filter Chip (Step 7)
+        if (activeFolderId != "all" || searchQuery.isNotBlank()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isDeepSearchAcrossAllFolders) colors.teal.copy(alpha = 0.15f) else colors.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(0.6.dp, if (isDeepSearchAcrossAllFolders) colors.teal else colors.border),
+                        modifier = Modifier.clickable {
+                            isDeepSearchAcrossAllFolders = !isDeepSearchAcrossAllFolders
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = if (isDeepSearchAcrossAllFolders) colors.teal else colors.inkMuted,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (isDeepSearchAcrossAllFolders) "Deep Search Active: All Sub-Folders" else "Deep Search: Search all folders & sub-folders",
+                                fontSize = 11.sp,
+                                fontWeight = if (isDeepSearchAcrossAllFolders) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isDeepSearchAcrossAllFolders) colors.tealDark else colors.ink
+                            )
+                        }
+                    }
+
+                    if (searchQuery.isNotBlank()) {
+                        Text(
+                            text = "${filteredPapers.size} match${if (filteredPapers.size == 1) "" else "es"}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.teal
+                        )
+                    }
+                }
+            }
+        }
+
+        // Quick Stage / Category Filter Chips (Step 8)
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ExamStageFilter.values().forEach { filter ->
+                    val isSelected = selectedStageFilter == filter
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) colors.teal else colors.surfaceVariant,
+                        border = BorderStroke(0.8.dp, if (isSelected) colors.teal else colors.border),
+                        modifier = Modifier.clickable { selectedStageFilter = filter }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = filter.label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color.White else colors.inkBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Batch Selection, Move & Export Control Bar (Steps 6 & 9)
+        if (isSelectionMode) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.teal.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, colors.teal),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${selectedPaperIds.size} of ${filteredPapers.size} selected",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            TextButton(
+                                onClick = {
+                                    selectedPaperIds = if (selectedPaperIds.size == filteredPapers.size) {
+                                        emptySet()
+                                    } else {
+                                        filteredPapers.map { it.id }.toSet()
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedPaperIds.size == filteredPapers.size) "Deselect All" else "Select All",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.tealDark
+                                )
+                            }
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box {
+                                OutlinedButton(
+                                    onClick = { showSelectionExportMenu = true },
+                                    enabled = selectedPaperIds.isNotEmpty(),
+                                    shape = RoundedCornerShape(6.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                                    border = BorderStroke(1.dp, if (selectedPaperIds.isNotEmpty()) colors.teal else colors.border),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.heightIn(min = 32.dp)
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Export (${selectedPaperIds.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                                DropdownMenu(
+                                    expanded = showSelectionExportMenu,
+                                    onDismissRequest = { showSelectionExportMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Export JSON Package (.json)") },
+                                        leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                        onClick = {
+                                            showSelectionExportMenu = false
+                                            val json = viewModel.exportSelectedPapersAsJson(selectedPaperIds)
+                                            if (!json.isNullOrBlank()) {
+                                                triggerShare(json, "Exam Package (${selectedPaperIds.size} Sets)")
+                                            }
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Export Formatted Text (.txt)") },
+                                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                        onClick = {
+                                            showSelectionExportMenu = false
+                                            val txt = viewModel.exportPapersAsFormattedText(selectedPaperIds)
+                                            if (!txt.isNullOrBlank()) {
+                                                triggerShare(txt, "Exam Summary (${selectedPaperIds.size} Sets)")
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = { showBatchMoveDialog = true },
+                                enabled = selectedPaperIds.isNotEmpty(),
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.heightIn(min = 32.dp)
+                            ) {
+                                Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Move to Folder", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Paper Segregation Toolbar (Step 4)
@@ -934,9 +1270,23 @@ fun FolderManagerTab(
             when (segregationMode) {
                 PaperSegregationMode.ALL -> {
                     items(filteredPapers, key = { it.id }) { paper ->
+                        val paperBreadcrumb = if (isDeepSearchAcrossAllFolders && paper.folderId != null) {
+                            viewModel.getFullFolderPath(paper.folderId)
+                        } else null
+
                         PaperCardItem(
                             paper = paper,
                             isActive = paper.id == currentPaperEntityId,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = paper.id in selectedPaperIds,
+                            onToggleSelect = {
+                                selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                    selectedPaperIds - paper.id
+                                } else {
+                                    selectedPaperIds + paper.id
+                                }
+                            },
+                            folderBreadcrumb = paperBreadcrumb,
                             onOpenMaster = {
                                 viewModel.loadSavedPaper(paper) {
                                     onNavigateToMaster()
@@ -950,6 +1300,10 @@ fun FolderManagerTab(
                             },
                             onAssignFolder = {
                                 paperToAssignFolder = paper
+                            },
+                            onExport = {
+                                val json = viewModel.exportSinglePaperAsJson(paper)
+                                triggerShare(json, "${paper.title} - Set ${paper.setNumber.ifBlank { "01" }}")
                             },
                             onDelete = { viewModel.deleteSavedPaper(paper) }
                         )
@@ -968,9 +1322,23 @@ fun FolderManagerTab(
                             )
                         }
                         items(papersInGroup, key = { it.id }) { paper ->
+                            val paperBreadcrumb = if (isDeepSearchAcrossAllFolders && paper.folderId != null) {
+                                viewModel.getFullFolderPath(paper.folderId)
+                            } else null
+
                             PaperCardItem(
                                 paper = paper,
                                 isActive = paper.id == currentPaperEntityId,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = paper.id in selectedPaperIds,
+                                onToggleSelect = {
+                                    selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                        selectedPaperIds - paper.id
+                                    } else {
+                                        selectedPaperIds + paper.id
+                                    }
+                                },
+                                folderBreadcrumb = paperBreadcrumb,
                                 onOpenMaster = {
                                     viewModel.loadSavedPaper(paper) {
                                         onNavigateToMaster()
@@ -984,6 +1352,10 @@ fun FolderManagerTab(
                                 },
                                 onAssignFolder = {
                                     paperToAssignFolder = paper
+                                },
+                                onExport = {
+                                    val json = viewModel.exportSinglePaperAsJson(paper)
+                                    triggerShare(json, "${paper.title} - Set ${paper.setNumber.ifBlank { "01" }}")
                                 },
                                 onDelete = { viewModel.deleteSavedPaper(paper) }
                             )
@@ -1004,9 +1376,23 @@ fun FolderManagerTab(
                             )
                         }
                         items(papersInGroup, key = { it.id }) { paper ->
+                            val paperBreadcrumb = if (isDeepSearchAcrossAllFolders && paper.folderId != null) {
+                                viewModel.getFullFolderPath(paper.folderId)
+                            } else null
+
                             PaperCardItem(
                                 paper = paper,
                                 isActive = paper.id == currentPaperEntityId,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = paper.id in selectedPaperIds,
+                                onToggleSelect = {
+                                    selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                        selectedPaperIds - paper.id
+                                    } else {
+                                        selectedPaperIds + paper.id
+                                    }
+                                },
+                                folderBreadcrumb = paperBreadcrumb,
                                 onOpenMaster = {
                                     viewModel.loadSavedPaper(paper) {
                                         onNavigateToMaster()
@@ -1020,6 +1406,10 @@ fun FolderManagerTab(
                                 },
                                 onAssignFolder = {
                                     paperToAssignFolder = paper
+                                },
+                                onExport = {
+                                    val json = viewModel.exportSinglePaperAsJson(paper)
+                                    triggerShare(json, "${paper.title} - Set ${paper.setNumber.ifBlank { "01" }}")
                                 },
                                 onDelete = { viewModel.deleteSavedPaper(paper) }
                             )
@@ -1186,6 +1576,26 @@ fun FolderManagerTab(
             onDismiss = { paperToAssignFolder = null }
         )
     }
+
+    // Step 6: Batch Multi-Set Move Dialog
+    if (showBatchMoveDialog && selectedPaperIds.isNotEmpty()) {
+        AssignFolderTreeDialog(
+            targetPaper = null,
+            batchCount = selectedPaperIds.size,
+            folders = folders,
+            onAssign = { folderId, displayPath ->
+                viewModel.movePapersToFolder(selectedPaperIds, folderId, displayPath)
+                selectedPaperIds = emptySet()
+                isSelectionMode = false
+                showBatchMoveDialog = false
+            },
+            onCreateNewFolder = { parent ->
+                parentFolderForNew = parent
+                showNewFolderDialog = true
+            },
+            onDismiss = { showBatchMoveDialog = false }
+        )
+    }
 }
 
 /**
@@ -1281,7 +1691,8 @@ private fun getSetSeriesCategory(paper: PaperEntity): String {
  */
 @Composable
 private fun AssignFolderTreeDialog(
-    targetPaper: PaperEntity,
+    targetPaper: PaperEntity? = null,
+    batchCount: Int = 1,
     folders: List<FolderItem>,
     onAssign: (folderId: String?, displayPath: String) -> Unit,
     onCreateNewFolder: (parent: FolderItem?) -> Unit,
@@ -1292,7 +1703,13 @@ private fun AssignFolderTreeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Move to Folder", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                text = if (targetPaper != null) "Move to Folder" else "Move $batchCount Sets to Folder",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -1300,7 +1717,7 @@ private fun AssignFolderTreeDialog(
                     .heightIn(max = 400.dp)
             ) {
                 Text(
-                    text = "Select a folder for \"${targetPaper.title}\":",
+                    text = if (targetPaper != null) "Select a folder for \"${targetPaper.title}\":" else "Select destination folder for $batchCount question sets:",
                     fontSize = 12.sp,
                     color = colors.inkMuted
                 )
@@ -1317,7 +1734,7 @@ private fun AssignFolderTreeDialog(
                                 .fillMaxWidth()
                                 .clickable { onAssign(null, "General") },
                             shape = RoundedCornerShape(8.dp),
-                            color = if (targetPaper.folderId == null) colors.surfaceVariant else Color.Transparent
+                            color = if (targetPaper != null && targetPaper.folderId == null) colors.surfaceVariant else Color.Transparent
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -1336,7 +1753,7 @@ private fun AssignFolderTreeDialog(
                             FolderTreeItem(
                                 folder = root,
                                 depth = 0,
-                                isSelected = targetPaper.folderId == root.id,
+                                isSelected = targetPaper != null && targetPaper.folderId == root.id,
                                 onSelect = { onAssign(root.id, root.name) },
                                 onAddSub = { onCreateNewFolder(root) }
                             )
@@ -1349,7 +1766,7 @@ private fun AssignFolderTreeDialog(
                                 FolderTreeItem(
                                     folder = child,
                                     depth = 1,
-                                    isSelected = targetPaper.folderId == child.id,
+                                    isSelected = targetPaper != null && targetPaper.folderId == child.id,
                                     onSelect = { onAssign(child.id, "${root.name} > ${child.name}") },
                                     onAddSub = { onCreateNewFolder(child) }
                                 )
@@ -1362,7 +1779,7 @@ private fun AssignFolderTreeDialog(
                                     FolderTreeItem(
                                         folder = grand,
                                         depth = 2,
-                                        isSelected = targetPaper.folderId == grand.id,
+                                        isSelected = targetPaper != null && targetPaper.folderId == grand.id,
                                         onSelect = { onAssign(grand.id, "${root.name} > ${child.name} > ${grand.name}") },
                                         onAddSub = { onCreateNewFolder(grand) }
                                     )
@@ -1449,9 +1866,14 @@ private fun FolderTreeItem(
 private fun PaperCardItem(
     paper: PaperEntity,
     isActive: Boolean,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    folderBreadcrumb: String? = null,
     onOpenMaster: () -> Unit,
     onTakeTest: () -> Unit,
     onAssignFolder: () -> Unit,
+    onExport: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val colors = ExamTheme.colors
@@ -1463,12 +1885,18 @@ private fun PaperCardItem(
 
     Card(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(
-            if (isActive) 1.5.dp else 0.8.dp,
-            if (isActive) Color(0xFF2563EB) else colors.border
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) colors.teal.copy(alpha = 0.06f) else colors.surface
         ),
-        modifier = Modifier.fillMaxWidth()
+        border = BorderStroke(
+            if (isSelected) 1.8.dp else if (isActive) 1.5.dp else 0.8.dp,
+            if (isSelected) colors.teal else if (isActive) Color(0xFF2563EB) else colors.border
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isSelectionMode) Modifier.clickable { onToggleSelect() } else Modifier
+            )
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             // Category & Badges Row
@@ -1481,11 +1909,23 @@ private fun PaperCardItem(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (isSelectionMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onToggleSelect() },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = colors.teal,
+                                uncheckedColor = colors.inkMuted
+                            ),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(4.dp),
                         color = Color(0xFFEFF6FF),
                         border = BorderStroke(0.5.dp, Color(0xFFBFDBFE)),
-                        modifier = Modifier.clickable { onAssignFolder() }
+                        modifier = Modifier.clickable(enabled = !isSelectionMode) { onAssignFolder() }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1555,17 +1995,61 @@ private fun PaperCardItem(
                         color = colors.inkMuted
                     )
 
-                    IconButton(
-                        onClick = { showDeleteConfirm = true },
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("delete_paper_card_button")
+                    if (!isSelectionMode) {
+                        IconButton(
+                            onClick = onExport,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Share,
+                                contentDescription = "Share Paper",
+                                tint = colors.teal,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showDeleteConfirm = true },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("delete_paper_card_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete Paper",
+                                tint = Color(0xFFEF4444).copy(alpha = 0.85f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (folderBreadcrumb != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = colors.teal.copy(alpha = 0.08f),
+                    border = BorderStroke(0.5.dp, colors.teal.copy(alpha = 0.25f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete Paper",
-                            tint = Color(0xFFEF4444).copy(alpha = 0.85f),
-                            modifier = Modifier.size(16.dp)
+                            imageVector = Icons.Default.SubdirectoryArrowRight,
+                            contentDescription = null,
+                            tint = colors.teal,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = folderBreadcrumb,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.tealDark,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
