@@ -178,7 +178,6 @@ fun FolderManagerTab(
     var selectedPaperIds by remember { mutableStateOf(setOf<Long>()) }
     var showBatchMoveDialog by remember { mutableStateOf(false) }
     var isDeepSearchAcrossAllFolders by remember { mutableStateOf(false) }
-    var selectedStageFilter by remember { mutableStateOf(ExamStageFilter.ALL) }
     var showFolderExportMenu by remember { mutableStateOf(false) }
     var showSelectionExportMenu by remember { mutableStateOf(false) }
 
@@ -228,12 +227,10 @@ fun FolderManagerTab(
         else viewModel.getAllDescendantFolderIds(activeFolderId)
     }
 
-    // Filtered papers matching search query, stage filter, and active folder hierarchy
-    val filteredPapers = remember(savedPapers, folders, activeFolderId, searchQuery, descendantIds, isDeepSearchAcrossAllFolders, selectedStageFilter) {
+    // Filtered papers matching unified search query and active folder hierarchy
+    val filteredPapers = remember(savedPapers, folders, activeFolderId, searchQuery, descendantIds, isDeepSearchAcrossAllFolders) {
         savedPapers.filter { paper ->
             val folderPath = paper.folderId?.let { viewModel.getFullFolderPath(it) } ?: ""
-            val matchesStage = matchesStageFilter(paper, selectedStageFilter, folderPath)
-            if (!matchesStage) return@filter false
 
             val matchesSearch = searchQuery.isBlank() ||
                     paper.title.contains(searchQuery, ignoreCase = true) ||
@@ -266,6 +263,7 @@ fun FolderManagerTab(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 108.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Spacer(modifier = Modifier.height(4.dp)) }
@@ -277,73 +275,73 @@ fun FolderManagerTab(
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(14.dp)
                 ) {
+                    // Row 1: Icon, Full Title & Subtitle, plus Share/Export action
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.teal.copy(alpha = 0.12f),
-                            modifier = Modifier.size(36.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (activeFolderId == "all") Icons.Default.FolderOpen else Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = currentFolder?.let { parseHexColor(it.color) } ?: colors.teal,
-                                    modifier = Modifier.size(20.dp)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.teal.copy(alpha = 0.12f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (activeFolderId == "all") Icons.Default.FolderOpen else Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = currentFolder?.let { parseHexColor(it.color) } ?: colors.teal,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = currentFolder?.name ?: "Library Folders",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (currentFolder != null) {
+                                        val count = filteredPapers.size
+                                        val subCount = immediateSubfolders.size
+                                        "$count test sets • $subCount sub-folders"
+                                    } else {
+                                        "Multi-level exam sets & categories"
+                                    },
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = currentFolder?.name ?: "Library & Folders",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = if (currentFolder != null) {
-                                    val count = filteredPapers.size
-                                    val subCount = immediateSubfolders.size
-                                    "$count test sets • $subCount sub-folders"
-                                } else {
-                                    "Multi-level exam hierarchies, UPSC & State PSC folders"
-                                },
-                                fontSize = 11.5.sp,
-                                color = colors.inkMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
                         Box {
                             IconButton(
                                 onClick = { showFolderExportMenu = true },
-                                modifier = Modifier.size(34.dp)
+                                modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Share,
                                     contentDescription = "Export Folder or Library",
                                     tint = colors.inkBold,
-                                    modifier = Modifier.size(17.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                             DropdownMenu(
@@ -384,7 +382,16 @@ fun FolderManagerTab(
                                 )
                             }
                         }
+                    }
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Row 2: Two balanced, prominent buttons with full legible text
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Button(
                             onClick = {
                                 isSelectionMode = !isSelectionMode
@@ -395,19 +402,22 @@ fun FolderManagerTab(
                                 containerColor = if (isSelectionMode) colors.teal else colors.surfaceVariant,
                                 contentColor = if (isSelectionMode) colors.surface else colors.inkBold
                             ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.heightIn(min = 34.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 38.dp)
                         ) {
                             Icon(
                                 imageVector = if (isSelectionMode) Icons.Default.Check else Icons.Default.Checklist,
                                 contentDescription = "Select Sets",
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isSelectionMode) "Done" else "Select",
+                                text = if (isSelectionMode) "Done" else "Select Sets",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
                             )
                         }
 
@@ -423,12 +433,14 @@ fun FolderManagerTab(
                                 contentColor = colors.primaryButtonText
                             ),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.heightIn(min = 34.dp)
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 38.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primaryButtonText)
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (currentFolder != null) "Sub-Folder" else "New Folder",
+                                text = if (currentFolder != null) "+ Sub-Folder" else "+ New Folder",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -520,8 +532,8 @@ fun FolderManagerTab(
             }
         }
 
-        // Sub-Folders Grid / Panel
-        if (immediateSubfolders.isNotEmpty() || currentFolder != null) {
+        // Sub-Folders Grid / Panel (only shown when sub-folders exist)
+        if (immediateSubfolders.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -576,44 +588,13 @@ fun FolderManagerTab(
                         }
                     }
 
-                    if (immediateSubfolders.isEmpty()) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.surfaceVariant.copy(alpha = 0.35f),
-                            border = BorderStroke(0.6.dp, colors.border),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "No sub-folders here yet. Add sets directly or create sub-folders.",
-                                    fontSize = 11.5.sp,
-                                    color = colors.inkMuted
-                                )
-                                OutlinedButton(
-                                    onClick = {
-                                        parentFolderForNew = currentFolder
-                                        newFolderName = ""
-                                        showNewFolderDialog = true
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text("+ Add Sub-Folder", fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    } else {
-                        // Horizontal or wrapped cards for immediate sub-folders
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                    // Horizontal or wrapped cards for immediate sub-folders
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                             immediateSubfolders.forEach { sub ->
                                 val subColor = parseHexColor(sub.color)
                                 val subChildCount = folders.count { it.parentId == sub.id }
@@ -691,7 +672,6 @@ fun FolderManagerTab(
                     }
                 }
             }
-        }
 
         // Dynamic hierarchy tip when no custom folders exist yet
         if (folders.isEmpty()) {
@@ -938,40 +918,7 @@ fun FolderManagerTab(
             }
         }
 
-        // Quick Stage / Category Filter Chips (Step 8)
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ExamStageFilter.values().forEach { filter ->
-                    val isSelected = selectedStageFilter == filter
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) colors.teal else colors.surfaceVariant,
-                        border = BorderStroke(0.8.dp, if (isSelected) colors.teal else colors.border),
-                        modifier = Modifier.clickable { selectedStageFilter = filter }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = filter.label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color.White else colors.inkBold
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Batch Selection, Move & Export Control Bar (Steps 6 & 9)
+        // Batch Selection, Move & Export Control Bar
         if (isSelectionMode) {
             item {
                 Surface(
@@ -989,7 +936,7 @@ fun FolderManagerTab(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "${selectedPaperIds.size} of ${filteredPapers.size} selected",
+                                text = if (selectedPaperIds.isEmpty()) "Tap sets to select" else "${selectedPaperIds.size} selected",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.tealDark
@@ -1014,64 +961,67 @@ fun FolderManagerTab(
                             }
                         }
 
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box {
-                                OutlinedButton(
-                                    onClick = { showSelectionExportMenu = true },
-                                    enabled = selectedPaperIds.isNotEmpty(),
-                                    shape = RoundedCornerShape(6.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
-                                    border = BorderStroke(1.dp, if (selectedPaperIds.isNotEmpty()) colors.teal else colors.border),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.heightIn(min = 32.dp)
-                                ) {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Export (${selectedPaperIds.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                }
-                                DropdownMenu(
-                                    expanded = showSelectionExportMenu,
-                                    onDismissRequest = { showSelectionExportMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Export JSON Package (.json)") },
-                                        leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp)) },
-                                        onClick = {
-                                            showSelectionExportMenu = false
-                                            val json = viewModel.exportSelectedPapersAsJson(selectedPaperIds)
-                                            if (!json.isNullOrBlank()) {
-                                                triggerShare(json, "Exam Package (${selectedPaperIds.size} Sets)")
-                                            }
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Export Formatted Text (.txt)") },
-                                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
-                                        onClick = {
-                                            showSelectionExportMenu = false
-                                            val txt = viewModel.exportPapersAsFormattedText(selectedPaperIds)
-                                            if (!txt.isNullOrBlank()) {
-                                                triggerShare(txt, "Exam Summary (${selectedPaperIds.size} Sets)")
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-
-                            Button(
-                                onClick = { showBatchMoveDialog = true },
-                                enabled = selectedPaperIds.isNotEmpty(),
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.heightIn(min = 32.dp)
+                        if (selectedPaperIds.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(13.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Move to Folder", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                Box {
+                                    OutlinedButton(
+                                        onClick = { showSelectionExportMenu = true },
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                                        border = BorderStroke(1.dp, colors.teal),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.heightIn(min = 34.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Export (${selectedPaperIds.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+                                    DropdownMenu(
+                                        expanded = showSelectionExportMenu,
+                                        onDismissRequest = { showSelectionExportMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Export JSON Package (.json)") },
+                                            leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                            onClick = {
+                                                showSelectionExportMenu = false
+                                                val json = viewModel.exportSelectedPapersAsJson(selectedPaperIds)
+                                                if (!json.isNullOrBlank()) {
+                                                    triggerShare(json, "Exam Package (${selectedPaperIds.size} Sets)")
+                                                }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Export Formatted Text (.txt)") },
+                                            leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                            onClick = {
+                                                showSelectionExportMenu = false
+                                                val txt = viewModel.exportPapersAsFormattedText(selectedPaperIds)
+                                                if (!txt.isNullOrBlank()) {
+                                                    triggerShare(txt, "Exam Summary (${selectedPaperIds.size} Sets)")
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = { showBatchMoveDialog = true },
+                                    shape = RoundedCornerShape(6.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.teal,
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.heightIn(min = 34.dp)
+                                ) {
+                                    Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Move (${selectedPaperIds.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = Color.White)
+                                }
                             }
                         }
                     }

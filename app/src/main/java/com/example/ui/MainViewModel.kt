@@ -1708,8 +1708,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Folders Management (Hierarchical & Multi-Level Subfolders) ---
 
-    fun createFolder(name: String, color: String, parentId: String? = null): FolderItem? {
+    fun createFolderDirect(name: String, color: String, parentId: String? = null): FolderItem? {
         if (name.isBlank()) return null
+        val existing = _folders.value.find { it.parentId == parentId && it.name.equals(name.trim(), ignoreCase = true) }
+        if (existing != null) return existing
+
         val newFolder = FolderItem(
             id = "f-${System.currentTimeMillis().toString(36)}",
             name = name.trim(),
@@ -1726,6 +1729,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "Folder created: ${newFolder.name}"
         }
         return newFolder
+    }
+
+    fun createFolder(name: String, color: String, parentId: String? = null): FolderItem? {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return null
+
+        val placeholder = "\u0000LITERAL_SLASH\u0000"
+        val normalized = cleanName.replace("//", placeholder)
+
+        // If it contains structural unescaped '/' or '>', resolve as hierarchy
+        if (normalized.contains("/") || normalized.contains(">")) {
+            return resolveOrCreateFolderPath(cleanName, baseParentId = parentId)
+        }
+
+        val actualName = normalized.replace(placeholder, "/").trim()
+        return createFolderDirect(actualName, color, parentId)
     }
 
     /**
@@ -1864,18 +1883,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Dynamically parses a slash-separated or arrow-separated folder path
      * (e.g. "UPSC CSE / Prelims / GS Paper 1" or "SSC / CGL / Tier 1" or "State PSC / Bihar (BPSC) / CCE Prelims"),
      * verifies or creates each folder in the hierarchy on-the-fly, and returns the leaf FolderItem.
+     * Supports `//` as an escaped literal slash (e.g. "UPSC//Interview" creates a single folder named "UPSC/Interview").
      */
-    fun resolveOrCreateFolderPath(path: String): FolderItem? {
+    fun resolveOrCreateFolderPath(path: String, baseParentId: String? = null): FolderItem? {
         val cleanPath = path.trim()
         if (cleanPath.isBlank() || cleanPath.equals("General", ignoreCase = true)) return null
 
-        val segments = cleanPath.split("/", ">")
-            .map { it.trim() }
+        val placeholder = "\u0000LITERAL_SLASH\u0000"
+        val normalized = cleanPath.replace("//", placeholder)
+
+        val segments = normalized.split("/", ">")
+            .map { it.replace(placeholder, "/").trim() }
             .filter { it.isNotBlank() }
 
         if (segments.isEmpty()) return null
 
-        var currentParentId: String? = null
+        var currentParentId: String? = baseParentId
         var lastFolder: FolderItem? = null
 
         for (segment in segments) {
@@ -1888,7 +1911,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 currentParentId = existing.id
             } else {
                 val color = pickFolderColorForSegment(segment)
-                val created = createFolder(name = segment, color = color, parentId = currentParentId)
+                val created = createFolderDirect(name = segment, color = color, parentId = currentParentId)
                 if (created != null) {
                     lastFolder = created
                     currentParentId = created.id

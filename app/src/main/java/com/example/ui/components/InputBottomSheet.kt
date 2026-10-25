@@ -1000,8 +1000,52 @@ fun InputBottomSheet(
                                     }
                                 }
 
-                                if (customSubject.contains("/") || customSubject.contains(">")) {
-                                    val pathSegments = customSubject.split("/", ">").map { it.trim() }.filter { it.isNotBlank() }
+                                val placeholder = "\u0000LITERAL_SLASH\u0000"
+                                val normalizedSubject = customSubject.replace("//", placeholder)
+                                val hasStructuralHierarchy = normalizedSubject.contains("/") || normalizedSubject.contains(">")
+
+                                if (hasStructuralHierarchy) {
+                                    val pathSegments = normalizedSubject.split("/", ">")
+                                        .map { it.replace(placeholder, "/").trim() }
+                                        .filter { it.isNotBlank() }
+                                    if (pathSegments.size > 1) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = colors.teal.copy(alpha = 0.08f),
+                                            border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.3f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.SubdirectoryArrowRight,
+                                                    contentDescription = null,
+                                                    tint = colors.teal,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Auto-Hierarchy: ",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.tealDark
+                                                )
+                                                Text(
+                                                    text = pathSegments.joinToString("  ↳  "),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colors.inkBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else if (customSubject.contains("//")) {
+                                    val literalName = customSubject.replace("//", "/").trim()
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
@@ -1014,20 +1058,20 @@ fun InputBottomSheet(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.SubdirectoryArrowRight,
+                                                imageVector = Icons.Default.Folder,
                                                 contentDescription = null,
                                                 tint = colors.teal,
                                                 modifier = Modifier.size(13.dp)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = "Auto-Hierarchy: ",
+                                                text = "Literal Folder: ",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.tealDark
                                             )
                                             Text(
-                                                text = pathSegments.joinToString("  ↳  "),
+                                                text = literalName,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = colors.inkBold,
