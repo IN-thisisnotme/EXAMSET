@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons 
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
@@ -128,6 +129,8 @@ import com.example.model.QuestionOptions
 import com.example.model.QuestionPaper
 import com.example.ui.MainViewModel
 import com.example.ui.components.AnswerKeyTable
+import com.example.ui.components.AuditResolutionHubDialog
+import com.example.ui.components.BulkAuditPromptDialog
 import com.example.ui.components.ExplanationCard
 import com.example.ui.components.HeaderBanner
 import com.example.ui.components.StructuredQuestionContent
@@ -159,6 +162,9 @@ fun MasterViewTab(
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var showAddQuestionDialog by remember { mutableStateOf(false) }
     var showPaletteOverlay by remember { mutableStateOf(false) }
+    var showBulkAuditDialog by remember { mutableStateOf(false) }
+    var showResolutionHubDialog by remember { mutableStateOf(false) }
+    var initialAuditFeedbackText by remember { mutableStateOf<String?>(null) }
 
     if (currentPaper == null || currentPaper!!.questions.isEmpty()) {
         Box(
@@ -397,6 +403,36 @@ fun MasterViewTab(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // AI Bulk Audit Action
+                                Surface(
+                                    onClick = { showBulkAuditDialog = true },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.tealLight.copy(alpha = 0.6f),
+                                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .testTag("toolbar_ai_audit_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "AI Audit",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkBold
+                                        )
+                                    }
+                                }
+
                                 if (!isEditMode) {
                                     Surface(
                                         onClick = enterEditMode,
@@ -1129,6 +1165,37 @@ fun MasterViewTab(
             },
             onDismiss = { showEditMetadataDialog = false },
             onEnterQuestionEditMode = enterEditMode
+        )
+    }
+
+    // AI Bulk Audit Prompt Modal
+    if (showBulkAuditDialog && currentPaper != null) {
+        BulkAuditPromptDialog(
+            paper = currentPaper!!,
+            onDismiss = { showBulkAuditDialog = false },
+            onOpenResolutionHub = { feedbackText ->
+                initialAuditFeedbackText = feedbackText
+                showBulkAuditDialog = false
+                showResolutionHubDialog = true
+            }
+        )
+    }
+
+    // AI Audit Resolution Hub & Analytics Modal
+    if (showResolutionHubDialog && currentPaper != null) {
+        AuditResolutionHubDialog(
+            paper = currentPaper!!,
+            initialFeedbackText = initialAuditFeedbackText,
+            onDismiss = { showResolutionHubDialog = false },
+            onUpdateQuestion = { updatedQ ->
+                viewModel.updateQuestion(updatedQ)
+            },
+            onDeleteQuestion = { qNum ->
+                viewModel.deleteQuestion(qNum)
+            },
+            onBatchUpdateKeys = { fixes ->
+                viewModel.batchUpdateKeysAndExplanations(fixes)
+            }
         )
     }
 }

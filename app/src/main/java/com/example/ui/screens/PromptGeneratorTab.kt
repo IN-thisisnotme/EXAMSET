@@ -96,6 +96,7 @@ fun PromptGeneratorTab(
     var customExplanationLanguage by remember { mutableStateOf("") }
     var explainAllFourOptions by remember { mutableStateOf(true) }
     var includeFormulasAndDiagrams by remember { mutableStateOf(true) }
+    var promptPhasingStyle by remember { mutableStateOf("Standard") }
 
     // Format & Quantity Correction Rule (Disabled by default as requested: Unrestricted Full Stream)
     var enableQuantityCorrectionRule by remember { mutableStateOf(false) }
@@ -127,7 +128,7 @@ fun PromptGeneratorTab(
     val generatedPrompt by remember(
         examType, subject, topic, countInt, difficulty, questionType,
         questionLanguage, effectiveExplanationLanguage, explainAllFourOptions,
-        includeFormulasAndDiagrams, enableQuantityCorrectionRule
+        includeFormulasAndDiagrams, promptPhasingStyle, enableQuantityCorrectionRule
     ) {
         derivedStateOf {
             buildString {
@@ -197,7 +198,11 @@ fun PromptGeneratorTab(
 
                 append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
                 append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~25% each across A, B, C, D). Never allow more than two consecutive identical answer keys (e.g., A, A is allowed; A, A, A is strictly prohibited).\n")
-                append("2. PHASE SYNC: The option declared in Phase 2 MUST match the option identified as \"Correct\" in Phase 3 without exception.\n")
+                if (promptPhasingStyle == "Reasoning-First") {
+                    append("2. PHASE SYNC: The final answer key declared in Phase 3 MUST strictly match the correct option derived and proven in Phase 2 (Explanations & Solution) without exception.\n")
+                } else {
+                    append("2. PHASE SYNC: The option declared in Phase 2 MUST match the option identified as \"Correct\" in Phase 3 without exception.\n")
+                }
                 append("3. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks, disclaimers, or closing text.\n")
                 append("4. NO DIVIDER LINES: Do NOT use markdown horizontal divider lines (---) anywhere in the questions or explanations.\n\n")
 
@@ -216,28 +221,53 @@ fun PromptGeneratorTab(
                 append("(D) [Option D]\n\n")
                 append("[Repeat through Q$countInt]\n\n")
 
-                append("Phase 2: Answer Key\n\n")
-                append("Q1: (A)\n")
-                append("Q2: (C)\n")
-                append("[Repeat through Q$countInt]\n\n")
+                if (promptPhasingStyle == "Reasoning-First") {
+                    append("Phase 2: Explanations & Solution\n\n")
+                    if (explainAllFourOptions) {
+                        append("Q1.\n")
+                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
+                        append("Option (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Option (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Option (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Option (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    } else {
+                        append("Q1.\n")
+                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
+                        append("Why Correct: [Direct explanation with underlying reason for the correct option]\n")
+                        append("Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
+                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    }
+                    append("[Repeat through Q$countInt without any horizontal divider lines (---)]\n\n")
 
-                append("Phase 3: Explanations & Solution\n\n")
-                if (explainAllFourOptions) {
-                    append("Q1.\n")
-                    append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                    append("Option (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                    append("Option (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                    append("Option (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                    append("Option (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                    append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    append("Phase 3: Answer Key\n\n")
+                    append("Q1: (A)\n")
+                    append("Q2: (C)\n")
+                    append("[Repeat through Q$countInt]\n\n")
                 } else {
-                    append("Q1.\n")
-                    append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                    append("Why Correct: [Direct explanation with underlying reason for the correct option]\n")
-                    append("Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
-                    append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    append("Phase 2: Answer Key\n\n")
+                    append("Q1: (A)\n")
+                    append("Q2: (C)\n")
+                    append("[Repeat through Q$countInt]\n\n")
+
+                    append("Phase 3: Explanations & Solution\n\n")
+                    if (explainAllFourOptions) {
+                        append("Q1.\n")
+                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
+                        append("Option (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Option (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Option (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Option (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    } else {
+                        append("Q1.\n")
+                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
+                        append("Why Correct: [Direct explanation with underlying reason for the correct option]\n")
+                        append("Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
+                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    }
+                    append("[Repeat through Q$countInt without any horizontal divider lines (---)]\n\n")
                 }
-                append("[Repeat through Q$countInt without any horizontal divider lines (---)]\n\n")
 
                 if (enableQuantityCorrectionRule) {
                     append("Phase 4: Format & Quantity Enforcement (Truncation Guard Active)\n")
@@ -827,6 +857,111 @@ fun PromptGeneratorTab(
                             )
                         }
                     }
+
+                    // --- OUTPUT PHASING & REASONING FLOW (CHAIN-OF-THOUGHT) ---
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "AI Output Phasing (Chain-of-Thought)",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = if (promptPhasingStyle == "Reasoning-First") "Derive First" else "Standard",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (promptPhasingStyle == "Reasoning-First") Color(0xFF059669) else Color(0xFF2563EB)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val isReasoning = promptPhasingStyle == "Reasoning-First"
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        promptPhasingStyle = "Reasoning-First"
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isReasoning) Color(0xFFECFDF5) else colors.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(if (isReasoning) 1.5.dp else 0.6.dp, if (isReasoning) Color(0xFF10B981) else colors.border)
+                            ) {
+                                Column(modifier = Modifier.padding(9.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = if (isReasoning) Color(0xFF059669) else colors.muted,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Reasoning-First",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isReasoning) Color(0xFF065F46) else colors.inkBold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Q -> Explanations -> Key\nLLM derives answers first to prevent wrong keys.",
+                                        fontSize = 9.5.sp,
+                                        lineHeight = 13.sp,
+                                        color = if (isReasoning) Color(0xFF047857) else colors.muted
+                                    )
+                                }
+                            }
+
+                            val isStandard = promptPhasingStyle == "Standard"
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        promptPhasingStyle = "Standard"
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isStandard) Color(0xFFEFF6FF) else colors.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(if (isStandard) 1.5.dp else 0.6.dp, if (isStandard) Color(0xFF3B82F6) else colors.border)
+                            ) {
+                                Column(modifier = Modifier.padding(9.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.EditNote,
+                                            contentDescription = null,
+                                            tint = if (isStandard) Color(0xFF2563EB) else colors.muted,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Standard Key-First",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isStandard) Color(0xFF1E40AF) else colors.inkBold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Q -> Key -> Explanations\nClassic output sequence for standard workflows.",
+                                        fontSize = 9.5.sp,
+                                        lineHeight = 13.sp,
+                                        color = if (isStandard) Color(0xFF1D4ED8) else colors.muted
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     // --- FORMAT & QUANTITY CORRECTION RULE TOGGLE (OFF BY DEFAULT) ---
                     Surface(

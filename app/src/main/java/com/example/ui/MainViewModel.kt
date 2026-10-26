@@ -636,6 +636,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         schedulePaperAutoSave(updatedPaper)
     }
 
+    fun batchUpdateKeysAndExplanations(fixes: List<Pair<Int, Pair<String, String>>>) {
+        val active = _currentPaper.value ?: return
+        val fixMap = fixes.associate { it.first to it.second }
+        val updatedQuestions = active.questions.map { q ->
+            val fix = fixMap[q.num]
+            if (fix != null) {
+                q.copy(
+                    correctAnswer = fix.first,
+                    explanation = if (fix.second.isNotBlank()) fix.second else q.explanation
+                )
+            } else q
+        }
+        val updatedPaper = active.copy(
+            questions = updatedQuestions,
+            quickAnswersCount = updatedQuestions.count { it.correctAnswer != null },
+            explanationsCount = updatedQuestions.count { !it.explanation.isNullOrBlank() }
+        )
+        schedulePaperAutoSave(updatedPaper)
+        _statusMessage.value = "Updated ${fixes.size} answer keys and explanations"
+    }
+
     fun deleteQuestion(qNum: Int) {
         val active = _currentPaper.value ?: return
         val filtered = active.questions.filter { it.num != qNum }

@@ -366,15 +366,27 @@ object McqParser {
             val isPhase2Answer = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:2|२|২|૨|২|२|II|ii|둘|이)\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""").containsMatchIn(cleanLine)
             val isPhase3Exp = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|३|३|III|iii|셋|삼)\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""").containsMatchIn(cleanLine)
 
+            val isPhase2Exp = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:2|२|২|૨|২|२|II|ii|둘|이)\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""").containsMatchIn(cleanLine)
+            val isPhase3Answer = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|३|३|III|iii|셋|삼)\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""").containsMatchIn(cleanLine)
+
             if (isPhase2Answer && answerStart == null) {
                 answerStart = i
             } else if (isPhase3Exp && explanationStart == null) {
                 explanationStart = i
-            } else if (explanationStart == null && EXPLANATION_HEADING_REGEX.matcher(cleanLine).matches()) {
+            } else if (isPhase2Exp && explanationStart == null) {
                 explanationStart = i
+            } else if (isPhase3Answer && answerStart == null) {
+                answerStart = i
+            } else if (explanationStart == null && EXPLANATION_HEADING_REGEX.matcher(cleanLine).matches()) {
+                val isSingleExpLine = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:detailed\s+)?(?:explanation|exp|solution)|व्याख्या|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|해설|풀이|解説|解析|Пояснение|Решение|Объяснение)\s*[:\-–—]\s*\S+.*""").matches(cleanLine)
+                val isQuestionNumbered = Regex("""^\s*(?:\*\*|__)?\s*(?:Q(?:uestion)?\s*)?\d{1,4}\s*[\.\:\)]""").containsMatchIn(cleanLine)
+                if (!isSingleExpLine && !isQuestionNumbered && !cleanLine.endsWith("?")) {
+                    explanationStart = i
+                }
             } else if (answerStart == null && ANSWER_HEADING_REGEX.matcher(cleanLine).matches()) {
                 val isSingleAnsLine = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:correct\s+)?(?:answer|ans)|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답|正解|答案)\s*[:\-–—]?\s*[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?(?:\s+[^\n]*)?$""").matches(cleanLine)
-                if (!isSingleAnsLine) {
+                val isQuestionNumbered = Regex("""^\s*(?:\*\*|__)?\s*(?:Q(?:uestion)?\s*)?\d{1,4}\s*[\.\:\)]""").containsMatchIn(cleanLine)
+                if (!isSingleAnsLine && !isQuestionNumbered && !cleanLine.endsWith("?")) {
                     answerStart = i
                 }
             }
@@ -391,7 +403,6 @@ object McqParser {
             for (i in 4 until lines.size) {
                 val lineTrimmed = lines[i].trim()
                 // Never treat a line containing a question mark or clear question wording as answer key start.
-                // Guard: If this line or upcoming lines contain question options like (A), (B), (C), (D), it is a question in a subsequent phase, NOT an answer key!
                 val hasOptionsAhead = (i until minOf(lines.size, i + 8)).any { idx ->
                     val l = lines[idx].trim()
                     Regex("""^\s*[\(\[]?[A-Da-d1-4][\)\]\.\-]\s+\S+""").containsMatchIn(l)
@@ -409,21 +420,28 @@ object McqParser {
 
         val questionText = lines.take(firstSection).joinToString("\n")
 
-        val answerText = if (answerStart != null) {
-            val end = if (explanationStart != null && explanationStart > answerStart) {
-                explanationStart
+        val (answerText, explanationText) = if (answerStart != null && explanationStart != null) {
+            if (answerStart == explanationStart) {
+                // Combined Answers & Explanations section
+                val combined = lines.subList(answerStart + 1, lines.size).joinToString("\n")
+                combined to combined
+            } else if (answerStart < explanationStart) {
+                // Phase 2: Answers, Phase 3: Explanations
+                val ans = lines.subList(answerStart + 1, explanationStart).joinToString("\n")
+                val exp = lines.subList(explanationStart + 1, lines.size).joinToString("\n")
+                ans to exp
             } else {
-                lines.size
+                // Phase 2: Explanations, Phase 3: Answers
+                val exp = lines.subList(explanationStart + 1, answerStart).joinToString("\n")
+                val ans = lines.subList(answerStart + 1, lines.size).joinToString("\n")
+                ans to exp
             }
-            lines.subList(answerStart + 1, end).joinToString("\n")
+        } else if (answerStart != null) {
+            lines.subList(answerStart + 1, lines.size).joinToString("\n") to ""
+        } else if (explanationStart != null) {
+            "" to lines.subList(explanationStart + 1, lines.size).joinToString("\n")
         } else {
-            ""
-        }
-
-        val explanationText = if (explanationStart != null) {
-            lines.subList(explanationStart + 1, lines.size).joinToString("\n")
-        } else {
-            ""
+            "" to ""
         }
 
         return Triple(questionText, answerText, explanationText)
@@ -620,19 +638,37 @@ object McqParser {
             rawQText = rawQText.replace(Regex("""(?:\n|\s+)\d+[\.\:\)\-]?\s*$"""), "\n").trim()
             val qText = cleanQuestionNumbered(rawQText)
 
-            // Also check for inline answer/explanation in block
+            // Also check for inline answer/explanation in block (support both Answer -> Explanation and Explanation -> Answer)
             var inlineAns: String? = null
             var inlineExp: String? = null
             val inlineAnsMatch = ANSWER_LABEL_REGEX.matcher(block)
-            if (inlineAnsMatch.find()) {
+            val inlineExpMatch = EXPLANATION_LABEL_REGEX.matcher(block)
+
+            val hasAns = inlineAnsMatch.find()
+            val hasExp = inlineExpMatch.find()
+
+            if (hasAns && hasExp) {
+                val ansStart = inlineAnsMatch.start()
+                val ansEnd = inlineAnsMatch.end()
+                val expStart = inlineExpMatch.start()
+                val expEnd = inlineExpMatch.end()
+
                 val rawGroup = inlineAnsMatch.group(1)
                 inlineAns = canonicalAnswer(rawGroup) ?: rawGroup?.uppercase()
-                val expIdx = inlineAnsMatch.end()
-                val expSub = block.substring(expIdx)
-                val expLabel = EXPLANATION_LABEL_REGEX.matcher(expSub)
-                if (expLabel.find()) {
-                    inlineExp = normalizeSpace(expSub.substring(expLabel.end()))
+
+                if (ansStart < expStart) {
+                    // Order 1: Answer Key then Explanation
+                    inlineExp = normalizeSpace(block.substring(expEnd))
+                } else {
+                    // Order 2: Explanation then Answer Key
+                    inlineExp = normalizeSpace(block.substring(expEnd, ansStart))
                 }
+            } else if (hasAns) {
+                val rawGroup = inlineAnsMatch.group(1)
+                inlineAns = canonicalAnswer(rawGroup) ?: rawGroup?.uppercase()
+            } else if (hasExp) {
+                val expEnd = inlineExpMatch.end()
+                inlineExp = normalizeSpace(block.substring(expEnd))
             }
 
             // Extract Diagram / Chart and Formula attachments from question block
