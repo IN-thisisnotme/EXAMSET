@@ -28,6 +28,8 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 object PrintDocumentHelper {
 
@@ -169,28 +171,100 @@ object PrintDocumentHelper {
         webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
     }
 
+    /**
+     * Computes the formatted CBT HTML filename: {subject}_{rollNumber}_{bookletNumber}_CBT.html
+     */
+    fun getExamCbtHtmlFileName(paper: QuestionPaper, config: ExamConfig): String {
+        val rawSubject = paper.metadata.subject.ifBlank { config.subject.ifBlank { "Exam" } }
+        val subjectClean = sanitizeForFileName(rawSubject)
+
+        val rollClean = sanitizeForFileName(
+            config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } }
+        )
+        val bookletClean = sanitizeForFileName(
+            config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } }
+        )
+
+        return "${subjectClean}_${rollClean}_${bookletClean}_CBT.html"
+    }
+
+    /**
+     * Saves the question paper as an interactive Computer-Based Test (CBT) HTML application
+     * directly into the device file manager under:
+     * Documents/exam_set/{YYYY}/{MM}/{Subject}/
+     */
+    fun saveInteractiveExamHtmlDirectly(
+        context: Context,
+        paper: QuestionPaper,
+        config: ExamConfig,
+        onSuccess: (savedPath: String) -> Unit,
+        onError: (errorMessage: String) -> Unit
+    ) {
+        try {
+            val fileName = getExamCbtHtmlFileName(paper, config)
+            val html = generateInteractiveExamHtml(paper, config)
+
+            val yearStr = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
+            val monthStr = SimpleDateFormat("MM", Locale.getDefault()).format(Date())
+            val subjectClean = sanitizeForFileName(
+                paper.metadata.subject.ifBlank { config.subject.ifBlank { "General" } }
+            )
+
+            val relativeSubDir = "exam_set/$yearStr/$monthStr/$subjectClean"
+
+            val tempFile = File(context.cacheDir, "temp_cbt_${System.currentTimeMillis()}.html")
+            tempFile.writeText(html, Charsets.UTF_8)
+
+            val finalPath = exportTempFileToExamSetDirectory(
+                context = context,
+                tempFile = tempFile,
+                relativeSubDir = relativeSubDir,
+                fileName = fileName,
+                mimeType = "text/html"
+            )
+            tempFile.delete()
+            onSuccess(finalPath)
+        } catch (e: Exception) {
+            onError("Failed to save CBT HTML: ${e.localizedMessage ?: "Unknown error"}")
+        }
+    }
+
+    private fun normalizeAnswerLetter(ans: String?): String {
+        if (ans.isNullOrBlank()) return ""
+        val trimmed = ans.trim().uppercase()
+        return when (trimmed) {
+            "1", "(1)", "A", "(A)", "OPT A", "OPTION A" -> "A"
+            "2", "(2)", "B", "(B)", "OPT B", "OPTION B" -> "B"
+            "3", "(3)", "C", "(C)", "OPT C", "OPTION C" -> "C"
+            "4", "(4)", "D", "(D)", "OPT D", "OPTION D" -> "D"
+            "5", "(5)", "E", "(E)", "OPT E", "OPTION E" -> "E"
+            else -> if (trimmed.length == 1 && trimmed[0] in 'A'..'E') trimmed else ""
+        }
+    }
+
     private fun exportTempFileToExamSetDirectory(
         context: Context,
         tempFile: File,
         relativeSubDir: String,
-        fileName: String
+        fileName: String,
+        mimeType: String = "application/pdf"
     ): String {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/$relativeSubDir")
             }
 
             val resolver = context.contentResolver
             val uri = resolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), contentValues)
-                ?: throw IllegalStateException("Unable to allocate MediaStore entry for PDF")
+                ?: throw IllegalStateException("Unable to allocate MediaStore entry for $fileName")
 
             resolver.openOutputStream(uri)?.use { outputStream ->
                 FileInputStream(tempFile).use { inputStream ->
                     inputStream.copyTo(outputStream)
                 }
-            } ?: throw IllegalStateException("Could not write to MediaStore PDF output stream")
+            } ?: throw IllegalStateException("Could not write to MediaStore output stream")
 
             "Documents/$relativeSubDir/$fileName"
         } else {
@@ -207,6 +281,2200 @@ object PrintDocumentHelper {
             }
             targetFile.absolutePath
         }
+    }
+
+    /**
+     * Generates a fully interactive, self-contained Computer-Based Test (CBT) HTML application
+     * featuring:
+     * - Candidate Lobby & Roll Number verification gate before starting the timer
+     * - Slimline 42px responsive header preserving vertical viewport in portrait and landscape
+     * - Font-size scaling controller (A-, A, A+)
+     * - Question Paper overview modal
+     * - Desktop keyboard shortcuts (1..4, A..D, Enter, Arrow keys, Backspace, M, Esc)
+     * - Anti-cheating tab-switch detection
+     * - Local session auto-save and crash recovery via sessionStorage
+     * - Responsive question container with sticky action toolbar
+     * - Question palette side drawer with auto-dismiss on mobile
+     * - Comprehensive scorecard with arithmetic net score breakdown and accuracy rate
+     * - Web Share API + clipboard fallback for instant score sharing
+     * - Structured JSON result export for instructors
+     * - Full step-by-step detailed explanations matching Master View
+     * - Clean ISO A4 print stylesheet (@media print)
+     */
+    fun generateInteractiveExamHtml(paper: QuestionPaper, config: ExamConfig): String {
+        val parsedMinutes = Regex("""\b(\d+)\b""").find(config.timeAllowed)?.groupValues?.get(1)?.toIntOrNull()
+        val durationMinutes = config.durationMinutes.takeIf { it > 0 } ?: (parsedMinutes ?: (paper.questions.size * 2).coerceAtLeast(30))
+        val positiveMarks = config.positiveMarks.takeIf { it > 0.0 } ?: 4.0
+        val negativeMarks = config.negativeMarks.takeIf { it >= 0.0 } ?: 1.0
+        val posFormatted = String.format(java.util.Locale.US, "%.2f", positiveMarks)
+        val negFormatted = String.format(java.util.Locale.US, "%.2f", negativeMarks)
+
+        val metaObj = JSONObject().apply {
+            put("institution", config.institutionName.ifBlank { "CENTRAL EXAMINATION BOARD" })
+            put("title", config.examTitle.ifBlank { paper.metadata.title.ifBlank { "OBJECTIVE EVALUATION TEST" } })
+            put("subject", paper.metadata.subject.ifBlank { config.subject.ifBlank { "General Assessment" } })
+            put("topic", paper.metadata.topic.ifBlank { config.topic })
+            put("seriesCode", config.seriesCode.ifBlank { "SET - A" })
+            put("rollNumber", config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } })
+            put("bookletNumber", config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } })
+            put("durationMinutes", durationMinutes)
+            put("totalQuestions", paper.questions.size)
+            put("positiveMarks", positiveMarks)
+            put("negativeMarks", negativeMarks)
+        }
+
+        val questionsArray = JSONArray()
+        for ((idx, q) in paper.questions.withIndex()) {
+            val qObj = JSONObject()
+            qObj.put("index", idx)
+            qObj.put("num", q.num)
+            qObj.put("stemRaw", q.question)
+            qObj.put("stemHtml", escapeRichHtml(q.question))
+
+            val optsArray = JSONArray()
+            for ((key, text) in q.options.asList) {
+                if (text.isNotBlank() || key in listOf("A", "B", "C", "D")) {
+                    val optObj = JSONObject()
+                    optObj.put("key", key)
+                    optObj.put("text", text)
+                    optObj.put("rendered", escapeRichHtml(text))
+                    optsArray.put(optObj)
+                }
+            }
+            qObj.put("options", optsArray)
+            qObj.put("correctAnswer", normalizeAnswerLetter(q.correctAnswer))
+            qObj.put("explanationHtml", if (!q.explanation.isNullOrBlank()) escapeRichHtml(q.explanation) else "")
+            qObj.put("formula", q.formula ?: "")
+            qObj.put("diagramLabel", q.diagramLabel ?: "")
+            questionsArray.put(qObj)
+        }
+
+        val examDataJson = JSONObject().apply {
+            put("meta", metaObj)
+            put("questions", questionsArray)
+        }.toString()
+
+        val safeTitle = escapeHtml(config.examTitle.ifBlank { "Examination Paper" })
+        val safeSubject = escapeHtml(paper.metadata.subject.ifBlank { config.subject.ifBlank { "Exam" } })
+        val safeInst = escapeHtml(config.institutionName.ifBlank { "Central Examination Board" })
+        val safeRoll = escapeHtml(config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } })
+        val safeBooklet = escapeHtml(config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } })
+
+        return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>$safeTitle - $safeSubject</title>
+    <style>
+        :root {
+            --bg-page: #f8fafc;
+            --bg-card: #ffffff;
+            --border-color: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --primary-light: #eff6ff;
+            --teal: #0d9488;
+            --teal-light: #f0fdfa;
+            --success: #16a34a;
+            --success-light: #dcfce7;
+            --danger: #dc2626;
+            --danger-light: #fee2e2;
+            --warning: #ea580c;
+            --warning-light: #ffedd5;
+            --purple: #7c3aed;
+            --purple-light: #f3e8ff;
+            --gray-palette: #94a3b8;
+            --gray-unvisited: #e2e8f0;
+            --q-font-size: 15.5px;
+            --header-h: 44px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Lobby & Candidate Verification Screen */
+        #lobby-screen {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .lobby-card {
+            background: #ffffff;
+            border-radius: 14px;
+            max-width: 560px;
+            width: 100%;
+            padding: 24px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+            margin: auto;
+        }
+
+        .lobby-header {
+            text-align: center;
+            border-bottom: 1.5px solid var(--border-color);
+            padding-bottom: 14px;
+            margin-bottom: 16px;
+        }
+
+        .lobby-inst {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: var(--teal);
+            text-transform: uppercase;
+        }
+
+        .lobby-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 3px;
+        }
+
+        .lobby-subject {
+            font-size: 12.5px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .lobby-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .lobby-input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14.5px;
+            font-weight: 600;
+            border: 1.5px solid var(--border-color);
+            border-radius: 7px;
+            background: #f8fafc;
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+        .lobby-input:focus {
+            border-color: var(--primary);
+            background: #ffffff;
+        }
+
+        .lobby-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            background: #f8fafc;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 14px;
+            text-align: center;
+        }
+
+        .meta-stat-item .val {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+        .meta-stat-item .lbl {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .lobby-rules-box {
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-main);
+            max-height: 130px;
+            overflow-y: auto;
+            margin-bottom: 14px;
+        }
+        .lobby-rules-box ul {
+            padding-left: 18px;
+        }
+        .lobby-rules-box li {
+            margin-bottom: 4px;
+        }
+
+        .lobby-agree-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12.5px;
+            color: var(--text-main);
+            cursor: pointer;
+            user-select: none;
+            margin-bottom: 16px;
+        }
+        .lobby-agree-row input {
+            width: 17px;
+            height: 17px;
+            cursor: pointer;
+        }
+
+        .btn-start-exam {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: var(--success);
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: background 0.15s ease;
+        }
+        .btn-start-exam:hover:not(:disabled) {
+            background: #15803d;
+        }
+        .btn-start-exam:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            background: var(--gray-palette);
+        }
+
+        /* Slimline 42px Adaptive Header */
+        .cbt-header {
+            background: #0f172a;
+            color: #ffffff;
+            height: var(--header-h);
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+            flex-shrink: 0;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .header-sub-badge {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #f8fafc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 160px;
+        }
+
+        .header-q-progress {
+            font-size: 11.5px;
+            padding: 2px 7px;
+            background: rgba(255,255,255,0.12);
+            border-radius: 4px;
+            color: #38bdf8;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .timer-box {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(13, 148, 136, 0.25);
+            border: 1px solid var(--teal);
+            padding: 3px 8px;
+            border-radius: 6px;
+            color: #5eead4;
+            font-family: monospace;
+            font-size: 13.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        .timer-box.warning {
+            background: rgba(220, 38, 38, 0.25);
+            border-color: var(--danger);
+            color: #fca5a5;
+            animation: pulse-warn 1s infinite alternate;
+        }
+
+        .font-scale-group {
+            display: flex;
+            gap: 2px;
+            background: rgba(255,255,255,0.1);
+            padding: 2px;
+            border-radius: 4px;
+        }
+        .btn-font-scale {
+            background: transparent;
+            border: none;
+            color: #cbd5e1;
+            padding: 2px 5px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .btn-font-scale:hover {
+            background: rgba(255,255,255,0.2);
+            color: #ffffff;
+        }
+
+        .btn-hdr-action {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #ffffff;
+            padding: 4px 8px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        .btn-hdr-action:hover {
+            background: rgba(255,255,255,0.22);
+        }
+
+        .btn-toggle-palette {
+            display: none;
+        }
+
+        /* Main CBT Viewport Layout */
+        .cbt-container {
+            display: none;
+            flex: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            height: calc(100vh - var(--header-h));
+            overflow: hidden;
+            position: relative;
+        }
+
+        .cbt-main-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-width: 0;
+            background: var(--bg-page);
+        }
+
+        /* Independent Scrollable Question Area */
+        .q-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 14px 18px;
+        }
+
+        .q-meta-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 8px;
+            border-bottom: 1.5px solid var(--border-color);
+            margin-bottom: 12px;
+        }
+
+        .q-num-tag {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+
+        .q-marking-tag {
+            display: flex;
+            gap: 6px;
+            font-size: 11.5px;
+            font-weight: 700;
+        }
+
+        .mark-pos {
+            color: var(--success);
+            background: var(--success-light);
+            padding: 1px 7px;
+            border-radius: 4px;
+        }
+        .mark-neg {
+            color: var(--danger);
+            background: var(--danger-light);
+            padding: 1px 7px;
+            border-radius: 4px;
+        }
+
+        /* Question Stem Card */
+        .q-card {
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-color);
+            border-radius: 9px;
+            padding: 16px;
+            margin-bottom: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }
+
+        .q-text {
+            font-size: var(--q-font-size);
+            line-height: 1.6;
+            color: var(--text-main);
+            word-break: break-word;
+        }
+
+        .q-formula-box {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #f1f5f9;
+            border-left: 3px solid var(--primary);
+            font-family: monospace;
+            font-size: 13.5px;
+            border-radius: 0 6px 6px 0;
+        }
+
+        /* Options List */
+        .options-list {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            margin-bottom: 14px;
+        }
+
+        .option-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 48px;
+            padding: 10px 14px;
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.12s ease;
+            user-select: none;
+        }
+        .option-item:hover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .option-item.selected {
+            border-color: var(--primary);
+            background: var(--primary-light);
+            box-shadow: 0 0 0 1px var(--primary);
+        }
+
+        .opt-bubble {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12.5px;
+            font-weight: 800;
+            color: var(--text-muted);
+            background: #ffffff;
+            flex-shrink: 0;
+            transition: all 0.12s ease;
+        }
+        .option-item.selected .opt-bubble {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: #ffffff;
+        }
+
+        .opt-text {
+            font-size: var(--q-font-size);
+            line-height: 1.45;
+            color: var(--text-main);
+            flex: 1;
+        }
+
+        /* Sticky Bottom Toolbar */
+        .q-actions-bar {
+            background: #ffffff;
+            border-top: 1.5px solid var(--border-color);
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-shrink: 0;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+            flex-wrap: wrap;
+        }
+
+        .btn-cbt {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.12s ease;
+            white-space: nowrap;
+        }
+        .btn-cbt:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .btn-prev {
+            background: #ffffff;
+            color: var(--text-main);
+            border: 1.5px solid var(--border-color);
+        }
+        .btn-prev:hover:not(:disabled) { background: #f1f5f9; }
+
+        .btn-clear {
+            background: #ffffff;
+            color: var(--warning);
+            border: 1.5px solid var(--warning);
+        }
+        .btn-clear:hover:not(:disabled) { background: var(--warning-light); }
+
+        .btn-review {
+            background: #ffffff;
+            color: var(--purple);
+            border: 1.5px solid var(--purple);
+        }
+        .btn-review:hover:not(:disabled) { background: var(--purple-light); }
+
+        .btn-save-next {
+            background: var(--primary);
+            color: #ffffff;
+        }
+        .btn-save-next:hover:not(:disabled) { background: var(--primary-hover); }
+
+        /* Side Palette Panel */
+        .cbt-side-panel {
+            width: 300px;
+            background: var(--bg-card);
+            border-left: 1.5px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .candidate-card {
+            padding: 10px 14px;
+            background: #f1f5f9;
+            border-bottom: 1.5px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .cand-avatar-box {
+            width: 44px;
+            height: 48px;
+            border-radius: 4px;
+            border: 1.5px solid #94a3b8;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            box-shadow: inset 0 0 4px rgba(0,0,0,0.06);
+        }
+        .cand-info h4 {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 190px;
+        }
+        .cand-info p {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .palette-legend {
+            padding: 10px 12px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            border-bottom: 1.5px solid var(--border-color);
+            font-size: 11px;
+            background: #f8fafc;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--text-main);
+            font-size: 10.5px;
+            font-weight: 600;
+        }
+        .legend-pill {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10.5px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+        .pill-answered {
+            background: #22c55e;
+            color: #ffffff;
+            clip-path: polygon(0% 0%, 100% 0%, 100% 75%, 50% 100%, 0% 75%);
+        }
+        .pill-not-answered {
+            background: #ef4444;
+            color: #ffffff;
+            clip-path: polygon(0% 20%, 50% 0%, 100% 20%, 100% 100%, 0% 100%);
+        }
+        .pill-not-visited {
+            background: #e2e8f0;
+            color: #1e293b;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+        }
+        .pill-review {
+            background: #7c3aed;
+            color: #ffffff;
+            border-radius: 50%;
+        }
+        .pill-ans-review {
+            background: #7c3aed;
+            color: #ffffff;
+            border-radius: 50%;
+            position: relative;
+        }
+        .pill-ans-review::after {
+            content: "";
+            position: absolute;
+            bottom: 1px;
+            right: 1px;
+            width: 7px;
+            height: 7px;
+            background: #22c55e;
+            border-radius: 50%;
+            border: 1.5px solid #ffffff;
+        }
+
+        .palette-box {
+            padding: 12px;
+            flex: 1;
+            overflow-y: auto;
+        }
+        .palette-title {
+            font-size: 11.5px;
+            font-weight: 800;
+            color: #1e293b;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 7px;
+        }
+
+        .q-palette-btn {
+            height: 38px;
+            border: none;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s ease;
+            position: relative;
+        }
+        .q-palette-btn:hover {
+            transform: scale(1.08);
+        }
+        .q-palette-btn.active-q {
+            box-shadow: 0 0 0 2.5px #0f172a !important;
+            font-weight: 900;
+            transform: scale(1.05);
+        }
+        .q-palette-btn.st-not-visited {
+            background: #e2e8f0;
+            color: #1e293b;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+        }
+        .q-palette-btn.st-not-answered {
+            background: #ef4444;
+            color: #ffffff;
+            clip-path: polygon(0% 20%, 50% 0%, 100% 20%, 100% 100%, 0% 100%);
+        }
+        .q-palette-btn.st-answered {
+            background: #22c55e;
+            color: #ffffff;
+            clip-path: polygon(0% 0%, 100% 0%, 100% 75%, 50% 100%, 0% 75%);
+        }
+        .q-palette-btn.st-review {
+            background: #7c3aed;
+            color: #ffffff;
+            border-radius: 50%;
+        }
+        .q-palette-btn.st-ans-review {
+            background: #7c3aed;
+            color: #ffffff;
+            border-radius: 50%;
+            position: relative;
+        }
+        .q-palette-btn.st-ans-review::after {
+            content: "";
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            border: 1.5px solid #ffffff;
+        }
+
+        .palette-footer {
+            padding: 12px;
+            border-top: 1px solid var(--border-color);
+            background: #f8fafc;
+        }
+        .btn-submit-exam {
+            width: 100%;
+            background: #0f172a;
+            color: #ffffff;
+            padding: 11px;
+            font-size: 13.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .btn-submit-exam:hover { background: #1e293b; }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+            padding: 14px;
+        }
+        .modal-card {
+            background: #ffffff;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 100%;
+            padding: 22px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-title {
+            font-size: 17px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+        .modal-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            font-size: 13px;
+        }
+        .modal-summary-table td, .modal-summary-table th {
+            padding: 7px 10px;
+            border: 1px solid var(--border-color);
+        }
+        .modal-summary-table th {
+            background: #f8fafc;
+            text-align: left;
+            font-weight: 700;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        /* Question Paper Modal */
+        #qp-modal .modal-card {
+            max-width: 750px;
+        }
+        .qp-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .qp-item-hdr {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .btn-jump-q {
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* Results / Scorecard View */
+        #results-screen {
+            display: none;
+            max-width: 1050px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 20px 14px;
+        }
+
+        .score-hero-card {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-radius: 12px;
+            padding: 24px;
+            color: #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .score-hero-left h2 {
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        .score-hero-left p {
+            font-size: 13px;
+            color: #cbd5e1;
+        }
+        .score-badge-box {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            background: rgba(255,255,255,0.12);
+            padding: 10px 18px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .score-number {
+            font-size: 34px;
+            font-weight: 900;
+            color: #38bdf8;
+        }
+        .score-total {
+            font-size: 16px;
+            color: #94a3b8;
+            font-weight: 700;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .stat-card .st-val {
+            font-size: 22px;
+            font-weight: 900;
+        }
+        .stat-card .st-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .stat-card.correct { border-color: var(--success); background: #f0fdf4; color: var(--success); }
+        .stat-card.incorrect { border-color: var(--danger); background: #fef2f2; color: var(--danger); }
+        .stat-card.accuracy { border-color: var(--teal); background: var(--teal-light); color: var(--teal); }
+
+        .results-actions-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .filter-tabs {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 5px 12px;
+            border-radius: 18px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1.5px solid var(--border-color);
+            background: #ffffff;
+            cursor: pointer;
+        }
+        .filter-btn.active {
+            background: #0f172a;
+            color: #ffffff;
+            border-color: #0f172a;
+        }
+
+        .results-action-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .btn-share-res {
+            background: var(--teal);
+            color: #ffffff;
+        }
+        .btn-share-res:hover { background: #0f766e; }
+
+        .btn-export-json {
+            background: #475569;
+            color: #ffffff;
+        }
+        .btn-export-json:hover { background: #334155; }
+
+        .solutions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .sol-card {
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-color);
+            border-radius: 9px;
+            padding: 16px;
+        }
+        .sol-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .sol-qnum {
+            font-size: 14.5px;
+            font-weight: 800;
+        }
+        .sol-tag {
+            font-size: 11.5px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 5px;
+        }
+        .sol-tag.tag-correct { background: var(--success-light); color: var(--success); }
+        .sol-tag.tag-incorrect { background: var(--danger-light); color: var(--danger); }
+        .sol-tag.tag-unattempted { background: #f1f5f9; color: var(--text-muted); }
+
+        .sol-qtext {
+            font-size: 14.5px;
+            line-height: 1.55;
+            margin-bottom: 12px;
+        }
+        .sol-options-box {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            margin-bottom: 14px;
+        }
+        .sol-opt-row {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1.5px solid var(--border-color);
+            font-size: 13.5px;
+        }
+        .sol-opt-row.is-correct {
+            border-color: var(--success);
+            background: #f0fdf4;
+            font-weight: 700;
+        }
+        .sol-opt-row.is-wrong-selection {
+            border-color: var(--danger);
+            background: #fef2f2;
+            font-weight: 700;
+        }
+        .sol-opt-badge {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11.5px;
+            font-weight: 800;
+            background: #e2e8f0;
+            flex-shrink: 0;
+        }
+        .sol-opt-row.is-correct .sol-opt-badge {
+            background: var(--success);
+            color: #ffffff;
+        }
+        .sol-opt-row.is-wrong-selection .sol-opt-badge {
+            background: var(--danger);
+            color: #ffffff;
+        }
+
+        .sol-exp-box {
+            background: #f8fafc;
+            border-left: 3.5px solid var(--teal);
+            border-radius: 0 7px 7px 0;
+            padding: 12px 14px;
+            font-size: 13.5px;
+            line-height: 1.55;
+        }
+        .sol-exp-title {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--teal);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        /* Toast Notice */
+        #cbt-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f172a;
+            color: #ffffff;
+            padding: 9px 18px;
+            border-radius: 20px;
+            font-size: 12.5px;
+            font-weight: 700;
+            z-index: 2000;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            animation: toast-fade 0.2s ease;
+        }
+        @keyframes toast-fade {
+            from { opacity: 0; transform: translate(-50%, 10px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+
+        /* Mobile & Tablet Responsiveness */
+        @media (max-width: 850px) {
+            .btn-toggle-palette {
+                display: inline-flex;
+            }
+
+            .cbt-side-panel {
+                position: absolute;
+                top: 0;
+                right: 0;
+                width: 85%;
+                max-width: 310px;
+                box-shadow: -4px 0 20px rgba(0,0,0,0.25);
+                transform: translateX(100%);
+                transition: transform 0.25s ease-in-out;
+                z-index: 200;
+            }
+            .cbt-side-panel.open {
+                transform: translateX(0);
+            }
+            .q-scroll-area {
+                padding: 12px 14px;
+            }
+        }
+
+        /* Print Media Styles */
+        @media print {
+            .cbt-header, .q-actions-bar, .results-actions-bar, .btn-hdr-action, .font-scale-group, #cbt-screen, #lobby-screen, #submit-modal, #qp-modal {
+                display: none !important;
+            }
+            #results-screen {
+                display: block !important;
+                padding: 0;
+                max-width: 100%;
+            }
+            .score-hero-card {
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: 2px solid #000000;
+            }
+            .score-number { color: #000000; }
+            .sol-card {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border: 1px solid #000000;
+                margin-bottom: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Stage 1: Candidate Verification & Instructions Lobby (Pre-Exam) -->
+    <div id="lobby-screen">
+        <div class="lobby-card">
+            <div class="lobby-header">
+                <div class="lobby-inst">$safeInst</div>
+                <h1 class="lobby-title">$safeTitle</h1>
+                <div class="lobby-subject">$safeSubject &bull; Series: $safeBooklet</div>
+            </div>
+
+            <!-- Candidate Inputs -->
+            <div class="lobby-inputs">
+                <div class="input-group">
+                    <label for="cand-name-input">Candidate Full Name *</label>
+                    <input type="text" id="cand-name-input" class="lobby-input" value="" placeholder="Enter your full name" />
+                </div>
+                <div class="input-group">
+                    <label for="cand-roll-input">Roll Number / Student ID *</label>
+                    <input type="text" id="cand-roll-input" class="lobby-input" value="$safeRoll" placeholder="Enter assigned roll number" />
+                </div>
+            </div>
+
+            <!-- Test Specifications -->
+            <div class="lobby-meta-grid">
+                <div class="meta-stat-item">
+                    <div class="val">${paper.questions.size}</div>
+                    <div class="lbl">Questions</div>
+                </div>
+                <div class="meta-stat-item">
+                    <div class="val">$durationMinutes m</div>
+                    <div class="lbl">Duration</div>
+                </div>
+                <div class="meta-stat-item">
+                    <div class="val">+$posFormatted</div>
+                    <div class="lbl">Per Correct</div>
+                </div>
+                <div class="meta-stat-item">
+                    <div class="val">-$negFormatted</div>
+                    <div class="lbl">Penalty</div>
+                </div>
+            </div>
+
+            <!-- Rules Summary -->
+            <div class="lobby-rules-box">
+                <ul>
+                    <li>The clock will be set at the server. The countdown timer at the top displays remaining time.</li>
+                    <li>Questions can be answered by clicking the appropriate option (A, B, C, or D).</li>
+                    <li>Desktop shortcuts: Keys 1..4 or A..D to select, Enter or Arrow Keys to navigate.</li>
+                    <li>Use <b>Mark for Review & Next</b> to flag questions for subsequent reconsideration.</li>
+                    <li>Your work is auto-saved locally. Navigating away or closing the tab will trigger an alert.</li>
+                </ul>
+            </div>
+
+            <label class="lobby-agree-row">
+                <input type="checkbox" id="rules-agree-check" onchange="toggleStartButton()" />
+                <span>I have read and understood all examination instructions.</span>
+            </label>
+
+            <button class="btn-start-exam" id="btn-start-exam" disabled onclick="startExamSession()">
+                Begin Examination &rarr;
+            </button>
+        </div>
+    </div>
+
+    <!-- Stage 2: Live Examination Portal -->
+
+    <!-- Slimline 42px Adaptive Header -->
+    <header class="cbt-header" id="cbt-header">
+        <div class="header-left">
+            <span class="header-sub-badge">$safeSubject</span>
+            <span class="header-q-progress" id="hdr-q-indicator">Q 1 / ${paper.questions.size}</span>
+        </div>
+        <div class="header-right">
+            <!-- Font Sizing Group -->
+            <div class="font-scale-group" title="Adjust text size">
+                <button class="btn-font-scale" onclick="adjustFontSize(-1)">A-</button>
+                <button class="btn-font-scale" onclick="adjustFontSize(0)">A</button>
+                <button class="btn-font-scale" onclick="adjustFontSize(1)">A+</button>
+            </div>
+
+            <!-- Question Paper Overview Button -->
+            <button class="btn-hdr-action" onclick="openQuestionPaperModal()">
+                Paper
+            </button>
+
+            <!-- Digital Timer Pill -->
+            <div class="timer-box" id="timer-box">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span id="timer-display">00:00:00</span>
+            </div>
+
+            <!-- Mobile Palette Toggle -->
+            <button class="btn-hdr-action btn-toggle-palette" id="btn-toggle-palette" onclick="toggleMobilePalette()">
+                [#]
+            </button>
+        </div>
+    </header>
+
+    <!-- Main CBT Screen -->
+    <div id="cbt-screen" class="cbt-container">
+        <!-- Question Pane -->
+        <main class="cbt-main-panel">
+            <div class="q-scroll-area">
+                <div class="q-meta-bar">
+                    <div class="q-num-tag" id="q-title-display">Question 1</div>
+                    <div class="q-marking-tag">
+                        <span class="mark-pos">+4.00</span>
+                        <span class="mark-neg">-1.00</span>
+                    </div>
+                </div>
+
+                <!-- Stem -->
+                <div class="q-card">
+                    <div class="q-text" id="q-stem-display">Loading question...</div>
+                    <div class="q-formula-box" id="q-formula-box" style="display: none;"></div>
+                </div>
+
+                <!-- Options -->
+                <div class="options-list" id="options-container">
+                    <!-- Populated options A, B, C, D -->
+                </div>
+            </div>
+
+            <!-- Sticky Bottom Toolbar -->
+            <div class="q-actions-bar">
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn-cbt btn-prev" id="btn-prev" onclick="goToPrevQuestion()">
+                        &larr; Prev
+                    </button>
+                    <button class="btn-cbt btn-clear" id="btn-clear" onclick="clearCurrentResponse()">
+                        Clear
+                    </button>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn-cbt btn-review" id="btn-review" onclick="markForReviewAndNext()">
+                        Review & Next
+                    </button>
+                    <button class="btn-cbt btn-save-next" id="btn-save-next" onclick="saveAndNext()">
+                        Save & Next &rarr;
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Side Palette Drawer -->
+        <aside class="cbt-side-panel" id="cbt-side-panel">
+            <div class="candidate-card">
+                <div class="cand-avatar-box" id="cand-avatar-box" title="Candidate Identity Photo">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span style="font-size: 7.5px; font-weight: 800; color: #64748b; margin-top: 1px;">PHOTO</span>
+                </div>
+                <div class="cand-info">
+                    <h4 id="panel-cand-name">Student</h4>
+                    <p>Roll: <span id="panel-cand-roll" style="font-weight: 700; color: var(--text-main);">$safeRoll</span></p>
+                    <p style="font-size: 10px; color: var(--teal); font-weight: 700;">Node: LAB-03 &bull; C-01</p>
+                </div>
+            </div>
+
+            <!-- Authentic 5-State NTA / TCS Examination Legend -->
+            <div class="palette-legend">
+                <div class="legend-item">
+                    <div class="legend-pill pill-answered" id="leg-ans-cnt">0</div>
+                    <span>Answered</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-pill pill-not-answered" id="leg-unans-cnt">0</div>
+                    <span>Not Answered</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-pill pill-not-visited" id="leg-visit-cnt">0</div>
+                    <span>Not Visited</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-pill pill-review" id="leg-rev-cnt">0</div>
+                    <span>Marked Review</span>
+                </div>
+                <div class="legend-item" style="grid-column: span 2;">
+                    <div class="legend-pill pill-ans-review" id="leg-ans-rev-cnt">0</div>
+                    <span>Answered &amp; Marked for Review</span>
+                </div>
+            </div>
+
+            <!-- Palette Grid -->
+            <div class="palette-box">
+                <div class="palette-title">Question Palette</div>
+                <div class="palette-grid" id="palette-grid">
+                    <!-- Buttons 1 to N -->
+                </div>
+            </div>
+
+            <!-- Palette Footer -->
+            <div class="palette-footer">
+                <button class="btn-cbt btn-submit-exam" onclick="openSubmitModal()">
+                    Submit Test
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Question Paper Overview Modal -->
+    <div class="modal-overlay" id="qp-modal">
+        <div class="modal-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 class="modal-title">Complete Question Paper</h3>
+                <button class="btn-cbt btn-prev" onclick="closeQuestionPaperModal()">✕ Close</button>
+            </div>
+            <div id="qp-modal-content">
+                <!-- Dynamically populated question list -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit Confirmation Modal -->
+    <div class="modal-overlay" id="submit-modal">
+        <div class="modal-card">
+            <h3 class="modal-title">Submit Examination</h3>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                Are you sure you want to finish and submit your examination? Review your attempt summary below:
+            </p>
+            <table class="modal-summary-table">
+                <tr><th>Total Questions</th><td id="mod-tot">0</td></tr>
+                <tr><th>Answered</th><td id="mod-ans" style="color: var(--success); font-weight: 700;">0</td></tr>
+                <tr><th>Not Answered</th><td id="mod-unans" style="color: var(--danger); font-weight: 700;">0</td></tr>
+                <tr><th>Marked for Review</th><td id="mod-rev" style="color: var(--purple); font-weight: 700;">0</td></tr>
+                <tr><th>Answered &amp; Marked for Review</th><td id="mod-ans-rev" style="color: var(--purple); font-weight: 700;">0</td></tr>
+                <tr><th>Not Visited</th><td id="mod-notvis">0</td></tr>
+            </table>
+            <div id="unanswered-warning" style="display:none; color: var(--danger); font-size: 12px; font-weight: 700; margin-bottom: 10px;">
+                ⚠️ You have unanswered questions remaining.
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cbt btn-prev" onclick="closeSubmitModal()">Resume Test</button>
+                <button class="btn-cbt btn-submit-exam" style="background: var(--success);" onclick="confirmSubmitExam()">Confirm & Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage 3: Results, Scorecard & Detailed Solutions -->
+    <div id="results-screen">
+        <div class="score-hero-card">
+            <div class="score-hero-left">
+                <h2>Examination Performance Report</h2>
+                <p>$safeTitle &bull; $safeSubject</p>
+                <p style="margin-top: 4px; font-size: 12px; color: #94a3b8;">
+                    Candidate: <b id="res-cand-name" style="color:#ffffff;">Candidate</b> (Roll: <span id="res-cand-roll">$safeRoll</span>) &bull; Submitted: <span id="res-date"></span>
+                </p>
+            </div>
+            <div class="score-badge-box">
+                <span class="score-number" id="res-score">0</span>
+                <span class="score-total" id="res-max-score">/ 0</span>
+            </div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="st-val" id="res-total-q">0</span>
+                <span class="st-label">Total Questions</span>
+            </div>
+            <div class="stat-card correct">
+                <span class="st-val" id="res-correct-cnt">0</span>
+                <span class="st-label" id="res-correct-lbl">Correct</span>
+            </div>
+            <div class="stat-card incorrect">
+                <span class="st-val" id="res-wrong-cnt">0</span>
+                <span class="st-label" id="res-wrong-lbl">Incorrect</span>
+            </div>
+            <div class="stat-card">
+                <span class="st-val" id="res-unattempt-cnt">0</span>
+                <span class="st-label">Unattempted</span>
+            </div>
+            <div class="stat-card accuracy">
+                <span class="st-val" id="res-accuracy">0%</span>
+                <span class="st-label">Accuracy Rate</span>
+            </div>
+            <div class="stat-card">
+                <span class="st-val" id="res-tab-switches">0</span>
+                <span class="st-label">Tab Switches</span>
+            </div>
+        </div>
+
+        <!-- Actions & Filters -->
+        <div class="results-actions-bar">
+            <div class="filter-tabs">
+                <button class="filter-btn active" onclick="filterSolutions('ALL', this)">All (<span id="flt-all">0</span>)</button>
+                <button class="filter-btn" onclick="filterSolutions('CORRECT', this)">Correct (<span id="flt-cor">0</span>)</button>
+                <button class="filter-btn" onclick="filterSolutions('INCORRECT', this)">Incorrect (<span id="flt-inc">0</span>)</button>
+                <button class="filter-btn" onclick="filterSolutions('UNATTEMPTED', this)">Unattempted (<span id="flt-una">0</span>)</button>
+            </div>
+            <div class="results-action-buttons">
+                <button class="btn-cbt btn-share-res" onclick="shareScorecard()">
+                    Share Result
+                </button>
+                <button class="btn-cbt btn-export-json" onclick="exportResultDataJson()">
+                    Export JSON
+                </button>
+                <button class="btn-cbt btn-prev" onclick="window.print()">
+                    Print Report
+                </button>
+                <button class="btn-cbt btn-prev" onclick="retakeExam()">
+                    Retake
+                </button>
+            </div>
+        </div>
+
+        <!-- Solutions List -->
+        <div class="solutions-list" id="solutions-container">
+            <!-- Populated solution cards with full explanations -->
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="cbt-toast">Notice</div>
+
+    <!-- JavaScript Application Engine -->
+    <script>
+        const EXAM_DATA = $examDataJson;
+        const STORAGE_KEY = 'CBT_SESSION_' + (EXAM_DATA.meta.bookletNumber || 'DEFAULT');
+
+        let candidateName = 'Candidate';
+        let candidateRoll = EXAM_DATA.meta.rollNumber || '$safeRoll';
+        let currentIndex = 0;
+        let answers = {};
+        let reviewStatus = {};
+        let visitedStatus = {};
+        let timeRemaining = (EXAM_DATA.meta.durationMinutes || 60) * 60;
+        let timerInterval = null;
+        let examStarted = false;
+        let isSubmitted = false;
+        let activeFilter = 'ALL';
+        let tabSwitchCount = 0;
+        let currentFontScale = 1.0;
+
+        // On DOM ready: check if previous session can be recovered
+        window.addEventListener('DOMContentLoaded', () => {
+            initPaletteGrid();
+            initQuestionPaperModal();
+            setupKeyboardShortcuts();
+            setupTabSwitchMonitor();
+
+            // Try recovery from sessionStorage
+            const savedSession = sessionStorage.getItem(STORAGE_KEY);
+            if (savedSession) {
+                try {
+                    const data = JSON.parse(savedSession);
+                    if (data && !data.isSubmitted) {
+                        candidateName = data.candidateName || 'Candidate';
+                        candidateRoll = data.candidateRoll || '$safeRoll';
+                        answers = data.answers || {};
+                        reviewStatus = data.reviewStatus || {};
+                        visitedStatus = data.visitedStatus || {};
+                        timeRemaining = data.timeRemaining || timeRemaining;
+                        tabSwitchCount = data.tabSwitchCount || 0;
+
+                        document.getElementById('cand-name-input').value = candidateName;
+                        document.getElementById('cand-roll-input').value = candidateRoll;
+                        document.getElementById('rules-agree-check').checked = true;
+                        document.getElementById('btn-start-exam').disabled = false;
+                    }
+                } catch (e) {
+                    console.warn("Could not parse saved session", e);
+                }
+            }
+        });
+
+        // Safety on unload
+        window.onbeforeunload = function(e) {
+            if (examStarted && !isSubmitted) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+
+        function showToast(msg) {
+            const toast = document.getElementById('cbt-toast');
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 2500);
+        }
+
+        function toggleStartButton() {
+            const agreed = document.getElementById('rules-agree-check').checked;
+            document.getElementById('btn-start-exam').disabled = !agreed;
+        }
+
+        function startExamSession() {
+            candidateName = document.getElementById('cand-name-input').value.trim() || 'Candidate';
+            candidateRoll = document.getElementById('cand-roll-input').value.trim() || '$safeRoll';
+
+            // Bind values
+            document.getElementById('panel-cand-name').textContent = candidateName;
+            document.getElementById('panel-cand-roll').textContent = candidateRoll;
+            const letterEl = document.getElementById('cand-avatar-letter');
+            if (letterEl) {
+                letterEl.textContent = candidateName.charAt(0).toUpperCase();
+            }
+
+            document.getElementById('lobby-screen').style.display = 'none';
+            document.getElementById('cbt-screen').style.display = 'flex';
+            examStarted = true;
+
+            loadQuestion(0);
+            startCountdownTimer();
+            saveSession();
+
+            // Request fullscreen on desktop/tablets if possible
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+        }
+
+        function formatTimerDisplay(totalSeconds) {
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+        }
+
+        function startCountdownTimer() {
+            const displayEl = document.getElementById('timer-display');
+            const timerBox = document.getElementById('timer-box');
+            displayEl.textContent = formatTimerDisplay(timeRemaining);
+
+            timerInterval = setInterval(() => {
+                if (timeRemaining > 0) {
+                    timeRemaining--;
+                    displayEl.textContent = formatTimerDisplay(timeRemaining);
+                    if (timeRemaining <= 300) {
+                        timerBox.classList.add('warning');
+                    }
+                    if (timeRemaining % 10 === 0) {
+                        saveSession();
+                    }
+                } else {
+                    clearInterval(timerInterval);
+                    alert("Time has elapsed! Your examination will now be submitted.");
+                    confirmSubmitExam();
+                }
+            }, 1000);
+        }
+
+        function adjustFontSize(delta) {
+            if (delta === 0) currentFontScale = 1.0;
+            else if (delta > 0 && currentFontScale < 1.3) currentFontScale += 0.1;
+            else if (delta < 0 && currentFontScale > 0.8) currentFontScale -= 0.1;
+
+            const newSize = (15.5 * currentFontScale).toFixed(1) + 'px';
+            document.documentElement.style.setProperty('--q-font-size', newSize);
+        }
+
+        function setupKeyboardShortcuts() {
+            window.addEventListener('keydown', (e) => {
+                if (!examStarted || isSubmitted) return;
+                // Ignore if active in input field
+                if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
+                const key = e.key.toUpperCase();
+                if (['1', '2', '3', '4', 'A', 'B', 'C', 'D'].includes(key)) {
+                    let optKey = key;
+                    if (key === '1') optKey = 'A';
+                    if (key === '2') optKey = 'B';
+                    if (key === '3') optKey = 'C';
+                    if (key === '4') optKey = 'D';
+                    selectOption(optKey);
+                } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+                    saveAndNext();
+                } else if (e.key === 'ArrowLeft') {
+                    goToPrevQuestion();
+                } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                    clearCurrentResponse();
+                } else if (key === 'M') {
+                    markForReviewAndNext();
+                } else if (e.key === 'Escape') {
+                    closeSubmitModal();
+                    closeQuestionPaperModal();
+                    toggleMobilePalette(false);
+                }
+            });
+        }
+
+        function setupTabSwitchMonitor() {
+            document.addEventListener('visibilitychange', () => {
+                if (examStarted && !isSubmitted && document.visibilityState === 'hidden') {
+                    tabSwitchCount++;
+                    showToast("Notice: Tab switch detected (" + tabSwitchCount + ")");
+                    saveSession();
+                }
+            });
+        }
+
+        function saveSession() {
+            if (!examStarted || isSubmitted) return;
+            try {
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    candidateName,
+                    candidateRoll,
+                    answers,
+                    reviewStatus,
+                    visitedStatus,
+                    timeRemaining,
+                    tabSwitchCount,
+                    isSubmitted: false
+                }));
+            } catch (e) {}
+        }
+
+        function initPaletteGrid() {
+            const grid = document.getElementById('palette-grid');
+            grid.innerHTML = '';
+            EXAM_DATA.questions.forEach((q, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'q-palette-btn st-not-visited';
+                btn.id = 'palette-btn-' + idx;
+                btn.textContent = q.num || (idx + 1);
+                btn.onclick = () => {
+                    loadQuestion(idx);
+                    if (window.innerWidth <= 850) {
+                        toggleMobilePalette(false);
+                    }
+                };
+                grid.appendChild(btn);
+            });
+        }
+
+        function initQuestionPaperModal() {
+            const container = document.getElementById('qp-modal-content');
+            container.innerHTML = '';
+            EXAM_DATA.questions.forEach((q, idx) => {
+                const item = document.createElement('div');
+                item.className = 'qp-item';
+
+                const hdr = document.createElement('div');
+                hdr.className = 'qp-item-hdr';
+                hdr.innerHTML = '<span style="font-weight:700; font-size:13px;">Q ' + (q.num || (idx + 1)) + '</span>';
+
+                const jumpBtn = document.createElement('button');
+                jumpBtn.className = 'btn-jump-q';
+                jumpBtn.textContent = 'Go to Question';
+                jumpBtn.onclick = () => {
+                    closeQuestionPaperModal();
+                    loadQuestion(idx);
+                };
+                hdr.appendChild(jumpBtn);
+
+                const stem = document.createElement('div');
+                stem.style.fontSize = '13.5px';
+                stem.style.marginBottom = '6px';
+                stem.innerHTML = q.stemHtml || q.stemRaw || '';
+
+                item.appendChild(hdr);
+                item.appendChild(stem);
+                container.appendChild(item);
+            });
+        }
+
+        function openQuestionPaperModal() {
+            document.getElementById('qp-modal').style.display = 'flex';
+        }
+        function closeQuestionPaperModal() {
+            document.getElementById('qp-modal').style.display = 'none';
+        }
+
+        function loadQuestion(index) {
+            if (index < 0 || index >= EXAM_DATA.questions.length) return;
+            currentIndex = index;
+            visitedStatus[index] = true;
+
+            const q = EXAM_DATA.questions[index];
+            document.getElementById('hdr-q-indicator').textContent = 'Q ' + (q.num || (index + 1)) + ' / ' + EXAM_DATA.questions.length;
+            document.getElementById('q-title-display').textContent = 'Question ' + (q.num || (index + 1));
+            document.getElementById('q-stem-display').innerHTML = q.stemHtml || q.stemRaw || '';
+
+            const formulaBox = document.getElementById('q-formula-box');
+            if (q.formula && q.formula.trim().length > 0) {
+                formulaBox.style.display = 'block';
+                formulaBox.textContent = q.formula;
+            } else {
+                formulaBox.style.display = 'none';
+            }
+
+            const optsContainer = document.getElementById('options-container');
+            optsContainer.innerHTML = '';
+            const selectedOpt = answers[index];
+
+            q.options.forEach(opt => {
+                const optItem = document.createElement('div');
+                optItem.className = 'option-item' + (selectedOpt === opt.key ? ' selected' : '');
+                optItem.onclick = () => selectOption(opt.key);
+
+                const bubble = document.createElement('div');
+                bubble.className = 'opt-bubble';
+                bubble.textContent = opt.key;
+
+                const textSpan = document.createElement('div');
+                textSpan.className = 'opt-text';
+                textSpan.innerHTML = opt.rendered || opt.text || '';
+
+                optItem.appendChild(bubble);
+                optItem.appendChild(textSpan);
+                optsContainer.appendChild(optItem);
+            });
+
+            document.getElementById('btn-prev').disabled = (index === 0);
+            const saveNextBtn = document.getElementById('btn-save-next');
+            if (index === EXAM_DATA.questions.length - 1) {
+                saveNextBtn.innerHTML = 'Save & Submit &rarr;';
+            } else {
+                saveNextBtn.innerHTML = 'Save & Next &rarr;';
+            }
+
+            updatePaletteItem(index);
+            updateLegendCounts();
+            saveSession();
+        }
+
+        function selectOption(key) {
+            answers[currentIndex] = key;
+            loadQuestion(currentIndex);
+        }
+
+        function clearCurrentResponse() {
+            delete answers[currentIndex];
+            delete reviewStatus[currentIndex];
+            loadQuestion(currentIndex);
+        }
+
+        function markForReviewAndNext() {
+            reviewStatus[currentIndex] = true;
+            goToNextQuestion();
+        }
+
+        function saveAndNext() {
+            delete reviewStatus[currentIndex];
+            if (currentIndex === EXAM_DATA.questions.length - 1) {
+                openSubmitModal();
+            } else {
+                goToNextQuestion();
+            }
+        }
+
+        function goToPrevQuestion() {
+            if (currentIndex > 0) loadQuestion(currentIndex - 1);
+        }
+
+        function goToNextQuestion() {
+            if (currentIndex < EXAM_DATA.questions.length - 1) {
+                loadQuestion(currentIndex + 1);
+            } else {
+                updatePaletteItem(currentIndex);
+                updateLegendCounts();
+            }
+        }
+
+        function updatePaletteItem(idx) {
+            const btn = document.getElementById('palette-btn-' + idx);
+            if (!btn) return;
+            btn.className = 'q-palette-btn';
+
+            if (idx === currentIndex) btn.classList.add('active-q');
+
+            const isAns = !!answers[idx];
+            const isRev = !!reviewStatus[idx];
+            const isVis = !!visitedStatus[idx];
+
+            if (isAns && isRev) btn.classList.add('st-ans-review');
+            else if (isRev) btn.classList.add('st-review');
+            else if (isAns) btn.classList.add('st-answered');
+            else if (isVis) btn.classList.add('st-not-answered');
+            else btn.classList.add('st-not-visited');
+        }
+
+        function updateLegendCounts() {
+            let answered = 0, notAnswered = 0, notVisited = 0, markedReview = 0, ansReview = 0;
+            EXAM_DATA.questions.forEach((_, idx) => {
+                const isAns = !!answers[idx];
+                const isRev = !!reviewStatus[idx];
+                const isVis = !!visitedStatus[idx];
+
+                if (isRev && isAns) ansReview++;
+                else if (isRev) markedReview++;
+                else if (isAns) answered++;
+                else if (isVis) notAnswered++;
+                else notVisited++;
+                updatePaletteItem(idx);
+            });
+
+            document.getElementById('leg-ans-cnt').textContent = answered;
+            document.getElementById('leg-unans-cnt').textContent = notAnswered;
+            document.getElementById('leg-visit-cnt').textContent = notVisited;
+            document.getElementById('leg-rev-cnt').textContent = markedReview;
+            const ansRevEl = document.getElementById('leg-ans-rev-cnt');
+            if (ansRevEl) ansRevEl.textContent = ansReview;
+        }
+
+        function toggleMobilePalette(forceState) {
+            const panel = document.getElementById('cbt-side-panel');
+            if (typeof forceState === 'boolean') {
+                if (forceState) panel.classList.add('open');
+                else panel.classList.remove('open');
+            } else {
+                panel.classList.toggle('open');
+            }
+        }
+
+        function openSubmitModal() {
+            let answered = 0, notAnswered = 0, notVisited = 0, markedReview = 0, ansReview = 0;
+            EXAM_DATA.questions.forEach((_, idx) => {
+                const isAns = !!answers[idx];
+                const isRev = !!reviewStatus[idx];
+                const isVis = !!visitedStatus[idx];
+
+                if (isRev && isAns) ansReview++;
+                else if (isRev) markedReview++;
+                else if (isAns) answered++;
+                else if (isVis) notAnswered++;
+                else notVisited++;
+            });
+
+            document.getElementById('mod-tot').textContent = EXAM_DATA.questions.length;
+            document.getElementById('mod-ans').textContent = answered;
+            document.getElementById('mod-unans').textContent = notAnswered;
+            document.getElementById('mod-rev').textContent = markedReview;
+            const modAnsRev = document.getElementById('mod-ans-rev');
+            if (modAnsRev) modAnsRev.textContent = ansReview;
+            document.getElementById('mod-notvis').textContent = notVisited;
+
+            const warnEl = document.getElementById('unanswered-warning');
+            if (notAnswered > 0 || notVisited > 0) {
+                warnEl.style.display = 'block';
+                warnEl.textContent = '⚠️ You have ' + (notAnswered + notVisited) + ' unanswered question(s).';
+            } else {
+                warnEl.style.display = 'none';
+            }
+
+            document.getElementById('submit-modal').style.display = 'flex';
+        }
+
+        function closeSubmitModal() {
+            document.getElementById('submit-modal').style.display = 'none';
+        }
+
+        function confirmSubmitExam() {
+            closeSubmitModal();
+            clearInterval(timerInterval);
+            isSubmitted = true;
+
+            try {
+                sessionStorage.removeItem(STORAGE_KEY);
+            } catch (e) {}
+
+            document.getElementById('cbt-screen').style.display = 'none';
+            document.getElementById('cbt-header').style.display = 'none';
+            document.getElementById('results-screen').style.display = 'block';
+
+            renderPerformanceReport();
+        }
+
+        function renderPerformanceReport() {
+            document.getElementById('res-date').textContent = new Date().toLocaleString();
+            document.getElementById('res-cand-name').textContent = candidateName;
+            document.getElementById('res-cand-roll').textContent = candidateRoll;
+
+            let correctCount = 0, wrongCount = 0, unattemptedCount = 0;
+            const posMarks = EXAM_DATA.meta.positiveMarks || 4.0;
+            const negMarks = EXAM_DATA.meta.negativeMarks || 1.0;
+
+            const solContainer = document.getElementById('solutions-container');
+            solContainer.innerHTML = '';
+
+            EXAM_DATA.questions.forEach((q, idx) => {
+                const userAns = answers[idx];
+                const officialAns = q.correctAnswer;
+                const isAttempted = !!userAns;
+                const isCorrect = isAttempted && (userAns === officialAns);
+
+                if (!isAttempted) unattemptedCount++;
+                else if (isCorrect) correctCount++;
+                else wrongCount++;
+
+                const card = document.createElement('div');
+                card.className = 'sol-card';
+                card.dataset.status = isCorrect ? 'CORRECT' : (!isAttempted ? 'UNATTEMPTED' : 'INCORRECT');
+
+                const hdr = document.createElement('div');
+                hdr.className = 'sol-header';
+
+                const qNumEl = document.createElement('div');
+                qNumEl.className = 'sol-qnum';
+                qNumEl.textContent = 'Question ' + (q.num || (idx + 1));
+
+                const tag = document.createElement('div');
+                if (isCorrect) {
+                    tag.className = 'sol-tag tag-correct';
+                    tag.textContent = 'CORRECT (+' + posMarks.toFixed(2) + ')';
+                } else if (!isAttempted) {
+                    tag.className = 'sol-tag tag-unattempted';
+                    tag.textContent = 'UNATTEMPTED (0.00)';
+                } else {
+                    tag.className = 'sol-tag tag-incorrect';
+                    tag.textContent = 'INCORRECT (-' + negMarks.toFixed(2) + ')';
+                }
+
+                hdr.appendChild(qNumEl);
+                hdr.appendChild(tag);
+                card.appendChild(hdr);
+
+                const stem = document.createElement('div');
+                stem.className = 'sol-qtext';
+                stem.innerHTML = q.stemHtml || q.stemRaw || '';
+                card.appendChild(stem);
+
+                const optsBox = document.createElement('div');
+                optsBox.className = 'sol-options-box';
+
+                q.options.forEach(opt => {
+                    const row = document.createElement('div');
+                    const isThisCorrect = (opt.key === officialAns);
+                    const isThisSelected = (opt.key === userAns);
+
+                    if (isThisCorrect) row.className = 'sol-opt-row is-correct';
+                    else if (isThisSelected) row.className = 'sol-opt-row is-wrong-selection';
+                    else row.className = 'sol-opt-row';
+
+                    const badge = document.createElement('div');
+                    badge.className = 'sol-opt-badge';
+                    badge.textContent = opt.key;
+
+                    const txt = document.createElement('div');
+                    txt.style.flex = '1';
+                    txt.innerHTML = opt.rendered || opt.text || '';
+
+                    row.appendChild(badge);
+                    row.appendChild(txt);
+
+                    if (isThisSelected && isThisCorrect) {
+                        const note = document.createElement('span');
+                        note.style.fontSize = '11px';
+                        note.style.color = 'var(--success)';
+                        note.textContent = '✓ Your Answer (Correct)';
+                        row.appendChild(note);
+                    } else if (isThisSelected) {
+                        const note = document.createElement('span');
+                        note.style.fontSize = '11px';
+                        note.style.color = 'var(--danger)';
+                        note.textContent = '✗ Your Answer';
+                        row.appendChild(note);
+                    } else if (isThisCorrect) {
+                        const note = document.createElement('span');
+                        note.style.fontSize = '11px';
+                        note.style.color = 'var(--success)';
+                        note.textContent = '✓ Correct Answer';
+                        row.appendChild(note);
+                    }
+
+                    optsBox.appendChild(row);
+                });
+                card.appendChild(optsBox);
+
+                if (q.explanationHtml && q.explanationHtml.trim().length > 0) {
+                    const expBox = document.createElement('div');
+                    expBox.className = 'sol-exp-box';
+
+                    const expTitle = document.createElement('div');
+                    expTitle.className = 'sol-exp-title';
+                    expTitle.innerHTML = '&#9733; Detailed Step-by-Step Explanation';
+
+                    const expBody = document.createElement('div');
+                    expBody.innerHTML = q.explanationHtml;
+
+                    expBox.appendChild(expTitle);
+                    expBox.appendChild(expBody);
+                    card.appendChild(expBox);
+                }
+
+                solContainer.appendChild(card);
+            });
+
+            const rawScore = (correctCount * posMarks) - (wrongCount * negMarks);
+            const maxMarks = EXAM_DATA.questions.length * posMarks;
+            const attemptedTotal = correctCount + wrongCount;
+            const accuracy = attemptedTotal > 0 ? Math.round((correctCount / attemptedTotal) * 100) : 0;
+
+            document.getElementById('res-score').textContent = rawScore.toFixed(1);
+            document.getElementById('res-max-score').textContent = '/ ' + maxMarks.toFixed(1);
+            document.getElementById('res-total-q').textContent = EXAM_DATA.questions.length;
+            document.getElementById('res-correct-cnt').textContent = correctCount;
+            const corLbl = document.getElementById('res-correct-lbl');
+            if (corLbl) corLbl.textContent = 'Correct (+' + posMarks.toFixed(2) + ')';
+            document.getElementById('res-wrong-cnt').textContent = wrongCount;
+            const wrgLbl = document.getElementById('res-wrong-lbl');
+            if (wrgLbl) wrgLbl.textContent = 'Incorrect (-' + negMarks.toFixed(2) + ')';
+            document.getElementById('res-unattempt-cnt').textContent = unattemptedCount;
+            document.getElementById('res-accuracy').textContent = accuracy + '%';
+            document.getElementById('res-tab-switches').textContent = tabSwitchCount;
+
+            document.getElementById('flt-all').textContent = EXAM_DATA.questions.length;
+            document.getElementById('flt-cor').textContent = correctCount;
+            document.getElementById('flt-inc').textContent = wrongCount;
+            document.getElementById('flt-una').textContent = unattemptedCount;
+        }
+
+        function filterSolutions(type, btnElement) {
+            activeFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            if (btnElement) btnElement.classList.add('active');
+
+            const cards = document.querySelectorAll('.sol-card');
+            cards.forEach(c => {
+                if (type === 'ALL' || c.dataset.status === type) {
+                    c.style.display = 'block';
+                } else {
+                    c.style.display = 'none';
+                }
+            });
+        }
+
+        function shareScorecard() {
+            const score = document.getElementById('res-score').textContent;
+            const maxScore = document.getElementById('res-max-score').textContent;
+            const accuracy = document.getElementById('res-accuracy').textContent;
+            const textSummary =
+                "CBT Test Result:\n" +
+                "Candidate: " + candidateName + " (Roll: " + candidateRoll + ")\n" +
+                "Exam: " + (EXAM_DATA.meta.title || "Exam") + "\n" +
+                "Subject: " + (EXAM_DATA.meta.subject || "Subject") + "\n" +
+                "Score: " + score + " " + maxScore + " (Accuracy: " + accuracy + ")\n" +
+                "Tab Switches: " + tabSwitchCount + "\n" +
+                "Date: " + new Date().toLocaleDateString();
+
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Exam Scorecard - ' + candidateName,
+                    text: textSummary
+                }).catch(() => {
+                    copyToClipboard(textSummary);
+                });
+            } else {
+                copyToClipboard(textSummary);
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("Scorecard copied to clipboard!");
+            }).catch(() => {
+                showToast("Scorecard summary generated.");
+            });
+        }
+
+        function exportResultDataJson() {
+            const resultPayload = {
+                candidateName,
+                candidateRoll,
+                examTitle: EXAM_DATA.meta.title,
+                subject: EXAM_DATA.meta.subject,
+                seriesCode: EXAM_DATA.meta.seriesCode,
+                timestamp: new Date().toISOString(),
+                totalQuestions: EXAM_DATA.questions.length,
+                answers,
+                tabSwitchCount,
+                score: document.getElementById('res-score').textContent,
+                maxScore: document.getElementById('res-max-score').textContent,
+                accuracy: document.getElementById('res-accuracy').textContent
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(resultPayload, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", "Roll_" + candidateRoll + "_Scorecard.json");
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+        }
+
+        function retakeExam() {
+            if (confirm("Do you want to clear your current answers and retake this test?")) {
+                try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) {}
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
+        """.trimIndent()
     }
 
     /**

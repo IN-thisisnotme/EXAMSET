@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -34,7 +35,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -91,6 +94,152 @@ fun PrintablePaperTab(
         )
     }
 
+    var showConfirmSavePdfDialog by remember { mutableStateOf(false) }
+    var showConfirmSaveHtmlDialog by remember { mutableStateOf(false) }
+
+    if (showConfirmSavePdfDialog) {
+        val pdfFileName = PrintDocumentHelper.getExamPdfFileName(paper, config)
+        AlertDialog(
+            onDismissRequest = { showConfirmSavePdfDialog = false },
+            title = {
+                Text(
+                    text = "Save Question Paper as PDF?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Are you sure you want to export this question paper as a printable ISO A4 PDF?",
+                        fontSize = 13.sp,
+                        color = colors.ink
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "• File: $pdfFileName",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.teal
+                    )
+                    Text(
+                        text = "• Destination: Documents/exam_set/{YYYY}/{MM}/{Subject}/",
+                        fontSize = 11.sp,
+                        color = colors.muted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmSavePdfDialog = false
+                        PrintDocumentHelper.savePdfDirectly(
+                            context = context,
+                            paper = paper,
+                            config = config,
+                            onSuccess = { savedPath ->
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Saved to $savedPath",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            },
+                            onError = { errorMsg ->
+                                android.widget.Toast.makeText(
+                                    context,
+                                    errorMsg,
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primaryButtonBg)
+                ) {
+                    Text("Save PDF", color = colors.primaryButtonText)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmSavePdfDialog = false }) {
+                    Text("Cancel", color = colors.muted)
+                }
+            }
+        )
+    }
+
+    if (showConfirmSaveHtmlDialog) {
+        val htmlFileName = PrintDocumentHelper.getExamCbtHtmlFileName(paper, config)
+        AlertDialog(
+            onDismissRequest = { showConfirmSaveHtmlDialog = false },
+            title = {
+                Text(
+                    text = "Export Interactive CBT HTML?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Are you sure you want to export this test as a standalone Computer-Based Test (CBT) HTML application?",
+                        fontSize = 13.sp,
+                        color = colors.ink
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "• File: $htmlFileName",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.teal
+                    )
+                    Text(
+                        text = "• Features: Roll number login, slim header, palette, scoring & solutions",
+                        fontSize = 11.5.sp,
+                        color = colors.inkBold
+                    )
+                    Text(
+                        text = "• Destination: Documents/exam_set/{YYYY}/{MM}/{Subject}/",
+                        fontSize = 11.sp,
+                        color = colors.muted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmSaveHtmlDialog = false
+                        PrintDocumentHelper.saveInteractiveExamHtmlDirectly(
+                            context = context,
+                            paper = paper,
+                            config = config,
+                            onSuccess = { savedPath ->
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Saved CBT HTML to $savedPath",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            },
+                            onError = { errorMsg ->
+                                android.widget.Toast.makeText(
+                                    context,
+                                    errorMsg,
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                ) {
+                    Text("Export CBT HTML", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmSaveHtmlDialog = false }) {
+                    Text("Cancel", color = colors.muted)
+                }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -132,17 +281,17 @@ fun PrintablePaperTab(
                     )
                 }
 
-                // Uniform Action Buttons Row with equal 1f weight
+                // Uniform Action Buttons Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Settings / Customize button
                     OutlinedButton(
                         onClick = onOpenConfig,
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
@@ -155,55 +304,63 @@ fun PrintablePaperTab(
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Configure",
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Customize", fontSize = 12.sp, maxLines = 1, softWrap = false, color = colors.inkBold)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Config", fontSize = 11.5.sp, maxLines = 1, softWrap = false, color = colors.inkBold)
                     }
 
-                    // Save PDF directly to File Manager
+                    // Save PDF directly to File Manager with Confirmation
                     OutlinedButton(
                         onClick = {
-                            PrintDocumentHelper.savePdfDirectly(
-                                context = context,
-                                paper = paper,
-                                config = config,
-                                onSuccess = { savedPath ->
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Saved to $savedPath",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                },
-                                onError = { errorMsg ->
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        errorMsg,
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            )
+                            showConfirmSavePdfDialog = true
                         },
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.teal),
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.05f)
                             .height(38.dp)
                             .testTag("quick_save_pdf_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.SaveAlt,
                             contentDescription = "Save PDF",
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Save PDF", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.inkBold)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Save PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.inkBold)
+                    }
+
+                    // Save Interactive CBT HTML with Confirmation
+                    OutlinedButton(
+                        onClick = {
+                            showConfirmSaveHtmlDialog = true
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = colors.inkBold
+                        ),
+                        border = BorderStroke(1.dp, colors.teal),
+                        modifier = Modifier
+                            .weight(1.15f)
+                            .height(38.dp)
+                            .testTag("quick_save_html_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = "Export CBT HTML",
+                            modifier = Modifier.size(14.dp),
+                            tint = colors.teal
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("CBT HTML", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.inkBold)
                     }
 
                     // Native Print Spooler Button
@@ -211,25 +368,25 @@ fun PrintablePaperTab(
                         onClick = {
                             PrintDocumentHelper.printQuestionPaper(context, paper, config)
                         },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
                         ),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(0.95f)
                             .height(38.dp)
                             .testTag("quick_print_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Print,
                             contentDescription = "Print",
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = colors.primaryButtonText
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Print", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.primaryButtonText)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Print", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.primaryButtonText)
                     }
                 }
             }
@@ -256,7 +413,8 @@ fun PrintablePaperTab(
                     Triple(0, "Question Paper", Icons.Default.Description),
                     Triple(1, "A4 OMR Sheet", Icons.Default.Radio),
                     Triple(2, "Master Booklet", Icons.Default.ViewCarousel),
-                    Triple(3, "Live A4 Print HTML", Icons.Default.Language)
+                    Triple(3, "Live A4 Print HTML", Icons.Default.Print),
+                    Triple(4, "Interactive CBT (HTML)", Icons.Default.Language)
                 )
 
                 previewTabs.forEach { (mode, label, icon) ->
@@ -359,6 +517,28 @@ fun PrintablePaperTab(
                         update = { webView ->
                             val html = PrintDocumentHelper.generatePrintHtml(paper, config)
                             webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                4 -> {
+                    // Interactive Computer-Based Test (CBT) HTML with active navigation, timer, side palette, submit modal, and detailed explanations
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                    builtInZoomControls = true
+                                    displayZoomControls = false
+                                }
+                            }
+                        },
+                        update = { webView ->
+                            val html = PrintDocumentHelper.generateInteractiveExamHtml(paper, config)
+                            webView.loadDataWithBaseURL("https://cbt.local/", html, "text/html", "UTF-8", null)
                         },
                         modifier = Modifier.fillMaxSize()
                     )

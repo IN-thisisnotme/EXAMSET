@@ -43,10 +43,16 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material.icons.filled.Tag
-import com.example.model.FolderItem
-import com.example.util.ExamCatalogueRegistry
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import com.example.model.ExamConfig
+import com.example.model.FolderItem
+import com.example.util.ExamCatalogueRegistry
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -200,6 +206,7 @@ fun InputBottomSheet(
     folders: List<FolderItem> = emptyList(),
     onDismiss: () -> Unit,
     onGenerate: (text: String, title: String, subject: String, topic: String, setNumber: String) -> Unit,
+    onGenerateConfig: ((ExamConfig) -> Unit)? = null,
     onPickFile: () -> Unit,
     onLoadSample: (Int) -> Unit,
     sheetState: SheetState,
@@ -235,6 +242,9 @@ fun InputBottomSheet(
     var customSubject by remember { mutableStateOf("") }
     var customTopic by remember { mutableStateOf("") }
     var customSetNumber by remember { mutableStateOf("01") }
+    var customDurationMinutesStr by remember { mutableStateOf("60") }
+    var customPositiveMarksStr by remember { mutableStateOf("4.0") }
+    var customNegativeMarksStr by remember { mutableStateOf("1.0") }
     var showCategorizationSection by remember { mutableStateOf(true) }
     var isSubjectDropdownOpen by remember { mutableStateOf(false) }
     var activeSheetTab by remember { mutableStateOf(0) } // 0: Input/Paste, 1: Prompt Generator
@@ -843,22 +853,23 @@ fun InputBottomSheet(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // Subject / Exam Path full width
+                            val catalogueSuggestions = remember(customSubject, folders) {
+                                ExamCatalogueRegistry.searchCatalogue(customSubject, folders, maxResults = 12)
+                            }
+
                             Box(modifier = Modifier.fillMaxWidth()) {
-                                val catalogueSuggestions = remember(customSubject, folders) {
-                                    ExamCatalogueRegistry.searchCatalogue(customSubject, folders, maxResults = 12)
-                                }
 
                                 OutlinedTextField(
                                     value = customSubject,
                                     onValueChange = { newSub ->
-                                        customSubject = newSub
-                                        isSubjectDropdownOpen = true
-                                        if (existingSubjectFolders.any { it.equals(newSub.trim(), ignoreCase = true) }) {
-                                            customSetNumber = computeNextSetForSubject(newSub, savedPapers)
+                                        val normalized = newSub.replace("/", " > ")
+                                        customSubject = normalized
+                                        if (existingSubjectFolders.any { it.equals(normalized.trim(), ignoreCase = true) }) {
+                                            customSetNumber = computeNextSetForSubject(normalized, savedPapers)
                                         }
                                     },
                                     label = { Text("Subject / Exam Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    placeholder = { Text("e.g. UPSC CSE / Prelims", fontSize = 11.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    placeholder = { Text("e.g. UPSC CSE > Prelims", fontSize = 11.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     singleLine = true,
                                     colors = fieldColors,
                                     trailingIcon = {
@@ -883,6 +894,7 @@ fun InputBottomSheet(
                                 DropdownMenu(
                                     expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
                                     onDismissRequest = { isSubjectDropdownOpen = false },
+                                    properties = PopupProperties(focusable = false),
                                     modifier = Modifier.heightIn(max = 300.dp)
                                 ) {
                                     catalogueSuggestions.forEach { entry ->
@@ -920,6 +932,55 @@ fun InputBottomSheet(
                                                 isSubjectDropdownOpen = false
                                             }
                                         )
+                                    }
+                                }
+                            }
+
+                            // Non-intrusive suggestion chips below text field (prevents closing software keyboard)
+                            if (customSubject.isNotBlank() && catalogueSuggestions.isNotEmpty()) {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    items(catalogueSuggestions.take(6)) { entry ->
+                                        val isMatch = entry.fullPath.equals(customSubject.trim(), ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isMatch) colors.tealLight else colors.surfaceVariant,
+                                            border = BorderStroke(0.7.dp, if (isMatch) colors.teal else colors.border),
+                                            modifier = Modifier.clickable {
+                                                customSubject = entry.fullPath
+                                                val leaf = entry.leafFolder
+                                                customSetNumber = computeNextSetForSubject(leaf, savedPapers)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(3.dp),
+                                                    color = colors.teal.copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        text = entry.category,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.teal,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = entry.fullPath.substringAfterLast(">").substringAfterLast("/").trim(),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = colors.inkBold
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1078,6 +1139,194 @@ fun InputBottomSheet(
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Examination Parameters (Duration & Marks)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(0.6.dp, colors.border),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Timer,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = "Exam Parameters (Duration & Marks)",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.inkBold
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = customDurationMinutesStr,
+                                            onValueChange = { input ->
+                                                customDurationMinutesStr = input.filter { it.isDigit() }.take(4)
+                                            },
+                                            label = { Text("Duration (m)", fontSize = 10.5.sp) },
+                                            placeholder = { Text("60", fontSize = 10.5.sp) },
+                                            singleLine = true,
+                                            colors = fieldColors,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 52.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        OutlinedTextField(
+                                            value = customPositiveMarksStr,
+                                            onValueChange = { input ->
+                                                if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
+                                                    customPositiveMarksStr = input
+                                                }
+                                            },
+                                            label = { Text("Correct (+)", fontSize = 10.5.sp) },
+                                            placeholder = { Text("4.0", fontSize = 10.5.sp) },
+                                            singleLine = true,
+                                            colors = fieldColors,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 52.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        OutlinedTextField(
+                                            value = customNegativeMarksStr,
+                                            onValueChange = { input ->
+                                                if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
+                                                    customNegativeMarksStr = input
+                                                }
+                                            },
+                                            label = { Text("Penalty (-)", fontSize = 10.5.sp) },
+                                            placeholder = { Text("1.0", fontSize = 10.5.sp) },
+                                            singleLine = true,
+                                            colors = fieldColors,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 52.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                    }
+
+                                    // Universal & Regional Scoring Scheme Presets
+                                    var scoringPresetCategory by remember { mutableStateOf("Universal") }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Marking Presets:", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Bold)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            listOf("Universal", "Regional").forEach { cat ->
+                                                val isCatSelected = scoringPresetCategory == cat
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (isCatSelected) colors.teal.copy(alpha = 0.2f) else colors.surface,
+                                                    border = BorderStroke(0.6.dp, if (isCatSelected) colors.teal else colors.border),
+                                                    modifier = Modifier.clickable { scoringPresetCategory = cat }
+                                                ) {
+                                                    Text(
+                                                        text = cat,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isCatSelected) colors.tealDark else colors.ink,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Presets List
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        val activePresets = if (scoringPresetCategory == "Universal") {
+                                            listOf(
+                                                Triple("1 Pt (No Neg)", 1.0, 0.0),
+                                                Triple("1 Pt (1/4 Neg)", 1.0, 0.25),
+                                                Triple("1 Pt (1/3 Neg)", 1.0, 0.33),
+                                                Triple("2 Pts (No Neg)", 2.0, 0.0),
+                                                Triple("2 Pts (1/4 Neg)", 2.0, 0.50),
+                                                Triple("4 Pts (1/4 Neg)", 4.0, 1.00)
+                                            )
+                                        } else {
+                                            listOf(
+                                                Triple("NEET/JEE (+4, -1)", 4.0, 1.0),
+                                                Triple("SSC/RRB (+2, -0.5)", 2.0, 0.5),
+                                                Triple("UPSC GS (+2, -0.67)", 2.0, 0.67),
+                                                Triple("Banking (+1, -0.25)", 1.0, 0.25),
+                                                Triple("GATE (+1, -0.33)", 1.0, 0.33)
+                                            )
+                                        }
+                                        items(activePresets) { (label, pos, neg) ->
+                                            val isSelected = customPositiveMarksStr == pos.toString() && customNegativeMarksStr == neg.toString()
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isSelected) colors.tealLight else colors.surface,
+                                                border = BorderStroke(0.7.dp, if (isSelected) colors.teal else colors.border),
+                                                modifier = Modifier.clickable {
+                                                    customPositiveMarksStr = pos.toString()
+                                                    customNegativeMarksStr = neg.toString()
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) colors.tealDark else colors.ink,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Quick duration chips
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Duration:", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Bold)
+                                        listOf(30, 45, 60, 90, 120, 180).forEach { mins ->
+                                            val isSelected = customDurationMinutesStr == mins.toString()
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isSelected) colors.teal else colors.surface,
+                                                border = BorderStroke(0.7.dp, if (isSelected) colors.teal else colors.border),
+                                                modifier = Modifier.clickable { customDurationMinutesStr = mins.toString() }
+                                            ) {
+                                                Text(
+                                                    text = "${mins}m",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) Color.White else colors.ink,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1595,12 +1844,30 @@ fun InputBottomSheet(
                     Button(
                         onClick = {
                             if (canGenerate) {
+                                val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(customSubject)
+                                val parsedDuration = customDurationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
+                                val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
+                                val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+
                                 onGenerate(
                                     textInput,
                                     customTitle,
-                                    customSubject,
+                                    cleanSubject,
                                     customTopic,
                                     customSetNumber
+                                )
+                                onGenerateConfig?.invoke(
+                                    ExamConfig(
+                                        examTitle = customTitle.ifBlank { "OBJECTIVE EVALUATION TEST" },
+                                        subject = cleanSubject.ifBlank { "General Assessment" },
+                                        topic = customTopic,
+                                        seriesCode = customSetNumber.ifBlank { "SET - 1" },
+                                        durationMinutes = parsedDuration,
+                                        timeAllowed = "$parsedDuration Minutes",
+                                        positiveMarks = parsedPosMarks,
+                                        negativeMarks = parsedNegMarks,
+                                        negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
+                                    )
                                 )
                                 onDismiss()
                             }

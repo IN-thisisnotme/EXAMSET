@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.filled.Apps
@@ -147,6 +148,7 @@ fun MasterViewTab(
     val autoSaveStatus by viewModel.autoSaveStatus.collectAsState()
     val lastSavedTime by viewModel.lastSavedTime.collectAsState()
     val folders by viewModel.folders.collectAsState()
+    val examConfig by viewModel.examConfig.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var filterMode by remember { mutableStateOf("all") } // "all", "missing_key", "missing_exp"
@@ -745,9 +747,9 @@ fun MasterViewTab(
             }
         }
 
-        // Detailed Explanations Section
-        val hasExps = questions.any { !it.explanation.isNullOrBlank() }
-        if (hasExps) {
+        // Detailed Explanations Section (Virtualized with lazy list items to prevent scroll lag)
+        val explainedQuestions = questions.filter { !it.explanation.isNullOrBlank() }
+        if (explainedQuestions.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(10.dp))
                 Card(
@@ -755,21 +757,47 @@ fun MasterViewTab(
                     colors = CardDefaults.cardColors(containerColor = colors.surface),
                     border = BorderStroke(0.8.dp, colors.border)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "DETAILED PEDAGOGICAL EXPLANATIONS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.inkMuted,
-                            letterSpacing = 0.5.sp
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        questions.filter { !it.explanation.isNullOrBlank() }.forEach { q ->
-                            ExplanationCard(question = q)
-                            Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Lightbulb,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "DETAILED PEDAGOGICAL EXPLANATIONS",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.teal.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "${explainedQuestions.size} Solutions",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
                         }
                     }
                 }
+            }
+
+            items(explainedQuestions, key = { "master_exp_${it.num}" }) { q ->
+                ExplanationCard(question = q)
             }
         }
 
@@ -1087,13 +1115,17 @@ fun MasterViewTab(
         )
     }
 
-    // Edit Metadata Dialog with direct access to Question Editing Mode
+    // Edit Metadata Dialog with direct access to Question Editing Mode, Duration & Marks
     if (showEditMetadataDialog) {
         EditMetadataDialog(
             initialMetadata = paper.metadata,
             folders = folders,
+            initialConfig = examConfig,
             onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
                 viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
+            },
+            onSaveConfig = { newConfig ->
+                viewModel.updateExamConfig(newConfig)
             },
             onDismiss = { showEditMetadataDialog = false },
             onEnterQuestionEditMode = enterEditMode

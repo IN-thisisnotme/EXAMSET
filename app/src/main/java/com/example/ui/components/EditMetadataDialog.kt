@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.imePadding
@@ -52,12 +53,18 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.PopupProperties
+import com.example.model.ExamConfig
 import com.example.model.FolderItem
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
@@ -67,7 +74,9 @@ import com.example.util.ExamCatalogueRegistry
 fun EditMetadataDialog(
     initialMetadata: PaperMetadata,
     folders: List<FolderItem> = emptyList(),
+    initialConfig: ExamConfig = ExamConfig(),
     onSave: (title: String, subject: String, topic: String, setNumber: String, rollNumber: String, bookletNumber: String) -> Unit,
+    onSaveConfig: ((ExamConfig) -> Unit)? = null,
     onDismiss: () -> Unit,
     onEnterQuestionEditMode: (() -> Unit)? = null
 ) {
@@ -85,6 +94,17 @@ fun EditMetadataDialog(
         mutableStateOf(
             if (initialMetadata.bookletNumber.isNotBlank()) initialMetadata.bookletNumber else com.example.util.ExamNumberGenerator.generateBookletNumber()
         )
+    }
+    var durationMinutesStr by remember {
+        val initialMins = initialConfig.durationMinutes.takeIf { it > 0 }
+            ?: (Regex("""\b(\d+)\b""").find(initialConfig.timeAllowed)?.groupValues?.get(1)?.toIntOrNull() ?: 60)
+        mutableStateOf(initialMins.toString())
+    }
+    var positiveMarksStr by remember {
+        mutableStateOf(String.format(java.util.Locale.US, "%.1f", initialConfig.positiveMarks))
+    }
+    var negativeMarksStr by remember {
+        mutableStateOf(String.format(java.util.Locale.US, "%.2f", initialConfig.negativeMarks))
     }
 
     Dialog(
@@ -209,12 +229,12 @@ fun EditMetadataDialog(
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = subject,
-                        onValueChange = {
-                            subject = it
-                            isSubjectDropdownOpen = true
+                        onValueChange = { input ->
+                            // Cleanly normalize any / to > without opening focus-stealing popups
+                            subject = input.replace("/", " > ")
                         },
-                        label = { Text("Subject / Exam Path (e.g. UPSC CSE / Prelims, SSC / CGL)") },
-                        placeholder = { Text("e.g. UPSC CSE / Prelims, SSC / CGL, BPSC", fontSize = 12.sp, color = colors.muted) },
+                        label = { Text("Subject / Exam Path (e.g. UPSC CSE > Prelims, SSC > CGL)") },
+                        placeholder = { Text("e.g. UPSC CSE > Prelims, SSC > CGL, BPSC", fontSize = 12.sp, color = colors.muted) },
                         singleLine = true,
                         colors = textFieldColors,
                         trailingIcon = {
@@ -238,6 +258,7 @@ fun EditMetadataDialog(
                     DropdownMenu(
                         expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
                         onDismissRequest = { isSubjectDropdownOpen = false },
+                        properties = PopupProperties(focusable = false),
                         modifier = Modifier.heightIn(max = 280.dp)
                     ) {
                         catalogueSuggestions.forEach { entry ->
@@ -275,8 +296,55 @@ fun EditMetadataDialog(
                     }
                 }
 
-                if (subject.contains("/") || subject.contains(">")) {
-                    val pathSegments = subject.split("/", ">").map { it.trim() }.filter { it.isNotBlank() }
+                // Non-intrusive suggestion chips below text field: fast tap-to-select without dismissing keyboard
+                if (subject.isNotBlank() && catalogueSuggestions.isNotEmpty()) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        items(catalogueSuggestions.take(6)) { entry ->
+                            val isMatch = entry.fullPath.equals(subject.trim(), ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isMatch) colors.tealLight else colors.surfaceVariant,
+                                border = BorderStroke(0.7.dp, if (isMatch) colors.teal else colors.border),
+                                modifier = Modifier.clickable {
+                                    subject = entry.fullPath
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(3.dp),
+                                        color = colors.teal.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = entry.category,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.teal,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = entry.fullPath.substringAfterLast(">").substringAfterLast("/").trim(),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.inkBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (subject.contains(">") || subject.contains("/")) {
+                    val pathSegments = subject.split(">", "/").map { it.trim() }.filter { it.isNotBlank() }
                     if (pathSegments.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Surface(
@@ -297,13 +365,13 @@ fun EditMetadataDialog(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Auto-Hierarchy: ",
+                                    text = "Hierarchy: ",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.tealDark
                                 )
                                 Text(
-                                    text = pathSegments.joinToString(" ↳ "),
+                                    text = pathSegments.joinToString(" › "),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = colors.inkBold,
@@ -456,12 +524,221 @@ fun EditMetadataDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Examination Duration & Marking Parameters Section
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.surfaceVariant,
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Exam Duration & Marking Scheme",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                        }
+                        Text(
+                            text = "Sets default examination time and scoring parameters for CBT HTML tests and printed papers.",
+                            fontSize = 10.sp,
+                            color = colors.muted,
+                            lineHeight = 13.sp
+                        )
+
+                        // Duration, Positive Marks & Negative Penalty in 3 responsive fields
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = durationMinutesStr,
+                                onValueChange = { input ->
+                                    durationMinutesStr = input.filter { it.isDigit() }.take(4)
+                                },
+                                label = { Text("Duration (m)", fontSize = 10.5.sp) },
+                                placeholder = { Text("60", fontSize = 10.5.sp) },
+                                singleLine = true,
+                                colors = textFieldColors,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            OutlinedTextField(
+                                value = positiveMarksStr,
+                                onValueChange = { input ->
+                                    if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
+                                        positiveMarksStr = input
+                                    }
+                                },
+                                label = { Text("Correct (+)", fontSize = 10.5.sp) },
+                                placeholder = { Text("4.0", fontSize = 10.5.sp) },
+                                singleLine = true,
+                                colors = textFieldColors,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            OutlinedTextField(
+                                value = negativeMarksStr,
+                                onValueChange = { input ->
+                                    if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
+                                        negativeMarksStr = input
+                                    }
+                                },
+                                label = { Text("Penalty (-)", fontSize = 10.5.sp) },
+                                placeholder = { Text("1.0", fontSize = 10.5.sp) },
+                                singleLine = true,
+                                colors = textFieldColors,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+
+                        // Universal & Regional Scoring Scheme Presets
+                        var scoringPresetCategory by remember { mutableStateOf("Universal") }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Marking Presets:", fontSize = 10.sp, color = colors.muted, fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("Universal", "Regional").forEach { cat ->
+                                    val isCatSelected = scoringPresetCategory == cat
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isCatSelected) colors.teal.copy(alpha = 0.2f) else colors.surface,
+                                        border = BorderStroke(0.6.dp, if (isCatSelected) colors.teal else colors.border),
+                                        modifier = Modifier.clickable { scoringPresetCategory = cat }
+                                    ) {
+                                        Text(
+                                            text = cat,
+                                            fontSize = 9.sp,
+                                            fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCatSelected) colors.tealDark else colors.ink,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Presets List
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val activePresets = if (scoringPresetCategory == "Universal") {
+                                listOf(
+                                    Triple("1 Pt (No Neg)", 1.0, 0.0),
+                                    Triple("1 Pt (1/4 Neg)", 1.0, 0.25),
+                                    Triple("1 Pt (1/3 Neg)", 1.0, 0.33),
+                                    Triple("2 Pts (No Neg)", 2.0, 0.0),
+                                    Triple("2 Pts (1/4 Neg)", 2.0, 0.50),
+                                    Triple("4 Pts (1/4 Neg)", 4.0, 1.00)
+                                )
+                            } else {
+                                listOf(
+                                    Triple("NEET/JEE (+4, -1)", 4.0, 1.0),
+                                    Triple("SSC/RRB (+2, -0.5)", 2.0, 0.5),
+                                    Triple("UPSC GS (+2, -0.67)", 2.0, 0.67),
+                                    Triple("Banking (+1, -0.25)", 1.0, 0.25),
+                                    Triple("GATE (+1, -0.33)", 1.0, 0.33)
+                                )
+                            }
+                            items(activePresets) { (label, pos, neg) ->
+                                val isSelected = positiveMarksStr == pos.toString() && negativeMarksStr == neg.toString()
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) colors.tealLight else colors.surface,
+                                    border = BorderStroke(0.8.dp, if (isSelected) colors.teal else colors.border),
+                                    modifier = Modifier.clickable {
+                                        positiveMarksStr = pos.toString()
+                                        negativeMarksStr = neg.toString()
+                                    }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) colors.tealDark else colors.ink,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quick duration preset chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Duration:", fontSize = 10.sp, color = colors.muted, fontWeight = FontWeight.Bold)
+                            listOf(30, 45, 60, 90, 120, 180).forEach { mins ->
+                                val isSelected = durationMinutesStr == mins.toString()
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) colors.teal else colors.surface,
+                                    border = BorderStroke(0.8.dp, if (isSelected) colors.teal else colors.border),
+                                    modifier = Modifier.clickable { durationMinutesStr = mins.toString() }
+                                ) {
+                                    Text(
+                                        text = "${mins}m",
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color.White else colors.ink,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 if (onEnterQuestionEditMode != null) {
                     OutlinedButton(
                         onClick = {
-                            onSave(title, subject, topic, setNumber, rollNumber, bookletNumber)
+                            val normalizedSet = com.example.util.ExamNumberGenerator.normalizeSetNumber(setNumber)
+                            val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(subject)
+                            val parsedDuration = durationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
+                            val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
+                            val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+
+                            onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber)
+                            onSaveConfig?.invoke(
+                                initialConfig.copy(
+                                    examTitle = title.ifBlank { initialConfig.examTitle },
+                                    subject = cleanSubject.ifBlank { initialConfig.subject },
+                                    topic = topic,
+                                    seriesCode = normalizedSet,
+                                    durationMinutes = parsedDuration,
+                                    timeAllowed = "$parsedDuration Minutes",
+                                    positiveMarks = parsedPosMarks,
+                                    negativeMarks = parsedNegMarks,
+                                    negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
+                                )
+                            )
                             onDismiss()
                             onEnterQuestionEditMode()
                         },
@@ -507,7 +784,25 @@ fun EditMetadataDialog(
                         Button(
                             onClick = {
                                 val normalizedSet = com.example.util.ExamNumberGenerator.normalizeSetNumber(setNumber)
-                                onSave(title, subject, topic, normalizedSet, rollNumber, bookletNumber)
+                                val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(subject)
+                                val parsedDuration = durationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
+                                val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
+                                val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+
+                                onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber)
+                                onSaveConfig?.invoke(
+                                    initialConfig.copy(
+                                        examTitle = title.ifBlank { initialConfig.examTitle },
+                                        subject = cleanSubject.ifBlank { initialConfig.subject },
+                                        topic = topic,
+                                        seriesCode = normalizedSet,
+                                        durationMinutes = parsedDuration,
+                                        timeAllowed = "$parsedDuration Minutes",
+                                        positiveMarks = parsedPosMarks,
+                                        negativeMarks = parsedNegMarks,
+                                        negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
+                                    )
+                                )
                                 onDismiss()
                             },
                             colors = ButtonDefaults.buttonColors(

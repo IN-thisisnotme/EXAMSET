@@ -865,6 +865,9 @@ fun HomeScreen(
                     customSetNumber = setNumber
                 )
             },
+            onGenerateConfig = { newConfig ->
+                viewModel.updateExamConfig(newConfig)
+            },
             onPickFile = {
                 filePickerLauncher.launch(arrayOf("text/plain", "text/markdown", "*/*"))
                 showInputSheet = false
@@ -878,13 +881,17 @@ fun HomeScreen(
         )
     }
 
-    // Edit Metadata Dialog (Title, Subject, Topic, Set Number, Roll No, Booklet No)
+    // Edit Metadata Dialog (Title, Subject, Topic, Set Number, Roll No, Booklet No, Duration & Marks)
     if (showEditDialog && currentPaper != null) {
         EditMetadataDialog(
             initialMetadata = currentPaper!!.metadata,
             folders = folders,
+            initialConfig = examConfig,
             onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
                 viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
+            },
+            onSaveConfig = { newConfig ->
+                viewModel.updateExamConfig(newConfig)
             },
             onDismiss = { showEditDialog = false }
         )

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -227,6 +228,39 @@ fun FolderManagerTab(
     var folderToDelete by remember { mutableStateOf<FolderItem?>(null) }
     var paperToAssignFolder by remember { mutableStateOf<PaperEntity?>(null) }
 
+    // Folder navigation & dialog dismissal BackHandler (prevents app exit during folder operations)
+    BackHandler(
+        enabled = isSelectionMode ||
+                paperToAssignFolder != null ||
+                showBatchMoveDialog ||
+                folderToRename != null ||
+                folderToRecolor != null ||
+                folderToReparent != null ||
+                folderToDuplicate != null ||
+                showNewFolderDialog ||
+                showQuickJumpDialog ||
+                activeFolderId != "all"
+    ) {
+        when {
+            showBatchMoveDialog -> showBatchMoveDialog = false
+            paperToAssignFolder != null -> paperToAssignFolder = null
+            folderToRename != null -> folderToRename = null
+            folderToRecolor != null -> folderToRecolor = null
+            folderToReparent != null -> folderToReparent = null
+            folderToDuplicate != null -> folderToDuplicate = null
+            showNewFolderDialog -> showNewFolderDialog = false
+            showQuickJumpDialog -> showQuickJumpDialog = false
+            isSelectionMode -> {
+                isSelectionMode = false
+                selectedPaperIds = emptySet()
+            }
+            activeFolderId != "all" -> {
+                val curr = folders.find { it.id == activeFolderId }
+                activeFolderId = curr?.parentId ?: "all"
+            }
+        }
+    }
+
     // Current active folder object (if inside a folder)
     val currentFolder = remember(activeFolderId, folders) {
         if (activeFolderId == "all") null else folders.find { it.id == activeFolderId }
@@ -258,6 +292,21 @@ fun FolderManagerTab(
                     p.topic.contains(sub.name, ignoreCase = true)
                 }
             }
+        }
+    }
+
+    // Precomputed subfolder statistics to avoid re-calculating inside scroll loops
+    val subFolderStats = remember(immediateSubfolders, folders, savedPapers) {
+        immediateSubfolders.associate { sub ->
+            val childCount = folders.count { it.parentId == sub.id }
+            val directCount = savedPapers.count { p ->
+                p.folderId == sub.id ||
+                p.subject.equals(sub.name, ignoreCase = true) ||
+                p.topic.contains(sub.name, ignoreCase = true)
+            }
+            val descIds = viewModel.getAllDescendantFolderIds(sub.id)
+            val totalSubtree = savedPapers.count { it.folderId in descIds }
+            sub.id to Triple(childCount, directCount, totalSubtree)
         }
     }
 
@@ -836,18 +885,10 @@ fun FolderManagerTab(
                     ) {
                             immediateSubfolders.forEach { sub ->
                                 val subColor = parseHexColor(sub.color)
-                                val subChildCount = folders.count { it.parentId == sub.id }
-                                val subPapersCount = savedPapers.count { p ->
-                                    p.folderId == sub.id ||
-                                    p.subject.equals(sub.name, ignoreCase = true) ||
-                                    p.topic.contains(sub.name, ignoreCase = true)
-                                }
-                                val subDescendantIds = remember(sub.id, folders) {
-                                    viewModel.getAllDescendantFolderIds(sub.id)
-                                }
-                                val subTotalSubtreeSets = remember(subDescendantIds, savedPapers) {
-                                    savedPapers.count { it.folderId in subDescendantIds }
-                                }
+                                val stats = subFolderStats[sub.id]
+                                val subChildCount = stats?.first ?: folders.count { it.parentId == sub.id }
+                                val subPapersCount = stats?.second ?: 0
+                                val subTotalSubtreeSets = stats?.third ?: 0
 
                                 Surface(
                                     modifier = Modifier
@@ -2331,15 +2372,25 @@ private data class FlattenedFolderNode(
 
 private fun flattenFolderHierarchy(folders: List<FolderItem>): List<FlattenedFolderNode> {
     val result = mutableListOf<FlattenedFolderNode>()
+    val visited = mutableSetOf<String>()
     fun traverse(parentId: String?, currentDepth: Int, currentPathPrefix: String) {
         val children = folders.filter { it.parentId == parentId }
         for (child in children) {
+            if (!visited.add(child.id)) continue
             val path = if (currentPathPrefix.isEmpty()) child.name else "$currentPathPrefix > ${child.name}"
             result.add(FlattenedFolderNode(child, currentDepth, path))
-            traverse(child.id, currentDepth + 1, path)
+            if (currentDepth < 25) {
+                traverse(child.id, currentDepth + 1, path)
+            }
         }
     }
     traverse(null, 0, "")
+    // Any remaining folders not visited (e.g. cycle or orphaned parentId)
+    for (f in folders) {
+        if (visited.add(f.id)) {
+            result.add(FlattenedFolderNode(f, 0, f.name))
+        }
+    }
     return result
 }
 
