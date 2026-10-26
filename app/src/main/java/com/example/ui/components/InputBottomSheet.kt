@@ -1849,13 +1849,6 @@ fun InputBottomSheet(
                                 val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                                 val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
 
-                                onGenerate(
-                                    textInput,
-                                    customTitle,
-                                    cleanSubject,
-                                    customTopic,
-                                    customSetNumber
-                                )
                                 onGenerateConfig?.invoke(
                                     ExamConfig(
                                         examTitle = customTitle.ifBlank { "OBJECTIVE EVALUATION TEST" },
@@ -1868,6 +1861,13 @@ fun InputBottomSheet(
                                         negativeMarks = parsedNegMarks,
                                         negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
                                     )
+                                )
+                                onGenerate(
+                                    textInput,
+                                    customTitle,
+                                    cleanSubject,
+                                    customTopic,
+                                    customSetNumber
                                 )
                                 onDismiss()
                             }

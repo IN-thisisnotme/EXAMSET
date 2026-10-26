@@ -96,17 +96,18 @@ class AppDatabaseMigrationTest {
             )
         }
 
-        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6
+        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7
         MIGRATION_1_2.migrate(rawDb)
         MIGRATION_2_3.migrate(rawDb)
         MIGRATION_3_4.migrate(rawDb)
         MIGRATION_4_5.migrate(rawDb)
         MIGRATION_5_6.migrate(rawDb)
+        MIGRATION_6_7.migrate(rawDb)
         rawDb.close()
 
-        // Step 3: Open migrated database with Room at Version 6 (triggers RoomOpenDelegate.onValidateSchema)
+        // Step 3: Open migrated database with Room at Version 7 (triggers RoomOpenDelegate.onValidateSchema)
         val roomDb = Room.databaseBuilder(context, AppDatabase::class.java, testDbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
 
         runBlocking {
@@ -121,6 +122,9 @@ class AppDatabaseMigrationTest {
             assertNull("folderId default null", paper101?.folderId)
             assertEquals("", paper101?.rollNumber)
             assertEquals("", paper101?.bookletNumber)
+            assertEquals(60, paper101?.durationMinutes)
+            assertEquals(4.0, paper101?.positiveMarks ?: 0.0, 0.001)
+            assertEquals(1.0, paper101?.negativeMarks ?: 0.0, 0.001)
 
             val paper102 = dao.getPaperById(102)
             assertNotNull("Paper 102 must be preserved", paper102)

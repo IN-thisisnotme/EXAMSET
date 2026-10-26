@@ -362,6 +362,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId ?: existing.folderId,
+                        durationMinutes = updatedPaper.metadata.durationMinutes,
+                        positiveMarks = updatedPaper.metadata.positiveMarks,
+                        negativeMarks = updatedPaper.metadata.negativeMarks,
                         updatedAt = System.currentTimeMillis()
                     )
                     paperDao.updatePaper(updated)
@@ -379,7 +382,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId,
                         rollNumber = updatedPaper.metadata.rollNumber,
-                        bookletNumber = updatedPaper.metadata.bookletNumber
+                        bookletNumber = updatedPaper.metadata.bookletNumber,
+                        durationMinutes = updatedPaper.metadata.durationMinutes,
+                        positiveMarks = updatedPaper.metadata.positiveMarks,
+                        negativeMarks = updatedPaper.metadata.negativeMarks
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -405,6 +411,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         folderId = updatedPaper.metadata.folderId ?: match.folderId,
                         rollNumber = if (match.rollNumber.isNotBlank()) match.rollNumber else updatedPaper.metadata.rollNumber,
                         bookletNumber = if (match.bookletNumber.isNotBlank()) match.bookletNumber else updatedPaper.metadata.bookletNumber,
+                        durationMinutes = updatedPaper.metadata.durationMinutes,
+                        positiveMarks = updatedPaper.metadata.positiveMarks,
+                        negativeMarks = updatedPaper.metadata.negativeMarks,
                         updatedAt = System.currentTimeMillis()
                     )
                     paperDao.updatePaper(updated)
@@ -422,7 +431,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId,
                         rollNumber = updatedPaper.metadata.rollNumber,
-                        bookletNumber = updatedPaper.metadata.bookletNumber
+                        bookletNumber = updatedPaper.metadata.bookletNumber,
+                        durationMinutes = updatedPaper.metadata.durationMinutes,
+                        positiveMarks = updatedPaper.metadata.positiveMarks,
+                        negativeMarks = updatedPaper.metadata.negativeMarks
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -724,7 +736,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         topic: String,
         setNumber: String,
         rollNumber: String? = null,
-        bookletNumber: String? = null
+        bookletNumber: String? = null,
+        durationMinutes: Int? = null,
+        positiveMarks: Double? = null,
+        negativeMarks: Double? = null
     ) {
         val active = _currentPaper.value ?: return
         val cleanTitle = title.trim().ifBlank { "MCQ Practice Set" }
@@ -746,6 +761,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else null
         val targetFolderId = resolvedFolder?.id ?: active.metadata.folderId
 
+        val finalDuration = durationMinutes ?: active.metadata.durationMinutes
+        val finalPosMarks = positiveMarks ?: active.metadata.positiveMarks
+        val finalNegMarks = negativeMarks ?: active.metadata.negativeMarks
+
         val newMetadata = active.metadata.copy(
             title = cleanTitle,
             subject = cleanSubject,
@@ -753,7 +772,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             setNumber = cleanSet,
             rollNumber = cleanRoll,
             bookletNumber = cleanBooklet,
-            folderId = targetFolderId
+            folderId = targetFolderId,
+            durationMinutes = finalDuration,
+            positiveMarks = finalPosMarks,
+            negativeMarks = finalNegMarks
         )
         val updatedPaper = active.copy(metadata = newMetadata)
 
@@ -762,8 +784,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             subject = cleanSubject,
             seriesCode = cleanSet,
             rollNumber = cleanRoll,
-            bookletNumber = cleanBooklet
+            bookletNumber = cleanBooklet,
+            durationMinutes = finalDuration,
+            positiveMarks = finalPosMarks,
+            negativeMarks = finalNegMarks,
+            timeAllowed = "$finalDuration Minutes",
+            maxMarks = "${(finalPosMarks * updatedPaper.questions.size).toInt()}"
         )
+
+        if (!_isExamStarted.value) {
+            _customTimeLimitMinutes.value = finalDuration
+            _timeRemainingSeconds.value = finalDuration * 60L
+        }
 
         schedulePaperAutoSave(updatedPaper)
         _statusMessage.value = "Updated: $cleanTitle ($cleanSet)"
@@ -779,7 +811,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customSetNumber: String? = null,
         customRollNumber: String? = null,
         customBookletNumber: String? = null,
-        customFolderId: String? = null
+        customFolderId: String? = null,
+        customDurationMinutes: Int? = null,
+        customPositiveMarks: Double? = null,
+        customNegativeMarks: Double? = null
     ) {
         viewModelScope.launch(Dispatchers.Default) {
             val result = McqParser.parseWithResult(text)
@@ -804,6 +839,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 parsed.metadata.folderId
             }
 
+            val effectiveDuration = customDurationMinutes ?: _examConfig.value.durationMinutes.takeIf { it > 0 } ?: 60
+            val effectivePositiveMarks = customPositiveMarks ?: _examConfig.value.positiveMarks.takeIf { it > 0.0 } ?: 4.0
+            val effectiveNegativeMarks = customNegativeMarks ?: _examConfig.value.negativeMarks.takeIf { it >= 0.0 } ?: 1.0
+
             val finalMetadata = parsed.metadata.copy(
                 title = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title,
                 subject = finalSubject,
@@ -811,7 +850,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 setNumber = formattedSet.ifBlank { "01" },
                 folderId = effectiveFolderId,
                 rollNumber = finalRoll,
-                bookletNumber = finalBooklet
+                bookletNumber = finalBooklet,
+                durationMinutes = effectiveDuration,
+                positiveMarks = effectivePositiveMarks,
+                negativeMarks = effectiveNegativeMarks
             )
             val finalPaper = parsed.copy(metadata = finalMetadata)
 
@@ -831,6 +873,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     folderId = finalMetadata.folderId ?: existing.folderId,
                     rollNumber = if (!customRollNumber.isNullOrBlank()) customRollNumber.trim() else (if (existing.rollNumber.isNotBlank()) existing.rollNumber else finalMetadata.rollNumber),
                     bookletNumber = if (!customBookletNumber.isNullOrBlank()) customBookletNumber.trim() else (if (existing.bookletNumber.isNotBlank()) existing.bookletNumber else finalMetadata.bookletNumber),
+                    durationMinutes = effectiveDuration,
+                    positiveMarks = effectivePositiveMarks,
+                    negativeMarks = effectiveNegativeMarks,
                     updatedAt = System.currentTimeMillis()
                 )
                 paperDao.updatePaper(updated)
@@ -848,7 +893,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     rawText = text.trim(),
                     folderId = finalMetadata.folderId,
                     rollNumber = finalMetadata.rollNumber,
-                    bookletNumber = finalMetadata.bookletNumber
+                    bookletNumber = finalMetadata.bookletNumber,
+                    durationMinutes = effectiveDuration,
+                    positiveMarks = effectivePositiveMarks,
+                    negativeMarks = effectiveNegativeMarks
                 )
                 paperDao.insertPaper(newEntity)
             } else {
@@ -869,13 +917,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isExamSubmitted.value = false
                 _isExamStarted.value = false
                 _retryQuestionNumbers.value = null
-                val autoMinutes = finalPaper.questions.size.coerceAtLeast(1)
+                _customTimeLimitMinutes.value = effectiveDuration
+                _timeRemainingSeconds.value = effectiveDuration * 60L
+                _timerMode.value = ExamTimerMode.COUNTDOWN
                 _examConfig.value = _examConfig.value.copy(
                     examTitle = finalMetadata.title,
                     subject = finalMetadata.subject,
                     seriesCode = finalMetadata.setNumber.ifBlank { "SET - 1" },
-                    timeAllowed = "$autoMinutes Minutes",
-                    maxMarks = "${finalPaper.questions.size}",
+                    durationMinutes = effectiveDuration,
+                    timeAllowed = "$effectiveDuration Minutes",
+                    positiveMarks = effectivePositiveMarks,
+                    negativeMarks = effectiveNegativeMarks,
+                    maxMarks = "${(effectivePositiveMarks * finalPaper.questions.size).toInt()}",
                     rollNumber = finalMetadata.rollNumber,
                     bookletNumber = finalMetadata.bookletNumber
                 )
@@ -889,7 +942,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun loadSavedPaper(entity: PaperEntity, onComplete: (() -> Unit)? = null) {
         _currentPaperEntityId.value = entity.id
         // Immediately synchronize timer limits and countdown to prevent lag/stale timer display
-        val initialMinutes = entity.questionCount.coerceAtLeast(1)
+        val initialMinutes = if (entity.durationMinutes > 0) entity.durationMinutes else 60
         _customTimeLimitMinutes.value = initialMinutes
         _timeRemainingSeconds.value = initialMinutes * 60L
         _timerMode.value = ExamTimerMode.COUNTDOWN
@@ -906,6 +959,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val result = McqParser.parseWithResult(entity.rawText)
         val finalRoll = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber()
         val finalBooklet = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber()
+        val savedDuration = if (entity.durationMinutes > 0) entity.durationMinutes else 60
+        val savedPositive = if (entity.positiveMarks > 0.0) entity.positiveMarks else 4.0
+        val savedNegative = if (entity.negativeMarks >= 0.0) entity.negativeMarks else 1.0
 
         val parsed = result.paper.copy(
             id = entity.id,
@@ -919,6 +975,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 folderId = entity.folderId,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
+                durationMinutes = savedDuration,
+                positiveMarks = savedPositive,
+                negativeMarks = savedNegative,
                 createdAt = entity.createdAt
             )
         )
@@ -941,10 +1000,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Keep creator tab clean so opening a paper does not overwrite user's creator draft
             _parseResult.value = result
 
-            // Default countdown timer to Auto (number of questions in paper)
-            val autoMinutes = parsed.questions.size.coerceAtLeast(1)
-            _customTimeLimitMinutes.value = autoMinutes
-            _timeRemainingSeconds.value = autoMinutes * 60L
+            _customTimeLimitMinutes.value = savedDuration
+            _timeRemainingSeconds.value = savedDuration * 60L
             _timerMode.value = ExamTimerMode.COUNTDOWN
 
             if (unsubmittedAttempt != null) {
@@ -967,10 +1024,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 examTitle = entity.title,
                 subject = entity.subject,
                 seriesCode = entity.setNumber.ifBlank { "SET - 1" },
-                timeAllowed = "$autoMinutes Minutes",
+                durationMinutes = savedDuration,
+                positiveMarks = savedPositive,
+                negativeMarks = savedNegative,
+                timeAllowed = "$savedDuration Minutes",
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
-                maxMarks = "${parsed.questions.size}"
+                maxMarks = "${(savedPositive * parsed.questions.size).toInt()}"
             )
             _autoSaveStatus.value = AutoSaveStatus.SAVED
             updateTimestamp()
@@ -2632,6 +2692,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateExamConfig(config: ExamConfig) {
         _examConfig.value = config
+        val active = _currentPaper.value
+        if (active != null) {
+            val updatedMeta = active.metadata.copy(
+                durationMinutes = config.durationMinutes,
+                positiveMarks = config.positiveMarks,
+                negativeMarks = config.negativeMarks
+            )
+            val updatedPaper = active.copy(metadata = updatedMeta)
+            _currentPaper.value = updatedPaper
+            schedulePaperAutoSave(updatedPaper)
+        }
+        if (!_isExamStarted.value) {
+            _customTimeLimitMinutes.value = config.durationMinutes
+            _timeRemainingSeconds.value = config.durationMinutes * 60L
+        }
     }
 
     fun deleteSavedPaper(entity: PaperEntity) {
@@ -2823,16 +2898,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val score: Double,
             val rawScore: Double = 0.0,
             val penaltyIncorrect: Double = 0.0,
-            val penaltyUnattended: Double = 0.0
+            val penaltyUnattended: Double = 0.0,
+            val maxPossibleMarks: Double = total * 1.0,
+            val positiveMarks: Double = 1.0,
+            val negativeMarks: Double = 0.0
         ) {
             val formattedScore: String
                 get() = if (score % 1.0 == 0.0) score.toInt().toString() else String.format(java.util.Locale.US, "%.2f", score)
 
             val percentage: Int
-                get() = if (total > 0) ((score / total.toDouble()) * 100.0).toInt().coerceIn(0, 100) else 0
+                get() = if (maxPossibleMarks > 0) ((score / maxPossibleMarks) * 100.0).toInt().coerceIn(0, 100)
+                        else if (total > 0) ((score / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+                        else 0
         }
 
-        fun calculateTestStats(paper: QuestionPaper, answers: Map<Int, String>): TestStats {
+        fun calculateTestStats(
+            paper: QuestionPaper,
+            answers: Map<Int, String>,
+            positiveMarks: Double = paper.metadata.positiveMarks,
+            negativeMarks: Double = paper.metadata.negativeMarks
+        ): TestStats {
             var correct = 0
             var incorrect = 0
             paper.questions.forEach { q ->
@@ -2847,14 +2932,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val unanswered = paper.questions.size - (correct + incorrect)
 
-            // Penalty points: 0.33 for incorrect, 0.10 for unattended
-            val penaltyIncorrect = Math.round(incorrect * 0.33 * 100.0) / 100.0
-            val penaltyUnattended = Math.round(unanswered * 0.10 * 100.0) / 100.0
-            val rawScore = (correct * 1.0) - penaltyIncorrect - penaltyUnattended
+            val pos = if (positiveMarks > 0.0) positiveMarks else 4.0
+            val neg = if (negativeMarks >= 0.0) negativeMarks else 1.0
+
+            val penaltyIncorrect = Math.round(incorrect * neg * 100.0) / 100.0
+            val penaltyUnattended = if (pos == 1.0 && Math.abs(neg - 0.33) < 0.01) Math.round(unanswered * 0.10 * 100.0) / 100.0 else 0.0
+            val rawScore = (correct * pos) - penaltyIncorrect - penaltyUnattended
             val rawScoreRounded = Math.round(rawScore * 100.0) / 100.0
 
             // The minimum score shall be 0 regardless of how many penalties are incurred
             val finalScore = maxOf(0.0, rawScoreRounded)
+            val maxMarks = paper.questions.size * pos
 
             return TestStats(
                 total = paper.questions.size,
@@ -2864,7 +2952,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 score = finalScore,
                 rawScore = rawScoreRounded,
                 penaltyIncorrect = penaltyIncorrect,
-                penaltyUnattended = penaltyUnattended
+                penaltyUnattended = penaltyUnattended,
+                maxPossibleMarks = maxMarks,
+                positiveMarks = pos,
+                negativeMarks = neg
             )
         }
     }

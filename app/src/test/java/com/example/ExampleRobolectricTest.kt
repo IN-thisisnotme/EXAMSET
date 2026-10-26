@@ -236,7 +236,11 @@ class ExampleRobolectricTest {
             )
         }
         val paper = com.example.model.QuestionPaper(
-            metadata = com.example.model.PaperMetadata(title = "Mock Exam"),
+            metadata = com.example.model.PaperMetadata(
+                title = "Mock Exam",
+                positiveMarks = 1.0,
+                negativeMarks = 0.33
+            ),
             questions = questions
         )
 

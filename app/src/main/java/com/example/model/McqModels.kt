@@ -74,6 +74,9 @@ data class PaperMetadata(
     val folderId: String? = null,
     val rollNumber: String = ExamNumberGenerator.generateRollNumber(),
     val bookletNumber: String = ExamNumberGenerator.generateBookletNumber(),
+    val durationMinutes: Int = 60,
+    val positiveMarks: Double = 4.0,
+    val negativeMarks: Double = 1.0,
     val createdAt: Long = System.currentTimeMillis()
 )
 

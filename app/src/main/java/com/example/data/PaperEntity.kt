@@ -24,7 +24,10 @@ data class PaperEntity(
     val updatedAt: Long = System.currentTimeMillis(),
     val folderId: String? = null,
     val rollNumber: String = "",
-    val bookletNumber: String = ""
+    val bookletNumber: String = "",
+    val durationMinutes: Int = 60,
+    val positiveMarks: Double = 4.0,
+    val negativeMarks: Double = 1.0
 )
 
 fun PaperEntity.toQuestionPaper(): QuestionPaper {
@@ -43,6 +46,9 @@ fun PaperEntity.toQuestionPaper(): QuestionPaper {
             folderId = folderId,
             rollNumber = finalRoll,
             bookletNumber = finalBooklet,
+            durationMinutes = if (durationMinutes > 0) durationMinutes else 60,
+            positiveMarks = if (positiveMarks > 0.0) positiveMarks else 4.0,
+            negativeMarks = if (negativeMarks >= 0.0) negativeMarks else 1.0,
             createdAt = createdAt
         )
     )

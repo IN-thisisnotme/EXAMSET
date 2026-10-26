@@ -215,9 +215,36 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val cursorInfo = db.query("PRAGMA table_info(`question_papers`)")
+        val existingColumns = mutableSetOf<String>()
+        try {
+            val nameColIdx = cursorInfo.getColumnIndex("name")
+            while (cursorInfo.moveToNext()) {
+                if (nameColIdx >= 0) {
+                    existingColumns.add(cursorInfo.getString(nameColIdx))
+                }
+            }
+        } finally {
+            cursorInfo.close()
+        }
+
+        if (!existingColumns.contains("durationMinutes")) {
+            db.execSQL("ALTER TABLE `question_papers` ADD COLUMN `durationMinutes` INTEGER NOT NULL DEFAULT 60")
+        }
+        if (!existingColumns.contains("positiveMarks")) {
+            db.execSQL("ALTER TABLE `question_papers` ADD COLUMN `positiveMarks` REAL NOT NULL DEFAULT 4.0")
+        }
+        if (!existingColumns.contains("negativeMarks")) {
+            db.execSQL("ALTER TABLE `question_papers` ADD COLUMN `negativeMarks` REAL NOT NULL DEFAULT 1.0")
+        }
+    }
+}
+
 @Database(
     entities = [PaperEntity::class, AttemptEntity::class, DailyStudyAnalyticsEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -234,7 +261,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "examset_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance

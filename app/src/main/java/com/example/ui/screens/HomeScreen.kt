@@ -682,6 +682,7 @@ fun HomeScreen(
                     StudentTestTab(
                         paper = paper,
                         answers = studentAnswers,
+                        config = examConfig,
                         submittedStats = viewModel.submittedStats.collectAsState().value,
                         submittedAnswers = viewModel.submittedAnswers.collectAsState().value,
                         incorrectQuestionLog = viewModel.incorrectQuestionLog.collectAsState().value,
