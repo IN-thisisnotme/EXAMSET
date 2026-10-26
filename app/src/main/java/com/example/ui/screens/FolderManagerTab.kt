@@ -172,6 +172,7 @@ fun FolderManagerTab(
     viewModel: MainViewModel,
     onNavigateToMaster: () -> Unit,
     onNavigateToStudent: () -> Unit,
+    onCreateNewQuestionSet: (folderId: String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -1642,7 +1643,10 @@ fun FolderManagerTab(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Button(
-                                onClick = { viewModel.selectTab(4) },
+                                onClick = {
+                                    val targetFolder = if (activeFolderId != "all") activeFolderId else null
+                                    onCreateNewQuestionSet(targetFolder)
+                                },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
                                 modifier = Modifier

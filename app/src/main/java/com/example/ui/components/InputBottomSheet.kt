@@ -202,6 +202,7 @@ fun computeNextSetForSubject(subject: String, papers: List<PaperEntity>): String
 @Composable
 fun InputBottomSheet(
     initialText: String,
+    initialSubject: String = "",
     savedPapers: List<PaperEntity> = emptyList(),
     folders: List<FolderItem> = emptyList(),
     onDismiss: () -> Unit,
@@ -239,7 +240,7 @@ fun InputBottomSheet(
 
     // Categorization & Set No fields
     var customTitle by remember { mutableStateOf("") }
-    var customSubject by remember { mutableStateOf("") }
+    var customSubject by remember(initialSubject) { mutableStateOf(initialSubject) }
     var customTopic by remember { mutableStateOf("") }
     var customSetNumber by remember { mutableStateOf("01") }
     var customDurationMinutesStr by remember { mutableStateOf("60") }

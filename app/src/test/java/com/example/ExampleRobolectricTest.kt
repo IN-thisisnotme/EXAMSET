@@ -699,4 +699,41 @@ class ExampleRobolectricTest {
         assertEquals("A", recoveredAnswers[5])
         assertEquals("A", recoveredAnswers[6])
     }
+
+    @Test
+    fun `computeNextSetForSubject properly handles existing sets and increments`() {
+        val papers = listOf(
+            PaperEntity(
+                id = 1L,
+                title = "Mock Test",
+                subject = "Science",
+                topic = "Physics",
+                setNumber = "01",
+                folderId = "folder-123",
+                questionCount = 5,
+                answerKeyCount = 5,
+                explanationCount = 5,
+                rawText = "1. Q\nA) 1\nAnswer: A"
+            ),
+            PaperEntity(
+                id = 2L,
+                title = "Mock Test 2",
+                subject = "Science",
+                topic = "Physics",
+                setNumber = "02",
+                folderId = "folder-123",
+                questionCount = 5,
+                answerKeyCount = 5,
+                explanationCount = 5,
+                rawText = "1. Q\nA) 1\nAnswer: A"
+            )
+        )
+
+        val nextSet = com.example.ui.components.computeNextSetForSubject("Science", papers)
+        assertEquals("03", nextSet)
+
+        val nextSetOther = com.example.ui.components.computeNextSetForSubject("Maths", papers)
+        assertEquals("01", nextSetOther)
+    }
 }
+

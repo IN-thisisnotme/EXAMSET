@@ -163,6 +163,7 @@ fun HomeScreen(
     )
 
     var showInputSheet by remember { mutableStateOf(false) }
+    var creationTargetFolderId by remember { mutableStateOf<String?>(null) }
     var showPrintDialog by remember { mutableStateOf(false) }
     var showOmrScannerDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
@@ -191,6 +192,7 @@ fun HomeScreen(
             }
             showInputSheet -> {
                 showInputSheet = false
+                creationTargetFolderId = null
             }
             showPrintDialog -> {
                 showPrintDialog = false
@@ -672,7 +674,11 @@ fun HomeScreen(
                 0 -> FolderManagerTab(
                     viewModel = viewModel,
                     onNavigateToMaster = { viewModel.selectTab(1) },
-                    onNavigateToStudent = { viewModel.selectTab(2) }
+                    onNavigateToStudent = { viewModel.selectTab(2) },
+                    onCreateNewQuestionSet = { folderId ->
+                        creationTargetFolderId = folderId
+                        showInputSheet = true
+                    }
                 )
                 1 -> MasterViewTab(
                     viewModel = viewModel,
@@ -854,16 +860,23 @@ fun HomeScreen(
     if (showInputSheet) {
         InputBottomSheet(
             initialText = "",
+            initialSubject = creationTargetFolderId?.let { viewModel.getFullFolderPath(it) } ?: "",
             savedPapers = savedPapers,
             folders = folders,
-            onDismiss = { showInputSheet = false },
+            onDismiss = {
+                showInputSheet = false
+                creationTargetFolderId = null
+            },
             onGenerate = { text, title, subject, topic, setNumber ->
+                val targetFolder = creationTargetFolderId
+                creationTargetFolderId = null
                 viewModel.parseAndSetPaper(
                     text = text,
                     customTitle = title,
                     customSubject = subject,
                     customTopic = topic,
-                    customSetNumber = setNumber
+                    customSetNumber = setNumber,
+                    customFolderId = targetFolder
                 )
             },
             onGenerateConfig = { newConfig ->
@@ -872,11 +885,16 @@ fun HomeScreen(
             onPickFile = {
                 filePickerLauncher.launch(arrayOf("text/plain", "text/markdown", "*/*"))
                 showInputSheet = false
+                creationTargetFolderId = null
             },
-            onLoadSample = { sampleIdx -> viewModel.loadSample(sampleIdx) },
+            onLoadSample = { sampleIdx ->
+                creationTargetFolderId = null
+                viewModel.loadSample(sampleIdx)
+            },
             sheetState = sheetState,
             onOpenPromptBuilder = {
                 showInputSheet = false
+                creationTargetFolderId = null
                 viewModel.selectTab(5)
             }
         )
