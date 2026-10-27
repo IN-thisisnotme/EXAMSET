@@ -1732,8 +1732,10 @@ private fun ExamResultAndReviewView(
         incorrectQuestionLog
     } else {
         paper.questions.filter { q ->
-            val ans = officialAnswers[q.num]
-            !ans.isNullOrBlank() && !ans.equals(q.correctAnswer, ignoreCase = true)
+            !q.isNeutralized && run {
+                val ans = officialAnswers[q.num]
+                !ans.isNullOrBlank() && !ans.equals(q.correctAnswer, ignoreCase = true)
+            }
         }.map { it.num }.toSet()
     }
 
@@ -1741,14 +1743,14 @@ private fun ExamResultAndReviewView(
         unattendedQuestionLog
     } else {
         paper.questions.filter { q ->
-            officialAnswers[q.num].isNullOrBlank()
+            !q.isNeutralized && officialAnswers[q.num].isNullOrBlank()
         }.map { it.num }.toSet()
     }
 
     // Filtered questions based on selected chip
     val filteredQuestions = when (filter) {
         ReviewFilter.ALL -> paper.questions
-        ReviewFilter.CORRECT -> paper.questions.filter { it.num !in persistentIncorrect && it.num !in persistentUnattended }
+        ReviewFilter.CORRECT -> paper.questions.filter { it.isNeutralized || (it.num !in persistentIncorrect && it.num !in persistentUnattended) }
         ReviewFilter.INCORRECT -> paper.questions.filter { it.num in persistentIncorrect }
         ReviewFilter.UNANSWERED -> paper.questions.filter { it.num in persistentUnattended }
     }
@@ -2157,7 +2159,35 @@ private fun ExamResultAndReviewView(
                 val isCorrectNow = !currentAnswer.isNullOrBlank() && currentAnswer.equals(q.correctAnswer, ignoreCase = true)
 
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    if (isOriginallyIncorrect) {
+                    if (q.isNeutralized) {
+                        Surface(
+                            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                            color = colors.teal.copy(alpha = 0.12f),
+                            border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Question Neutralized: Full marks awarded to all candidates (Examination Board Rule)",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.teal
+                                )
+                            }
+                        }
+                    } else if (isOriginallyIncorrect) {
                         Surface(
                             shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
                             color = if (isCorrectNow) colors.greenLight else colors.redLight,

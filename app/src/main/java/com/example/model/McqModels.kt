@@ -55,7 +55,9 @@ data class McqQuestion(
     val questionType: String? = null,
     val diagramUrl: String? = null,
     val diagramLabel: String? = null,
-    val formula: String? = null
+    val formula: String? = null,
+    val isNeutralized: Boolean = false,
+    val isVerified: Boolean = false
 ) {
     val hasMissingOptions: Boolean
         get() = options.hasMissingOptions

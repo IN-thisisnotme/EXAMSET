@@ -1,6 +1,7 @@
 package com.example.util
 
 import com.example.model.AuditIssueType
+import com.example.model.AuditPhase
 import com.example.model.AuditQuestionReport
 import com.example.model.AuditSummaryMetrics
 import com.example.model.McqQuestion
@@ -11,75 +12,49 @@ import org.json.JSONObject
 
 object QuestionAuditHelper {
 
-    /**
-     * Generates a comprehensive, ready-to-run prompt with expert auditing instructions
-     * followed by the full question paper.
-     */
-    fun generateBulkAuditPrompt(paper: QuestionPaper): String {
-        return buildString {
-            appendLine("=== SENIOR EXAMINATION QUALITY AUDITOR & FACT-CHECK PROMPT ===")
-            appendLine("ROLE: You are an expert academic curriculum auditor, psychometrician, and subject matter authority.")
-            appendLine("TASK: Thoroughly audit the following ${paper.questions.size} multiple-choice questions for the examination \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
-            appendLine()
-            appendLine("=== AUDIT MANDATES & INSTRUCTIONS ===")
-            appendLine("1. ANSWER KEY VERIFICATION:")
-            appendLine("   - Fact-check every single question against authoritative textbooks and scientific principles.")
-            appendLine("   - If the marked answer key is WRONG or MISMARKED, identify the correct key (A, B, C, D, or E).")
-            //appendLine("   - MANDATORY RECHECKED EXPLANATION: For ANY wrong or modified key, you MUST provide a detailed, step-by-step rechecked explanation proving WHY the current key is incorrect and showing the exact conceptual or mathematical derivation for why the new key is correct.")
-            appendLine()
-            appendLine("2. OPTION & QUESTION INTEGRITY:")
-            appendLine("   - Check for vague, ambiguous, or duplicate options (e.g. multiple options that mean the same thing).")
-            appendLine("   - Check for missing options, truncated sentences, or impossible premises.")
-            appendLine("   - If a question is fatally flawed or cannot be salvaged by a simple key fix, classify it as FLAWED.")
-            //appendLine("   - MANDATORY REPLACEMENT QUESTION: For any question classified as FLAWED, provide a brand-new replacement MCQ covering the exact same subject, topic, and difficulty. You must include: the new Question stem, Options A-D, the Correct Answer, and a Brand-New Detailed Explanation matching the replacement question.")
-            appendLine("   - If a question is classified as FLAWED, explain the issue through its status only. Do not generate a replacement question.")
-            appendLine()
-            appendLine("3. OUTPUT FORMAT REQUIREMENT:")
-            appendLine("   Respond with a valid JSON array enclosed in a ```json ``` block following this exact schema:")
-            appendLine("OUTPUT RESTRICTIONS:")
-            appendLine("Return only these fields: qNum, status, currentKey, suggestedKey.")
-            appendLine("Do not generate replacement questions.")
-            appendLine("Do not generate detailed explanations, rechecked explanations, or flaw reasons.")
-            appendLine("Do not include replacementQuestion or detailedExplanation in the output.")
-            appendLine("If a question is FLAWED, set suggestedKey to null unless a valid corrected key can be established.")
-            appendLine("Ensure status and suggestedKey are consistent with the audit findings.")
-/*            
-            appendLine("""
-```json
-[
-  {
-    "qNum": 1,
-    "status": "WRONG_KEY", // "WRONG_KEY" | "MISSING_KEY" | "FLAWED" | "VAGUE_OPTIONS" | "VALID"
-    "currentKey": "A",
-    "suggestedKey": "C",
-    //"flawReason": "Explanation of what is wrong with the current key or options",
-    //"recheckedExplanation": "Detailed step-by-step derivation proving why C is correct and A was wrong.",
-    "replacementQuestion": null
-  },
-  {
-    "qNum": 2,
-    "status": "FLAWED",
-    "currentKey": "B",
-    "suggestedKey": null,
-    //"flawReason": "Options B and D are completely identical and stem is mathematically unsolvable.",
-    //"recheckedExplanation": null,
-    "replacementQuestion": {
-      "question": "What is the primary function of ribosomes in cellular biology?",
-      "options": {
-        "a": "Lipid synthesis",
-        "b": "Protein synthesis",
-        "c": "ATP generation",
-        "d": "DNA storage"
-      },
-      "correctAnswer": "B",
-      "explanation": "Ribosomes are macromolecular machines found within all cells that perform biological protein synthesis."
-    }
-  }
-]
-```
-""".trimIndent())
-*/
+    private const val SYSTEM_OVERRIDE_HEADER = """
+=== CRITICAL SYSTEM OVERRIDE & DIRECTIVE PRECEDENCE ===
+- DISREGARD ALL ACCOUNT-LEVEL PERSONALIZATION, CUSTOM INSTRUCTIONS, CHAT PERSONAS, OR PRIOR MEMORY SETTINGS FOR THIS TASK.
+- OPERATE STRICTLY AND EXCLUSIVELY AS AN AUTOMATED ACADEMIC PSYCHOMETRIC & QUALITY AUDIT ENGINE.
+- DO NOT INCLUDE ANY CONVERSATIONAL GREETINGS, CHATBOT INTRODUCTIONS, COURTESY CLOSINGS, OR POST-ANALYSIS REMARKS.
+- OUTPUT RAW, VALID JSON ONLY (ENCLOSED INSIDE A SINGLE ```json ... ``` BLOCK).
+- DO NOT USE MARKDOWN HEADINGS OR BULLET LISTS OUTSIDE THE JSON BLOCK.
+"""
 
+    /**
+     * Phase 1: Answer Key Verification & Flawed Question Flagging.
+     * Checks if marked answer key is correct. If mismatched, suggests the true key.
+     * Flags which question numbers are fatally flawed (incomplete, ambiguous, missing options or diagrams).
+     * Ultra-low token output footprint (sparse JSON return).
+     */
+    fun generatePhase1KeyAndFlawAuditPrompt(
+        paper: QuestionPaper,
+        questionsToAudit: List<McqQuestion> = paper.questions
+    ): String {
+        return buildString {
+            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
+            appendLine()
+            appendLine("=== PHASE 1: ANSWER KEY FACT-CHECK & FLAW FLAGGING MANDATE ===")
+            appendLine("ROLE: Senior academic psychometrician and subject matter examiner.")
+            appendLine("TASK: Audit the following ${questionsToAudit.size} questions for the examination \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
+            appendLine()
+            appendLine("=== OBJECTIVES FOR PHASE 1 ===")
+            appendLine("1. FACT-CHECK THE MARKED ANSWER KEY:")
+            appendLine("   - For each question, compare the marked key against authoritative scientific & academic standards.")
+            appendLine("   - If the marked key is WRONG, record \"status\": \"WRONG_KEY\", specify \"suggestedKey\", and give a brief 1-sentence note in \"flawReason\".")
+            appendLine("   - If the marked key is already correct, DO NOT FLAG IT AS WRONG.")
+            appendLine()
+            appendLine("2. FLAG FATALLY FLAWED QUESTIONS:")
+            appendLine("   - Flag questions that have missing choices, identical/duplicate options, ambiguous wording, or impossible premises.")
+            appendLine("   - VISUAL DEPENDENCY: If a question references a diagram, figure, or circuit that is absent or unsolvable without image, flag it as \"status\": \"FLAWED\" (Reason: \"Visual dependency: Essential diagram/figure missing\").")
+            appendLine("   - Set \"status\": \"FLAWED\". (Replacement questions are generated in Phase 2, so leave \"replacementQuestion\": null for now).")
+            appendLine()
+            appendLine("=== CRITICAL TOKEN OPTIMIZATION RULE (SPARSE JSON RETURN) ===")
+            appendLine("- ONLY return JSON items for questions that have a wrong answer key or are flawed.")
+            appendLine("- EXCLUDE completely valid, correct questions from the JSON output array.")
+            appendLine("- If all audited questions are completely correct, return an empty array: []")
+            appendLine()
+            appendLine("=== EXACT JSON SCHEMA FOR PHASE 1 ===")
             appendLine("""
 ```json
 [
@@ -88,64 +63,229 @@ object QuestionAuditHelper {
     "status": "WRONG_KEY",
     "currentKey": "A",
     "suggestedKey": "C",
-    "replacementQuestion": null
+    "flawReason": "Evaluating algebraic identity (a-b)^2 yields 0.25 (Option C), not Option A."
   },
   {
-    "qNum": 2,
+    "qNum": 7,
     "status": "FLAWED",
     "currentKey": "B",
     "suggestedKey": null,
-    "replacementQuestion": {
-      "question": "What is the primary function of ribosomes?",
-      "options": {
-        "a": "Lipid synthesis",
-        "b": "Protein synthesis",
-        "c": "ATP generation",
-        "d": "DNA storage"
-      },
-      "correctAnswer": "B"
-    }
+    "flawReason": "Visual dependency: Essential circuit diagram is missing, rendering question unsolvable."
   }
 ]
-
-
+```
 """.trimIndent())
-
             appendLine()
-            appendLine("=== EXAMINATION PAPER CONTENT TO AUDIT ===")
-            appendLine("Paper Title: ${paper.metadata.title}")
-            appendLine("Subject: ${paper.metadata.subject}")
-            appendLine("Topic: ${paper.metadata.topic}")
-            appendLine("Set Number: ${paper.metadata.setNumber}")
-            appendLine("Total Questions: ${paper.questions.size}")
-            appendLine("--------------------------------------------------")
-            appendLine()
-
-            paper.questions.forEach { q ->
-                appendLine("Q${q.num}. ${q.question}")
-                appendLine("   A) ${q.options.a}")
-                appendLine("   B) ${q.options.b}")
-                appendLine("   C) ${q.options.c}")
-                appendLine("   D) ${q.options.d}")
-                if (q.options.e.isNotBlank()) {
-                    appendLine("   E) ${q.options.e}")
-                }
-                appendLine("   Marked Key: ${q.correctAnswer ?: "[NOT ASSIGNED / MISSING]"}")
-                //if (!q.explanation.isNullOrBlank()) {
-                //    appendLine("   Existing Explanation: ${q.explanation}")
-                //}
-                appendLine()
-            }
-            appendLine("=== END OF QUESTION PAPER ===")
+            appendLine("=== EXAMINATION QUESTIONS (EXPLICIT STEM & ALL OPTIONS) ===")
+            appendQuestionsPayload(paper, questionsToAudit)
         }
     }
 
     /**
-     * Performs a fast, local heuristic scan of the paper to immediately flag
-     * missing keys, missing options, duplicate options, and blank stems.
+     * Phase 2: Targeted Replacements for Flawed Questions.
+     * Generates complete, high-quality replacement MCQs for only the flawed questions flagged in Phase 1.
+     * Preserves question numbering and total question count.
+     */
+    fun generatePhase2FlawedReplacementPrompt(
+        paper: QuestionPaper,
+        flawedReports: List<AuditQuestionReport>
+    ): String {
+        return buildString {
+            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
+            appendLine()
+            appendLine("=== PHASE 2: FLIPPED IN-PLACE REPLACEMENT FOR FLAWED QUESTIONS ===")
+            appendLine("ROLE: Senior academic question author and subject curriculum specialist.")
+            appendLine("TASK: Provide complete, self-contained, brand new replacement MCQs for the following ${flawedReports.size} flawed questions in \"${paper.metadata.title}\".")
+            appendLine()
+            appendLine("=== REQUIREMENTS FOR EACH REPLACEMENT MCQ ===")
+            appendLine("1. SAME TOPIC & DIFFICULTY: Must strictly cover the same syllabus topic, standard, and cognitive difficulty.")
+            appendLine("2. FULLY TEXT-SOLVABLE: Must NOT depend on unseen diagrams or external images.")
+            appendLine("3. COMPLETE MCQ PACKAGE: Must include:")
+            appendLine("   - \"question\": Clear, unambiguous question stem.")
+            appendLine("   - \"options\": Four distinct, valid choices {\"a\": \"...\", \"b\": \"...\", \"c\": \"...\", \"d\": \"...\"}.")
+            appendLine("   - \"correctAnswer\": Exact correct key letter (A, B, C, or D).")
+            appendLine("   - \"explanation\": Clear, pedagogical step-by-step solution explaining why the key is correct.")
+            appendLine()
+            appendLine("=== EXACT JSON SCHEMA FOR PHASE 2 ===")
+            appendLine("""
+```json
+[
+  {
+    "qNum": 7,
+    "replacementQuestion": {
+      "question": "What is the SI unit of magnetic flux density?",
+      "options": {
+        "a": "Tesla",
+        "b": "Weber",
+        "c": "Henry",
+        "d": "Lumen"
+      },
+      "correctAnswer": "A",
+      "explanation": "The SI unit of magnetic flux density (B) is the Tesla (T). Weber is the unit of magnetic flux, and Henry is the unit of inductance."
+    }
+  }
+]
+```
+""".trimIndent())
+            appendLine()
+            appendLine("=== FLAWED QUESTIONS REQUIRING REPLACEMENT ===")
+            flawedReports.forEach { rep ->
+                val q = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
+                appendLine("Question Q${rep.qNum}:")
+                if (q != null) {
+                    appendLine("   Original Stem: ${q.question}")
+                    appendLine("   Original Options: A) ${q.options.a} | B) ${q.options.b} | C) ${q.options.c} | D) ${q.options.d}")
+                    if (q.options.e.isNotBlank()) appendLine("   Original Option E: ${q.options.e}")
+                }
+                appendLine("   Flaw Diagnosis: ${rep.flawReason ?: "Flawed question requires complete replacement"}")
+                appendLine()
+            }
+            appendLine("=== END OF FLAWED QUESTIONS ===")
+        }
+    }
+
+    /**
+     * Phase 3: Detailed Step-by-Step Explanations for Key Corrections.
+     * Generates deep, non-repetitive conceptual/mathematical proofs for questions where keys were corrected.
+     */
+    fun generatePhase3ExplanationAuditPrompt(
+        paper: QuestionPaper,
+        keyCorrectedReports: List<AuditQuestionReport>
+    ): String {
+        return buildString {
+            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
+            appendLine()
+            appendLine("=== PHASE 3: DEEP-DIVE STEP-BY-STEP EXPLANATION PROOF ===")
+            appendLine("ROLE: Senior academic professor and master tutor.")
+            appendLine("TASK: Provide exhaustive, step-by-step detailed explanations for the following ${keyCorrectedReports.size} questions where answer keys were corrected.")
+            appendLine()
+            appendLine("=== EXPLANATION CRITERIA ===")
+            appendLine("1. RIGOROUS DERIVATION: Step-by-step conceptual logic, mathematical proof, or formula derivation.")
+            appendLine("2. DISTRACTOR ANALYSIS: Clearly explain why the originally marked key was incorrect and why the corrected key is indisputably true.")
+            appendLine("3. NON-REPETITIVE: Avoid generic boilerplate; tailor specifically to the numbers and terms in the question.")
+            appendLine()
+            appendLine("=== EXACT JSON SCHEMA FOR PHASE 3 ===")
+            appendLine("""
+```json
+[
+  {
+    "qNum": 1,
+    "correctedKey": "C",
+    "recheckedExplanation": "Step 1: Notice that the numerical expression 4.25*4.25 + 3.75*3.75 - 2*4.25*3.75 matches the standard algebraic expansion (a - b)^2 with a = 4.25 and b = 3.75.\nStep 2: Compute the difference: 4.25 - 3.75 = 0.50.\nStep 3: Square the result: (0.50)^2 = 0.25.\nStep 4: Option C matches 0.25 exactly. Marked key A was incorrect because it failed to apply the subtraction before squaring."
+  }
+]
+```
+""".trimIndent())
+            appendLine()
+            appendLine("=== QUESTIONS WITH CORRECTED KEYS ===")
+            keyCorrectedReports.forEach { rep ->
+                val q = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
+                appendLine("Q${rep.qNum}:")
+                if (q != null) {
+                    appendLine("   Stem: ${q.question}")
+                    appendLine("   A) ${q.options.a}")
+                    appendLine("   B) ${q.options.b}")
+                    appendLine("   C) ${q.options.c}")
+                    appendLine("   D) ${q.options.d}")
+                    if (q.options.e.isNotBlank()) appendLine("   E) ${q.options.e}")
+                }
+                appendLine("   Marked Key: ${rep.currentKey ?: q?.correctAnswer ?: "None"}")
+                appendLine("   Corrected Key: ${rep.suggestedKey ?: "None"}")
+                if (!rep.flawReason.isNullOrBlank()) {
+                    appendLine("   Note: ${rep.flawReason}")
+                }
+                appendLine()
+            }
+            appendLine("=== END OF QUESTIONS ===")
+        }
+    }
+
+    /**
+     * Legacy comprehensive prompt generator (includes full two-step instructions).
+     */
+    fun generateBulkAuditPrompt(
+        paper: QuestionPaper,
+        questionsToAudit: List<McqQuestion> = paper.questions
+    ): String {
+        return buildString {
+            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
+            appendLine()
+            appendLine("=== SENIOR EXAMINATION QUALITY AUDITOR & FACT-CHECK MANDATE ===")
+            appendLine("ROLE: You are an expert academic curriculum auditor, psychometrician, and subject matter authority.")
+            appendLine("TASK: Thoroughly audit the following ${questionsToAudit.size} multiple-choice questions for the examination \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
+            appendLine()
+            appendLine("=== TWO-STEP AUDITING WORKFLOW ===")
+            appendLine("STEP 1: ANSWER KEY VERIFICATION & MISMARK CORRECTION")
+            appendLine("   - Fact-check every single question against authoritative textbooks and scientific principles.")
+            appendLine("   - If the marked answer key is WRONG or MISMARKED, identify the true correct key (A, B, C, D, or E).")
+            appendLine("   - MANDATORY RECHECKED EXPLANATION: For ANY wrong or modified key, you MUST provide a detailed, step-by-step rechecked explanation in \"recheckedExplanation\" proving WHY the current key is incorrect.")
+            appendLine("   - Set status to \"WRONG_KEY\". If the marked key is already correct, do NOT flag it as wrong.")
+            appendLine()
+            appendLine("STEP 2: QUESTION INTEGRITY, FATAL FLAWS & VISUAL DEPENDENCIES")
+            appendLine("   - Check for vague, ambiguous, or duplicate options.")
+            appendLine("   - Check for missing options, truncated sentences, or impossible/contradictory mathematical premises.")
+            appendLine("   - VISUAL / DIAGRAM DEPENDENCIES: If a question references an unseen diagram, circuit, graph, or image that is missing or cannot be solved from the text alone, classify it under Step 2 as FLAWED.")
+            appendLine("   - MANDATORY REPLACEMENT QUESTION: For ANY question classified as FLAWED, provide a brand-new, self-contained replacement MCQ covering the exact same subject, topic, and difficulty.")
+            appendLine()
+            appendLine("=== EXACT JSON OUTPUT SCHEMA ===")
+            appendLine("""
+```json
+[
+  {
+    "qNum": 1,
+    "status": "WRONG_KEY",
+    "currentKey": "A",
+    "suggestedKey": "C",
+    "flawReason": "Option A is mathematically incorrect; evaluating yields Option C.",
+    "recheckedExplanation": "Step-by-step derivation: The expression evaluates to Option C.",
+    "replacementQuestion": null
+  }
+]
+```
+""".trimIndent())
+            appendLine()
+            appendLine("=== EXAMINATION QUESTIONS (EXPLICIT STEM & ALL OPTIONS) ===")
+            appendQuestionsPayload(paper, questionsToAudit)
+        }
+    }
+
+    private fun StringBuilder.appendQuestionsPayload(
+        paper: QuestionPaper,
+        questions: List<McqQuestion>
+    ) {
+        appendLine("Paper: ${paper.metadata.title} (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber})")
+        appendLine("Total Questions in this Batch: ${questions.size}")
+        appendLine("--------------------------------------------------")
+        appendLine()
+
+        questions.forEach { q ->
+            appendLine("Q${q.num}. ${q.question}")
+            if (!q.diagramLabel.isNullOrBlank()) {
+                appendLine("   [Diagram / Figure Reference: ${q.diagramLabel}]")
+            }
+            if (!q.formula.isNullOrBlank()) {
+                appendLine("   [Formula: ${q.formula}]")
+            }
+            appendLine("   A) ${q.options.a}")
+            appendLine("   B) ${q.options.b}")
+            appendLine("   C) ${q.options.c}")
+            appendLine("   D) ${q.options.d}")
+            if (q.options.e.isNotBlank()) {
+                appendLine("   E) ${q.options.e}")
+            }
+            appendLine("   Marked Key: ${q.correctAnswer ?: "[NOT ASSIGNED]"}")
+            if (!q.explanation.isNullOrBlank()) {
+                appendLine("   Existing Explanation: ${q.explanation}")
+            }
+            appendLine()
+        }
+        appendLine("=== END OF QUESTION PAPER ===")
+    }
+
+    /**
+     * Fast, local heuristic check that runs instantaneously without calling external LLM.
      */
     fun runHeuristicPreAudit(paper: QuestionPaper): List<AuditQuestionReport> {
-        val qMap = paper.questions.associateBy { it.num }
         return paper.questions.map { q ->
             val optionsList = listOfNotNull(
                 if (q.options.a.isNotBlank()) q.options.a.trim() else null,
@@ -157,13 +297,35 @@ object QuestionAuditHelper {
             val hasDuplicateOptions = optionsList.size >= 2 && distinctCount < optionsList.size
 
             when {
+                q.isNeutralized -> {
+                    AuditQuestionReport(
+                        qNum = q.num,
+                        status = AuditIssueType.CLEAN,
+                        currentKey = q.correctAnswer,
+                        suggestedKey = q.correctAnswer,
+                        originalQuestion = q,
+                        isResolved = true,
+                        isNeutralized = true
+                    )
+                }
+                q.isVerified -> {
+                    AuditQuestionReport(
+                        qNum = q.num,
+                        status = AuditIssueType.CLEAN,
+                        currentKey = q.correctAnswer,
+                        suggestedKey = q.correctAnswer,
+                        recheckedExplanation = q.explanation,
+                        originalQuestion = q,
+                        isResolved = true,
+                        isVerified = true
+                    )
+                }
                 q.question.isBlank() || q.question.length < 5 -> {
                     AuditQuestionReport(
                         qNum = q.num,
                         status = AuditIssueType.FLAWED_QUESTION,
                         currentKey = q.correctAnswer,
                         flawReason = "Question stem is blank or too short (< 5 characters).",
-                        recheckedExplanation = null,
                         originalQuestion = q
                     )
                 }
@@ -173,7 +335,6 @@ object QuestionAuditHelper {
                         status = AuditIssueType.MISSING_OPTIONS,
                         currentKey = q.correctAnswer,
                         flawReason = "Missing required choices: ${q.options.missingOptions.joinToString(", ")}.",
-                        recheckedExplanation = null,
                         originalQuestion = q
                     )
                 }
@@ -183,7 +344,6 @@ object QuestionAuditHelper {
                         status = AuditIssueType.VAGUE_OPTIONS,
                         currentKey = q.correctAnswer,
                         flawReason = "Two or more options contain identical duplicate values.",
-                        recheckedExplanation = null,
                         originalQuestion = q
                     )
                 }
@@ -192,13 +352,11 @@ object QuestionAuditHelper {
                         qNum = q.num,
                         status = AuditIssueType.MISSING_KEY,
                         currentKey = null,
-                        suggestedKey = null, // Default suggestion for creator review
+                        suggestedKey = null,
                         flawReason = "No answer key has been assigned for this question.",
                         recheckedExplanation = if (!q.explanation.isNullOrBlank()) {
-                            "Existing explanation is present: \"${q.explanation}\". Verify answer key assignment."
-                        } else {
-                            "Assign the correct answer key and generate a detailed conceptual explanation."
-                        },
+                            "Existing explanation present: \"${q.explanation}\". Review and assign answer key."
+                        } else null,
                         originalQuestion = q
                     )
                 }
@@ -208,8 +366,7 @@ object QuestionAuditHelper {
                         status = AuditIssueType.MISSING_EXPLANATION,
                         currentKey = q.correctAnswer,
                         suggestedKey = q.correctAnswer,
-                        flawReason = "Answer key is assigned (${q.correctAnswer}), but no detailed explanation is provided.",
-                        recheckedExplanation = "Provide a step-by-step conceptual explanation validating option ${q.correctAnswer}.",
+                        flawReason = "Answer key assigned (${q.correctAnswer}), but detailed explanation is missing.",
                         originalQuestion = q
                     )
                 }
@@ -228,14 +385,13 @@ object QuestionAuditHelper {
     }
 
     /**
-     * Parses the LLM's feedback text (either JSON array or key-value summary)
-     * and maps it against the current QuestionPaper.
+     * Parses the LLM's feedback (Phase 1, 2, 3 or combined) and maps against the QuestionPaper.
+     * Guaranteed: Never flags WRONG_KEY if suggestedKey == currentKey.
      */
     fun parseAuditReport(rawInput: String, paper: QuestionPaper): List<AuditQuestionReport> {
         val qMap = paper.questions.associateBy { it.num }
         val parsedReports = mutableMapOf<Int, AuditQuestionReport>()
 
-        // 1. Try parsing JSON array from the input
         val jsonArray = extractJsonArray(rawInput)
         if (jsonArray != null) {
             for (i in 0 until jsonArray.length()) {
@@ -246,9 +402,9 @@ object QuestionAuditHelper {
                 val originalQ = qMap[qNum]
                 val statusStr = obj.optString("status", "").uppercase()
                 val currentKey = obj.optString("currentKey", originalQ?.correctAnswer ?: "").ifBlank { originalQ?.correctAnswer }
-                val suggestedKey = obj.optString("suggestedKey", "").ifBlank { null }?.uppercase()
+                val suggestedKey = obj.optString("suggestedKey", obj.optString("correctedKey", "")).ifBlank { null }?.uppercase()
                 val flawReason = obj.optString("flawReason", "").ifBlank { null }
-                val recheckedExplanation = obj.optString("recheckedExplanation", "").ifBlank { null }
+                val recheckedExplanation = obj.optString("recheckedExplanation", obj.optString("detailedExplanation", "")).ifBlank { null }
 
                 val replacementObj = obj.optJSONObject("replacementQuestion")
                 val replacementQ = if (replacementObj != null) {
@@ -276,44 +432,54 @@ object QuestionAuditHelper {
                     } else null
                 } else null
 
+                // Strict key-matching check: Never mark WRONG_KEY if suggested == current
+                val isKeyIdentical = suggestedKey != null && currentKey != null && suggestedKey.equals(currentKey, ignoreCase = true)
+                val isTrueKeyMismatch = suggestedKey != null && currentKey != null && !isKeyIdentical
+
                 val status = when {
-                    statusStr.contains("WRONG") -> AuditIssueType.WRONG_KEY
-                    statusStr.contains("MISSING_KEY") -> AuditIssueType.MISSING_KEY
+                    replacementQ != null -> AuditIssueType.FLAWED_QUESTION
                     statusStr.contains("FLAW") -> AuditIssueType.FLAWED_QUESTION
                     statusStr.contains("VAGUE") -> AuditIssueType.VAGUE_OPTIONS
                     statusStr.contains("MISSING_OPT") -> AuditIssueType.MISSING_OPTIONS
-                    suggestedKey != null && currentKey != null && suggestedKey != currentKey -> AuditIssueType.WRONG_KEY
-                    replacementQ != null -> AuditIssueType.FLAWED_QUESTION
-                    statusStr.contains("VALID") || statusStr.contains("CLEAN") -> AuditIssueType.CLEAN
-                    else -> if (suggestedKey != null && suggestedKey != currentKey) AuditIssueType.WRONG_KEY else AuditIssueType.CLEAN
+                    statusStr.contains("MISSING_KEY") -> AuditIssueType.MISSING_KEY
+                    isTrueKeyMismatch -> AuditIssueType.WRONG_KEY
+                    isKeyIdentical && flawReason.isNullOrBlank() -> AuditIssueType.CLEAN
+                    isKeyIdentical && flawReason?.contains("flaw", ignoreCase = true) == true -> AuditIssueType.FLAWED_QUESTION
+                    statusStr.contains("WRONG") && !isKeyIdentical -> AuditIssueType.WRONG_KEY
+                    statusStr.contains("CLEAN") || statusStr.contains("VALID") -> AuditIssueType.CLEAN
+                    else -> if (isTrueKeyMismatch) AuditIssueType.WRONG_KEY else AuditIssueType.CLEAN
                 }
 
                 parsedReports[qNum] = AuditQuestionReport(
                     qNum = qNum,
                     status = status,
                     currentKey = currentKey,
-                    suggestedKey = suggestedKey,
+                    suggestedKey = if (isTrueKeyMismatch) suggestedKey else (if (isKeyIdentical) currentKey else suggestedKey),
                     flawReason = flawReason,
                     recheckedExplanation = recheckedExplanation,
                     replacementQuestion = replacementQ,
-                    originalQuestion = originalQ
+                    originalQuestion = originalQ,
+                    isVerified = originalQ?.isVerified ?: false,
+                    isNeutralized = originalQ?.isNeutralized ?: false
                 )
             }
         }
 
-        // 2. If JSON didn't catch all, fallback to line-by-line regex parsing
+        // Fallback to text parsing if no JSON objects were extracted
         if (parsedReports.isEmpty()) {
             parseTextReport(rawInput, qMap, parsedReports)
         }
 
-        // 3. For any questions not covered in the input, fill from heuristic pre-audit
+        // Fill remaining questions from heuristic pre-audit
         val heuristic = runHeuristicPreAudit(paper).associateBy { it.qNum }
         return paper.questions.map { q ->
             parsedReports[q.num] ?: heuristic[q.num] ?: AuditQuestionReport(
                 qNum = q.num,
                 status = AuditIssueType.CLEAN,
                 currentKey = q.correctAnswer,
-                originalQuestion = q
+                originalQuestion = q,
+                isVerified = q.isVerified,
+                isNeutralized = q.isNeutralized
             )
         }
     }
@@ -355,15 +521,18 @@ object QuestionAuditHelper {
             if (keyMatch != null) {
                 val cur = keyMatch.groupValues[1].uppercase()
                 val sug = keyMatch.groupValues[2].uppercase()
-                parsedReports[qNum] = AuditQuestionReport(
-                    qNum = qNum,
-                    status = AuditIssueType.WRONG_KEY,
-                    currentKey = cur,
-                    suggestedKey = sug,
-                    flawReason = remainder,
-                    recheckedExplanation = "Rechecked derivation: Option $sug is verified as the correct answer (previously marked as $cur).",
-                    originalQuestion = originalQ
-                )
+                // Only mark wrong key if cur != sug
+                if (!cur.equals(sug, ignoreCase = true)) {
+                    parsedReports[qNum] = AuditQuestionReport(
+                        qNum = qNum,
+                        status = AuditIssueType.WRONG_KEY,
+                        currentKey = cur,
+                        suggestedKey = sug,
+                        flawReason = remainder,
+                        recheckedExplanation = "Rechecked derivation: Option $sug is verified as the correct answer (previously marked as $cur).",
+                        originalQuestion = originalQ
+                    )
+                }
             } else if (remainder.contains("flaw", ignoreCase = true) || remainder.contains("vague", ignoreCase = true) || remainder.contains("delete", ignoreCase = true)) {
                 parsedReports[qNum] = AuditQuestionReport(
                     qNum = qNum,
@@ -378,7 +547,7 @@ object QuestionAuditHelper {
     }
 
     /**
-     * Aggregates summary statistics for the UI cards.
+     * Aggregates summary statistics for UI KPI cards and stepper badges.
      */
     fun computeMetrics(reports: List<AuditQuestionReport>): AuditSummaryMetrics {
         var wrongKeys = 0
@@ -386,14 +555,23 @@ object QuestionAuditHelper {
         var flawed = 0
         var missingOpts = 0
         var clean = 0
+        var verified = 0
+        var neutralized = 0
 
         reports.forEach { r ->
-            when (r.status) {
-                AuditIssueType.WRONG_KEY -> wrongKeys++
-                AuditIssueType.MISSING_KEY -> missingKeys++
-                AuditIssueType.FLAWED_QUESTION, AuditIssueType.VAGUE_OPTIONS -> flawed++
-                AuditIssueType.MISSING_OPTIONS -> missingOpts++
-                AuditIssueType.CLEAN, AuditIssueType.MISSING_EXPLANATION -> clean++
+            if (r.isNeutralized) {
+                neutralized++
+            } else if (r.isVerified) {
+                verified++
+                clean++
+            } else {
+                when (r.status) {
+                    AuditIssueType.WRONG_KEY -> wrongKeys++
+                    AuditIssueType.MISSING_KEY -> missingKeys++
+                    AuditIssueType.FLAWED_QUESTION, AuditIssueType.VAGUE_OPTIONS -> flawed++
+                    AuditIssueType.MISSING_OPTIONS -> missingOpts++
+                    AuditIssueType.CLEAN, AuditIssueType.MISSING_EXPLANATION -> clean++
+                }
             }
         }
 
@@ -403,7 +581,9 @@ object QuestionAuditHelper {
             missingKeysCount = missingKeys,
             flawedQuestionsCount = flawed,
             missingOptionsCount = missingOpts,
-            cleanCount = clean
+            cleanCount = clean,
+            verifiedCount = verified,
+            neutralizedCount = neutralized
         )
     }
 }

@@ -157,9 +157,11 @@ fun StudentPracticeCard(
 
                 if (showResult) {
                     Spacer(modifier = Modifier.width(8.dp))
+                    val isNeutralized = question.isNeutralized
                     val isCorrect = selectedAnswer != null && selectedAnswer.equals(question.correctAnswer, ignoreCase = true)
                     val isAnswered = selectedAnswer != null
                     val (badgeText, badgeBg, badgeTextCol) = when {
+                        isNeutralized -> Triple("★ Bonus Marks", colors.teal.copy(alpha = 0.15f), colors.teal)
                         isCorrect -> Triple("✓ Correct (+1.00)", colors.greenLight, colors.green)
                         isAnswered -> Triple("✗ Incorrect (-0.33)", colors.redLight, colors.red)
                         else -> Triple("— Unattended (-0.10)", colors.borderLight, colors.muted)

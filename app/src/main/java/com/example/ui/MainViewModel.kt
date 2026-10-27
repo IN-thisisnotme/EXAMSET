@@ -2942,12 +2942,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             var correct = 0
             var incorrect = 0
             paper.questions.forEach { q ->
-                val userAns = answers[q.num]
-                if (!userAns.isNullOrBlank()) {
-                    if (q.correctAnswer.equals(userAns, ignoreCase = true)) {
-                        correct++
-                    } else {
-                        incorrect++
+                if (q.isNeutralized) {
+                    // Standard exam board rule: Neutralized / withdrawn questions award full marks to all candidates
+                    correct++
+                } else {
+                    val userAns = answers[q.num]
+                    if (!userAns.isNullOrBlank()) {
+                        if (q.correctAnswer.equals(userAns, ignoreCase = true)) {
+                            correct++
+                        } else {
+                            incorrect++
+                        }
                     }
                 }
             }
