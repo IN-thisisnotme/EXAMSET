@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -731,6 +732,7 @@ fun HomeScreen(
                     val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
                     NoPaperPlaceholder(
                         title = "Student Test Series",
+                        onBrowseFolders = { viewModel.selectTab(0) },
                         onGoToCreator = { viewModel.selectTab(4) },
                         lastOpenedPaper = lastPaperForPlaceholder,
                         onOpenLastPaper = { viewModel.loadSavedPaper(it) }
@@ -746,6 +748,7 @@ fun HomeScreen(
                     val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
                     NoPaperPlaceholder(
                         title = "Print & OMR Generator",
+                        onBrowseFolders = { viewModel.selectTab(0) },
                         onGoToCreator = { viewModel.selectTab(4) },
                         lastOpenedPaper = lastPaperForPlaceholder,
                         onOpenLastPaper = { viewModel.loadSavedPaper(it) }
@@ -1440,8 +1443,9 @@ fun SubjectDashboard(
 }
 
 @Composable
-private fun NoPaperPlaceholder(
+fun NoPaperPlaceholder(
     title: String,
+    onBrowseFolders: () -> Unit,
     onGoToCreator: () -> Unit,
     lastOpenedPaper: PaperEntity? = null,
     onOpenLastPaper: ((PaperEntity) -> Unit)? = null,
@@ -1530,13 +1534,40 @@ private fun NoPaperPlaceholder(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-                Button(
-                    onClick = onGoToCreator,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Go to Exam Tools", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = onBrowseFolders,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.navyBanner,
+                            contentColor = colors.navyBannerText
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 38.dp)
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Browse Library", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onGoToCreator,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                        border = BorderStroke(1.dp, colors.border),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 38.dp)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.teal)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Exam Tools", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

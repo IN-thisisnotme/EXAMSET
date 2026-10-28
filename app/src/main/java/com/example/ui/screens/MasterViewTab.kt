@@ -2105,14 +2105,14 @@ private fun AddQuestionDialog(
                                                 if (duplicatesCount > 0) {
                                                     Surface(
                                                         shape = RoundedCornerShape(12.dp),
-                                                        color = Color(0xFFFEF3C7),
-                                                        border = BorderStroke(0.6.dp, Color(0xFFFDE68A))
+                                                        color = colors.amberLight,
+                                                        border = BorderStroke(0.6.dp, colors.amber.copy(alpha = 0.3f))
                                                     ) {
                                                         Text(
                                                             text = "$duplicatesCount Duplicate${if (duplicatesCount > 1) "s" else ""} (will be filtered)",
                                                             fontSize = 10.5.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFFB45309),
+                                                            color = colors.amber,
                                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                                         )
                                                     }
@@ -2122,14 +2122,14 @@ private fun AddQuestionDialog(
                                                 if (newQuestionsCount > 0) {
                                                     Surface(
                                                         shape = RoundedCornerShape(12.dp),
-                                                        color = Color(0xFFEEF2FF),
-                                                        border = BorderStroke(0.6.dp, Color(0xFFC7D2FE))
+                                                        color = colors.tealLight,
+                                                        border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.3f))
                                                     ) {
                                                         Text(
                                                             text = "Will append as Q$nextStartNumber – Q$nextEndNumber",
                                                             fontSize = 10.5.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFF4338CA),
+                                                            color = colors.tealDark,
                                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                                         )
                                                     }
@@ -2307,8 +2307,8 @@ private fun FilterChip(
     Surface(
         modifier = Modifier.clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) (accentColor ?: Color(0xFF2563EB)) else colors.surfaceVariant,
-        border = BorderStroke(0.6.dp, if (isSelected) (accentColor ?: Color(0xFF1D4ED8)) else colors.border)
+        color = if (isSelected) (accentColor ?: colors.teal) else colors.surfaceVariant,
+        border = BorderStroke(0.6.dp, if (isSelected) (accentColor ?: colors.tealDark) else colors.border)
     ) {
         Text(
             text = label,

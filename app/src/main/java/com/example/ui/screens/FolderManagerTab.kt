@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1609,64 +1610,190 @@ fun FolderManagerTab(
         if (filteredPapers.isEmpty()) {
             item {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = colors.surface,
                     border = BorderStroke(0.8.dp, colors.border),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(32.dp),
+                        modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            Icons.Default.Folder,
-                            contentDescription = null,
-                            tint = colors.inkMuted.copy(alpha = 0.5f),
-                            modifier = Modifier.size(40.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.tealLight,
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) "No papers match your search" else "No saved papers in this folder",
-                            fontSize = 13.sp,
+                            text = if (searchQuery.isNotBlank()) "No papers match \"$searchQuery\"" else "No assessment papers in this folder",
+                            fontSize = 14.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.inkBold
+                            color = colors.inkBold,
+                            textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Import question files or move existing papers into this folder.",
-                            fontSize = 11.5.sp,
-                            color = colors.inkMuted
+                            text = if (searchQuery.isNotBlank()) {
+                                "Try searching by exam title, subject, or folder name."
+                            } else {
+                                "Create a new question set from scratch or load one of the pre-configured curriculum samples below."
+                            },
+                            fontSize = 12.sp,
+                            color = colors.inkMuted,
+                            textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    val targetFolder = if (activeFolderId != "all") activeFolderId else null
-                                    onCreateNewQuestionSet(targetFolder)
-                                },
+
+                        if (searchQuery.isNotBlank()) {
+                            OutlinedButton(
+                                onClick = { searchQuery = "" },
                                 shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(42.dp)
-                                    .testTag("create_paper_button")
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = Color.White
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text("Clear Search Query", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        Button(
+                            onClick = {
+                                val targetFolder = if (activeFolderId != "all") activeFolderId else null
+                                onCreateNewQuestionSet(targetFolder)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.navyBanner,
+                                contentColor = colors.navyBannerText
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("create_paper_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.navyBannerText
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Create / Paste Question Set",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.navyBannerText
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Quick Practice Presets Card
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(0.6.dp, colors.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    text = "Create New Question Set",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
+                                    text = "LOAD STARTER PRACTICE EXAMS",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkMuted,
+                                    letterSpacing = 0.5.sp
                                 )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.tealLight,
+                                        border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.4f)),
+                                        modifier = Modifier.clickable {
+                                            viewModel.loadSample(0)
+                                            onNavigateToMaster()
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "🔬 General Science (EN)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.tealDark,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.surface,
+                                        border = BorderStroke(0.6.dp, colors.border),
+                                        modifier = Modifier.clickable {
+                                            viewModel.loadSample(3)
+                                            onNavigateToMaster()
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "🧬 Biology & Genetics",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.surface,
+                                        border = BorderStroke(0.6.dp, colors.border),
+                                        modifier = Modifier.clickable {
+                                            viewModel.loadSample(4)
+                                            onNavigateToMaster()
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "📊 Multi-Pattern MCQs",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.surface,
+                                        border = BorderStroke(0.6.dp, colors.border),
+                                        modifier = Modifier.clickable {
+                                            viewModel.loadSample(1)
+                                            onNavigateToMaster()
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "🇮🇳 Hindi Paper (HI)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

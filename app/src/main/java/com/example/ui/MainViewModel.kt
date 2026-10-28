@@ -222,6 +222,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restoreAutosavedState() {
         viewModelScope.launch(Dispatchers.IO) {
+            // Clean up any previously auto-seeded starter paper if present
+            try {
+                val seededPaper = paperDao.findPaperByMetadata(
+                    title = "UPSC / SSC CGL Combined General Studies",
+                    subject = "General Science",
+                    setNumber = "Set A"
+                )
+                if (seededPaper != null && seededPaper.rawText == SampleData.SAMPLE_STARTER_PROMPT) {
+                    paperDao.deletePaperWithAttempts(seededPaper)
+                    if (appPreferences.getLastActivePaperId() == seededPaper.id) {
+                        appPreferences.setLastActivePaperId(-1L)
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+
             val lastPaperId = appPreferences.getLastActivePaperId()
             if (lastPaperId > 0) {
                 val entity = paperDao.getPaperById(lastPaperId)
@@ -234,6 +251,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val allSaved = paperDao.getAllPapers().first()
                     if (allSaved.isNotEmpty()) {
                         _lastOpenedPaper.value = allSaved.maxByOrNull { it.updatedAt }
+                    } else {
+                        _lastOpenedPaper.value = null
                     }
                 } catch (e: Exception) {
                     // Ignore

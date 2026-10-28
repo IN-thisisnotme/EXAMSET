@@ -313,14 +313,14 @@ fun PromptGeneratorTab(
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFF59E0B).copy(alpha = 0.12f),
+                                color = colors.amberLight,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.AutoAwesome,
                                         contentDescription = null,
-                                        tint = Color(0xFFD97706),
+                                        tint = colors.amber,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -345,7 +345,8 @@ fun PromptGeneratorTab(
                             onClick = copyAction,
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copied) Color(0xFF059669) else Color(0xFF2563EB)
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
                             ),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                             modifier = Modifier.heightIn(min = 38.dp)
@@ -407,8 +408,8 @@ fun PromptGeneratorTab(
                                     examType = preset
                                 },
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
-                                border = BorderStroke(if (isSelected) 1.5.dp else 0.5.dp, if (isSelected) Color(0xFF93C5FD) else colors.border)
+                                color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                border = BorderStroke(if (isSelected) 1.5.dp else 0.5.dp, if (isSelected) colors.tealDark else colors.border)
                             ) {
                                 Text(
                                     text = preset,
@@ -515,9 +516,9 @@ fun PromptGeneratorTab(
                                     text = if (isPreset) "Preset" else "Custom",
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (isPreset) Color(0xFF2563EB) else colors.muted
+                                    color = if (isPreset) colors.teal else colors.muted
                                 )
-                                Text("$countInt MCQs", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                                Text("$countInt MCQs", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                             }
                         }
                         
@@ -535,8 +536,8 @@ fun PromptGeneratorTab(
                                 Surface(
                                     onClick = { questionCount = cnt.toFloat() },
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
-                                    border = BorderStroke(0.6.dp, if (isSelected) Color(0xFF2563EB) else colors.border)
+                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                    border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
                                 ) {
                                     Text(
                                         text = "$cnt Qs",
@@ -588,7 +589,7 @@ fun PromptGeneratorTab(
                                 Text(
                                     "Any language supported",
                                     fontSize = 10.sp,
-                                    color = Color(0xFF2563EB),
+                                    color = colors.teal,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -607,7 +608,7 @@ fun PromptGeneratorTab(
                                 textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.inkBold),
                                 shape = RoundedCornerShape(6.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF2563EB),
+                                    focusedBorderColor = colors.teal,
                                     unfocusedBorderColor = colors.border,
                                     focusedContainerColor = colors.surface,
                                     unfocusedContainerColor = colors.surface
@@ -632,8 +633,8 @@ fun PromptGeneratorTab(
                                     Surface(
                                         onClick = { questionLanguage = lang },
                                         shape = RoundedCornerShape(6.dp),
-                                        color = if (isSelected) Color(0xFF2563EB) else colors.surface,
-                                        border = BorderStroke(0.6.dp, if (isSelected) Color(0xFF2563EB) else colors.border)
+                                        color = if (isSelected) colors.teal else colors.surface,
+                                        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
                                     ) {
                                         Text(
                                             text = lang,
@@ -696,8 +697,8 @@ fun PromptGeneratorTab(
                                     Surface(
                                         onClick = { explanationChoice = key },
                                         shape = RoundedCornerShape(6.dp),
-                                        color = if (isSelected) Color(0xFF2563EB) else colors.surface,
-                                        border = BorderStroke(0.6.dp, if (isSelected) Color(0xFF2563EB) else colors.border)
+                                        color = if (isSelected) colors.teal else colors.surface,
+                                        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
                                     ) {
                                         Text(
                                             text = displayLabel,
@@ -721,7 +722,7 @@ fun PromptGeneratorTab(
                                     textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.inkBold),
                                     shape = RoundedCornerShape(6.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = Color(0xFF2563EB),
+                                        focusedBorderColor = colors.teal,
                                         unfocusedBorderColor = colors.border,
                                         focusedContainerColor = colors.surface,
                                         unfocusedContainerColor = colors.surface
@@ -739,7 +740,7 @@ fun PromptGeneratorTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Difficulty Level", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-                            Text(difficulty, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                            Text(difficulty, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -757,8 +758,8 @@ fun PromptGeneratorTab(
                                 Surface(
                                     modifier = Modifier.clickable { difficulty = diff },
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
-                                    border = BorderStroke(0.5.dp, colors.border)
+                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                    border = BorderStroke(0.5.dp, if (isSelected) colors.teal else colors.border)
                                 ) {
                                     Text(
                                         text = label,
@@ -780,7 +781,7 @@ fun PromptGeneratorTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Question Format & Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-                            Text(questionType, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                            Text(questionType, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -797,8 +798,8 @@ fun PromptGeneratorTab(
                                 Surface(
                                     modifier = Modifier.clickable { questionType = qType },
                                     shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) Color(0xFF2563EB) else colors.surfaceVariant,
-                                    border = BorderStroke(0.5.dp, colors.border)
+                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                    border = BorderStroke(0.5.dp, if (isSelected) colors.teal else colors.border)
                                 ) {
                                     Text(
                                         text = qType,
@@ -875,7 +876,7 @@ fun PromptGeneratorTab(
                                 text = if (promptPhasingStyle == "Reasoning-First") "Derive First" else "Standard",
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (promptPhasingStyle == "Reasoning-First") Color(0xFF059669) else Color(0xFF2563EB)
+                                color = if (promptPhasingStyle == "Reasoning-First") colors.green else colors.teal
                             )
                         }
 
@@ -892,15 +893,15 @@ fun PromptGeneratorTab(
                                         promptPhasingStyle = "Reasoning-First"
                                     },
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isReasoning) Color(0xFFECFDF5) else colors.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(if (isReasoning) 1.5.dp else 0.6.dp, if (isReasoning) Color(0xFF10B981) else colors.border)
+                                color = if (isReasoning) colors.greenLight else colors.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(if (isReasoning) 1.5.dp else 0.6.dp, if (isReasoning) colors.green else colors.border)
                             ) {
                                 Column(modifier = Modifier.padding(9.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
                                             imageVector = Icons.Default.AutoAwesome,
                                             contentDescription = null,
-                                            tint = if (isReasoning) Color(0xFF059669) else colors.muted,
+                                            tint = if (isReasoning) colors.green else colors.muted,
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -908,7 +909,7 @@ fun PromptGeneratorTab(
                                             text = "Reasoning-First",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isReasoning) Color(0xFF065F46) else colors.inkBold
+                                            color = if (isReasoning) colors.green else colors.inkBold
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -916,7 +917,7 @@ fun PromptGeneratorTab(
                                         text = "Q -> Explanations -> Key\nLLM derives answers first to prevent wrong keys.",
                                         fontSize = 9.5.sp,
                                         lineHeight = 13.sp,
-                                        color = if (isReasoning) Color(0xFF047857) else colors.muted
+                                        color = if (isReasoning) colors.green else colors.muted
                                     )
                                 }
                             }
@@ -930,15 +931,15 @@ fun PromptGeneratorTab(
                                         promptPhasingStyle = "Standard"
                                     },
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isStandard) Color(0xFFEFF6FF) else colors.surfaceVariant.copy(alpha = 0.5f),
-                                border = BorderStroke(if (isStandard) 1.5.dp else 0.6.dp, if (isStandard) Color(0xFF3B82F6) else colors.border)
+                                color = if (isStandard) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(if (isStandard) 1.5.dp else 0.6.dp, if (isStandard) colors.teal else colors.border)
                             ) {
                                 Column(modifier = Modifier.padding(9.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
                                             imageVector = Icons.Default.EditNote,
                                             contentDescription = null,
-                                            tint = if (isStandard) Color(0xFF2563EB) else colors.muted,
+                                            tint = if (isStandard) colors.teal else colors.muted,
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -946,7 +947,7 @@ fun PromptGeneratorTab(
                                             text = "Standard Key-First",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isStandard) Color(0xFF1E40AF) else colors.inkBold
+                                            color = if (isStandard) colors.tealDark else colors.inkBold
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
@@ -954,7 +955,7 @@ fun PromptGeneratorTab(
                                         text = "Q -> Key -> Explanations\nClassic output sequence for standard workflows.",
                                         fontSize = 9.5.sp,
                                         lineHeight = 13.sp,
-                                        color = if (isStandard) Color(0xFF1D4ED8) else colors.muted
+                                        color = if (isStandard) colors.tealDark else colors.muted
                                     )
                                 }
                             }
@@ -966,8 +967,8 @@ fun PromptGeneratorTab(
                     // --- FORMAT & QUANTITY CORRECTION RULE TOGGLE (OFF BY DEFAULT) ---
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (enableQuantityCorrectionRule) Color(0xFFEFF6FF) else colors.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(0.8.dp, if (enableQuantityCorrectionRule) Color(0xFF93C5FD) else colors.border),
+                        color = if (enableQuantityCorrectionRule) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(0.8.dp, if (enableQuantityCorrectionRule) colors.teal else colors.border),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -983,7 +984,7 @@ fun PromptGeneratorTab(
                                     Icon(
                                         imageVector = Icons.Default.Shield,
                                         contentDescription = null,
-                                        tint = if (enableQuantityCorrectionRule) Color(0xFF2563EB) else colors.muted,
+                                        tint = if (enableQuantityCorrectionRule) colors.teal else colors.muted,
                                         modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -991,7 +992,7 @@ fun PromptGeneratorTab(
                                         text = "Format & Quantity Truncation Guard",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (enableQuantityCorrectionRule) Color(0xFF1D4ED8) else colors.inkBold
+                                        color = if (enableQuantityCorrectionRule) colors.tealDark else colors.inkBold
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -1003,7 +1004,7 @@ fun PromptGeneratorTab(
                                     },
                                     fontSize = 10.5.sp,
                                     lineHeight = 14.sp,
-                                    color = if (enableQuantityCorrectionRule) Color(0xFF1E40AF) else colors.muted
+                                    color = if (enableQuantityCorrectionRule) colors.tealDark else colors.muted
                                 )
                             }
 
@@ -1012,7 +1013,7 @@ fun PromptGeneratorTab(
                                 onCheckedChange = { enableQuantityCorrectionRule = it },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF2563EB)
+                                    checkedTrackColor = colors.teal
                                 )
                             )
                         }
@@ -1044,14 +1045,14 @@ fun PromptGeneratorTab(
 
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFECFDF5),
-                            border = BorderStroke(0.5.dp, Color(0xFFA7F3D0))
+                            color = colors.greenLight,
+                            border = BorderStroke(0.5.dp, colors.green.copy(alpha = 0.4f))
                         ) {
                             Text(
                                 text = if (enableQuantityCorrectionRule) "Guard Active" else "Full Stream (Default)",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF047857),
+                                color = colors.green,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -1090,8 +1091,8 @@ fun PromptGeneratorTab(
                                 .weight(1f)
                                 .heightIn(min = 44.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copied) Color(0xFF059669) else Color(0xFF2563EB),
-                                contentColor = Color.White
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
                             )
                         ) {
                             Icon(
