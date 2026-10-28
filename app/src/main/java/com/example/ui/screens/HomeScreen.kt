@@ -343,10 +343,16 @@ fun HomeScreen(
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
-                            val tM = topTodaySecs / 60
+                            val tH = topTodaySecs / 3600
+                            val tM = (topTodaySecs % 3600) / 60
                             val tS = topTodaySecs % 60
+                            val formattedTime = if (tH > 0) {
+                                String.format(java.util.Locale.US, "%02d:%02d:%02d", tH, tM, tS)
+                            } else {
+                                String.format(java.util.Locale.US, "%02d:%02d", tM, tS)
+                            }
                             Text(
-                                text = String.format(java.util.Locale.US, "%02d:%02d", tM, tS),
+                                text = formattedTime,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isExamRunning) colors.tealDark else colors.inkBold

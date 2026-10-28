@@ -370,7 +370,7 @@ fun StudentPracticeCard(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
+                            .clickable(enabled = !showResult) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 if (isSelected) onSelectAnswer("") else onSelectAnswer(item.originalKey)
                             },

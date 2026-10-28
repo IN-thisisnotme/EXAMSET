@@ -1413,10 +1413,16 @@ private fun ActiveExamView(
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
-                                    val todayM = todayTestSeconds / 60
+                                    val todayH = todayTestSeconds / 3600
+                                    val todayM = (todayTestSeconds % 3600) / 60
                                     val todayS = todayTestSeconds % 60
+                                    val todayTimeStr = if (todayH > 0) {
+                                        String.format(java.util.Locale.US, "Today %02d:%02d:%02d", todayH, todayM, todayS)
+                                    } else {
+                                        String.format(java.util.Locale.US, "Today %02d:%02d", todayM, todayS)
+                                    }
                                     Text(
-                                        text = "Today ${String.format(java.util.Locale.US, "%02d:%02d", todayM, todayS)}",
+                                        text = todayTimeStr,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.tealDark
@@ -1887,17 +1893,35 @@ private fun ExamResultAndReviewView(
                             subtitle = "$formattedPenalty penalty",
                             color = colors.red
                         )
+                        val unattendedPenaltyStr = if (stats.penaltyUnattended > 0.0) {
+                            "-${String.format(java.util.Locale.US, "%.2f", stats.penaltyUnattended)}"
+                        } else {
+                            "0.00"
+                        }
+                        val unattendedSubtitle = if (stats.penaltyUnattended > 0.0) {
+                            val rate = if (stats.unanswered > 0) stats.penaltyUnattended / stats.unanswered else 0.10
+                            if (rate % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f penalty", rate)
+                            else String.format(java.util.Locale.US, "-%.2f penalty", rate)
+                        } else {
+                            "0.00 penalty"
+                        }
                         PenaltyMetricBadge(
                             title = "Unattended",
-                            points = "0.00",
-                            subtitle = "0.00 penalty",
-                            color = colors.muted
+                            points = unattendedPenaltyStr,
+                            subtitle = unattendedSubtitle,
+                            color = if (stats.penaltyUnattended > 0.0) colors.red else colors.muted
                         )
-                        val m = timeSpentSeconds / 60
+                        val h = timeSpentSeconds / 3600
+                        val m = (timeSpentSeconds % 3600) / 60
                         val s = timeSpentSeconds % 60
+                        val timePoints = if (h > 0) {
+                            String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, s)
+                        } else {
+                            String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                        }
                         PenaltyMetricBadge(
                             title = "Time",
-                            points = String.format(java.util.Locale.US, "%02d:%02d", m, s),
+                            points = timePoints,
                             subtitle = "Duration",
                             color = colors.teal
                         )
@@ -2251,8 +2275,8 @@ private fun ExamResultAndReviewView(
 
                     StudentPracticeCard(
                         question = q,
-                        selectedAnswer = answers[q.num],
-                        onSelectAnswer = { onSelectAnswer(q.num, it) },
+                        selectedAnswer = officialAnswers[q.num],
+                        onSelectAnswer = { },
                         showResult = true
                     )
                 }
