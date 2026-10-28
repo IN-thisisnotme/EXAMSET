@@ -140,3 +140,12 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+afterEvaluate {
+  val copyTask = tasks.register<Copy>("copyDebugApkToFolder") {
+    description = "Copies the compiled debug APK to the visible /apk project directory"
+    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+    into(rootProject.layout.projectDirectory.dir("apk"))
+  }
+  tasks.findByName("assembleDebug")?.finalizedBy(copyTask)
+}
