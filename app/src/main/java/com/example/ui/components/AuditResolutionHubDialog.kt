@@ -140,6 +140,15 @@ fun AuditResolutionHubDialog(
         }
     }
 
+    val unappliedExplanations by remember(reports, paper) {
+        derivedStateOf {
+            reports.filter { rep ->
+                val currentExp = rep.originalQuestion?.explanation ?: paper.questions.find { it.num == rep.qNum }?.explanation
+                !rep.recheckedExplanation.isNullOrBlank() && rep.recheckedExplanation != currentExp
+            }
+        }
+    }
+
     val filteredReports by remember(reports, activeTab, currentPhase) {
         derivedStateOf {
             when (activeTab) {
@@ -298,6 +307,26 @@ fun AuditResolutionHubDialog(
             if (it.qNum in resolvedNums) it.copy(isResolved = true, status = AuditIssueType.CLEAN, currentKey = it.suggestedKey) else it
         }
         Toast.makeText(context, "Batch applied ${fixesToApply.size} verified answer keys & explanations", Toast.LENGTH_LONG).show()
+    }
+
+    fun applyBatchExplanations() {
+        if (unappliedExplanations.isEmpty()) return
+        val newSnapshots = questionSnapshots.toMutableMap()
+        unappliedExplanations.forEach { rep ->
+            val orig = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum } ?: return@forEach
+            if (!newSnapshots.containsKey(rep.qNum)) {
+                newSnapshots[rep.qNum] = orig
+            }
+            val updated = orig.copy(explanation = rep.recheckedExplanation)
+            onUpdateQuestion(updated)
+        }
+        questionSnapshots = newSnapshots
+        val appliedCount = unappliedExplanations.size
+        reports = reports.map { rep ->
+            val orig = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
+            rep.copy(originalQuestion = orig?.copy(explanation = rep.recheckedExplanation))
+        }
+        Toast.makeText(context, "Attached $appliedCount detailed explanations to exam paper", Toast.LENGTH_SHORT).show()
     }
 
     fun resetAuditSession() {
@@ -494,7 +523,7 @@ fun AuditResolutionHubDialog(
                 ) {
                     PhaseStepButton(
                         stepNum = 1,
-                        label = "MCQ & Explanations",
+                        label = "Q&A Check",
                         badgeCount = metrics.wrongKeysCount + metrics.flawedQuestionsCount,
                         badgeColor = if (metrics.wrongKeysCount > 0) colors.red else colors.teal,
                         isActive = currentPhase == AuditPhase.PHASE_1_KEYS,
@@ -514,8 +543,8 @@ fun AuditResolutionHubDialog(
                     )
                     PhaseStepButton(
                         stepNum = 3,
-                        label = "Quality Seal & Summary",
-                        badgeCount = metrics.verifiedCount,
+                        label = "Explanations",
+                        badgeCount = unappliedExplanations.size,
                         badgeColor = colors.teal,
                         isActive = currentPhase == AuditPhase.PHASE_3_EXPLANATIONS,
                         onClick = { currentPhase = AuditPhase.PHASE_3_EXPLANATIONS },
@@ -735,6 +764,72 @@ fun AuditResolutionHubDialog(
                                 modifier = Modifier.testTag("fix_all_keys_button")
                             ) {
                                 Text("Fix All Keys", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+
+                // Batch Action Banner for Step 3 Explanations
+                if (currentPhase == AuditPhase.PHASE_3_EXPLANATIONS && unappliedExplanations.isNotEmpty()) {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.teal.copy(alpha = 0.12f)),
+                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "${unappliedExplanations.size} Detailed Explanations Ready",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.inkBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Attaches step-by-step derivations & key ideas",
+                                        fontSize = 10.sp,
+                                        color = colors.teal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Button(
+                                onClick = { applyBatchExplanations() },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.teal,
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.testTag("apply_all_explanations_button")
+                            ) {
+                                Text("Apply All", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                     }

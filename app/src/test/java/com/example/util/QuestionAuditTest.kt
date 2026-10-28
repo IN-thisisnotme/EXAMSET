@@ -178,21 +178,31 @@ class QuestionAuditTest {
     }
 
     @Test
-    fun testPhase1PromptContainsMcqAndExplanationReview() {
+    fun testPhase1PromptStrictlyChecksQuestionAndAnswerOnly() {
         val prompt = QuestionAuditHelper.generatePhase1KeyAndFlawAuditPrompt(samplePaper)
         assertTrue("Phase 1 prompt should mandate MCQ stem check", prompt.contains("QUESTION MCQ STEM & OPTIONS CHECK"))
         assertTrue("Phase 1 prompt should mandate marked answer key verification", prompt.contains("MARKED ANSWER KEY VERIFICATION"))
-        assertTrue("Phase 1 prompt should mandate detailed explanation review", prompt.contains("DETAILED EXPLANATION REVIEW & PROOF"))
+        assertTrue("Phase 1 prompt should enforce strict scope constraint", prompt.contains("STRICT SCOPE CONSTRAINT"))
         assertTrue("Phase 1 prompt should format options", prompt.contains("A) Volt"))
-        assertTrue("Phase 1 prompt should include existing explanation payload", prompt.contains("Existing Explanation"))
+        assertTrue("Phase 1 prompt must NOT include existing explanation payload", !prompt.contains("Existing Explanation"))
+        assertTrue("Phase 1 prompt must NOT mandate detailed explanation review", !prompt.contains("DETAILED EXPLANATION REVIEW & PROOF"))
     }
 
     @Test
-    fun testPhase3PromptContainsQualitySeal() {
+    fun testPhase3PromptContainsDetailedExplanationsAndKeyIdeas() {
+        val prompt = QuestionAuditHelper.generatePhase3ExplanationAuditPrompt(samplePaper)
+        assertTrue("Phase 3 prompt should include detailed explanation header", prompt.contains("COMPREHENSIVE DETAILED EXPLANATION & PEDAGOGICAL AUDIT"))
+        assertTrue("Phase 3 prompt should mandate step-by-step explanations", prompt.contains("STEP-BY-STEP EXPLANATION"))
+        assertTrue("Phase 3 prompt should emphasize pedagogical highlights and key ideas", prompt.contains("CORE CONCEPTS & KEY IDEAS"))
+        assertTrue("Phase 3 prompt should include existing explanation drafts for refinement", prompt.contains("Existing Explanation"))
+    }
+
+    @Test
+    fun testPhase3QualitySealPrompt() {
         val prompt = QuestionAuditHelper.generatePhase3QualitySealPrompt(samplePaper)
-        assertTrue("Phase 3 prompt should include quality seal header", prompt.contains("QUALITY SEAL, PSYCHOMETRIC AUDIT SUMMARY & CERTIFICATION"))
-        assertTrue("Phase 3 prompt should mandate quality seal recommendation", prompt.contains("QUALITY SEAL RECOMMENDATION"))
-        assertTrue("Phase 3 prompt should include certification status in schema", prompt.contains("CERTIFIED_READY"))
+        assertTrue("Phase 3 quality seal prompt should include quality seal header", prompt.contains("QUALITY SEAL, PSYCHOMETRIC AUDIT SUMMARY & CERTIFICATION"))
+        assertTrue("Phase 3 quality seal prompt should mandate quality seal recommendation", prompt.contains("QUALITY SEAL RECOMMENDATION"))
+        assertTrue("Phase 3 quality seal prompt should include certification status in schema", prompt.contains("CERTIFIED_READY"))
     }
 }
 

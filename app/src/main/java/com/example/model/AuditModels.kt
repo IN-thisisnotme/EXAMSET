@@ -4,9 +4,9 @@ package com.example.model
  * Three-phase stepped auditing workflow for token-efficient, high-precision review.
  */
 enum class AuditPhase(val stepNumber: Int, val title: String, val shortTitle: String) {
-    PHASE_1_KEYS(1, "Phase 1: MCQ, Key & Explanation Audit", "Step 1: MCQ & Explanation"),
+    PHASE_1_KEYS(1, "Phase 1: Question & Answer Key Audit", "Step 1: Q&A Check"),
     PHASE_2_REPLACEMENTS(2, "Phase 2: Flawed Question Replacements", "Step 2: Replacements"),
-    PHASE_3_EXPLANATIONS(3, "Phase 3: Quality Seal, Summary & Certification", "Step 3: Quality Seal")
+    PHASE_3_EXPLANATIONS(3, "Phase 3: Detailed Explanations & Pedagogical Audit", "Step 3: Explanations")
 }
 
 /**

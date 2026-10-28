@@ -22,9 +22,9 @@ object QuestionAuditHelper {
 """
 
     /**
-     * Phase 1: Comprehensive MCQ Question, Marked Answer Key & Detailed Explanation Audit.
-     * Evaluates question stem & options, fact-checks marked answer key against academic standards,
-     * reviews and provides detailed step-by-step explanatory derivations, and flags fatal defects.
+     * Phase 1: Strict MCQ Question Stem & Marked Answer Key Audit.
+     * Evaluates question stem & options for fatal flaws, fact-checks marked answer key against academic standards.
+     * Excludes explanations, core ideas, and key ideas to maintain strict, token-efficient Q&A verification.
      */
     fun generatePhase1KeyAndFlawAuditPrompt(
         paper: QuestionPaper,
@@ -33,22 +33,24 @@ object QuestionAuditHelper {
         return buildString {
             appendLine(SYSTEM_OVERRIDE_HEADER.trim())
             appendLine()
-            appendLine("=== PHASE 1: MCQ QUESTION, MARKED ANSWER & DETAILED EXPLANATION AUDIT ===")
+            appendLine("=== PHASE 1: MCQ QUESTION STEM & ANSWER KEY AUDIT ===")
             appendLine("ROLE: Senior academic psychometrician, master tutor, and chief examination reviewer.")
             appendLine("TASK: Thoroughly audit each of the following ${questionsToAudit.size} questions for \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
             appendLine()
-            appendLine("=== OBJECTIVES FOR PHASE 1 (COMPREHENSIVE QUESTION REVIEW) ===")
+            appendLine("=== OBJECTIVES FOR PHASE 1 (STRICT QUESTION STEM & ANSWER KEY AUDIT) ===")
             appendLine("1. QUESTION MCQ STEM & OPTIONS CHECK:")
             appendLine("   - Fact-check the question stem, distractor options (A, B, C, D, E), terminology, and units.")
-            appendLine("   - If the question is flawed (ambiguous, missing diagrams, duplicate choices), mark \"status\": \"FLAWED\" and detail the defect in \"flawReason\".")
+            appendLine("   - Check for ambiguity, truncated sentences, duplicate choices, missing options, or missing diagram dependencies.")
+            appendLine("   - If the question is flawed, mark \"status\": \"FLAWED\" and detail the defect in \"flawReason\".")
             appendLine()
             appendLine("2. MARKED ANSWER KEY VERIFICATION:")
             appendLine("   - Fact-check the marked answer key against authoritative academic standards.")
-            appendLine("   - If the marked key is correct, confirm it. If incorrect or mismarked, set \"status\": \"WRONG_KEY\" and specify the true \"suggestedKey\".")
+            appendLine("   - If the marked key is correct, confirm it with \"status\": \"CLEAN\" and \"suggestedKey\": \"<markedKey>\".")
+            appendLine("   - If incorrect or mismarked, set \"status\": \"WRONG_KEY\" and specify the true \"suggestedKey\".")
             appendLine()
-            appendLine("3. DETAILED EXPLANATION REVIEW & PROOF (MANDATORY):")
-            appendLine("   - Provide or review a comprehensive, step-by-step detailed explanation in \"recheckedExplanation\".")
-            appendLine("   - Explain the governing principle/formula, the step-by-step derivation, why the correct answer is indisputably true, and why common distractors fail.")
+            appendLine("3. STRICT SCOPE CONSTRAINT (QUESTION & ANSWER ONLY):")
+            appendLine("   - DO NOT evaluate, generate, or output explanations, derivations, core ideas, or key ideas in this phase.")
+            appendLine("   - Only question and answer check will be performed for Step 1.")
             appendLine()
             appendLine("=== EXACT JSON SCHEMA FOR PHASE 1 ===")
             appendLine("""
@@ -59,31 +61,28 @@ object QuestionAuditHelper {
     "status": "CLEAN",
     "currentKey": "A",
     "suggestedKey": "A",
-    "flawReason": null,
-    "recheckedExplanation": "Step 1: Solid carbon dioxide sublimes directly into gas at -78.5°C under atmospheric pressure without melting into liquid.\nStep 2: This substance is commonly known as dry ice.\nStep 3: Option A is correct; nitrogen (B), carbon monoxide (C), and methane (D) do not share these physical properties under ambient conditions."
+    "flawReason": null
   },
   {
     "qNum": 2,
     "status": "WRONG_KEY",
     "currentKey": "B",
     "suggestedKey": "A",
-    "flawReason": "Option B is incorrect by a factor of 100.",
-    "recheckedExplanation": "Step 1: The velocity of light in vacuum is defined as c = 299,792,458 m/s, approximately 3 × 10^8 m/s.\nStep 2: Option A correctly states 3 × 10^8 m/s, whereas marked Option B (3 × 10^6 m/s) is off by two orders of magnitude."
+    "flawReason": "Option B is incorrect by a factor of 100; true speed is 3 × 10^8 m/s (Option A)."
   },
   {
     "qNum": 7,
     "status": "FLAWED",
     "currentKey": "B",
     "suggestedKey": null,
-    "flawReason": "Visual dependency: Essential circuit diagram is missing, rendering the question unsolvable.",
-    "recheckedExplanation": null
+    "flawReason": "Visual dependency: Essential circuit diagram is missing, rendering the question unsolvable."
   }
 ]
 ```
 """.trimIndent())
             appendLine()
-            appendLine("=== EXAMINATION QUESTIONS (STEM, CHOICES & CURRENT EXPLANATION) ===")
-            appendQuestionsPayload(paper, questionsToAudit)
+            appendLine("=== EXAMINATION QUESTIONS (STEM & CHOICES ONLY - NO EXPLANATIONS) ===")
+            appendQuestionsPayload(paper, questionsToAudit, includeExplanations = false)
         }
     }
 
@@ -209,13 +208,64 @@ object QuestionAuditHelper {
     }
 
     /**
-     * Backward-compatible delegate for Phase 3 audit.
+     * Phase 3: Comprehensive Step-by-Step Explanations, Core Concepts & Pedagogical Audit.
+     * Generates or reviews detailed step-by-step explanations, formulas, core concepts,
+     * key ideas, and distractor breakdowns for all verified questions.
      */
     fun generatePhase3ExplanationAuditPrompt(
         paper: QuestionPaper,
-        keyCorrectedReports: List<AuditQuestionReport>
+        questionsToAudit: List<McqQuestion> = paper.questions
     ): String {
-        return generatePhase3QualitySealPrompt(paper, keyCorrectedReports)
+        return buildString {
+            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
+            appendLine()
+            appendLine("=== PHASE 3: COMPREHENSIVE DETAILED EXPLANATION & PEDAGOGICAL AUDIT ===")
+            appendLine("ROLE: Master academic pedagogue, subject curriculum author, and chief solution architect.")
+            appendLine("TASK: Provide rich, step-by-step pedagogical explanations, core concepts, and key ideas for each of the following ${questionsToAudit.size} questions for \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
+            appendLine()
+            appendLine("=== OBJECTIVES FOR PHASE 3 (STEP-BY-STEP EXPLANATIONS & KEY IDEAS) ===")
+            appendLine("1. STEP-BY-STEP EXPLANATION (MANDATORY FOR EVERY QUESTION):")
+            appendLine("   - Provide a clear, step-by-step derivation leading directly to the verified correct option.")
+            appendLine("   - State the governing scientific principle, textbook theorem, or mathematical formula.")
+            appendLine("   - Explicitly analyze distractors: explain why the incorrect options fail.")
+            appendLine()
+            appendLine("2. PEDAGOGICAL HIGHLIGHTS (CORE CONCEPTS & KEY IDEAS):")
+            appendLine("   - Include a succinct \"**Core Concept:**\" and \"**Key Idea:**\" within the explanation to solidify student comprehension.")
+            appendLine()
+            appendLine("=== EXACT JSON SCHEMA FOR PHASE 3 ===")
+            appendLine("""
+```json
+[
+  {
+    "qNum": 1,
+    "status": "CLEAN",
+    "explanation": "Step 1: Solid carbon dioxide sublimes directly from solid to vapor at -78.5°C under 1 atm pressure without melting into liquid.\nStep 2: This substance is commonly known as dry ice.\n**Core Concept:** Sublimation under ambient pressure.\n**Key Idea:** Dry ice is solid CO2 and transitions directly to gas.\n**Distractor Analysis:** Nitrogen (B), carbon monoxide (C), and methane (D) have different sublimation/boiling points and do not form dry ice."
+  },
+  {
+    "qNum": 2,
+    "status": "CLEAN",
+    "explanation": "Step 1: The velocity of light in complete vacuum is an invariant physical constant c = 299,792,458 m/s.\nStep 2: Expressed in scientific notation, c ≈ 3 × 10^8 m/s (Option A).\n**Core Concept:** Speed of electromagnetic radiation in vacuum.\n**Key Idea:** Exactly defined speed is ~3 × 10^8 m/s; Option B (3 × 10^6 m/s) is off by 100x."
+  }
+]
+```
+""".trimIndent())
+            appendLine()
+            appendLine("=== EXAMINATION QUESTIONS (STEM, CHOICES & CURRENT EXPLANATION DRAFT) ===")
+            appendQuestionsPayload(paper, questionsToAudit, includeExplanations = true)
+        }
+    }
+
+    @JvmName("generatePhase3ExplanationAuditPromptFromReports")
+    fun generatePhase3ExplanationAuditPrompt(
+        paper: QuestionPaper,
+        auditedReports: List<AuditQuestionReport>
+    ): String {
+        val questions = if (auditedReports.isNotEmpty()) {
+            auditedReports.mapNotNull { rep -> rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum } }
+        } else {
+            paper.questions
+        }
+        return generatePhase3ExplanationAuditPrompt(paper, questions)
     }
 
     /**
@@ -269,7 +319,8 @@ object QuestionAuditHelper {
 
     private fun StringBuilder.appendQuestionsPayload(
         paper: QuestionPaper,
-        questions: List<McqQuestion>
+        questions: List<McqQuestion>,
+        includeExplanations: Boolean = true
     ) {
         appendLine("Paper: ${paper.metadata.title} (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber})")
         appendLine("Total Questions in this Batch: ${questions.size}")
@@ -292,7 +343,7 @@ object QuestionAuditHelper {
                 appendLine("   E) ${q.options.e}")
             }
             appendLine("   Marked Key: ${q.correctAnswer ?: "[NOT ASSIGNED]"}")
-            if (!q.explanation.isNullOrBlank()) {
+            if (includeExplanations && !q.explanation.isNullOrBlank()) {
                 appendLine("   Existing Explanation: ${q.explanation}")
             }
             appendLine()
@@ -422,7 +473,11 @@ object QuestionAuditHelper {
                 val currentKey = obj.optString("currentKey", originalQ?.correctAnswer ?: "").ifBlank { originalQ?.correctAnswer }
                 val suggestedKey = obj.optString("suggestedKey", obj.optString("correctedKey", "")).ifBlank { null }?.uppercase()
                 val flawReason = obj.optString("flawReason", "").ifBlank { null }
-                val recheckedExplanation = obj.optString("recheckedExplanation", obj.optString("detailedExplanation", obj.optString("explanation", ""))).ifBlank { null }
+                val recheckedExplanation = obj.optString("explanation").ifBlank {
+                    obj.optString("recheckedExplanation").ifBlank {
+                        obj.optString("detailedExplanation").ifBlank { null }
+                    }
+                }
 
                 val replacementObj = obj.optJSONObject("replacementQuestion")
                 val replacementQ = if (replacementObj != null) {

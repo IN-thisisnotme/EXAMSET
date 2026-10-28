@@ -133,7 +133,7 @@ fun BulkAuditPromptDialog(
                 }
             }
             AuditPhase.PHASE_3_EXPLANATIONS -> {
-                QuestionAuditHelper.generatePhase3QualitySealPrompt(paper, heuristicReports)
+                QuestionAuditHelper.generatePhase3ExplanationAuditPrompt(paper, heuristicReports)
             }
         }
     }
@@ -293,9 +293,9 @@ fun BulkAuditPromptDialog(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = when (selectedPhase) {
-                                    AuditPhase.PHASE_1_KEYS -> "Step 1: Audit Question MCQs, verify marked keys, and review detailed explanations."
+                                    AuditPhase.PHASE_1_KEYS -> "Step 1: Only Question & Answer Key check (verifies question stems, options, and marked keys; excludes explanations and key ideas)."
                                     AuditPhase.PHASE_2_REPLACEMENTS -> "Step 2: Generate brand-new MCQ replacements for flawed questions."
-                                    AuditPhase.PHASE_3_EXPLANATIONS -> "Step 3: Executive psychometric summary, quality seal, and certification."
+                                    AuditPhase.PHASE_3_EXPLANATIONS -> "Step 3: Comprehensive step-by-step explanations, core concepts, key ideas, and pedagogical review."
                                 },
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -472,9 +472,9 @@ private fun AuditPhaseTab(
             )
             Text(
                 text = when (phase) {
-                    AuditPhase.PHASE_1_KEYS -> "MCQ & Explanations"
+                    AuditPhase.PHASE_1_KEYS -> "Q&A Check"
                     AuditPhase.PHASE_2_REPLACEMENTS -> "Replacements"
-                    AuditPhase.PHASE_3_EXPLANATIONS -> "Quality Seal"
+                    AuditPhase.PHASE_3_EXPLANATIONS -> "Explanations"
                 },
                 fontSize = 11.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
