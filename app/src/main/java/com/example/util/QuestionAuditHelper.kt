@@ -22,10 +22,9 @@ object QuestionAuditHelper {
 """
 
     /**
-     * Phase 1: Answer Key Verification & Flawed Question Flagging.
-     * Checks if marked answer key is correct. If mismatched, suggests the true key.
-     * Flags which question numbers are fatally flawed (incomplete, ambiguous, missing options or diagrams).
-     * Ultra-low token output footprint (sparse JSON return).
+     * Phase 1: Comprehensive MCQ Question, Marked Answer Key & Detailed Explanation Audit.
+     * Evaluates question stem & options, fact-checks marked answer key against academic standards,
+     * reviews and provides detailed step-by-step explanatory derivations, and flags fatal defects.
      */
     fun generatePhase1KeyAndFlawAuditPrompt(
         paper: QuestionPaper,
@@ -34,25 +33,22 @@ object QuestionAuditHelper {
         return buildString {
             appendLine(SYSTEM_OVERRIDE_HEADER.trim())
             appendLine()
-            appendLine("=== PHASE 1: ANSWER KEY FACT-CHECK & FLAW FLAGGING MANDATE ===")
-            appendLine("ROLE: Senior academic psychometrician and subject matter examiner.")
-            appendLine("TASK: Audit the following ${questionsToAudit.size} questions for the examination \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
+            appendLine("=== PHASE 1: MCQ QUESTION, MARKED ANSWER & DETAILED EXPLANATION AUDIT ===")
+            appendLine("ROLE: Senior academic psychometrician, master tutor, and chief examination reviewer.")
+            appendLine("TASK: Thoroughly audit each of the following ${questionsToAudit.size} questions for \"${paper.metadata.title}\" (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber}).")
             appendLine()
-            appendLine("=== OBJECTIVES FOR PHASE 1 ===")
-            appendLine("1. FACT-CHECK THE MARKED ANSWER KEY:")
-            appendLine("   - For each question, compare the marked key against authoritative scientific & academic standards.")
-            appendLine("   - If the marked key is WRONG, record \"status\": \"WRONG_KEY\", specify \"suggestedKey\", and give a brief 1-sentence note in \"flawReason\".")
-            appendLine("   - If the marked key is already correct, DO NOT FLAG IT AS WRONG.")
+            appendLine("=== OBJECTIVES FOR PHASE 1 (COMPREHENSIVE QUESTION REVIEW) ===")
+            appendLine("1. QUESTION MCQ STEM & OPTIONS CHECK:")
+            appendLine("   - Fact-check the question stem, distractor options (A, B, C, D, E), terminology, and units.")
+            appendLine("   - If the question is flawed (ambiguous, missing diagrams, duplicate choices), mark \"status\": \"FLAWED\" and detail the defect in \"flawReason\".")
             appendLine()
-            appendLine("2. FLAG FATALLY FLAWED QUESTIONS:")
-            appendLine("   - Flag questions that have missing choices, identical/duplicate options, ambiguous wording, or impossible premises.")
-            appendLine("   - VISUAL DEPENDENCY: If a question references a diagram, figure, or circuit that is absent or unsolvable without image, flag it as \"status\": \"FLAWED\" (Reason: \"Visual dependency: Essential diagram/figure missing\").")
-            appendLine("   - Set \"status\": \"FLAWED\". (Replacement questions are generated in Phase 2, so leave \"replacementQuestion\": null for now).")
+            appendLine("2. MARKED ANSWER KEY VERIFICATION:")
+            appendLine("   - Fact-check the marked answer key against authoritative academic standards.")
+            appendLine("   - If the marked key is correct, confirm it. If incorrect or mismarked, set \"status\": \"WRONG_KEY\" and specify the true \"suggestedKey\".")
             appendLine()
-            appendLine("=== CRITICAL TOKEN OPTIMIZATION RULE (SPARSE JSON RETURN) ===")
-            appendLine("- ONLY return JSON items for questions that have a wrong answer key or are flawed.")
-            appendLine("- EXCLUDE completely valid, correct questions from the JSON output array.")
-            appendLine("- If all audited questions are completely correct, return an empty array: []")
+            appendLine("3. DETAILED EXPLANATION REVIEW & PROOF (MANDATORY):")
+            appendLine("   - Provide or review a comprehensive, step-by-step detailed explanation in \"recheckedExplanation\".")
+            appendLine("   - Explain the governing principle/formula, the step-by-step derivation, why the correct answer is indisputably true, and why common distractors fail.")
             appendLine()
             appendLine("=== EXACT JSON SCHEMA FOR PHASE 1 ===")
             appendLine("""
@@ -60,23 +56,33 @@ object QuestionAuditHelper {
 [
   {
     "qNum": 1,
-    "status": "WRONG_KEY",
+    "status": "CLEAN",
     "currentKey": "A",
-    "suggestedKey": "C",
-    "flawReason": "Evaluating algebraic identity (a-b)^2 yields 0.25 (Option C), not Option A."
+    "suggestedKey": "A",
+    "flawReason": null,
+    "recheckedExplanation": "Step 1: Solid carbon dioxide sublimes directly into gas at -78.5°C under atmospheric pressure without melting into liquid.\nStep 2: This substance is commonly known as dry ice.\nStep 3: Option A is correct; nitrogen (B), carbon monoxide (C), and methane (D) do not share these physical properties under ambient conditions."
+  },
+  {
+    "qNum": 2,
+    "status": "WRONG_KEY",
+    "currentKey": "B",
+    "suggestedKey": "A",
+    "flawReason": "Option B is incorrect by a factor of 100.",
+    "recheckedExplanation": "Step 1: The velocity of light in vacuum is defined as c = 299,792,458 m/s, approximately 3 × 10^8 m/s.\nStep 2: Option A correctly states 3 × 10^8 m/s, whereas marked Option B (3 × 10^6 m/s) is off by two orders of magnitude."
   },
   {
     "qNum": 7,
     "status": "FLAWED",
     "currentKey": "B",
     "suggestedKey": null,
-    "flawReason": "Visual dependency: Essential circuit diagram is missing, rendering question unsolvable."
+    "flawReason": "Visual dependency: Essential circuit diagram is missing, rendering the question unsolvable.",
+    "recheckedExplanation": null
   }
 ]
 ```
 """.trimIndent())
             appendLine()
-            appendLine("=== EXAMINATION QUESTIONS (EXPLICIT STEM & ALL OPTIONS) ===")
+            appendLine("=== EXAMINATION QUESTIONS (STEM, CHOICES & CURRENT EXPLANATION) ===")
             appendQuestionsPayload(paper, questionsToAudit)
         }
     }
@@ -145,59 +151,71 @@ object QuestionAuditHelper {
     }
 
     /**
-     * Phase 3: Detailed Step-by-Step Explanations for Key Corrections.
-     * Generates deep, non-repetitive conceptual/mathematical proofs for questions where keys were corrected.
+     * Phase 3: Paper Quality Seal, Psychometric Summary & Final Certification.
+     * Evaluates syllabus balance, cognitive rigor distribution, distractor efficacy,
+     * and provides final certification seal for paper printing/publishing.
+     */
+    fun generatePhase3QualitySealPrompt(
+        paper: QuestionPaper,
+        auditedReports: List<AuditQuestionReport> = emptyList()
+    ): String {
+        return buildString {
+            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
+            appendLine()
+            appendLine("=== PHASE 3: QUALITY SEAL, PSYCHOMETRIC AUDIT SUMMARY & CERTIFICATION ===")
+            appendLine("ROLE: Chief Academic Psychometrician and Examination Board Certification Auditor.")
+            appendLine("TASK: Provide executive paper quality certification, Bloom's cognitive distribution, and distractor balance analysis for \"${paper.metadata.title}\" (${paper.questions.size} questions).")
+            appendLine()
+            appendLine("=== AUDIT CERTIFICATION OBJECTIVES ===")
+            appendLine("1. PSYCHOMETRIC INTEGRITY & SYLLABUS ALIGNMENT:")
+            appendLine("   - Assess overall balance across foundational recall, application, analytical derivation, and distractor effectiveness.")
+            appendLine("2. QUALITY SEAL RECOMMENDATION:")
+            appendLine("   - Certify whether this question set is ready for formal distribution, printing, and official student test delivery.")
+            appendLine("3. EXECUTIVE AUDIT SUMMARY:")
+            appendLine("   - Summarize key verification findings, confirmed answer keys, and pedagogical strengths.")
+            appendLine()
+            appendLine("=== EXACT JSON SCHEMA FOR PHASE 3 ===")
+            appendLine("""
+```json
+{
+  "paperTitle": "${paper.metadata.title}",
+  "totalQuestions": ${paper.questions.size},
+  "certificationStatus": "CERTIFIED_READY",
+  "difficultyDistribution": {
+    "foundational": "25%",
+    "standard": "50%",
+    "advanced": "25%"
+  },
+  "overallQualityScore": 98,
+  "executiveSummary": "All questions, answer keys, and step-by-step explanatory derivations have been rigorously audited. Distractors are homogeneous and free of clues. The paper meets competitive examination standards and is certified ready for student examination.",
+  "readyForPrinting": true
+}
+```
+""".trimIndent())
+            appendLine()
+            appendLine("=== AUDITED QUESTIONS SUMMARY ===")
+            if (auditedReports.isNotEmpty()) {
+                auditedReports.forEach { rep ->
+                    val q = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
+                    appendLine("Q${rep.qNum}: [Status: ${rep.status}] Marked Key: ${rep.suggestedKey ?: rep.currentKey ?: "None"} | Stem: ${q?.question?.take(60)}...")
+                }
+            } else {
+                paper.questions.forEach { q ->
+                    appendLine("Q${q.num}: [Key: ${q.correctAnswer ?: "None"}] ${q.question.take(60)}...")
+                }
+            }
+            appendLine("=== END OF QUESTIONS SUMMARY ===")
+        }
+    }
+
+    /**
+     * Backward-compatible delegate for Phase 3 audit.
      */
     fun generatePhase3ExplanationAuditPrompt(
         paper: QuestionPaper,
         keyCorrectedReports: List<AuditQuestionReport>
     ): String {
-        return buildString {
-            appendLine(SYSTEM_OVERRIDE_HEADER.trim())
-            appendLine()
-            appendLine("=== PHASE 3: DEEP-DIVE STEP-BY-STEP EXPLANATION PROOF ===")
-            appendLine("ROLE: Senior academic professor and master tutor.")
-            appendLine("TASK: Provide exhaustive, step-by-step detailed explanations for the following ${keyCorrectedReports.size} questions where answer keys were corrected.")
-            appendLine()
-            appendLine("=== EXPLANATION CRITERIA ===")
-            appendLine("1. RIGOROUS DERIVATION: Step-by-step conceptual logic, mathematical proof, or formula derivation.")
-            appendLine("2. DISTRACTOR ANALYSIS: Clearly explain why the originally marked key was incorrect and why the corrected key is indisputably true.")
-            appendLine("3. NON-REPETITIVE: Avoid generic boilerplate; tailor specifically to the numbers and terms in the question.")
-            appendLine()
-            appendLine("=== EXACT JSON SCHEMA FOR PHASE 3 ===")
-            appendLine("""
-```json
-[
-  {
-    "qNum": 1,
-    "correctedKey": "C",
-    "recheckedExplanation": "Step 1: Notice that the numerical expression 4.25*4.25 + 3.75*3.75 - 2*4.25*3.75 matches the standard algebraic expansion (a - b)^2 with a = 4.25 and b = 3.75.\nStep 2: Compute the difference: 4.25 - 3.75 = 0.50.\nStep 3: Square the result: (0.50)^2 = 0.25.\nStep 4: Option C matches 0.25 exactly. Marked key A was incorrect because it failed to apply the subtraction before squaring."
-  }
-]
-```
-""".trimIndent())
-            appendLine()
-            appendLine("=== QUESTIONS WITH CORRECTED KEYS ===")
-            keyCorrectedReports.forEach { rep ->
-                val q = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
-                appendLine("Q${rep.qNum}:")
-                if (q != null) {
-                    appendLine("   Stem: ${q.question}")
-                    appendLine("   A) ${q.options.a}")
-                    appendLine("   B) ${q.options.b}")
-                    appendLine("   C) ${q.options.c}")
-                    appendLine("   D) ${q.options.d}")
-                    if (q.options.e.isNotBlank()) appendLine("   E) ${q.options.e}")
-                }
-                appendLine("   Marked Key: ${rep.currentKey ?: q?.correctAnswer ?: "None"}")
-                appendLine("   Corrected Key: ${rep.suggestedKey ?: "None"}")
-                if (!rep.flawReason.isNullOrBlank()) {
-                    appendLine("   Note: ${rep.flawReason}")
-                }
-                appendLine()
-            }
-            appendLine("=== END OF QUESTIONS ===")
-        }
+        return generatePhase3QualitySealPrompt(paper, keyCorrectedReports)
     }
 
     /**
@@ -404,7 +422,7 @@ object QuestionAuditHelper {
                 val currentKey = obj.optString("currentKey", originalQ?.correctAnswer ?: "").ifBlank { originalQ?.correctAnswer }
                 val suggestedKey = obj.optString("suggestedKey", obj.optString("correctedKey", "")).ifBlank { null }?.uppercase()
                 val flawReason = obj.optString("flawReason", "").ifBlank { null }
-                val recheckedExplanation = obj.optString("recheckedExplanation", obj.optString("detailedExplanation", "")).ifBlank { null }
+                val recheckedExplanation = obj.optString("recheckedExplanation", obj.optString("detailedExplanation", obj.optString("explanation", ""))).ifBlank { null }
 
                 val replacementObj = obj.optJSONObject("replacementQuestion")
                 val replacementQ = if (replacementObj != null) {

@@ -133,14 +133,7 @@ fun BulkAuditPromptDialog(
                 }
             }
             AuditPhase.PHASE_3_EXPLANATIONS -> {
-                if (keyCorrectionReports.isNotEmpty()) {
-                    QuestionAuditHelper.generatePhase3ExplanationAuditPrompt(paper, keyCorrectionReports)
-                } else {
-                    QuestionAuditHelper.generatePhase3ExplanationAuditPrompt(
-                        paper,
-                        heuristicReports.take(5) // Sample items for deep explanation demonstration
-                    )
-                }
+                QuestionAuditHelper.generatePhase3QualitySealPrompt(paper, heuristicReports)
             }
         }
     }
@@ -300,9 +293,9 @@ fun BulkAuditPromptDialog(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = when (selectedPhase) {
-                                    AuditPhase.PHASE_1_KEYS -> "Step 1: Check keys + flag flawed items. Low token output."
+                                    AuditPhase.PHASE_1_KEYS -> "Step 1: Audit Question MCQs, verify marked keys, and review detailed explanations."
                                     AuditPhase.PHASE_2_REPLACEMENTS -> "Step 2: Generate brand-new MCQ replacements for flawed questions."
-                                    AuditPhase.PHASE_3_EXPLANATIONS -> "Step 3: Produce detailed step-by-step proofs for corrected keys."
+                                    AuditPhase.PHASE_3_EXPLANATIONS -> "Step 3: Executive psychometric summary, quality seal, and certification."
                                 },
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -479,9 +472,9 @@ private fun AuditPhaseTab(
             )
             Text(
                 text = when (phase) {
-                    AuditPhase.PHASE_1_KEYS -> "Keys & Flaws"
+                    AuditPhase.PHASE_1_KEYS -> "MCQ & Explanations"
                     AuditPhase.PHASE_2_REPLACEMENTS -> "Replacements"
-                    AuditPhase.PHASE_3_EXPLANATIONS -> "Explanations"
+                    AuditPhase.PHASE_3_EXPLANATIONS -> "Quality Seal"
                 },
                 fontSize = 11.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,

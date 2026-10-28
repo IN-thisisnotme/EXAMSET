@@ -494,7 +494,7 @@ fun AuditResolutionHubDialog(
                 ) {
                     PhaseStepButton(
                         stepNum = 1,
-                        label = "Keys & Flaws",
+                        label = "MCQ & Explanations",
                         badgeCount = metrics.wrongKeysCount + metrics.flawedQuestionsCount,
                         badgeColor = if (metrics.wrongKeysCount > 0) colors.red else colors.teal,
                         isActive = currentPhase == AuditPhase.PHASE_1_KEYS,
@@ -514,7 +514,7 @@ fun AuditResolutionHubDialog(
                     )
                     PhaseStepButton(
                         stepNum = 3,
-                        label = "Explanations & Seal",
+                        label = "Quality Seal & Summary",
                         badgeCount = metrics.verifiedCount,
                         badgeColor = colors.teal,
                         isActive = currentPhase == AuditPhase.PHASE_3_EXPLANATIONS,
@@ -1406,6 +1406,21 @@ private fun AuditReportItemCard(
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.primaryButtonText)
                             Spacer(modifier = Modifier.width(3.dp))
                             Text("Fix Key & Explanation", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
+                        }
+                    } else if (!report.recheckedExplanation.isNullOrBlank() && report.recheckedExplanation != originalQ?.explanation) {
+                        Button(
+                            onClick = onApplyKeyFix,
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.teal,
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                            modifier = Modifier.testTag("apply_exp_q_${report.qNum}")
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Apply Explanation", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
