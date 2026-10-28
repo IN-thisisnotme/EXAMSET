@@ -176,4 +176,23 @@ class QuestionAuditTest {
         assertEquals(1, metrics.flawedQuestionsCount) // Q3 (Vague duplicate options)
         assertEquals(1, metrics.missingOptionsCount) // Q4
     }
+
+    @Test
+    fun testPhase1PromptContainsMcqAndExplanationReview() {
+        val prompt = QuestionAuditHelper.generatePhase1KeyAndFlawAuditPrompt(samplePaper)
+        assertTrue("Phase 1 prompt should mandate MCQ stem check", prompt.contains("QUESTION MCQ STEM & OPTIONS CHECK"))
+        assertTrue("Phase 1 prompt should mandate marked answer key verification", prompt.contains("MARKED ANSWER KEY VERIFICATION"))
+        assertTrue("Phase 1 prompt should mandate detailed explanation review", prompt.contains("DETAILED EXPLANATION REVIEW & PROOF"))
+        assertTrue("Phase 1 prompt should format options", prompt.contains("A) Volt"))
+        assertTrue("Phase 1 prompt should include existing explanation payload", prompt.contains("Existing Explanation"))
+    }
+
+    @Test
+    fun testPhase3PromptContainsQualitySeal() {
+        val prompt = QuestionAuditHelper.generatePhase3QualitySealPrompt(samplePaper)
+        assertTrue("Phase 3 prompt should include quality seal header", prompt.contains("QUALITY SEAL, PSYCHOMETRIC AUDIT SUMMARY & CERTIFICATION"))
+        assertTrue("Phase 3 prompt should mandate quality seal recommendation", prompt.contains("QUALITY SEAL RECOMMENDATION"))
+        assertTrue("Phase 3 prompt should include certification status in schema", prompt.contains("CERTIFIED_READY"))
+    }
 }
+
