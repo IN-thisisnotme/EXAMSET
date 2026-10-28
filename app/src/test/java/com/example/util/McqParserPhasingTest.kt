@@ -257,4 +257,127 @@ class McqParserPhasingTest {
         assertNotNull(paper.questions[0].explanation)
         assert(paper.questions[0].explanation!!.contains("नई दिल्ली भारत की राष्ट्रीय राजधानी है"))
     }
+
+    @Test
+    fun testSlashedAndEscapedQuestionNumbering() {
+        val rawInput = """
+            1/. What is the speed of light?
+            A. 3x10^8 m/s
+            B. 2x10^8 m/s
+            C. 1x10^8 m/s
+            D. 4x10^8 m/s
+
+            2/. What is the SI unit of power?
+            A. Joule
+            B. Watt
+            C. Pascal
+            D. Volt
+
+            Answer Key:
+            1/. A
+            2/. B
+
+            Detailed Explanations:
+            1/. A — Speed of light is approximately 3x10^8 m/s.
+            2/. B — Watt is the SI unit of electrical and mechanical power.
+        """.trimIndent()
+
+        val paper = McqParser.parse(rawInput)
+        assertEquals(2, paper.questions.size)
+        assertEquals("A", paper.questions[0].correctAnswer)
+        assertEquals("B", paper.questions[1].correctAnswer)
+        assertEquals(2, paper.quickAnswersCount)
+        assertEquals(2, paper.explanationsCount)
+    }
+
+    @Test
+    fun testAttachment1PracticePaper() {
+        val candidates = listOf(
+            java.io.File("/public/assets/aistudio/Paste_October_28__2026_-_12_40PM_334c314b"),
+            java.io.File("public/assets/aistudio/Paste_October_28__2026_-_12_40PM_334c314b")
+        )
+        val file = candidates.firstOrNull { it.exists() }
+        org.junit.Assume.assumeNotNull(file)
+        val content = file!!.readText()
+
+        val paper = McqParser.parse(content)
+        assertEquals(100, paper.questions.size)
+        assertEquals(100, paper.quickAnswersCount)
+        assertEquals(100, paper.explanationsCount)
+
+        val q1 = paper.questions[0]
+        assertEquals(1, q1.num)
+        assertEquals("B", q1.correctAnswer)
+        assertNotNull(q1.explanation)
+        assert(q1.explanation!!.contains("2,633 route kilometres"))
+
+        val q25 = paper.questions[24]
+        assertEquals(25, q25.num)
+        assertEquals("B", q25.correctAnswer)
+        assert(!q25.options.d.contains("SECTION B"))
+
+        val q36 = paper.questions[35]
+        assertEquals(36, q36.num)
+        assert(q36.question.contains("Dead Zone"))
+        assertEquals("A", q36.correctAnswer)
+
+        val q100 = paper.questions[99]
+        assertEquals(100, q100.num)
+        assertEquals("A", q100.correctAnswer)
+    }
+
+    @Test
+    fun testAttachment2PracticePaper() {
+        val candidates = listOf(
+            java.io.File("/public/assets/aistudio/Paste_October_28__2026_-_12_50PM_0a3e01fb"),
+            java.io.File("public/assets/aistudio/Paste_October_28__2026_-_12_50PM_0a3e01fb")
+        )
+        val file = candidates.firstOrNull { it.exists() }
+        org.junit.Assume.assumeNotNull(file)
+        val content = file!!.readText()
+
+        val paper = McqParser.parse(content)
+        assertEquals(100, paper.questions.size)
+        assertEquals(100, paper.quickAnswersCount)
+        assertEquals(100, paper.explanationsCount)
+
+        val q1 = paper.questions[0]
+        assertEquals(1, q1.num)
+        assertEquals("B", q1.correctAnswer)
+        assertEquals("1,423 km", q1.options.a)
+        assertEquals("2,633 km", q1.options.b)
+        assertEquals("2,930 km", q1.options.c)
+        assertEquals("21,794 km", q1.options.d)
+
+        val q80 = paper.questions[79]
+        assertEquals(80, q80.num)
+        assert(q80.question.contains("International Women's Day"))
+        assertEquals("A", q80.correctAnswer)
+
+        val q100 = paper.questions[99]
+        assertEquals(100, q100.num)
+        assertEquals("A", q100.correctAnswer)
+        assertNotNull(q100.explanation)
+        assert(!q100.explanation!!.contains("Final revision:"))
+    }
+
+    @Test
+    fun testBulkMergeAnswersAndExplanations() {
+        val subsetText = """
+            Questions 25–28:
+            25\. B — Dedicated railway track.
+            26/. A — National Highway Authority.
+            27: C
+            28- D
+        """.trimIndent()
+
+        val sanitized = McqParser.sanitizePastedText(subsetText)
+        val (ans, exp, _) = McqParser.parseAnswersAndExplanations(sanitized)
+        assertEquals("B", ans[25])
+        assertEquals("A", ans[26])
+        assertEquals("C", ans[27])
+        assertEquals("D", ans[28])
+        assertNotNull(exp[25])
+        assert(exp[25]!!.contains("Dedicated railway track"))
+    }
 }

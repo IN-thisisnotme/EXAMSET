@@ -13,12 +13,12 @@ import java.util.regex.Pattern
 object McqParser {
 
     private val ANSWER_HEADING_REGEX = Pattern.compile(
-        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level)\s*(?:[1-9IVX]+)?\s*[:\-–—]\s*)?(?:(?:quick|official|final|mcq)\s+)?(?:answer\s*keys?|answers?|keys?|उत्तर\s*कुंजी|उत्तर\s*तालिका|उत्तरमाला|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답\s*및\s*해설|정답표|정답|답|正解一覧|正解|解答一覧|解答|正答|参考答案|正确答案|答案|Ответы|Таблица\s*ответов|Ответ|Ключ)\s*[:\-–—]?\s*.*$""",
+        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:[0-9IVXivx]+|one|two|three|four|five|first|second|third|fourth|fifth|एक|दो|तीन|चार|पांच|पहला|दूसरा|तीसरा|चौथा|पाँचवाँ|प्रथम|द्वितीय|तृतीय)?\s*[:\-–—•\s]\s*)?(?:(?:quick|official|final|mcq|\d+[- ]question)\s+)?(?:answer\s*keys?|answers?|keys?|उत्तर\s*कुंजी|उत्तर\s*तालिका|उत्तरमाला|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답\s*및\s*해설|정답표|정답|답|正解一覧|正解|解答一覧|解答|正答|参考答案|正确答案|答案|Ответы|Таблица\s*ответов|Ответ|Ключ)\s*[:\-–—]?\s*.*$""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val EXPLANATION_HEADING_REGEX = Pattern.compile(
-        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level)\s*(?:[1-9IVX]+)?\s*[:\-–—]\s*)?(?:(?:detailed|option[- ]by[- ]option|step[- ]by[- ]step|comprehensive|complete|question[- ]wise|mcq)\s+)*(?:explanations?|solutions?|व्याख्या\s*सहित\s*उत्तर|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|व्याख्यात्मक\s*उत्तर|व्याख्या|हल|해설|풀이|解説|解答・解説|解法|详细解析|答案解析|试题解析|解析|Пояснение|Решение|Объяснение|Разбор|analysis|rationale)\b.*$""",
+        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:[0-9IVXivx]+|one|two|three|four|five|first|second|third|fourth|fifth|एक|दो|तीन|चार|पांच|पहला|दूसरा|तीसरा|चौथा|पाँचवाँ|प्रथम|द्वितीय|तृतीय)?\s*[:\-–—•\s]\s*)?(?:(?:detailed|option[- ]by[- ]option|step[- ]by[- ]step|comprehensive|complete|question[- ]wise|mcq|non[- ]repetitive)\s+)*(?:explanations?|solutions?|व्याख्या\s*सहित\s*उत्तर|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|व्याख्यात्मक\s*उत्तर|व्याख्या|हल|해설|풀이|解説|解答・解説|解法|详细解析|答案解析|试题解析|解析|Пояснение|Решение|Объяснение|Разбор|analysis|rationale)\b.*$""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -77,7 +77,7 @@ object McqParser {
     }
 
     private val PAIR_ANSWER_REGEX = Pattern.compile(
-        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
+        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.\/\\]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -162,6 +162,15 @@ object McqParser {
         text = text.replace(Regex("""(?m)^(\s*)\\\*"""), "$1*")
         text = text.replace(Regex("""\\\*(?=\s*[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])"""), "*")
         text = text.replace(Regex("""(?<=[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])\s*\\\*"""), "*")
+
+        // Normalize escaped brackets and parentheses: \[TRAP\] -> [TRAP], \(A\) -> (A)
+        text = text.replace(Regex("""\\([\[\]\(\)])"""), "$1")
+
+        // Normalize escaped dots after numbers: 1\. B -> 1. B, 100\. -> 100.
+        text = text.replace(Regex("""(?<=\d)\\\."""), ".")
+
+        // Normalize slashed or backslashed numbering: 1/. -> 1. or 1/ -> 1. or 1\ -> 1.
+        text = text.replace(Regex("""(?<=\b\d{1,4})\s*[\/\\]\s*[\.]?(?=\s+\S)"""), ".")
         
         val lines = text.lines()
         val cleanedLines = mutableListOf<String>()
@@ -353,9 +362,29 @@ object McqParser {
             RegexOption.IGNORE_CASE
         )
 
+        val hasAnyQuestions = lines.any { line ->
+            val clean = stripMarkdown(line).trim()
+            QUESTION_START_REGEX.matcher(clean).matches()
+        }
+        val firstQuestionLine = if (hasAnyQuestions) {
+            lines.indexOfFirst { line ->
+                val clean = stripMarkdown(line).trim()
+                QUESTION_START_REGEX.matcher(clean).matches()
+            }.coerceAtLeast(0)
+        } else {
+            0
+        }
+
+        val phase2Token = """(?:2|२|২|૨|II|ii|둘|이|two|second|दो|दूसरा|द्वितीय|두\s*번째|два|второй|二)"""
+        val phase3Token = """(?:3|३|৩|૩|III|iii|셋|삼|three|third|तीन|तीसरा|तृतीय|세\s*번째|три|третий|三)"""
+        val phasePrefix = """(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*"""
+
         for (i in lines.indices) {
             val cleanLine = stripMarkdown(lines[i]).trim()
             if (cleanLine.isBlank()) continue
+
+            // If questions exist in document, do not trigger answer or explanation section before questions start
+            if (hasAnyQuestions && i <= firstQuestionLine) continue
 
             if (combinedHeadingRegex.containsMatchIn(cleanLine)) {
                 if (answerStart == null) answerStart = i
@@ -363,11 +392,11 @@ object McqParser {
                 continue
             }
 
-            val isPhase2Answer = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:2|२|২|૨|২|२|II|ii|둘|이)\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""").containsMatchIn(cleanLine)
-            val isPhase3Exp = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|३|३|III|iii|셋|삼)\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""").containsMatchIn(cleanLine)
+            val isPhase2Answer = Regex("""$phasePrefix$phase2Token\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""").containsMatchIn(cleanLine)
+            val isPhase3Exp = Regex("""$phasePrefix$phase3Token\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""").containsMatchIn(cleanLine)
 
-            val isPhase2Exp = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:2|२|২|૨|২|२|II|ii|둘|이)\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""").containsMatchIn(cleanLine)
-            val isPhase3Answer = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|३|३|III|iii|셋|삼)\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""").containsMatchIn(cleanLine)
+            val isPhase2Exp = Regex("""$phasePrefix$phase2Token\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""").containsMatchIn(cleanLine)
+            val isPhase3Answer = Regex("""$phasePrefix$phase3Token\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""").containsMatchIn(cleanLine)
 
             if (isPhase2Answer && answerStart == null) {
                 answerStart = i
@@ -616,7 +645,11 @@ object McqParser {
             val isHeaderType = isQuestionTypeHeader(firstText) || isQuestionTypeHeader(cleanFirst)
             val hasTableOrTab = cleanFirst.contains("\t") || cleanFirst.contains("|") || cleanFirst.contains(Regex("""\s{3,}""")) ||
                     Regex("""(?i)\b(?:column|list|सूची|स्तम्भ|association|hormone)\b""").containsMatchIn(cleanFirst)
-            val isTopicHeader = !isHeaderType && !hasTableOrTab && cleanFirst.isNotBlank() && cleanFirst.length in 3..60 && !cleanFirst.endsWith("?") && !cleanFirst.contains("?") && remainingLines.any { it.isNotBlank() }
+            val blockWithoutFirst = remainingLines.joinToString("\n")
+            val optsWithoutFirst = extractOptionsFromBlock(blockWithoutFirst) ?: recoverEmbeddedOptions(blockWithoutFirst)
+            val stemWithoutFirst = if (optsWithoutFirst != null) blockWithoutFirst.substring(0, optsWithoutFirst.second).trim() else blockWithoutFirst.trim()
+            val hasSubsequentStem = stemWithoutFirst.isNotBlank() && cleanQuestionNumbered(stemWithoutFirst).isNotBlank()
+            val isTopicHeader = !isHeaderType && !hasTableOrTab && cleanFirst.isNotBlank() && cleanFirst.length in 3..60 && !cleanFirst.endsWith("?") && !cleanFirst.contains("?") && hasSubsequentStem
 
             if (isHeaderType) {
                 detectedType = normalizeQuestionType(if (isQuestionTypeHeader(cleanFirst)) cleanFirst else firstText)
@@ -922,7 +955,7 @@ object McqParser {
 
                 val currentSub = cleanBlock.substring(start, end)
                 val partitionDivider = Regex(
-                    """(?m)^\s*#+\s*(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b.*$|^\s*#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b.*$""",
+                    """(?m)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b.*$|^\s*#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b.*$|^\s*###?\s*Final\s+revision\b.*$|^\s*(?:IMPORTANT\s+VERIFICATION\s+NOTE|Quality[- ]control\s+notes?|Preparation\s+advice)\b.*$""",
                     RegexOption.IGNORE_CASE
                 ).find(currentSub)
                 if (partitionDivider != null) {
@@ -950,9 +983,10 @@ object McqParser {
                 // Strip structural partition heading lines while strictly preserving coding directives like #include, #define, #comment
                 val optionLines = value.lines().filterNot { line ->
                     val t = line.trim()
-                    val isHashHeading = Regex("""^#+\s+(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)
+                    val isHeading = Regex("""^(?:#+\s*)?(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)
                     val isPhaseHashTag = Regex("""^#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)
-                    isHashHeading || isPhaseHashTag
+                    val isNoteHeading = Regex("""^(?:#+\s*)?(?:Final\s+revision|IMPORTANT\s+VERIFICATION\s+NOTE|Preparation\s+advice|Quality[- ]control)\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)
+                    isHeading || isPhaseHashTag || isNoteHeading
                 }
                 // Strip markdown table pipes if option was in a table cell (e.g. "| 399.00 m |")
                 value = optionLines
@@ -1064,7 +1098,7 @@ object McqParser {
         if (text.isBlank()) return Triple(answers, explanations, questionTypes)
 
         // 1. Markdown table and tabular lines parsing
-        val cleanText = Regex("""(?im)^\s*(?:Quality[- ]control\s+notes?|Review\s+notes?|QC\s+notes?|Internal\s+check\b|Remarks?\b|Important\s+Notes?\b(?:\s*[:\-–—]))""").find(text)?.let {
+        val cleanText = Regex("""(?im)^\s*(?:###?\s*Final\s+revision|###?\s*IMPORTANT\s+VERIFICATION\s+NOTE|Quality[- ]control\s+notes?|Review\s+notes?|QC\s+notes?|Internal\s+check\b|Remarks?\b|Important\s+Notes?\b(?:\s*[:\-–—]))""").find(text)?.let {
             text.substring(0, it.range.first)
         } ?: text
 
@@ -1250,7 +1284,8 @@ object McqParser {
                     expText = if (expLabelMatch.find() && expLabelMatch.end() <= afterAns.length) {
                         afterAns.substring(expLabelMatch.end()).trim()
                     } else {
-                        afterAns
+                        val hasSubsequentPairs = Regex("""\b\d{1,4}\s*[\:\-\.\/\\]\s*[A-Ea-e1-5]\b""").containsMatchIn(afterAns)
+                        if (hasSubsequentPairs) "" else afterAns
                     }
                 } else if (explicitCorrectMatch != null) {
                     val raw = explicitCorrectMatch.groupValues.drop(1).firstOrNull { it.isNotEmpty() } ?: ""
@@ -1268,6 +1303,12 @@ object McqParser {
             if (ansLetter != null && !answers.containsKey(qNum)) {
                 answers[qNum] = ansLetter
             }
+
+            // Strip partition section headers from explanation (e.g. SECTION B: ..., ### Section A)
+            expText = expText.lines().filterNot { l ->
+                val t = l.trim()
+                Regex("""^(?:#+\s*)?(?:SECTION|PART|PHASE)\s+[A-Z0-9]+.*$""", RegexOption.IGNORE_CASE).matches(t)
+            }.joinToString("\n").trim()
 
             // Remove duplicated question text if repeated in explanation
             expText = expText.replace(

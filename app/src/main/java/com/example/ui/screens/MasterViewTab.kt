@@ -161,6 +161,7 @@ fun MasterViewTab(
     var showReviewDialog by remember { mutableStateOf(false) }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     var showAddQuestionDialog by remember { mutableStateOf(false) }
+    var showBulkMergeAnswersDialog by remember { mutableStateOf(false) }
     var showPaletteOverlay by remember { mutableStateOf(false) }
     var showBulkAuditDialog by remember { mutableStateOf(false) }
     var showResolutionHubDialog by remember { mutableStateOf(false) }
@@ -426,6 +427,36 @@ fun MasterViewTab(
                                         Spacer(modifier = Modifier.width(5.dp))
                                         Text(
                                             text = "AI Audit",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.inkBold
+                                        )
+                                    }
+                                }
+
+                                // Bulk Add Keys / Explanations Action
+                                Surface(
+                                    onClick = { showBulkMergeAnswersDialog = true },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(1.dp, colors.border),
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .testTag("toolbar_bulk_merge_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ListAlt,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "Bulk Keys/Exp",
                                             fontSize = 11.5.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.inkBold
@@ -1148,6 +1179,18 @@ fun MasterViewTab(
         AddQuestionDialog(
             viewModel = viewModel,
             onDismiss = { showAddQuestionDialog = false }
+        )
+    }
+
+    // Bulk Merge Answers & Explanations Dialog
+    if (showBulkMergeAnswersDialog && currentPaper != null) {
+        BulkMergeAnswersDialog(
+            paper = currentPaper!!,
+            onMerge = { text ->
+                viewModel.bulkMergeAnswersAndExplanations(text)
+                showBulkMergeAnswersDialog = false
+            },
+            onDismiss = { showBulkMergeAnswersDialog = false }
         )
     }
 
@@ -2317,5 +2360,266 @@ private fun FilterChip(
             color = if (isSelected) Color.White else (accentColor ?: colors.inkBold),
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
         )
+    }
+}
+
+@Composable
+fun BulkMergeAnswersDialog(
+    paper: com.example.model.QuestionPaper,
+    onMerge: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    val context = LocalContext.current
+    var pastedText by remember { mutableStateOf("") }
+
+    val parsePreview = remember(pastedText) {
+        if (pastedText.isBlank()) {
+            Triple(emptyMap<Int, String>(), emptyMap<Int, String>(), emptyList<Int>())
+        } else {
+            val sanitized = com.example.util.McqParser.sanitizePastedText(pastedText)
+            val (ans, exp, _) = com.example.util.McqParser.parseAnswersAndExplanations(sanitized)
+            val existingNums = paper.questions.map { it.num }.toSet()
+            val matchedNums = (ans.keys + exp.keys).filter { existingNums.contains(it) }.distinct().sorted()
+            Triple(ans, exp, matchedNums)
+        }
+    }
+
+    val answersFound = parsePreview.first.size
+    val explanationsFound = parsePreview.second.size
+    val matchedQuestions = parsePreview.third
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .widthIn(max = 680.dp)
+                .heightIn(max = 750.dp)
+                .imePadding()
+                .testTag("bulk_merge_answers_dialog"),
+            shape = RoundedCornerShape(14.dp),
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.border)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.teal.copy(alpha = 0.12f),
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ListAlt,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Bulk Add Keys & Explanations",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = "Merge answer keys or explanations into Paper (${paper.questions.size} questions)",
+                                fontSize = 11.5.sp,
+                                color = colors.inkMuted
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.inkMuted)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Paste your answer key, detailed explanations, or combined format below. Supports sequential 1..N, isolated middle ranges (e.g. Q25..Q40), escaped formats (1\\. B, 1/. B), markdown tables, and multi-language phase headers.",
+                    fontSize = 12.sp,
+                    color = colors.inkMuted,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Text field
+                OutlinedTextField(
+                    value = pastedText,
+                    onValueChange = { pastedText = it },
+                    placeholder = {
+                        Text(
+                            text = "Paste text here...\nExample formats:\n1. B  2. C  3. A  4. D\nor\nQ25. B — Detailed explanation...\nQ26. A — Detailed explanation...\nor\n1/. B\n2/. C",
+                            fontSize = 12.sp,
+                            color = colors.inkMuted.copy(alpha = 0.7f)
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .heightIn(min = 160.dp, max = 280.dp)
+                        .testTag("bulk_merge_input_field"),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.teal,
+                        unfocusedBorderColor = colors.border,
+                        focusedContainerColor = colors.surfaceVariant.copy(alpha = 0.5f),
+                        unfocusedContainerColor = colors.surfaceVariant.copy(alpha = 0.3f)
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp, color = colors.inkBold)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Quick Paste from Clipboard & Clear buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            val clipMgr = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = clipMgr.primaryClip
+                            if (clip != null && clip.itemCount > 0) {
+                                pastedText = clip.getItemAt(0).text?.toString().orEmpty()
+                            }
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.heightIn(min = 34.dp)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Paste from Clipboard", fontSize = 11.5.sp)
+                    }
+
+                    if (pastedText.isNotBlank()) {
+                        OutlinedButton(
+                            onClick = { pastedText = "" },
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 34.dp)
+                        ) {
+                            Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Clear", fontSize = 11.5.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Live Diagnostic Summary Card
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (matchedQuestions.isNotEmpty()) colors.tealLight.copy(alpha = 0.5f) else colors.surfaceVariant
+                    ),
+                    border = BorderStroke(1.dp, if (matchedQuestions.isNotEmpty()) colors.teal.copy(alpha = 0.4f) else colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (matchedQuestions.isNotEmpty()) Icons.Default.CheckCircle else Icons.Default.Info,
+                                contentDescription = null,
+                                tint = if (matchedQuestions.isNotEmpty()) colors.teal else colors.inkMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (pastedText.isBlank()) "Awaiting pasted content..."
+                                else if (matchedQuestions.isNotEmpty()) "Ready to update ${matchedQuestions.size} questions"
+                                else "No matching questions detected",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                        }
+
+                        if (answersFound > 0 || explanationsFound > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "• Answer keys detected: $answersFound",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "• Explanations detected: $explanationsFound",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkBold
+                                )
+                            }
+                            if (matchedQuestions.isNotEmpty()) {
+                                val rangeStr = if (matchedQuestions.size == 1) "Q${matchedQuestions.first()}"
+                                else "Q${matchedQuestions.first()}..Q${matchedQuestions.last()} (${matchedQuestions.size} total)"
+                                Text(
+                                    text = "Target questions in this paper: $rangeStr",
+                                    fontSize = 11.sp,
+                                    color = colors.teal,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", fontSize = 12.5.sp, color = colors.inkMuted)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onMerge(pastedText) },
+                        enabled = matchedQuestions.isNotEmpty(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                        modifier = Modifier.testTag("bulk_merge_apply_button")
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (matchedQuestions.isNotEmpty()) "Apply Updates (${matchedQuestions.size} Questions)" else "Apply Updates",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
     }
 }

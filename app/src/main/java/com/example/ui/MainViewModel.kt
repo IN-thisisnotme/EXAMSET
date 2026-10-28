@@ -676,6 +676,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _statusMessage.value = "Updated ${fixes.size} answer keys and explanations"
     }
 
+    /**
+     * Parses raw pasted answer keys, detailed explanations, or combined tables,
+     * and merges them into the current active paper matching by question number.
+     * Supports arbitrary question number subsets (e.g. 1..N, middle missing Q25..Q40, etc.).
+     * Returns Pair(answersUpdatedCount, explanationsUpdatedCount).
+     */
+    fun bulkMergeAnswersAndExplanations(rawText: String): Pair<Int, Int> {
+        val active = _currentPaper.value ?: return Pair(0, 0)
+        val sanitized = McqParser.sanitizePastedText(rawText)
+        val (parsedAnswers, parsedExplanations, parsedTypes) = McqParser.parseAnswersAndExplanations(sanitized)
+        if (parsedAnswers.isEmpty() && parsedExplanations.isEmpty()) {
+            _statusMessage.value = "No answer keys or explanations found in pasted text"
+            return Pair(0, 0)
+        }
+
+        var ansUpdated = 0
+        var expUpdated = 0
+
+        val updatedQuestions = active.questions.map { q ->
+            val newAns = parsedAnswers[q.num]
+            val newExp = parsedExplanations[q.num]
+            val newType = parsedTypes[q.num]
+            var qCopy = q
+
+            if (newAns != null) {
+                if (qCopy.correctAnswer != newAns) ansUpdated++
+                qCopy = qCopy.copy(correctAnswer = newAns)
+            }
+            if (!newExp.isNullOrBlank()) {
+                if (qCopy.explanation != newExp) expUpdated++
+                qCopy = qCopy.copy(explanation = newExp)
+            }
+            if (!newType.isNullOrBlank() && qCopy.questionType == null) {
+                qCopy = qCopy.copy(questionType = newType)
+            }
+            qCopy
+        }
+
+        val updatedPaper = active.copy(
+            questions = updatedQuestions,
+            quickAnswersCount = updatedQuestions.count { it.correctAnswer != null },
+            explanationsCount = updatedQuestions.count { !it.explanation.isNullOrBlank() }
+        )
+        schedulePaperAutoSave(updatedPaper)
+        _statusMessage.value = "Bulk merged: $ansUpdated answer keys and $expUpdated explanations updated"
+        return Pair(ansUpdated, expUpdated)
+    }
+
     fun deleteQuestion(qNum: Int) {
         val active = _currentPaper.value ?: return
         val filtered = active.questions.filter { it.num != qNum }
