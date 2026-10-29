@@ -346,64 +346,65 @@ fun MasterViewTab(
                     border = BorderStroke(0.8.dp, colors.border)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
+                        // Title & Status (separate line so action buttons never crush the header)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Title & Status (stable height to prevent interface jump/bounce)
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Master Inspection",
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (isEditMode) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = colors.teal.copy(alpha = 0.15f),
-                                            border = BorderStroke(0.6.dp, colors.teal)
-                                        ) {
-                                            Text(
-                                                text = if (changedCount > 0) "EDITING ($changedCount)" else "EDITING",
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.teal,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = if (isEditMode) {
-                                        if (changedCount > 0) "$changedCount question${if (changedCount == 1) "" else "s"} modified" else "Tap options or cards to edit"
-                                    } else if (autoSaveStatus == AutoSaveStatus.SAVED && lastSavedTime.isNotBlank()) {
-                                        "• Saved $lastSavedTime"
-                                    } else {
-                                        "${paper.questions.size} questions • ${paper.quickAnswersCount} answer keys"
-                                    },
-                                    fontSize = 10.5.sp,
-                                    color = if (isEditMode) colors.teal else colors.muted,
+                                    text = "Master Inspection",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (isEditMode) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = colors.teal.copy(alpha = 0.15f),
+                                        border = BorderStroke(0.6.dp, colors.teal)
+                                    ) {
+                                        Text(
+                                            text = if (changedCount > 0) "EDITING ($changedCount)" else "EDITING",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.teal,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                             }
+                            Text(
+                                text = if (isEditMode) {
+                                    if (changedCount > 0) "$changedCount question${if (changedCount == 1) "" else "s"} modified" else "Tap options or cards to edit"
+                                } else if (autoSaveStatus == AutoSaveStatus.SAVED && lastSavedTime.isNotBlank()) {
+                                    "• Saved $lastSavedTime"
+                                } else {
+                                    "${paper.questions.size} questions • ${paper.quickAnswersCount} answer keys"
+                                },
+                                fontSize = 10.5.sp,
+                                color = if (isEditMode) colors.teal else colors.muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
 
-                            Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                            // Toolbar Actions: Clean Edit Mode toggle & Add Question
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                        // Toolbar Actions: Horizontally scrollable row so all actions (AI Audit, Bulk Keys/Exp, Edit Set, Add) fit comfortably without being squished on any screen size
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                                 // AI Bulk Audit Action
                                 Surface(
                                     onClick = { showBulkAuditDialog = true },
@@ -544,8 +545,8 @@ fun MasterViewTab(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Add", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
                                 }
+                                Spacer(modifier = Modifier.width(4.dp))
                             }
-                        }
 
                         Spacer(modifier = Modifier.height(10.dp))
 
@@ -640,6 +641,8 @@ fun MasterViewTab(
                             onClick = { filterMode = "missing_option" },
                             accentColor = if (missingOptionCount > 0) colors.amber else null
                         )
+
+                        Spacer(modifier = Modifier.width(6.dp))
                     }
                 }
             }

@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
@@ -965,7 +966,9 @@ private fun ExamStartOverviewView(
         // Previous Attempt Banner if available
         if (attempts.isNotEmpty()) {
             val latest = attempts.first()
-            val pct = if (latest.totalQuestions > 0) ((latest.score / latest.totalQuestions.toDouble()) * 100).toInt().coerceIn(0, 100) else 0
+            val maxPossibleScore = latest.totalQuestions * positiveMarks
+            val pct = if (maxPossibleScore > 0) ((latest.score / maxPossibleScore) * 100).toInt().coerceIn(0, 100) else 0
+            val formattedMaxScore = if (maxPossibleScore % 1.0 == 0.0) maxPossibleScore.toInt().toString() else String.format(java.util.Locale.US, "%.1f", maxPossibleScore)
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -983,7 +986,7 @@ private fun ExamStartOverviewView(
                         Column {
                             Text("Previous Attempt", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                             Text(
-                                "Score: ${latest.getFormattedScore()} / ${latest.totalQuestions} ($pct%)",
+                                "Score: ${latest.getFormattedScore()} / $formattedMaxScore ($pct%)",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = colors.inkBold
@@ -1961,11 +1964,16 @@ private fun ExamResultAndReviewView(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Timer,
                                         contentDescription = null,
@@ -1985,15 +1993,31 @@ private fun ExamResultAndReviewView(
                                         text = "Today's Test Study: $todayFormatted",
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = colors.tealDark
+                                        color = colors.tealDark,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                Text(
-                                    text = "Historical Analysis →",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.teal
-                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Historical Analysis",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.teal,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = colors.teal,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
                             }
                         }
                     }
