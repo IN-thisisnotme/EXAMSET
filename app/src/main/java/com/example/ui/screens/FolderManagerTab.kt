@@ -1822,15 +1822,14 @@ fun FolderManagerTab(
                             },
                             folderBreadcrumb = paperBreadcrumb,
                             onOpenMaster = {
-                                viewModel.loadSavedPaper(paper) {
-                                    onNavigateToMaster()
-                                }
+                                viewModel.loadSavedPaper(paper)
+                                onNavigateToMaster()
                             },
                             onTakeTest = {
                                 viewModel.loadSavedPaper(paper) {
                                     viewModel.startExam()
-                                    onNavigateToStudent()
                                 }
+                                onNavigateToStudent()
                             },
                             onAssignFolder = {
                                 paperToAssignFolder = paper
@@ -1874,15 +1873,14 @@ fun FolderManagerTab(
                                 },
                                 folderBreadcrumb = paperBreadcrumb,
                                 onOpenMaster = {
-                                    viewModel.loadSavedPaper(paper) {
-                                        onNavigateToMaster()
-                                    }
+                                    viewModel.loadSavedPaper(paper)
+                                    onNavigateToMaster()
                                 },
                                 onTakeTest = {
                                     viewModel.loadSavedPaper(paper) {
                                         viewModel.startExam()
-                                        onNavigateToStudent()
                                     }
+                                    onNavigateToStudent()
                                 },
                                 onAssignFolder = {
                                     paperToAssignFolder = paper
@@ -1928,15 +1926,14 @@ fun FolderManagerTab(
                                 },
                                 folderBreadcrumb = paperBreadcrumb,
                                 onOpenMaster = {
-                                    viewModel.loadSavedPaper(paper) {
-                                        onNavigateToMaster()
-                                    }
+                                    viewModel.loadSavedPaper(paper)
+                                    onNavigateToMaster()
                                 },
                                 onTakeTest = {
                                     viewModel.loadSavedPaper(paper) {
                                         viewModel.startExam()
-                                        onNavigateToStudent()
                                     }
+                                    onNavigateToStudent()
                                 },
                                 onAssignFolder = {
                                     paperToAssignFolder = paper

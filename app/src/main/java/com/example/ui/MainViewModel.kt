@@ -137,6 +137,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val timeRemainingSeconds: StateFlow<Long> = _timeRemainingSeconds.asStateFlow()
 
     private var examTimerJob: Job? = null
+    private var attemptHistoryJob: Job? = null
+
+    private val _isLoadingPaper = MutableStateFlow(false)
+    val isLoadingPaper: StateFlow<Boolean> = _isLoadingPaper.asStateFlow()
 
     private val _isExamSubmitted = MutableStateFlow(false)
     val isExamSubmitted: StateFlow<Boolean> = _isExamSubmitted.asStateFlow()
@@ -1052,6 +1056,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadSavedPaper(entity: PaperEntity, onComplete: (() -> Unit)? = null) {
+        _isLoadingPaper.value = true
         _currentPaperEntityId.value = entity.id
         // Immediately synchronize timer limits and countdown to prevent lag/stale timer display
         val initialMinutes = if (entity.durationMinutes > 0) entity.durationMinutes else 60
@@ -1060,9 +1065,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _timerMode.value = ExamTimerMode.COUNTDOWN
 
         viewModelScope.launch(Dispatchers.Default) {
-            loadSavedPaperInternal(entity)
-            withContext(Dispatchers.Main) {
-                onComplete?.invoke()
+            try {
+                loadSavedPaperInternal(entity)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    _isLoadingPaper.value = false
+                    onComplete?.invoke()
+                }
             }
         }
     }
@@ -1150,7 +1159,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 maxMarks = "${(savedPositive * parsed.questions.size).toInt()}"
             )
             _autoSaveStatus.value = AutoSaveStatus.SAVED
-            updateTimestamp()
+            val savedTimestamp = if (freshEntity.updatedAt > 0) freshEntity.updatedAt else freshEntity.createdAt
+            val format = SimpleDateFormat("HH:mm", Locale.getDefault())
+            _lastSavedTime.value = format.format(Date(if (savedTimestamp > 0) savedTimestamp else System.currentTimeMillis()))
             _statusMessage.value = "Loaded: ${entity.title}"
         }
 
@@ -2771,7 +2782,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadAttemptHistory(paperId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
+        attemptHistoryJob?.cancel()
+        attemptHistoryJob = viewModelScope.launch(Dispatchers.IO) {
             paperDao.getAttemptsForPaper(paperId).collect { attempts ->
                 withContext(Dispatchers.Main) {
                     _attempts.value = attempts
