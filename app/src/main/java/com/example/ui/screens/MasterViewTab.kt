@@ -217,7 +217,7 @@ fun MasterViewTab(
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Open Last Set: ${lastOpenedPaper!!.title}",
+                                text = "Open Previous Set",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1

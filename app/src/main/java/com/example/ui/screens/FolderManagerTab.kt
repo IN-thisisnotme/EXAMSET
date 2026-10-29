@@ -1236,7 +1236,7 @@ fun FolderManagerTab(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (isCurrentActive) "View in Master" else "Open Set",
+                                    text = if (isCurrentActive) "View in Master" else "Open Previous Set",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1

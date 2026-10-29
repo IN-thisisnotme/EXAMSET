@@ -1528,7 +1528,7 @@ fun NoPaperPlaceholder(
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("Open Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                Text("Open Previous Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

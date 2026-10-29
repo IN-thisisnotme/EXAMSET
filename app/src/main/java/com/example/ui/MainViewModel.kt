@@ -259,6 +259,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            // Continuously synchronize _lastOpenedPaper with Room updates
+            launch {
+                savedPapers.collect { papers ->
+                    if (papers.isNotEmpty()) {
+                        val activeId = _currentPaperEntityId.value ?: appPreferences.getLastActivePaperId()
+                        val matched = if (activeId > 0) papers.find { it.id == activeId } else null
+                        val freshest = matched ?: papers.maxByOrNull { it.updatedAt }
+                        _lastOpenedPaper.value = freshest
+                    } else {
+                        _lastOpenedPaper.value = null
+                    }
+                }
+            }
+
             // Preserve Set Opening on Minimize, But Not on App Restart / New Process:
             // When the app is minimized (Activity paused/stopped while process is alive),
             // the ViewModel retains in-memory state (_currentPaper stays populated).
@@ -465,7 +479,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Recalculate any submitted attempts for this paper so scores/breakdown stay 100% accurate
             recalculateAttemptsForPaper(targetId, updatedPaper)
 
+            val freshSavedEntity = if (targetId > 0) paperDao.getPaperById(targetId) else null
+
             withContext(Dispatchers.Main) {
+                if (freshSavedEntity != null) {
+                    _lastOpenedPaper.value = freshSavedEntity
+                }
                 _currentPaperEntityId.value = targetId
                 _rawInputText.value = raw
                 _autoSaveStatus.value = AutoSaveStatus.SAVED
@@ -996,7 +1015,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             appPreferences.setDraftRawText(text)
 
+            val freshSavedEntity = if (entityId > 0) paperDao.getPaperById(entityId) else null
+
             withContext(Dispatchers.Main) {
+                if (freshSavedEntity != null) {
+                    _lastOpenedPaper.value = freshSavedEntity
+                }
                 _currentPaperEntityId.value = if (entityId > 0) entityId else null
                 _currentPaper.value = finalPaper.copy(id = entityId)
                 _rawInputText.value = text
@@ -1044,46 +1068,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadSavedPaperInternal(entity: PaperEntity) {
-        val result = McqParser.parseWithResult(entity.rawText)
-        val finalRoll = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber()
-        val finalBooklet = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber()
-        val savedDuration = if (entity.durationMinutes > 0) entity.durationMinutes else 60
-        val savedPositive = if (entity.positiveMarks > 0.0) entity.positiveMarks else 4.0
-        val savedNegative = if (entity.negativeMarks >= 0.0) entity.negativeMarks else 1.0
+        val freshEntity = if (entity.id > 0) {
+            paperDao.getPaperById(entity.id) ?: entity
+        } else {
+            entity
+        }
+        val result = McqParser.parseWithResult(freshEntity.rawText)
+        val finalRoll = if (freshEntity.rollNumber.isNotBlank()) freshEntity.rollNumber else ExamNumberGenerator.generateRollNumber()
+        val finalBooklet = if (freshEntity.bookletNumber.isNotBlank()) freshEntity.bookletNumber else ExamNumberGenerator.generateBookletNumber()
+        val savedDuration = if (freshEntity.durationMinutes > 0) freshEntity.durationMinutes else 60
+        val savedPositive = if (freshEntity.positiveMarks > 0.0) freshEntity.positiveMarks else 4.0
+        val savedNegative = if (freshEntity.negativeMarks >= 0.0) freshEntity.negativeMarks else 1.0
 
         val parsed = result.paper.copy(
-            id = entity.id,
+            id = freshEntity.id,
             metadata = PaperMetadata(
-                id = "paper-${entity.id}",
-                title = entity.title,
-                subject = entity.subject,
-                topic = entity.topic,
-                setNumber = entity.setNumber.ifBlank { "Set 1" },
-                exam = entity.exam,
-                folderId = entity.folderId,
+                id = "paper-${freshEntity.id}",
+                title = freshEntity.title,
+                subject = freshEntity.subject,
+                topic = freshEntity.topic,
+                setNumber = freshEntity.setNumber.ifBlank { "Set 1" },
+                exam = freshEntity.exam,
+                folderId = freshEntity.folderId,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
                 durationMinutes = savedDuration,
                 positiveMarks = savedPositive,
                 negativeMarks = savedNegative,
-                createdAt = entity.createdAt
+                createdAt = freshEntity.createdAt
             )
         )
-        val unsubmittedAttempt = paperDao.getLatestUnsubmittedAttempt(entity.id)
-        appPreferences.setLastActivePaperId(entity.id)
+        val unsubmittedAttempt = paperDao.getLatestUnsubmittedAttempt(freshEntity.id)
+        appPreferences.setLastActivePaperId(freshEntity.id)
 
-        if (entity.rollNumber.isBlank() || entity.bookletNumber.isBlank()) {
-            paperDao.updatePaper(
-                entity.copy(
-                    rollNumber = finalRoll,
-                    bookletNumber = finalBooklet
-                )
+        if (freshEntity.rollNumber.isBlank() || freshEntity.bookletNumber.isBlank()) {
+            val updatedWithNumbers = freshEntity.copy(
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet
             )
+            paperDao.updatePaper(updatedWithNumbers)
+            _lastOpenedPaper.value = updatedWithNumbers
         }
 
         withContext(Dispatchers.Main) {
-            _lastOpenedPaper.value = entity
-            _currentPaperEntityId.value = entity.id
+            _lastOpenedPaper.value = freshEntity
+            _currentPaperEntityId.value = freshEntity.id
             _currentPaper.value = parsed
             // Keep creator tab clean so opening a paper does not overwrite user's creator draft
             _parseResult.value = result
