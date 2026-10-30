@@ -396,7 +396,9 @@ fun SavedPapersDialog(
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.inkBold,
-                                                maxLines = 1,
+                                                maxLines = 2,
+                                                softWrap = true,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f)
                                             )
                                         }
@@ -412,7 +414,8 @@ fun SavedPapersDialog(
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = colors.ink,
-                                                maxLines = 1
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
 
                                             if (item.topic.isNotBlank()) {
@@ -421,7 +424,8 @@ fun SavedPapersDialog(
                                                     text = item.topic,
                                                     fontSize = 11.sp,
                                                     color = colors.tealDark,
-                                                    maxLines = 1
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                 )
                                             }
                                         }

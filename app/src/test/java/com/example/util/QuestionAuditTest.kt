@@ -198,11 +198,49 @@ class QuestionAuditTest {
     }
 
     @Test
-    fun testPhase3QualitySealPrompt() {
-        val prompt = QuestionAuditHelper.generatePhase3QualitySealPrompt(samplePaper)
-        assertTrue("Phase 3 quality seal prompt should include quality seal header", prompt.contains("QUALITY SEAL, PSYCHOMETRIC AUDIT SUMMARY & CERTIFICATION"))
-        assertTrue("Phase 3 quality seal prompt should mandate quality seal recommendation", prompt.contains("QUALITY SEAL RECOMMENDATION"))
-        assertTrue("Phase 3 quality seal prompt should include certification status in schema", prompt.contains("CERTIFIED_READY"))
+    fun testSmartReplacementQuestionGeneration() {
+        val original = samplePaper.questions[2] // Q3
+        val replacement = QuestionAuditHelper.generateSmartReplacementQuestion(original, "Duplicate options")
+        assertNotNull(replacement)
+        assertTrue(replacement.options.isValid)
+        assertNotNull(replacement.correctAnswer)
+        assertTrue(replacement.explanation?.isNotBlank() == true)
+        assertTrue(replacement.question.isNotBlank())
+    }
+
+    @Test
+    fun testSmartPedagogicalExplanationGeneration() {
+        val original = samplePaper.questions[0] // Q1
+        val explanation = QuestionAuditHelper.generateSmartPedagogicalExplanation(original)
+        assertNotNull(explanation)
+        assertTrue(explanation.contains("Core Concept"))
+        assertTrue(explanation.contains("Key Idea"))
+        assertTrue(explanation.contains("Distractor Analysis"))
+    }
+
+    @Test
+    fun testMergeAuditReportsPreservesStep1FixesAndSeals() {
+        val initialReports = QuestionAuditHelper.runHeuristicPreAudit(samplePaper).map {
+            if (it.qNum == 2) it.copy(isResolved = true, suggestedKey = "A") else it
+        }
+
+        val step2Report = listOf(
+            com.example.model.AuditQuestionReport(
+                qNum = 3,
+                status = AuditIssueType.FLAWED_QUESTION,
+                flawReason = "Fixed with new stem",
+                replacementQuestion = QuestionAuditHelper.generateSmartReplacementQuestion(samplePaper.questions[2], "Duplicate options")
+            )
+        )
+
+        val merged = QuestionAuditHelper.mergeAuditReports(samplePaper, initialReports, step2Report)
+        val q2 = merged.find { it.qNum == 2 }!!
+        assertTrue("Q2 resolution should be preserved", q2.isResolved)
+        assertEquals("A", q2.suggestedKey)
+
+        val q3 = merged.find { it.qNum == 3 }!!
+        assertNotNull("Q3 replacement should be attached", q3.replacementQuestion)
     }
 }
+
 

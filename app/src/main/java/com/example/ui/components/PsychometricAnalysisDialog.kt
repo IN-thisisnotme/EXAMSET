@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -643,17 +645,28 @@ private fun ExecutiveMetricCard(
         shape = RoundedCornerShape(10.dp),
         color = colors.surfaceVariant,
         border = BorderStroke(0.8.dp, colors.border),
-        modifier = modifier
+        modifier = modifier.heightIn(min = 64.dp)
     ) {
         Column(
-            modifier = Modifier.padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .wrapContentHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = colors.muted)
             Spacer(modifier = Modifier.height(2.dp))
-            Text(value, fontSize = 17.sp, fontWeight = FontWeight.Black, color = color, fontFamily = FontFamily.Monospace)
+            Text(value, fontSize = 16.5.sp, fontWeight = FontWeight.Black, color = color, fontFamily = FontFamily.Monospace)
             Spacer(modifier = Modifier.height(2.dp))
-            Text(subtext, fontSize = 9.5.sp, color = colors.muted, maxLines = 1)
+            Text(
+                text = subtext,
+                fontSize = 9.5.sp,
+                color = colors.muted,
+                maxLines = 2,
+                softWrap = true,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -669,15 +682,19 @@ private fun TabButton(
         shape = RoundedCornerShape(8.dp),
         color = if (isSelected) Color(0xFF0284C7) else colors.surfaceVariant,
         border = BorderStroke(0.8.dp, if (isSelected) Color(0xFF0284C7) else colors.border),
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier
+            .heightIn(min = 40.dp)
+            .clickable { onClick() }
     ) {
-        Text(
-            text = label,
-            fontSize = 11.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            color = if (isSelected) Color.White else colors.inkBold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Text(
+                text = label,
+                fontSize = 11.5.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) Color.White else colors.inkBold,
+                maxLines = 1
+            )
+        }
     }
 }
 

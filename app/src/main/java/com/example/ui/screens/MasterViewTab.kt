@@ -408,11 +408,11 @@ fun MasterViewTab(
                                 // AI Bulk Audit Action
                                 Surface(
                                     onClick = { showBulkAuditDialog = true },
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = colors.tealLight.copy(alpha = 0.6f),
                                     border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
                                     modifier = Modifier
-                                        .heightIn(min = 38.dp)
+                                        .heightIn(min = 44.dp)
                                         .testTag("toolbar_ai_audit_button")
                                 ) {
                                     Row(
@@ -423,7 +423,7 @@ fun MasterViewTab(
                                             imageVector = Icons.Default.AutoAwesome,
                                             contentDescription = null,
                                             tint = colors.teal,
-                                            modifier = Modifier.size(14.dp)
+                                            modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(5.dp))
                                         Text(
@@ -435,14 +435,47 @@ fun MasterViewTab(
                                     }
                                 }
 
+                                // Resolution Hub Direct Action
+                                Surface(
+                                    onClick = {
+                                        initialAuditFeedbackText = null
+                                        showResolutionHubDialog = true
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = colors.teal.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.6f)),
+                                    modifier = Modifier
+                                        .heightIn(min = 44.dp)
+                                        .testTag("toolbar_resolution_hub_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "Resolution Hub",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.teal
+                                        )
+                                    }
+                                }
+
                                 // Bulk Add Keys / Explanations Action
                                 Surface(
                                     onClick = { showBulkMergeAnswersDialog = true },
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = colors.surfaceVariant,
                                     border = BorderStroke(1.dp, colors.border),
                                     modifier = Modifier
-                                        .heightIn(min = 38.dp)
+                                        .heightIn(min = 44.dp)
                                         .testTag("toolbar_bulk_merge_button")
                                 ) {
                                     Row(
@@ -468,11 +501,11 @@ fun MasterViewTab(
                                 if (!isEditMode) {
                                     Surface(
                                         onClick = enterEditMode,
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         color = colors.surfaceVariant,
                                         border = BorderStroke(1.dp, colors.border),
                                         modifier = Modifier
-                                            .heightIn(min = 38.dp)
+                                            .heightIn(min = 44.dp)
                                             .testTag("toolbar_edit_set_button")
                                     ) {
                                         Row(
@@ -499,11 +532,11 @@ fun MasterViewTab(
                                         onClick = {
                                             if (changedCount > 0) showReviewDialog = true else exitEditMode(false)
                                         },
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         color = colors.teal.copy(alpha = 0.15f),
                                         border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.6f)),
                                         modifier = Modifier
-                                            .heightIn(min = 38.dp)
+                                            .heightIn(min = 44.dp)
                                             .testTag("toolbar_done_button")
                                     ) {
                                         Row(

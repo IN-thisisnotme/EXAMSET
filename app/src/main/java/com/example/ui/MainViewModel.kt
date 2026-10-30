@@ -1176,7 +1176,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "hindi" -> Pair(SampleData.SAMPLE_HINDI_PAPER, "Samples & Practice")
             "science" -> Pair(SampleData.SAMPLE_SCIENCE_PAPER, "Samples & Practice")
             "civil", "engineering", "gate" -> Pair(SampleData.SAMPLE_CIVIL_MIXED_PATTERN, "Civil & Environmental Engineering")
-            "classical", "greek", "latin", "multilingual" -> Pair(SampleData.SAMPLE_CLASSICAL_LANGUAGES, "Classical & World Languages")
             else -> Pair(SampleData.SAMPLE_STARTER_PROMPT, "Samples & Practice")
         }
         parseAndSetPaper(
@@ -1197,7 +1196,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             3 -> "bio"
             4 -> "patterns"
             5 -> "civil"
-            6 -> "classical"
             else -> "science"
         }
         loadStarterSample(key)

@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -458,11 +460,14 @@ private fun AuditPhaseTab(
         shape = RoundedCornerShape(8.dp),
         color = if (isSelected) colors.primaryButtonBg else colors.surfaceVariant,
         border = BorderStroke(0.8.dp, if (isSelected) colors.primaryButtonBg else colors.border),
-        modifier = modifier
+        modifier = modifier.heightIn(min = 48.dp)
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .padding(vertical = 5.dp, horizontal = 4.dp)
+                .wrapContentHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = "Step ${phase.stepNumber}",
@@ -476,10 +481,12 @@ private fun AuditPhaseTab(
                     AuditPhase.PHASE_2_REPLACEMENTS -> "Replacements"
                     AuditPhase.PHASE_3_EXPLANATIONS -> "Explanations"
                 },
-                fontSize = 11.sp,
+                fontSize = 10.5.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = if (isSelected) colors.primaryButtonText else colors.inkBold,
-                maxLines = 1,
+                maxLines = 2,
+                softWrap = true,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -497,14 +504,17 @@ private fun ScopeChip(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = if (isSelected) colors.teal else colors.surface,
-        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
+        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border),
+        modifier = Modifier.heightIn(min = 34.dp)
     ) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) Color.White else colors.inkMuted,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-        )
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)) {
+            Text(
+                text = label,
+                fontSize = 10.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) Color.White else colors.inkMuted,
+                maxLines = 1
+            )
+        }
     }
 }

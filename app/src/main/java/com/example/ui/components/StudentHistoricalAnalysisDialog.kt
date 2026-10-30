@@ -23,9 +23,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -912,19 +914,30 @@ private fun MiniMetricTile(
 ) {
     val colors = ExamTheme.colors
     Surface(
-        modifier = modifier,
+        modifier = modifier.heightIn(min = 60.dp),
         shape = RoundedCornerShape(8.dp),
         color = colors.surface,
         border = BorderStroke(1.dp, colors.border)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+                .wrapContentHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
-            Text(label, fontSize = 9.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(value, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                color = colors.muted,
+                maxLines = 2,
+                softWrap = true,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

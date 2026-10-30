@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -414,7 +416,7 @@ private fun ModeSelectorPill(
     val colors = ExamTheme.colors
     Surface(
         modifier = modifier
-            .height(68.dp)
+            .heightIn(min = 68.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = if (isSelected) colors.tealLight else Color.Transparent,
@@ -422,21 +424,27 @@ private fun ModeSelectorPill(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxHeight()
-                .padding(10.dp),
+                .wrapContentHeight()
+                .padding(8.dp),
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = title,
-                fontSize = 12.5.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isSelected) colors.tealDark else colors.inkBold
+                color = if (isSelected) colors.tealDark else colors.inkBold,
+                maxLines = 2,
+                softWrap = true,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(
                 text = subtitle,
-                fontSize = 10.5.sp,
+                fontSize = 10.sp,
                 color = colors.muted,
-                lineHeight = 13.sp
+                lineHeight = 13.sp,
+                maxLines = 2,
+                softWrap = true,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }

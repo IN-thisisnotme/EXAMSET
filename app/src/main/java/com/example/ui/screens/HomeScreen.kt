@@ -554,13 +554,14 @@ fun HomeScreen(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
+                                .heightIn(min = 44.dp)
                                 .clickable { viewModel.selectTab(tabIdx) },
                             shape = RoundedCornerShape(8.dp),
                             color = if (isSubSelected) colors.tealLight else colors.surfaceVariant,
                             border = BorderStroke(1.dp, if (isSubSelected) colors.teal else colors.border)
                         ) {
                             Row(
-                                modifier = Modifier.padding(vertical = 7.dp),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -576,8 +577,9 @@ fun HomeScreen(
                                     fontSize = 11.sp,
                                     fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSubSelected) colors.teal else colors.inkBold,
-                                    maxLines = 1,
-                                    softWrap = false,
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    textAlign = TextAlign.Center,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }

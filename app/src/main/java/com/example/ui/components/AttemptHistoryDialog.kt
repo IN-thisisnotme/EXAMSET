@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -103,7 +104,8 @@ fun AttemptHistoryDialog(
                                 
                                 Button(
                                     onClick = { onLoadAttempt(attempt) },
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.heightIn(min = 44.dp)
                                 ) {
                                     Text(if (attempt.isSubmitted) "Review" else "Resume")
                                 }
@@ -115,7 +117,10 @@ fun AttemptHistoryDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.heightIn(min = 44.dp)
+                    ) {
                         Text("Close")
                     }
                 }

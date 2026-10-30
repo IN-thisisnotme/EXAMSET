@@ -514,12 +514,12 @@ object BatchExamImporter {
                 missingKeysCount++
             } else {
                 val cleanedAns = q.correctAnswer.uppercase()
-                if (cleanedAns !in listOf("A", "B", "C", "D", "E")) {
+                if (cleanedAns !in listOf("A", "B", "C", "D")) {
                     nonStandardKeyCount++
                     issues.add(
                         ValidationIssue(
                             severity = ValidationSeverity.WARNING,
-                            message = "Question #${q.num} answer key \"${q.correctAnswer}\" is non-standard (expected A, B, C, D, or E).",
+                            message = "Question #${q.num} answer key \"${q.correctAnswer}\" is non-standard (expected A, B, C, or D).",
                             questionNumber = q.num
                         )
                     )
