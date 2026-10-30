@@ -440,17 +440,41 @@ object QuestionAuditHelper {
                     )
                 }
                 else -> {
-                    AuditQuestionReport(
-                        qNum = q.num,
-                        status = AuditIssueType.CLEAN,
-                        currentKey = q.correctAnswer,
-                        suggestedKey = q.correctAnswer,
-                        recheckedExplanation = q.explanation,
-                        originalQuestion = q
-                    )
+                    val expKey = extractExplicitAnswerFromExplanation(q.explanation)
+                    if (expKey != null && !expKey.equals(q.correctAnswer, ignoreCase = true)) {
+                        AuditQuestionReport(
+                            qNum = q.num,
+                            status = AuditIssueType.WRONG_KEY,
+                            currentKey = q.correctAnswer,
+                            suggestedKey = expKey,
+                            flawReason = "Marked answer key (${q.correctAnswer}) contradicts detailed explanation which identifies Option $expKey as correct.",
+                            recheckedExplanation = q.explanation,
+                            originalQuestion = q
+                        )
+                    } else {
+                        AuditQuestionReport(
+                            qNum = q.num,
+                            status = AuditIssueType.CLEAN,
+                            currentKey = q.correctAnswer,
+                            suggestedKey = q.correctAnswer,
+                            recheckedExplanation = q.explanation,
+                            originalQuestion = q
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private val EXPLICIT_EXP_KEY_REGEX = Regex(
+        """(?i)(?:(?:correct\s+(?:answer|option)|answer|ans|respuesta\s+correcta|réponse\s+correcte|richtige\s+antwort|σωστή\s+απάντηση|responsum\s+verum|responsio|सही\s+उत्तर|उत्तर|정답|正解|正确答案)\s*[:\-–—]?\s*[\(\[]?([A-Ea-e1-5Α-Εα-ε\u0391-\u0395\u03B1-\u03B5])[\)\]]?|Option\s+([A-Ea-eΑ-Εα-ε])\s+(?:is\s+)?(?:the\s+)?correct\b|^\s*[\(\[]([A-Ea-eΑ-Εα-ε])[\)\]][\s\:\-–—]+.*?\b(?:correct|correto|correcta|richtig|σωστό|verum|सही|सटीक|옳음|정답|верно)\b)"""
+    )
+
+    fun extractExplicitAnswerFromExplanation(explanation: String?): String? {
+        if (explanation.isNullOrBlank()) return null
+        val match = EXPLICIT_EXP_KEY_REGEX.find(explanation) ?: return null
+        val rawChar = match.groupValues.drop(1).firstOrNull { it.isNotBlank() } ?: return null
+        return McqParser.canonicalOption(rawChar)
     }
 
     /**

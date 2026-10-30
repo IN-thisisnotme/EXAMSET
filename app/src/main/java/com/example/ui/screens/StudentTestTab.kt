@@ -966,7 +966,14 @@ private fun ExamStartOverviewView(
         // Previous Attempt Banner if available
         if (attempts.isNotEmpty()) {
             val latest = attempts.first()
-            val maxPossibleScore = latest.totalQuestions * positiveMarks
+            val effectivePosMarks = if (positiveMarks > 0.0 && (latest.totalQuestions * positiveMarks) >= latest.score) {
+                positiveMarks
+            } else if (latest.totalQuestions > 0 && latest.score > latest.totalQuestions) {
+                4.0
+            } else {
+                positiveMarks.takeIf { it > 0.0 } ?: 4.0
+            }
+            val maxPossibleScore = latest.totalQuestions * effectivePosMarks
             val pct = if (maxPossibleScore > 0) ((latest.score / maxPossibleScore) * 100).toInt().coerceIn(0, 100) else 0
             val formattedMaxScore = if (maxPossibleScore % 1.0 == 0.0) maxPossibleScore.toInt().toString() else String.format(java.util.Locale.US, "%.1f", maxPossibleScore)
             item {

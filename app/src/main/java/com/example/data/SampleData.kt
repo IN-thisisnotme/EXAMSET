@@ -633,4 +633,70 @@ Explanation: Primary consolidation settlement for normally consolidated clay: S_
 - (C) Correct; S_c = 0.271 m based on Terzaghi 1D consolidation theory.
 - (D) Incorrect; corresponds to initial void ratio e₀ = 0.5.
 """.trimIndent()
+
+    val SAMPLE_CLASSICAL_LANGUAGES = """
+# Classical Philology & World Civilizations Examination
+Subject: Classical Languages & Comparative Linguistics
+Series: Set CL-1
+Time: 60 Minutes
+Max Marks: 50
+
+1. Ερώτηση (Greek)
+Ποιο είναι το θεμελιώδες υποατομικό σωματίδιο που διαθέτει αρνητικό στοιχειώδες ηλεκτρικό φορτίο;
+(Α) Πρωτόνιο
+(Β) Νετρόνιο
+(Γ) Ηλεκτρόνιο
+(Δ) Ποζιτρόνιο
+
+2. Quaestio (Latin)
+Quod elementum chemicum in tabula periodica symbolo 'Au' indicatur?
+(A) Argentum
+(B) Aurum
+(C) Aluminium
+(D) Arsenicum
+
+3. Pregunta (Spanish)
+¿Cuál es el órgano principal del sistema circulatorio humano encargado de bombear sangre a través del cuerpo?
+(A) Los pulmones
+(B) El corazón
+(C) El hígado
+(D) Los riñones
+
+4. Question (French)
+Quel gaz compose environ 78% du volume de l'atmosphère terrestre?
+(A) L'oxygène (O₂)
+(B) Le dioxyde de carbone (CO₂)
+(C) L'azote (N₂)
+(D) L'hydrogène (H₂)
+
+5. Frage (German)
+Welcher Planet unseres Sonnensystems wird aufgrund seiner eisenoxidhaltigen Oberfläche als 'Roter Planet' bezeichnet?
+(A) Venus
+(B) Mars
+(C) Jupiter
+(D) Merkur
+
+Απαντήσεις (Answer Key)
+1: C
+2: B
+3: B
+4: C
+5: B
+
+Εξηγήσεις (Detailed Explanations)
+1. Σωστή απάντηση: (Γ)
+Εξήγηση: Το ηλεκτρόνιο (Option Γ) είναι το στοιχειώδες υποατομικό σωματίδιο που φέρει αρνητικό φορτίο (-1e). Τα πρωτόνια φέρουν θετικό φορτίο και τα νετρόνια είναι ηλεκτρικώς ουδέτερα.
+
+2. Responsum verum: (B)
+Explicatio: 'Au' est compendium nominis Latini 'Aurum' (Option B), quod aurum metallum nobile significat. Argentum est 'Ag' et Aluminium est 'Al'.
+
+3. Respuesta correcta: (B)
+Explicación: El corazón (Option B) es el órgano muscular hueco que actúa como bomba impeliendo la sangre por todo el sistema cardiovascular hacia los tejidos y órganos.
+
+4. Réponse correcte: (C)
+Explication: L'azote (diazote, N₂, Option C) constitue approximativement 78,08% en volume de l'atmosphère terrestre, l'oxygène représentant environ 20,95%.
+
+5. Richtige Antwort: (B)
+Erklärung: Der Mars (Option B) verdankt sein rötliches Erscheinungsbild dem hohen Anteil an Eisen(III)-oxid (Rost) auf seiner Oberfläche und wird deshalb traditionell als Roter Planet bezeichnet.
+""".trimIndent()
 }

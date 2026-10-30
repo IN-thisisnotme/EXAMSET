@@ -13,22 +13,22 @@ import java.util.regex.Pattern
 object McqParser {
 
     private val ANSWER_HEADING_REGEX = Pattern.compile(
-        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:[0-9IVXivx]+|one|two|three|four|five|first|second|third|fourth|fifth|एक|दो|तीन|चार|पांच|पहला|दूसरा|तीसरा|चौथा|पाँचवाँ|प्रथम|द्वितीय|तृतीय)?\s*[:\-–—•\s]\s*)?(?:(?:quick|official|final|mcq|\d+[- ]question)\s+)?(?:answer\s*keys?|answers?|keys?|उत्तर\s*कुंजी|उत्तर\s*तालिका|उत्तरमाला|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답\s*및\s*해설|정답표|정답|답|正解一覧|正解|解答一覧|解答|正答|参考答案|正确答案|答案|Ответы|Таблица\s*ответов|Ответ|Ключ)\s*[:\-–—]?\s*.*$""",
+        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:[0-9IVXivx]+|one|two|three|four|five|first|second|third|fourth|fifth|एक|दो|तीन|चार|पांच|पहला|दूसरा|तीसरा|चौथा|पाँचवाँ|प्रथम|द्वितीय|तृतीय)?\s*[:\-–—•\s]\s*)?(?:(?:quick|official|final|mcq|\d+[- ]question)\s+)?(?:answer\s*keys?|answers?|keys?|उत्तर\s*कुंजी|उत्तर\s*तालिका|उत्तरमाला|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답\s*및\s*해설|정답표|정답|답|正解一覧|正解|解答一覧|解答|正答|参考答案|正确答案|答案|Ответы|Таблица\s*ответов|Ответ|Ключ|Απαντήσεις|Απάντηση|Λύσεις|Κλειδί\s*απαντήσεων|Σωστή\s*απάντηση|Responsa|Responsio|Responsum|Clavis\s*responsorum|Clavis|Respuestas|Respuesta\s*correcta|Clave\s*de\s*respuestas|Réponses|Réponse\s*correcte|Corrigé|Clé\s*des\s*réponses|Antworten|Richtige\s*Antwort|Lösungsschlüssel|Antwortschlüssel|Respostas|Resposta\s*correta|Gabarito|Risposte|Risposta\s*corretta|Soluzioni|Cevaplar|Cevap\s*Anahtarı|Doğru\s*Cevap|Yanıtlar|Đáp\s*án|Kunci\s*Jawaban|Jawaban\s*Benar|เฉลย|คำตอบ|إجابات|الإجابة\s*الصحيحة|الإجابات|مفتاح\s*الإجابة|پاسخ‌ها|پاسخ\s*نامه|کلید\s*سوالات|جوابات|উত্তরপত্র|সঠিক\s*উত্তর|விடைக்குறிப்பு|விடைகள்|விடை|సమాధానాలు|సమాధానం|જવાબો|સાચો\s*જવાબ|उत्तरतालिका|उत्तरे|ಉತ್ತರಗಳು|ഉത്തരങ്ങൾ|ਉੱਤਰ\s*ਕੁੰਜੀ|ଉତ୍ତରମାଳା|Antwoordsleutel|Odpowiedzi|Відповіді)(?:\b|[\s\(\[\:\-–—]|$).*$""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val EXPLANATION_HEADING_REGEX = Pattern.compile(
-        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:[0-9IVXivx]+|one|two|three|four|five|first|second|third|fourth|fifth|एक|दो|तीन|चार|पांच|पहला|दूसरा|तीसरा|चौथा|पाँचवाँ|प्रथम|द्वितीय|तृतीय)?\s*[:\-–—•\s]\s*)?(?:(?:detailed|option[- ]by[- ]option|step[- ]by[- ]step|comprehensive|complete|question[- ]wise|mcq|non[- ]repetitive)\s+)*(?:explanations?|solutions?|व्याख्या\s*सहित\s*उत्तर|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|व्याख्यात्मक\s*उत्तर|व्याख्या|हल|해설|풀이|解説|解答・解説|解法|详细解析|答案解析|试题解析|解析|Пояснение|Решение|Объяснение|Разбор|analysis|rationale)\b.*$""",
+        """^\s*(?:#+\s*)?(?:(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:[0-9IVXivx]+|one|two|three|four|five|first|second|third|fourth|fifth|एक|दो|तीन|चार|पांच|पहला|दूसरा|तीसरा|चौथा|पाँचवाँ|प्रथम|द्वितीय|तृतीय)?\s*[:\-–—•\s]\s*)?(?:(?:detailed|option[- ]by[- ]option|step[- ]by[- ]step|comprehensive|complete|question[- ]wise|mcq|non[- ]repetitive)\s+)*(?:explanations?|solutions?|व्याख्या\s*सहित\s*उत्तर|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|व्याख्यात्मक\s*उत्तर|व्याख्या|हल|해설|풀이|解説|解答・解説|解法|详细解析|答案解析|试题解析|解析|Пояснение|Решение|Объяснение|Разбор|analysis|rationale|Εξήγηση|Εξηγήσεις|Ανάλυση|Λύση|Επεξήγηση|Explicatio|Explicationes|Solutio|Solutiones|Enarratio|Explicación|Explicaciones|Solución|Soluciones|Justificación|Explication|Explications|Corrigé|Erklärung|Erklärungen|Lösung|Lösungen|Begründung|Explicação|Explicações|Spiegazione|Spiegazioni|Açıklama|Açıklamalar|Çözüm|Çözümler|Giải\s*thích|Lời\s*giải\s*chi\s*tiết|Penjelasan|Pembahasan|คำอธิบาย|วิธีทำ|شرح|تفسير|توضيح|توضيحات|تشریح|ব্যাখ্যা|বিশ্লেষণ|সমাধান|விளக்கம்|தீர்வு|వివరణ|పరిష్కారం|સમજૂતી|વિશ્લેષણ|ઉકેલ|स्पष्टीकरण|ವಿವರಣೆ|പരിഹാരം|ਵਿਆਖਿਆ|ਹੱਲ|ବ୍ୟାଖ୍ୟା|Verklaring|Uitleg|Wyjaśnienie|Rozwiązanie|Пояснення|Розв'язання)(?:\b|[\s\(\[\:\-–—]|$).*$""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val QUESTION_START_REGEX = Pattern.compile(
-        """^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:第\s*(\d{1,4}|[\p{Nd}]{1,4})\s*[問题문]|제\s*(\d{1,4}|[\p{Nd}]{1,4})\s*문|(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|問題|题|Вопрос|Задание|№|Задача|Problem|Prob|Item)\.?\s*(?:No\.?|#)?\s*[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]]?|[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]\.\:\-])\s*[\:\-\.]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(.*?)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*$""",
+        """^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:第\s*(\d{1,4}|[\p{Nd}]{1,4})\s*[問题문]|제\s*(\d{1,4}|[\p{Nd}]{1,4})\s*문|(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|問題|题|Вопрос|Задание|№|Задача|Problem|Prob|Item|Ερώτηση|Ερωτ|Ερώτημα|Quaestio|Qvaestio|Pregunta|Frage|Questão|Pergunta|Domanda|Quesito|Soru|Câu\s*hỏi|Câu|Soal|Pertanyaan|ข้อ|سؤال|مسألة|پرسش|سوال|પ્રશ્ન|ಪ್ರಶ್ನೆ|ചോദ്യം|ਪ੍ਰਸ਼ਨ|ପ୍ରଶ୍ନ|Vraag|Pytanie|Питання|Завдання)\.?\s*(?:No\.?|#)?\s*[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]]?|[\(\[]?(\d{1,4}|[\p{Nd}]{1,4})[\)\]\.\:\-])\s*[\:\-\.]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(.*?)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*$""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val OPTION_REGEX = Pattern.compile(
-        """(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*|\\[*]\\[*]|\*|\\\*)?(?:Option\s+|Opt\s+)?(?:\(([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\)|\[([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅஆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\]|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*[\)\.\:\-–—](?=\s+\S|$)|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])\b(?=\s*[:\-–—]))(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*|(?m)^\s*(?:[-*•]\s*)?(?:\*\*|\\[*]\\[*]|\*|\\\*)?(?:Option\s+|Opt\s+)?([1-5१-५])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*[\)\.](?=\s+\S|$)|(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*|\\[*]\\[*]|\*|\\\*)?([①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ㈎-㈒])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*""",
+        """(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*|\\[*]\\[*]|\*|\\\*)?(?:Option\s+|Opt\s+)?(?:\(([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫])\)|\[([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫])\]|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จੳਅੲਸਹକ-ଙಅ-ಉ])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*[\)\.\:\-–—](?=\s+\S|$)|([a-eA-Eकखगघङअबसदईকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จੳਅੲਸਹକ-ଙಅ-ಉ])\b(?=\s*[:\-–—]))(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*|(?m)^\s*(?:[-*•]\s*)?(?:\*\*|\\[*]\\[*]|\*|\\\*)?(?:Option\s+|Opt\s+)?([1-5१-५๑-๕١-٥۱-۵੧-੫୧-୫೧-೫൧-൫])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*[\)\.](?=\s+\S|$)|(?m)(?:^\s*(?:[-*•]\s*)?|\s+)(?:\*\*|\\[*]\\[*]|\*|\\\*)?([①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ㈎-㈒])(?:\*\*|\\[*]\\[*]|\*|\\\*)?\s*""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -36,10 +36,25 @@ object McqParser {
         if (raw.isNullOrBlank()) return null
         val digitsOnly = StringBuilder()
         for (ch in raw) {
-            if (Character.isDigit(ch)) {
-                val num = Character.getNumericValue(ch)
-                if (num in 0..9) {
-                    digitsOnly.append(num)
+            val num = Character.getNumericValue(ch)
+            if (num in 0..9) {
+                digitsOnly.append(num)
+            } else {
+                val mapped = when (ch) {
+                    '٠', '۰', '০', '૦', '੦', '୦', '౦', '೦', '൦', '๐' -> 0
+                    '١', '۱', '১', '૧', '੧', '୧', '౧', '೧', '൧', '๑' -> 1
+                    '٢', '۲', '২', '૨', '੨', '୨', '౨', '೨', '൨', '๒' -> 2
+                    '٣', '۳', '৩', '૩', '੩', '୩', '౩', '೩', '൩', '๓' -> 3
+                    '٤', '۴', '۴', '૪', '੪', '୪', '౪', '೪', '൪', '๔' -> 4
+                    '٥', '۵', '৫', '૫', '੫', '୫', '౫', '೫', '൫', '๕' -> 5
+                    '٦', '۶', '৬', '૬', '੬', '୬', '౬', '೬', '൬', '๖' -> 6
+                    '٧', '۷', '৭', '૭', '੭', '୭', '౭', '೭', '൭', '๗' -> 7
+                    '٨', '۸', '৮', '૮', '੮', '୮', '౮', '೮', '൮', '๘' -> 8
+                    '٩', '۹', '৯', '૯', '੯', '୯', '౯', '೯', '൯', '๙' -> 9
+                    else -> null
+                }
+                if (mapped != null) {
+                    digitsOnly.append(mapped)
                 }
             }
         }
@@ -49,11 +64,11 @@ object McqParser {
     fun canonicalOption(raw: String): String? {
         val u = raw.trim().uppercase()
         return when (u) {
-            "A", "1", "क", "अ", "①", "❶", "⓵", "⒈", "Ⓐ", "ⓐ", "I", "I.", "ⅰ", "Ⅰ", "१", "১", "૧", "ক", "அ", "అ", "ఎ", "അ", "أ", "ا", "甲", "가", "㈎", "ア", "あ", "А", "\u0410", "\u0430" -> "A"
-            "B", "2", "ख", "ब", "②", "❷", "⓶", "⒉", "Ⓑ", "ⓑ", "II", "II.", "ⅱ", "Ⅱ", "२", "২", "૨", "খ", "ஆ", "ఆ", "బి", "ബ", "ب", "乙", "나", "㈏", "イ", "い", "Б", "\u0411", "\u0431" -> "B"
-            "C", "3", "ग", "स", "③", "❸", "⓷", "⒊", "Ⓒ", "ⓒ", "III", "III.", "ⅲ", "Ⅲ", "३", "৩", "૩", "গ", "இ", "ఇ", "సి", "സ", "ج", "丙", "다", "㈐", "ウ", "う", "В", "\u0412", "\u0432" -> "C"
-            "D", "4", "घ", "द", "④", "❹", "⓸", "⒋", "Ⓓ", "ⓓ", "IV", "IV.", "ⅳ", "Ⅳ", "४", "৪", "૪", "ঘ", "ஈ", "ఈ", "డి", "ദ", "د", "丁", "라", "㈑", "エ", "え", "Г", "\u0413", "\u0433" -> "D"
-            "E", "5", "ङ", "ई", "⑤", "❺", "⓹", "⒌", "Ⓔ", "ⓔ", "V", "V.", "ⅴ", "Ⅴ", "५", "৫", "૫", "ঙ", "உ", "ఉ", "ഇ", "هـ", "戊", "마", "㈒", "オ", "お", "Д", "\u0414", "\u0434" -> "E"
+            "A", "1", "क", "अ", "①", "❶", "⓵", "⒈", "Ⓐ", "ⓐ", "I", "I.", "ⅰ", "Ⅰ", "१", "১", "૧", "ক", "அ", "అ", "ఎ", "അ", "أ", "ا", "الف", "甲", "가", "㈎", "ア", "あ", "А", "\u0410", "\u0430", "Α", "α", "\u0391", "\u03B1", "ก", "๑", "١", "۱", "ੳ", "੧", "କ", "୧", "ಅ", "೧", "൧" -> "A"
+            "B", "2", "ख", "ब", "②", "❷", "⓶", "⒉", "Ⓑ", "ⓑ", "II", "II.", "ⅱ", "Ⅱ", "२", "২", "૨", "খ", "ஆ", "ఆ", "బి", "ബ", "ب", "乙", "나", "㈏", "イ", "い", "Б", "\u0411", "\u0431", "Β", "β", "\u0392", "\u03B2", "ข", "๒", "٢", "۲", "ਅ", "੨", "ଖ", "୨", "ಆ", "೨", "൨" -> "B"
+            "C", "3", "ग", "स", "③", "❸", "⓷", "⒊", "Ⓒ", "ⓒ", "III", "III.", "ⅲ", "Ⅲ", "३", "৩", "૩", "গ", "இ", "ఇ", "సి", "സ", "ج", "丙", "다", "㈐", "ウ", "う", "В", "\u0412", "\u0432", "Γ", "γ", "\u0393", "\u03B3", "ค", "๓", "٣", "۳", "ੲ", "੩", "ଗ", "୩", "ಇ", "೩", "൩" -> "C"
+            "D", "4", "घ", "द", "④", "❹", "⓸", "⒋", "Ⓓ", "ⓓ", "IV", "IV.", "ⅳ", "Ⅳ", "४", "৪", "૪", "ঘ", "ஈ", "ఈ", "డి", "ദ", "د", "丁", "라", "㈑", "エ", "え", "Г", "\u0413", "\u0433", "Δ", "δ", "\u0394", "\u03B4", "ง", "๔", "٤", "۴", "ਸ", "੪", "ଘ", "୪", "ಈ", "೪", "൪" -> "D"
+            "E", "5", "ङ", "ई", "⑤", "❺", "⓹", "⒌", "Ⓔ", "ⓔ", "V", "V.", "ⅴ", "Ⅴ", "५", "৫", "૫", "ঙ", "உ", "ఉ", "ഇ", "هـ", "ه", "ہ", "戊", "마", "㈒", "オ", "お", "Д", "\u0414", "\u0434", "Ε", "ε", "\u0395", "\u03B5", "จ", "๕", "٥", "۵", "ਹ", "੫", "ଙ", "୫", "ಉ", "೫", "൫" -> "E"
             else -> null
         }
     }
@@ -73,17 +88,17 @@ object McqParser {
     }
 
     private val PAIR_ANSWER_REGEX = Pattern.compile(
-        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.\/\\]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
+        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem|Ερώτηση|Ερωτ|Quaestio|Pregunta|Frage|Soru|Câu|Soal|ข้อ|سؤال|مسألة|پرسش)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.\/\\]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433Α-Δα-δ\u0391-\u0394\u03B1-\u03B4ก-ง๑-๔١-٤۱-۴ੳਅੲਸ੧-੪କ-ଘ୧-୪ಅ-ಈ೧-೪])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val ANSWER_LABEL_REGEX = Pattern.compile(
-        """(?:\b(?:correct\s+(?:answer|option)|answer|ans)\b|(?:सही\s*उत्तर|उत्तर|정답|답|正解|解答|正确答案|答案|Правильный\s*ответ|Ответ))\s*[:\-]?\s*(?:option\s*)?[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?""",
+        """(?:\b(?:correct\s+(?:answer|option)|answer|ans)\b|(?:सही\s*उत्तर|उत्तर|정답|답|正解|解答|正确答案|答案|Правильный\s*ответ|Ответ|Σωστή\s*απάντηση|Απάντηση|Responsum\s*verum|Responsio|Responsum|Respuesta\s*correcta|Respuesta|Réponse\s*correcte|Réponse|Richtige\s*Antwort|Antwort|Resposta\s*correta|Gabarito|Risposta\s*corretta|Risposta|Doğru\s*cevap|Cevap|Đáp\s*án\s*đúng|Đáp\s*án|Jawaban\s*benar|Jawaban|คำตอบที่ถูกต้อง|คำตอบ|เฉลย|الإجابة\s*الصحيحة|الإجابة|پاسخ\s*صحیح|پاسخ|ਸਹੀ\s*ਉੱਤਰ|সঠিক\s*উত্তর|சரியான\s*விடை|సరైన\s*సమాధానం|સાચો\s*જવાબ|ಸರಿಯಾದ\s*ಉತ್ತರ|ശരിയായ\s*ഉത്തരം|ସଠିକ\s*ଉତ୍ତର))\s*[:\-]?\s*(?:option\s*)?[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433Α-Δα-δ\u0391-\u0394\u03B1-\u03B4ก-ง๑-๔١-٤۱-۴ੳਅੲਸ੧-੪କ-ଘ୧-୪ಅ-ಈ೧-೪])[\)\]]?""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val EXPLANATION_LABEL_REGEX = Pattern.compile(
-        """(?:\b(?:detailed\s+explanation|explanation|exp)\b|(?:व्याख्या|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|हल|해설|풀이|解説|解答・解説|解析|详细解析|Пояснение|Решение|Объяснение))\s*[:\-]?\s*""",
+        """(?:\b(?:detailed\s+explanation|explanation|exp|solution|sol)\b|(?:व्याख्या|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|हल|해설|풀이|解説|解答・解説|解析|详细解析|Пояснение|Решение|Объяснение|Εξήγηση|Εξηγήσεις|Ανάλυση|Λύση|Explicatio|Solutio|Explicación|Solución|Explication|Erklärung|Lösung|Explicação|Spiegazione|Açıklama|Çözüm|Giải\s*thích|Lời\s*giải|Penjelasan|Pembahasan|คำอธิบาย|الشرح|التفسير|توضيح|تشریح|ਵਿਆਖਿਆ|ব্যাখ্যা|விளக்கம்|వివరణ|સમજૂતી|ಸ್ಪಷ್ಟೀಕರಣ|വിശദീകരണം|ବ୍ୟାଖ୍ୟା))\s*[:\-]?\s*""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -123,18 +138,18 @@ object McqParser {
     private val PHASE_3_EXP_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|III|iii|셋|삼|three|third|तीन|तीसरा|तृतीय|세\s*번째|три|третий|三)\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""")
     private val PHASE_2_EXP_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:2|२|২|૨|II|ii|둘|이|two|second|दो|दूसरा|द्वितीय|두\s*번째|два|второй|二)\b.*(?:explanation|solut|व्याख्या|हल|пояснен|объяснен|해설|풀이)""")
     private val PHASE_3_ANSWER_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|III|iii|셋|삼|three|third|तीन|तीसरा|तृतीय|세\s*번째|три|третий|三)\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""")
-    private val SINGLE_EXP_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:detailed\s+)?(?:explanation|exp|solution)|व्याख्या|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|해설|풀이|解説|解析|Пояснение|Решение|Объяснение)\s*[:\-–—]\s*\S+.*""")
+    private val SINGLE_EXP_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:detailed\s+)?(?:explanation|exp|solution)|व्याख्या|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|해설|풀이|解説|解析|Пояснение|Решение|Объяснение|Εξήγηση|Εξηγήσεις|Ανάλυση|Λύση|Explicatio|Solutio|Explicación|Solución|Explication|Erklärung|Lösung|Explicação|Spiegazione|Açıklama|Çözüm|Giải\s*thích|Lời\s*giải|Penjelasan|Pembahasan|คำอธิบาย|الشرح|التفسير|توضيح|تشریح)\s*[:\-–—]\s*\S+.*""")
     private val QUESTION_NUMBERED_LINE_REGEX = Regex("""^\s*(?:\*\*|__)?\s*(?:Q(?:uestion)?\s*)?\d{1,4}\s*[\.\:\)]""")
-    private val SINGLE_ANS_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:correct\s+)?(?:answer|ans)|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답|正解|答案)\s*[:\-–—]?\s*[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?(?:\s+[^\n]*)?$""")
-    private val OPTIONS_AHEAD_REGEX = Regex("""^\s*[\(\[]?[A-Da-d1-4][\)\]\.\-]\s+\S+""")
+    private val SINGLE_ANS_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:correct\s+)?(?:answer|ans)|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답|正解|答案|Σωστή\s*απάντηση|Απάντηση|Responsum\s*verum|Responsio|Responsum|Respuesta\s*correcta|Respuesta|Réponse\s*correcte|Réponse|Richtige\s*Antwort|Antwort|Resposta\s*correta|Gabarito|Risposta\s*corretta|Risposta|Doğru\s*cevap|Cevap|Đáp\s*án\s*đúng|Đáp\s*án|Jawaban\s*benar|Jawaban|คำตอบ|เฉลย|الإجابة|پاسخ)\s*[:\-–—]?\s*[\(\[]?[A-Ea-e1-5कखगघअबसद१-५Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵][\)\]]?(?:\s+[^\n]*)?$""")
+    private val OPTIONS_AHEAD_REGEX = Regex("""^\s*[\(\[]?[A-Ea-e1-5Α-Εα-εก-จ][\)\]\.\-]\s+\S+""")
     private val TRAILING_START_PATTERN = Pattern.compile(
-        """^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|Explanation|Exp|Sol|Solution)\.?\s*(?:No\.?|#)?\s*)?\b1\b\s*(?:[\.\:\)\-]\s*)?[\(\[]?[A-Da-d1-4][\)\]]?(?:\s|$|[\.\:\)\-])""",
+        """^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|Explanation|Exp|Sol|Solution)\.?\s*(?:No\.?|#)?\s*)?\b1\b\s*(?:[\.\:\)\-]\s*)?[\(\[]?[A-Ea-e1-5Α-Εα-ε][\)\]]?(?:\s|$|[\.\:\)\-])""",
         Pattern.CASE_INSENSITIVE
     )
 
-    private val EXPLICIT_QUESTION_MARKER_1_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item)(?:\b|[\d\p{Nd}\.\:\)])""")
-    private val EXPLICIT_QUESTION_MARKER_2_REGEX = Regex("""^\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item)\.?\s*(?:No\.?|#)?\s*)?[\d\p{Nd}]{1,4}\s*[\.:\)]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)""")
-    private val STEM_NUMBER_STRIP_REGEX = Regex("""^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item)?\.?\s*(?:No\.?|#)?\s*[\(\[]?\d+[\)\]\.\:\-]?\s*""", RegexOption.IGNORE_CASE)
+    private val EXPLICIT_QUESTION_MARKER_1_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item|Ερώτηση|Ερωτ|Ερώτημα|Quaestio|Qvaestio|Pregunta|Frage|Questão|Pergunta|Domanda|Quesito|Soru|Câu\s*hỏi|Câu|Soal|Pertanyaan|ข้อ|سؤال|مسألة|پرسش|سوال|પ્રશ્ન|ಪ್ರಶ್ನೆ|ചോദ്യം|ਪ੍ਰਸ਼ਨ|ਪ੍ਰଶ୍ନ|Vraag|Pytanie|Питання|Завдання)(?:\b|[\d\p{Nd}\.\:\)])""")
+    private val EXPLICIT_QUESTION_MARKER_2_REGEX = Regex("""^\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*[問题문]|제\s*\d+\s*문|题|Вопрос|Задание|№|Задача|Problem|Item|Ερώτηση|Ερωτ|Quaestio|Pregunta|Frage|Questão|Pergunta|Domanda|Soru|Câu|Soal|ข้อ|سؤال|پرسش|سوال)\.?\s*(?:No\.?|#)?\s*)?[\d\p{Nd}]{1,4}\s*[\.:\)]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)""")
+    private val STEM_NUMBER_STRIP_REGEX = Regex("""^\s*(?:#+\s*)?(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Prob|Item|Ερώτηση|Ερωτ|Quaestio|Pregunta|Frage|Soru|Câu|Soal|ข้อ|سؤال|پرسش)?\.?\s*(?:No\.?|#)?\s*[\(\[]?\d+[\)\]\.\:\-]?\s*""", RegexOption.IGNORE_CASE)
     private val PARTITION_TEXT_BEFORE_REGEX = Regex("""(?im)^\s*#+\s*(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series)\b|^\s*#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b""")
     private val STATEMENT_LIST_ITEM_REGEX = Regex("""(?m)^\s*[1-3१-३]\s*[\.\:\)]""")
     private val STATEMENT_WORDS_REGEX = Regex("""(?i)\b(?:combination|statements?|कथन|following|codes?|कूट|pairs?|items?|above|given)\b""")
@@ -146,7 +161,7 @@ object McqParser {
     private val DIAGRAM_ATTACHMENT_REGEX = Regex("""(?i)(?:^\s*(?:diagram|image|figure|chart)\s*:\s*(.+)$|!\[(.*?)\]\((.*?)\)|\[(?:diagram|image|figure|chart)\s*:\s*(.+?)\])""", RegexOption.MULTILINE)
     private val FORMULA_ATTACHMENT_REGEX = Regex("""(?i)(?:^\s*(?:formula|equation|reaction)\s*:\s*(.+)$|\[(?:formula|equation)\s*:\s*(.+?)\]|\$\$(.+?)\$\$)""", RegexOption.MULTILINE)
 
-    private val IS_OPTION_LINE_REGEX = Regex("""^\s*(?:\|\s*)?(?:[-*•]\s*)?(?:(?:\*\*)?(?:Option\s+|Opt\s+)?[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ](?:\*\*)?[\.\:\)\-–—]|\([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ]\)|\[[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-Ⅴ]\]|[①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ])""")
+    private val IS_OPTION_LINE_REGEX = Regex("""^\s*(?:\|\s*)?(?:[-*•]\s*)?(?:(?:\*\*)?(?:Option\s+|Opt\s+)?[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-ⅤΑ-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫](?:\*\*)?[\.\:\)\-–—]|\([a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-ⅤΑ-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫]\)|\[[a-eA-E1-5कखगघङअबसदई१-५i-vI-Vⅰ-ⅴⅠ-ⅤΑ-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫]\]|[①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ])""")
     private val IS_TABLE_PIPE_REGEX = Regex("""\s\|\s""")
     private val LINE_STARTS_HASH_REGEX = Regex("""^\s*#+""")
     private val LINE_IS_SECTION_REGEX = Regex("""(?i)^\s*(?:Part|Section|Claim|Task|Step|Phase|Stage|Level)\b""")
@@ -156,12 +171,12 @@ object McqParser {
     private val PREPOSITION_ENDS_REGEX = Regex("""(?i)\b(?:of|in|to|for|with|by|at|from|is|are|was|were|and|or|not|the|an|a|than)\s*$""")
     private val DASH_PRE_REGEX = Regex("""\d\s*[-–—]\s*$""")
     private val DASH_POST_REGEX = Regex("""^\s*[-–—]\s*\d""")
-    private val BARE_DIGIT_OPTION_REGEX = Regex("""^\s*(?:[-*•]\s*)?[1-5१-५][\.\)]""")
-    private val HAS_LETTER_OPTIONS_REGEX = Regex("""(?m)^\s*(?:\([a-eA-E]\)|\[[a-eA-E]\]|[a-eA-E][\.\)])""")
+    private val BARE_DIGIT_OPTION_REGEX = Regex("""^\s*(?:[-*•]\s*)?[1-5१-५๑-๕١-٥۱-۵][\.\)]""")
+    private val HAS_LETTER_OPTIONS_REGEX = Regex("""(?m)^\s*(?:\([a-eA-EΑ-Εα-ε]\)|\[[a-eA-EΑ-Εα-ε]\]|[a-eA-EΑ-Εα-ε][\.\)])""")
     private val STATEMENT_QUESTION_PROMPT_REGEX = Regex("""(?i)\b(?:combination|statements?|कथन|following\s+(?:statements?|items?|codes?)|codes?|कूट|pairs?|items?|विचार|सुमेलित|निम्न)\b""")
     private val PROMPT_AFTER_REGEX = Regex("""(?i)\b(?:which\s+(?:of\s+the|statement|statements|option|combination)|select\s+the\s+correct|choose\s+the\s+correct|उपरोक्त\s+में\s+से\s+कौन)\b""")
     private val INLINE_DIVIDER_REGEX = Regex(
-        """(?:\n|\s{2,})(?:correct\s+(?:answer|option)|answer\s*key|answer|ans|उत्तर|explanation|detailed\s+explanation|व्याख्या)\s*[:\-]""",
+        """(?:\n|\s{2,})(?:correct\s+(?:answer|option)|answer\s*key|answer|ans|उत्तर|explanation|detailed\s+explanation|व्याख्या|σωςτή\s*απάντηση|απάντηση|εξήγηση|responsum|explicatio|respuesta|explicación|réponse|explication|antwort|erklärung)\s*[:\-]""",
         RegexOption.IGNORE_CASE
     )
     private val PARTITION_DIVIDER_REGEX = Regex(
@@ -169,60 +184,60 @@ object McqParser {
         RegexOption.IGNORE_CASE
     )
     private val OPT_INLINE_DIV_REGEX = Regex(
-        """(?:\n|\s{2,})(?:\*\*|__)?(?:correct\s+(?:answer|option)|answer|ans|उत्तर|explanation|detailed\s+explanation|व्याख्या)\s*[:\-].*""",
+        """(?:\n|\s{2,})(?:\*\*|__)?(?:correct\s+(?:answer|option)|answer|ans|उत्तर|explanation|detailed\s+explanation|व्याख्या|σωςτή\s*απάντηση|απάντηση|εξήγηση|responsum|explicatio|respuesta|explicación|réponse|explication|antwort|erklärung)\s*[:\-].*""",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
-    private val CORRECTNESS_BADGE_REGEX = Regex("""(?i)\s*(?:\[\s*(?:correct|right(?:\s*answer)?)\s*\]|\(\s*(?:correct|right(?:\s*answer)?)\s*\)|\*\s*correct\s*\*|✓|✔)\s*$""")
+    private val CORRECTNESS_BADGE_REGEX = Regex("""(?i)\s*(?:\[\s*(?:correct|right(?:\s*answer)?|σωστό|verum|correcto|correcta|richtig)\s*\]|\(\s*(?:correct|right(?:\s*answer)?|σωστό|verum|correcto|correcta|richtig)\s*\)|\*\s*correct\s*\*|✓|✔)\s*$""")
 
     private val DECORATIVE_LINE_SEP_REGEX = Regex("""^\s*[-=_]{3,}\s*$""", RegexOption.MULTILINE)
     private val STRUCTURAL_PARTITION_HEADING_REGEX = Regex("""^(?:#+\s*)?(?:Phase|Part|Section|Stage|Chapter|Unit|Module|Questions?\s*[\d–\-]|Topic|Subject|Set|Series|Mathematics|Physics|Chemistry|Biology|Engineering|General)\b""", RegexOption.IGNORE_CASE)
     private val PHASE_TAG_HEADING_REGEX = Regex("""^#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b""", RegexOption.IGNORE_CASE)
     private val NOTE_HEADING_REGEX = Regex("""^(?:#+\s*)?(?:Final\s+revision|IMPORTANT\s+VERIFICATION\s+NOTE|Preparation\s+advice|Quality[- ]control)\b""", RegexOption.IGNORE_CASE)
     private val TABLE_CELL_PIPE_REGEX = Regex("""^\s*\|\s*|\s*\|\s*$""")
-    private val RECOVER_EMBEDDED_OPT_REGEX = Regex("""^\s*(?:[-*•]\s*)?(?:\*\*)?(?:Option\s+|Opt\s+)?[\(\[]?([A-Da-d1-4])[\)\]\.\:\-–—](?:\*\*)?\s*(.*)$""")
+    private val RECOVER_EMBEDDED_OPT_REGEX = Regex("""^\s*(?:[-*•]\s*)?(?:\*\*)?(?:Option\s+|Opt\s+)?[\(\[]?([A-Ea-e1-5Α-Εα-ε])[\)\]\.\:\-–—](?:\*\*)?\s*(.*)$""")
     private val RECOVER_PARTITION_REGEX = Regex("""(?i)^\s*(?:Part|Section|Claim|Task|Step|Phase)\b""")
 
-    private val TABLE_CLEAN_NOTES_REGEX = Regex("""(?im)^\s*(?:###?\s*Final\s+revision|###?\s*IMPORTANT\s+VERIFICATION\s+NOTE|Quality[- ]control\s+notes?|Review\s+notes?|QC\s+notes?|Internal\s+check\b|Remarks?\b|Important\s+Notes?\b(?:\s*[:\-–—]))""")
+    private val TABLE_CLEAN_NOTES_REGEX = Regex("""(?im)^\s*(?:#+\s*)?(?:Final\s+revision|IMPORTANT\s+VERIFICATION\s+NOTE|Quality[- ]control\s+notes?|Review\s+notes?|QC\s+notes?|Internal\s+check\b|Remarks?\b|Important\s+Notes?\b)(?:\s*[:\-–—\n]|$)""")
     private val SUBPART_KEY_REGEX = Regex("""(?i)^\d+\s*[-–—]\s*[A-Za-z0-9ivIV]+$""")
     private val NOT_Q_ANS_REGEX = Regex("""(?i)^\s*Q(?:uestion)?\s+(?:Ans|Answer)""")
-    private val TAB_SEPARATED_ANS_REGEX = Regex("""(?i)^\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Item)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*[\t ]+[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁])[\)\]]?\s*(?:[\t ]+(.*))?$""")
+    private val TAB_SEPARATED_ANS_REGEX = Regex("""(?i)^\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Item|Ερώτηση|Quaestio|Pregunta|Frage)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*[\t ]+[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁Α-Δα-δก-ง๑-๔])[\)\]]?\s*(?:[\t ]+(.*))?$""")
     private val MATH_EXP_REGEX = Regex("""^[\d\.\\\(\)\+\*\/].*""")
-    private val EXPLICIT_KEYWORD_REGEX = Regex("""(?i)(?:Explanation|Exp|Solution|Sol|व्याख्या|हल|Question|Q|MCQ[s]?|Problem|Prob|Item|सवाल|उत्तर)""")
-    private val IS_ANSWER_HEADER_REGEX = Regex("""^(?:\*+|_+)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर|Option|Opt)\b""", RegexOption.IGNORE_CASE)
-    private val IS_STATEMENT_EVAL_REGEX = Regex("""^(?:\*+|_+)?\s*(?:Correct|Incorrect|True|False|Right|Wrong|सही|गलत)\s*[\.\*_\-–—:]""", RegexOption.IGNORE_CASE)
+    private val EXPLICIT_KEYWORD_REGEX = Regex("""(?i)(?:Explanation|Exp|Solution|Sol|व्याख्या|हल|Question|Q|MCQ[s]?|Problem|Prob|Item|सवाल|उत्तर|Εξήγηση|Απάντηση|Explicatio|Responsio|Respuesta|Explicación|Réponse|Explication|Antwort|Erklärung)""")
+    private val IS_ANSWER_HEADER_REGEX = Regex("""^(?:\*+|_+)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर|Option|Opt|Σωστή\s*απάντηση|Απάντηση|Responsum|Responsio|Respuesta|Réponse|Antwort|Cevap|Jawaban|คำตอบ|เฉลย)(?:\b|[\s\(\[\:\-–—]|$)""", RegexOption.IGNORE_CASE)
+    private val IS_STATEMENT_EVAL_REGEX = Regex("""^(?:\*+|_+)?\s*(?:Correct|Incorrect|True|False|Right|Wrong|सही|गलत|Σωστό|Λάθος|Verum|Falsum|Correcto|Incorrecto|Vrai|Faux|Richtig|Falsch)\s*[\.\*_\-–—:]""", RegexOption.IGNORE_CASE)
     private val EXPLICIT_CORRECT_MATCH_REGEX = Regex(
-        """(?i)(?:^|\s|\n)(?:[-*•]\s*)?(?:Correct[\.:\-]?\s*[\(\[]?([ABCD1-4])\b[\)\]]?|Option\s+([ABCD1-4])\b\s+(?:is\s+)?correct\b|Option\s+([ABCD1-4])\s*[-—:]?\s*(?:is\s+)?correct\b|[\(\[]([ABCD1-4])[\)]\s*[-—:]?\s*(?:is\s+)?correct\b|\\boxed\{\s*(?:\\mathrm\{)?([ABCD1-4])\s*\}?|(?:[-*•]\s*)?[\(\[]?([A-Da-d1-4])[\)\]]?\s*(?:[-—:]\s*)?(?:सही|सत्य|सटीक|옳음|정답|Правильно|Верно)\b)"""
+        """(?i)(?:^|\s|\n)(?:[-*•]\s*)?(?:Correct[\.:\-]?\s*[\(\[]?([ABCD1-4Α-Δα-δ])\b[\)\]]?|Option\s+([ABCD1-4Α-Δα-δ])\b\s+(?:is\s+)?correct\b|Option\s+([ABCD1-4Α-Δα-δ])\s*[-—:]?\s*(?:is\s+)?correct\b|[\(\[]([ABCD1-4Α-Δα-δ])[\)]\s*[-—:]?\s*(?:is\s+)?correct\b|\\boxed\{\s*(?:\\mathrm\{)?([ABCD1-4Α-Δα-δ])\s*\}?|(?:[-*•]\s*)?[\(\[]?([A-Da-d1-4Α-Δα-δ])[\)\]]?\s*(?:[-—:]\s*)?(?:सही|सत्य|सटीक|옳음|정답|Правильно|Верно|σωστό|σωστή|verum|correcto|correcta|richtig)\b)"""
     )
-    private val HAS_OPTION_BREAKDOWN_REGEX = Regex("""(?m)(?:^\s*|\s{2,}|\n)(?:Correct[\.:\-]?\s*)?(?:[\(\[][bcdBCD1-4][\)\]]|[bcdBCD1-4][\.\:\)\-–—]\s+)""")
-    private val STRIP_STANDALONE_ANS_LINE_REGEX = Regex("""^(?:\*+\s*)?(?:correct\s+(?:answer|option)|answer|ans|उत्तर)\s*[:\-]?\s*(?:option\s*)?[\(\[]?[ABCD1-4][\)\]]?\s*(?:\r?\n|$)""", RegexOption.IGNORE_CASE)
+    private val HAS_OPTION_BREAKDOWN_REGEX = Regex("""(?m)(?:^\s*|\s{2,}|\n)(?:Correct[\.:\-]?\s*)?(?:[\(\[][bcdBCD1-4β-δΒ-Δ][\)\]]|[bcdBCD1-4β-δΒ-Δ][\.\:\)\-–—]\s+)""")
+    private val STRIP_STANDALONE_ANS_LINE_REGEX = Regex("""^(?:\*+\s*)?(?:correct\s+(?:answer|option)|answer|ans|उत्तर|σωστή\s*απάντηση|απάντηση|responsum|respuesta|réponse|antwort)\s*[:\-]?\s*(?:option\s*)?[\(\[]?[ABCD1-4Α-Δα-δ][\)\]]?\s*(?:\r?\n|$)""", RegexOption.IGNORE_CASE)
     private val LEADING_ANS_MATCH_REGEX = Regex(
-        """^(?:\*\*|__)?\s*(?:[\(\[]([ABCD1-4])[\)\]]|([ABCD1-4])\s*[\.\:\-–—\)](?!\w)|([ABCD1-4])(?=\s*(?:\r?\n|$)))\s*(?:\*\*|__)?\s*""",
+        """^(?:\*\*|__)?\s*(?:[\(\[]([ABCD1-4Α-Δα-δ])[\)\]]|([ABCD1-4Α-Δα-δ])\s*[\.\:\-–—\)](?!\w)|([ABCD1-4Α-Δα-δ])(?=\s*(?:\r?\n|$)))\s*(?:\*\*|__)?\s*""",
         RegexOption.IGNORE_CASE
     )
-    private val HAS_SUBSEQUENT_PAIRS_REGEX = Regex("""\b\d{1,4}\s*[\:\-\.\/\\]\s*[A-Ea-e1-5]\b""")
-    private val BARE_ANS_MATCH_REGEX = Regex("""\b([ABCD])\b""")
+    private val HAS_SUBSEQUENT_PAIRS_REGEX = Regex("""\b\d{1,4}\s*[\:\-\.\/\\]\s*[A-Ea-e1-5Α-Εα-ε]\b""")
+    private val BARE_ANS_MATCH_REGEX = Regex("""\b([ABCDΑ-Δ])\b""")
     private val EXP_SECTION_HEADER_REGEX = Regex("""^(?:#+\s*)?(?:SECTION|PART|PHASE)\s+[A-Z0-9]+.*$""", RegexOption.IGNORE_CASE)
     private val EXP_DUP_QUESTION_REGEX = Regex(
-        """^\s*(?:question|प्रश्न)\s*[:\-]?\s*(?:\*\*|__)?.{0,250}?(?:\*\*|__)?\s*(?=(?:\b(?:correct|answer|ans)\b|व्याख्या|उत्तर))""",
+        """^\s*(?:question|प्रश्न|ερώτηση|quaestio|pregunta|frage)\s*[:\-]?\s*(?:\*\*|__)?.{0,250}?(?:\*\*|__)?\s*(?=(?:\b(?:correct|answer|ans)\b|व्याख्या|उत्तर|απάντηση|εξήγηση|responsum|explicatio|respuesta|explicación))""",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
-    private val LATEX_ANS_REGEX = Regex("""(?<!\w)(\d{1,4})\s*[\.\:\-\)]\s*\\?\s*(?:\\mathrm\{|\\mathbf\{)?\s*([A-Ea-e1-5])\s*\}?""")
-    private val SINGLE_LINE_ANS_MATCH_REGEX = Regex("""^(?:(?:\*+|__)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर)\s*[:\-]?\s*)?[\(\[]?([ABCD1-4])[\)\]]?(?:\s*[\.:\-–—]\s*.*|\s*)$""", RegexOption.IGNORE_CASE)
-    private val EXP_KEYWORD_CHECK_REGEX = Regex("""^(?:\*+\s*)?(?:answer\s*key|answers?|उत्तर)\s*[:\-]""", RegexOption.IGNORE_CASE)
+    private val LATEX_ANS_REGEX = Regex("""(?<!\w)(\d{1,4})\s*[\.\:\-\)]\s*\\?\s*(?:\\mathrm\{|\\mathbf\{)?\s*([A-Ea-e1-5Α-Εα-ε])\s*\}?""")
+    private val SINGLE_LINE_ANS_MATCH_REGEX = Regex("""^(?:(?:\*+|__)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर|Σωστή\s*απάντηση|Απάντηση|Responsum|Respuesta|Réponse|Antwort)\s*[:\-]?\s*)?[\(\[]?([ABCD1-4Α-Δα-δ])[\)\]]?(?:\s*[\.:\-–—]\s*.*|\s*)$""", RegexOption.IGNORE_CASE)
+    private val EXP_KEYWORD_CHECK_REGEX = Regex("""^(?:\*+\s*)?(?:answer\s*key|answers?|उत्तर|απαντήσεις|responsa|respuestas|réponses|antworten)\s*[:\-]""", RegexOption.IGNORE_CASE)
 
     private val QUESTION_TYPE_HEADER_REGEX = Regex("""(?i)^(?:Direct Conceptual|Statement[- ]Based|Assertion[-– ]Reason|Match the Following|Pair[- ]Based|Chronological Sequence|Process[/ ]Sequence|Multiple Statements|Numerical[/ ]Application|Case[- ]Based[/ ]Analytical)(?:\s+Questions?)?$""")
     private val QUESTION_TYPE_STRIP_REGEX = Regex("""(?i)\s*Questions?$""")
-    private val MATCH_PAIR_1_REGEX = Regex("""\b1\s*[-–—:]\s*[A-D]\b""")
-    private val MATCH_PAIR_2_REGEX = Regex("""\b[A-D]\s*[-–—:]\s*1\b""")
+    private val MATCH_PAIR_1_REGEX = Regex("""\b1\s*[-–—:]\s*[A-DΑ-Δ]\b""")
+    private val MATCH_PAIR_2_REGEX = Regex("""\b[A-DΑ-Δ]\s*[-–—:]\s*1\b""")
     private val NUMERICAL_EXP_1_REGEX = Regex("""\b\d+\s*×\s*10\b""")
     private val NUMERICAL_EXP_2_REGEX = Regex("""\bq²\b|\bp²\b|\b2pq\b""")
     private val NUMERICAL_EXP_3_REGEX = Regex("""\b\d+\.\d+\b""")
 
     private val MULTI_NEWLINE_REGEX = Regex("""\n{3,}""")
     private val CANONICAL_ANS_DELIM_REGEX = Regex("[,;\\s]+")
-    private val CANONICAL_ANS_BRACKET_REGEX = Regex("""[\(\[]\s*([a-eA-E1-5कखगघङअबसदई१-५①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나да라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434]|i{1,4}|v|I{1,4}|V)\s*[\)\]]""")
-    private val CANONICAL_ANS_CIRCLED_REGEX = Regex("""([①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나да라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434कखगघङअबसदई१-५])""")
-    private val CANONICAL_ANS_LETTER_REGEX = Regex("""\b([A-E])\b""", RegexOption.IGNORE_CASE)
+    private val CANONICAL_ANS_BRACKET_REGEX = Regex("""[\(\[]\s*([a-eA-E1-5कखगघङअबसदई१-५①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫]|i{1,4}|v|I{1,4}|V)\s*[\)\]]""")
+    private val CANONICAL_ANS_CIRCLED_REGEX = Regex("""([①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجده甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434Α-Εα-ε\u0391-\u0395\u03B1-\u03B5ก-จ๑-๕١-٥۱-۵ੳਅੲਸਹ੧-੫କ-ଙ୧-୫ಅ-ಉ೧-೫൧-൫कखगघङअबसदई१-५])""")
+    private val CANONICAL_ANS_LETTER_REGEX = Regex("""\b([A-EΑ-Ε])\b""", RegexOption.IGNORE_CASE)
     private val CANONICAL_ANS_DIGIT_REGEX = Regex("""\b([1-5])\b""")
 
     private val CLEAN_HASH_HEADING_REGEX = Regex("""^\s*#+\s*""")
@@ -321,9 +336,6 @@ object McqParser {
         text = text.replace(Regex("""(?m)^(\s*)\\\*"""), "$1*")
         text = text.replace(Regex("""\\\*(?=\s*[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])"""), "*")
         text = text.replace(Regex("""(?<=[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])\s*\\\*"""), "*")
-
-        // Normalize escaped brackets and parentheses: \[TRAP\] -> [TRAP], \(A\) -> (A)
-        text = text.replace(Regex("""\\([\[\]\(\)])"""), "$1")
 
         // Normalize escaped dots after numbers: 1\. B -> 1. B, 100\. -> 100.
         text = text.replace(Regex("""(?<=\d)\\\."""), ".")
@@ -1432,7 +1444,10 @@ object McqParser {
             expText = expText.trimStart(':', '-', ' ', '\n', '\t')
 
             if (expText.isNotBlank()) {
-                explanations[qNum] = formatMultiLineExplanation(expText)
+                val existing = explanations[qNum]
+                if (existing == null || existing.isBlank() || expText.length > existing.length + 50) {
+                    explanations[qNum] = formatMultiLineExplanation(expText)
+                }
             }
         }
 
