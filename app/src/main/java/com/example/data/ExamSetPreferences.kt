@@ -108,6 +108,18 @@ class ExamSetPreferences(context: Context) {
         prefs.edit().putFloat(KEY_FONT_SIZE_SCALE, scale.coerceIn(0.85f, 1.6f)).apply()
     }
 
+    fun getFontScaleMode(): AppFontScaleMode {
+        val saved = prefs.getString(KEY_FONT_SCALE_MODE, AppFontScaleMode.STANDARD_FIXED.name)
+        return AppFontScaleMode.fromString(saved)
+    }
+
+    fun setFontScaleMode(mode: AppFontScaleMode) {
+        prefs.edit()
+            .putString(KEY_FONT_SCALE_MODE, mode.name)
+            .putFloat(KEY_FONT_SIZE_SCALE, mode.scaleFactor)
+            .apply()
+    }
+
     fun getShuffleOptions(): Boolean {
         return prefs.getBoolean(KEY_SHUFFLE_OPTIONS, false)
     }
@@ -123,6 +135,7 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_CUSTOM_FOLDERS = "key_custom_folders"
         private const val KEY_DAILY_GOAL_MINUTES = "key_daily_goal_minutes"
         private const val KEY_FONT_SIZE_SCALE = "key_font_size_scale"
+        private const val KEY_FONT_SCALE_MODE = "key_font_scale_mode"
         private const val KEY_SHUFFLE_OPTIONS = "key_shuffle_options"
     }
 }

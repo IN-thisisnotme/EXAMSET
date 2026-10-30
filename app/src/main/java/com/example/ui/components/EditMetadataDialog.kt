@@ -745,11 +745,13 @@ fun EditMetadataDialog(
                         border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.6f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp)
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Edit Questions, Keys & Explanations", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Edit Questions, Keys & Explanations", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, softWrap = true)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -774,7 +776,9 @@ fun EditMetadataDialog(
                             onClick = onDismiss,
                             border = BorderStroke(1.dp, colors.border),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.ink),
-                            modifier = Modifier.testTag("cancel_metadata_button")
+                            modifier = Modifier
+                                .testTag("cancel_metadata_button")
+                                .heightIn(min = 44.dp)
                         ) {
                             Text("Cancel")
                         }
@@ -809,7 +813,9 @@ fun EditMetadataDialog(
                                 containerColor = colors.navyBanner,
                                 contentColor = colors.navyBannerText
                             ),
-                            modifier = Modifier.testTag("save_metadata_button")
+                            modifier = Modifier
+                                .testTag("save_metadata_button")
+                                .heightIn(min = 44.dp)
                         ) {
                             Text("Save Details")
                         }

@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import com.example.data.AppFontScaleMode
 import com.example.data.ThemeMode
 import com.example.ui.MainViewModel
 import com.example.ui.screens.HomeScreen
@@ -31,13 +32,20 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.LIGHT -> false
             }
 
-            // Dynamic reading font scale applied across the entire app
-            val fontScaleSetting by viewModel.fontSizeScale.collectAsState()
+            // In-App Typography Scaling:
+            // STANDARD_FIXED locks fontScale to 1.0f, immunizing the app against OS system font changes.
+            // FOLLOW_SYSTEM safely clamps system font scale to prevent aggressive wrapping or truncation.
+            val fontScaleMode by viewModel.fontScaleMode.collectAsState()
             val currentDensity = LocalDensity.current
+            val effectiveFontScale = when (fontScaleMode) {
+                AppFontScaleMode.FOLLOW_SYSTEM -> currentDensity.fontScale.coerceIn(0.85f, 1.35f)
+                else -> fontScaleMode.scaleFactor
+            }
+
             CompositionLocalProvider(
                 LocalDensity provides Density(
                     density = currentDensity.density,
-                    fontScale = currentDensity.fontScale * fontScaleSetting
+                    fontScale = effectiveFontScale
                 )
             ) {
                 ExamSetTheme(darkTheme = isDark) {

@@ -13,6 +13,7 @@ import com.example.data.toQuestionPaper
 import com.example.data.SampleData
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
+import com.example.data.AppFontScaleMode
 import com.example.model.AutoSaveStatus
 import com.example.model.BatchImportItem
 import com.example.model.BatchImportResult
@@ -178,9 +179,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
-    // Reading font scale (1.0f = Standard, 1.2f = Large, 1.4f = Extra Large)
+    // Reading font scale (Standard 100% Fixed, Compact 88%, Large 115%, Extra Large 125%, Follow System)
+    private val _fontScaleMode = MutableStateFlow(appPreferences.getFontScaleMode())
+    val fontScaleMode: StateFlow<AppFontScaleMode> = _fontScaleMode.asStateFlow()
+
     private val _fontSizeScale = MutableStateFlow(appPreferences.getFontSizeScale())
     val fontSizeScale: StateFlow<Float> = _fontSizeScale.asStateFlow()
+
+    fun setFontScaleMode(mode: AppFontScaleMode) {
+        _fontScaleMode.value = mode
+        appPreferences.setFontScaleMode(mode)
+        _fontSizeScale.value = mode.scaleFactor
+    }
 
     fun setFontSizeScale(scale: Float) {
         _fontSizeScale.value = scale

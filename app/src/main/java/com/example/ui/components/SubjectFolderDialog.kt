@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -394,7 +395,8 @@ private fun SubjectPaperItem(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkBold,
-                            maxLines = 1,
+                            maxLines = 2,
+                            softWrap = true,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -405,7 +407,8 @@ private fun SubjectPaperItem(
                             text = "Topic: ${paper.topic}",
                             fontSize = 12.sp,
                             color = colors.muted,
-                            maxLines = 1,
+                            maxLines = 2,
+                            softWrap = true,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -458,7 +461,9 @@ private fun SubjectPaperItem(
                         onSelectPaper(paper)
                         onDismiss()
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
@@ -466,7 +471,7 @@ private fun SubjectPaperItem(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.teal)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("View Paper", fontSize = 12.sp, maxLines = 1, softWrap = false)
+                    Text("View Paper", fontSize = 12.sp, maxLines = 1, softWrap = true)
                 }
 
                 Button(
@@ -474,7 +479,9 @@ private fun SubjectPaperItem(
                         onStartTest(paper)
                         onDismiss()
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -484,7 +491,7 @@ private fun SubjectPaperItem(
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Start Test", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.primaryButtonText)
+                    Text("Start Test", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = true, color = colors.primaryButtonText)
                 }
             }
         }

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -126,6 +127,8 @@ import com.example.ui.components.InputBottomSheet
 import com.example.ui.components.OmrScannerDialog
 import com.example.ui.components.PrintConfigDialog
 import com.example.ui.components.PsychometricAnalysisDialog
+import com.example.data.AppFontScaleMode
+import com.example.ui.components.FontSizeSelectorDialog
 import com.example.ui.components.SavedPapersDialog
 import com.example.ui.components.StudentHistoricalAnalysisDialog
 import com.example.ui.components.SubjectFolderDialog
@@ -169,6 +172,7 @@ fun HomeScreen(
     var showOmrScannerDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var showFontSizeDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
     var showPsychometricDialog by remember { mutableStateOf(false) }
     var showTopBarOverflowMenu by remember { mutableStateOf(false) }
@@ -203,6 +207,9 @@ fun HomeScreen(
             }
             showSavedDialog -> {
                 showSavedDialog = false
+            }
+            showFontSizeDialog -> {
+                showFontSizeDialog = false
             }
             showEditDialog -> {
                 showEditDialog = false
@@ -373,6 +380,19 @@ fun HomeScreen(
                         )
                     }
 
+                    // Typography & Scaling Selector (Standard 100% Fixed, Compact, Large, Extra Large, Follow System)
+                    val fontScaleMode by viewModel.fontScaleMode.collectAsState()
+                    IconButton(
+                        onClick = { showFontSizeDialog = true },
+                        modifier = Modifier.testTag("font_size_scale_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FormatSize,
+                            contentDescription = "Typography Scale",
+                            tint = if (fontScaleMode == AppFontScaleMode.STANDARD_FIXED) colors.inkBold else colors.teal
+                        )
+                    }
+
                     // Overflow Menu for Paper Operations (Edit Details, Psychometrics, Share)
                     Box {
                         IconButton(
@@ -410,6 +430,16 @@ fun HomeScreen(
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.Assessment, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Typography & Scaling", fontSize = 13.sp) },
+                                onClick = {
+                                    showTopBarOverflowMenu = false
+                                    showFontSizeDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.FormatSize, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
                                 }
                             )
                             val activePaper = currentPaper
@@ -985,6 +1015,16 @@ fun HomeScreen(
                 showEditDialog = true
             },
             onDismiss = { showSavedDialog = false }
+        )
+    }
+
+    // Typography & Font Scale Dialog
+    if (showFontSizeDialog) {
+        val currentScaleMode by viewModel.fontScaleMode.collectAsState()
+        FontSizeSelectorDialog(
+            currentMode = currentScaleMode,
+            onModeSelected = { mode -> viewModel.setFontScaleMode(mode) },
+            onDismissRequest = { showFontSizeDialog = false }
         )
     }
 }
