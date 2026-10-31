@@ -322,8 +322,7 @@ object McqParser {
         text = text.replace(Regex("""\\\*(?=\s*[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])"""), "*")
         text = text.replace(Regex("""(?<=[\(\[]?[A-Ea-e1-5क-ङ][\)\]\.\:\-])\s*\\\*"""), "*")
 
-        // Normalize escaped brackets and parentheses: \[TRAP\] -> [TRAP], \(A\) -> (A)
-        text = text.replace(Regex("""\\([\[\]\(\)])"""), "$1")
+        // Escaped brackets and parentheses (\(A\), \[\boxed{...}\]) are preserved for LaTeX math integrity
 
         // Normalize escaped dots after numbers: 1\. B -> 1. B, 100\. -> 100.
         text = text.replace(Regex("""(?<=\d)\\\."""), ".")
