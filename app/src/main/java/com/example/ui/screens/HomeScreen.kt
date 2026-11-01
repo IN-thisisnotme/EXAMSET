@@ -674,6 +674,25 @@ fun HomeScreen(
                         )
                     }
 
+                    // Explanations count chip
+                    val expCount = paper.questions.count { !it.explanation.isNullOrBlank() }
+                    if (expCount > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = colors.tealLight.copy(alpha = 0.5f),
+                            border = BorderStroke(0.6.dp, colors.border)
+                        ) {
+                            Text(
+                                text = "$expCount Explanations",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.tealDark,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                maxLines = 1
+                            )
+                        }
+                    }
+
                     // Edit Details Chip (Commented out per user preference so it does not persist across all tabs)
                     // Surface(
                     //     onClick = { showEditDialog = true },

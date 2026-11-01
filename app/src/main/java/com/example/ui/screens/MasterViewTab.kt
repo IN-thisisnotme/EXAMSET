@@ -890,24 +890,66 @@ fun MasterViewTab(
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = colors.teal.copy(alpha = 0.15f)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = "${explainedQuestions.size} Solutions",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.tealDark,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.teal.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "${explainedQuestions.size} Solutions",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.tealDark,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                )
+                            }
+
+                            // Direct Edit Set / Edit Solutions button right in the Explanations section header
+                            Surface(
+                                onClick = {
+                                    if (!isEditMode) {
+                                        enterEditMode()
+                                    }
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isEditMode) colors.amberLight else colors.surfaceVariant,
+                                border = BorderStroke(0.8.dp, if (isEditMode) colors.amber else colors.border),
+                                modifier = Modifier.testTag("header_edit_solutions_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (isEditMode) Icons.Default.Check else Icons.Default.Edit,
+                                        contentDescription = null,
+                                        tint = if (isEditMode) colors.amber else colors.inkBold,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isEditMode) "Editing Active" else "Edit Set",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isEditMode) colors.amber else colors.inkBold
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
             items(explainedQuestions, key = { "master_exp_${it.num}" }) { q ->
-                ExplanationCard(question = q)
+                ExplanationCard(
+                    question = q,
+                    isEditMode = isEditMode,
+                    onUpdateQuestion = { updated -> viewModel.updateQuestion(updated) },
+                    onEnterEditMode = enterEditMode
+                )
             }
         }
 
