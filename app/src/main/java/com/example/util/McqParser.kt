@@ -327,6 +327,9 @@ object McqParser {
         // Normalize escaped dots after numbers: 1\. B -> 1. B, 100\. -> 100.
         text = text.replace(Regex("""(?<=\d)\\\."""), ".")
 
+        // Normalize stray series commas followed by standalone backslashes: e.g. "AZ,\\ BY", "7,\\ 15", "DW,\\ ?" -> "AZ, BY", "7, 15", "DW, ?"
+        text = text.replace(Regex("""(?<!\\),\s*\\+(?![a-zA-Z])\s*"""), ", ")
+
         // Normalize slashed or backslashed numbering: 1/. -> 1. or 1/ -> 1. or 1\ -> 1.
         text = text.replace(Regex("""(?<=\b\d{1,4})\s*[\/\\]\s*[\.]?(?=\s+\S)"""), ".")
         

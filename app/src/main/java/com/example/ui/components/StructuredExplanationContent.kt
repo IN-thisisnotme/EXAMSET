@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.ExamTheme
@@ -68,7 +69,7 @@ object ExplanationBreakdownParser {
     // Regex matching lines that ONLY state the correct answer / option or header:
     // e.g., "1. Correct Answer: (A)", "1. (b)", "Q1. Correct Answer: B", "Ans: (A)", "Detailed Explanations", "Correct answer: 4", "उत्तर: (ग)", "सही उत्तर: ग"
     private val STANDALONE_ANSWER_OR_HEADER_REGEX = Regex(
-        """^(?:(?:(?:\d+|Q\d+|प्रश्न\s*\d+|प्र\.\s*\d+)[\.:\-—]?\s*)?(?:(?:Correct\s+(?:Answer|Option)|Answer|Ans|सही\s*उत्तर|उत्तर)\b\s*[:\-—]?\s*(?:(?:विकल्प|Option)\s*)?[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?\s*[\.:\-—]?|(?:\d+|Q\d+|प्रश्न\s*\d+)[\.:\-—]\s*[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?\s*[\.:\-—]?|(?:Detailed\s+)?Explanations?\s*[:\-—]?|(?:विस्तृत\s+)?व्याख्या\s*[:\-—]?))\s*$""",
+        """^(?:(?:(?:\d+|Q\d+|प्रश्न\s*\d+|प्र\.\s*\d+)[\.:\-—]?\s*)?(?:(?:Correct\s+(?:Answer|Option)|Answer|Ans|सही\s*उत्तर|उत्तर)\b\s*[:\-—]?\s*(?:(?:विकल्प|Option)\s*)?[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?\s*[\.:\-—]?|(?:\d+|Q\d+|प्रश्न\s*\d+)[\.:\-—]\s*[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?\s*[\.:\-—]?|(?:Detailed\s+)?(?:Pedagogical\s+)?Explanations?\s*(?:& Solutions?)?\s*[:\-—]?|(?:विस्तृत\s+)?व्याख्या\s*[:\-—]?))\s*$""",
         RegexOption.IGNORE_CASE
     )
 
@@ -91,6 +92,8 @@ object ExplanationBreakdownParser {
         var s = text.trim()
         // Normalize escaped markdown characters
         s = s.replace("""\*\*""", "**").replace("""\*""", "*").replace("""\|""", "|")
+        // Normalize stray series commas followed by standalone backslashes: e.g. "AZ,\\ BY", "7,\\ 15", "DW,\\ ?" -> "AZ, BY", "7, 15", "DW, ?"
+        s = s.replace(Regex("""(?<!\\),\s*\\+(?![a-zA-Z])\s*"""), ", ")
         // Strip any standalone separator lines like ---, ***, ___
         s = s.replace(Regex("""(?m)^\s*(?:[-*_=\u2014\u2013\u2500\u2501\u2504\u2505]\s*){3,}${'$'}"""), "").trim()
         // Remove bold/markdown markers on status words like **Incorrect.** or **Correct.**
@@ -317,15 +320,27 @@ object ExplanationBreakdownParser {
         val introPedagogicalSections = parsePedagogicalSections(introLines)
         val outroPedagogicalSections = parsePedagogicalSections(outroLines)
 
-        val introText = introLines.joinToString("\n\n")
-            .replace(Regex("""\n{3,}"""), "\n\n")
-            .trim()
-            .ifEmpty { null }
+        fun joinLinesPreservingTables(lines: List<String>): String {
+            val sb = StringBuilder()
+            for (i in lines.indices) {
+                val line = lines[i]
+                if (sb.isNotEmpty()) {
+                    val prevLine = lines[i - 1]
+                    val isTableContinuation = TableParserHelper.isTableRow(line) && (TableParserHelper.isTableRow(prevLine) || TableParserHelper.isTableSeparator(prevLine))
+                    val isSeparator = TableParserHelper.isTableSeparator(line)
+                    if (isTableContinuation || isSeparator) {
+                        sb.append("\n")
+                    } else {
+                        sb.append("\n\n")
+                    }
+                }
+                sb.append(line)
+            }
+            return sb.toString().replace(Regex("""\n{3,}"""), "\n\n").trim()
+        }
 
-        val outroText = outroLines.joinToString("\n\n")
-            .replace(Regex("""\n{3,}"""), "\n\n")
-            .trim()
-            .ifEmpty { null }
+        val introText = joinLinesPreservingTables(introLines).ifEmpty { null }
+        val outroText = joinLinesPreservingTables(outroLines).ifEmpty { null }
 
         return ParsedExplanationData(
             intro = introText,
@@ -404,7 +419,7 @@ fun PedagogicalSectionCard(
     }
 
     if (section.type == PedagogicalSectionType.GENERAL) {
-        LatexText(
+        ExplanationTextOrTable(
             text = section.content,
             color = colors.ink,
             fontSize = 14.5.sp,
@@ -497,7 +512,7 @@ fun PedagogicalSectionCard(
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
-                        LatexText(
+                        ExplanationTextOrTable(
                             text = section.content,
                             color = colors.inkBold,
                             fontSize = 14.5.sp,
@@ -514,7 +529,7 @@ fun PedagogicalSectionCard(
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
-                    LatexText(
+                    ExplanationTextOrTable(
                         text = section.content,
                         color = colors.inkBold,
                         fontSize = 14.5.sp,
@@ -526,6 +541,78 @@ fun PedagogicalSectionCard(
             }
         }
     }
+}
+
+/**
+ * Renders explanation text with automatic detection and formatted rendering of embedded markdown tables.
+ */
+@Composable
+fun ExplanationTextOrTable(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = ExamTheme.colors.ink,
+    fontSize: TextUnit = 14.5.sp,
+    lineHeight: TextUnit = 21.sp,
+    isBold: Boolean = false
+) {
+    val lines = text.lines()
+    val tableStartIndex = lines.indexOfFirst { TableParserHelper.isTableRow(it) }
+
+    if (tableStartIndex != -1) {
+        var tableEndIndex = tableStartIndex
+        while (tableEndIndex < lines.size && (TableParserHelper.isTableRow(lines[tableEndIndex]) || TableParserHelper.isTableSeparator(lines[tableEndIndex]) || lines[tableEndIndex].isBlank())) {
+            tableEndIndex++
+        }
+
+        var title: String? = null
+        var preTableEnd = tableStartIndex
+        if (tableStartIndex > 0) {
+            val prevLine = lines[tableStartIndex - 1].trim()
+            if (prevLine.startsWith("#") || prevLine.startsWith("**")) {
+                title = prevLine.removePrefix("#").trim()
+                preTableEnd = tableStartIndex - 1
+            }
+        }
+
+        val preTableText = lines.subList(0, preTableEnd).joinToString("\n").trim()
+        val tableLines = lines.subList(tableStartIndex, tableEndIndex)
+        val postTableText = lines.subList(tableEndIndex, lines.size).joinToString("\n").trim()
+        val parsedTable = TableParserHelper.parseTableBlock(tableLines, title)
+
+        if (parsedTable != null) {
+            Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (preTableText.isNotEmpty()) {
+                    LatexText(
+                        text = preTableText,
+                        color = color,
+                        fontSize = fontSize,
+                        isBold = isBold,
+                        lineHeight = lineHeight
+                    )
+                }
+                MarkdownTableCard(table = parsedTable)
+                if (postTableText.isNotEmpty()) {
+                    ExplanationTextOrTable(
+                        text = postTableText,
+                        color = color,
+                        fontSize = fontSize,
+                        lineHeight = lineHeight,
+                        isBold = isBold
+                    )
+                }
+            }
+            return
+        }
+    }
+
+    LatexText(
+        text = text,
+        color = color,
+        fontSize = fontSize,
+        isBold = isBold,
+        lineHeight = lineHeight,
+        modifier = modifier
+    )
 }
 
 /**
@@ -567,7 +654,7 @@ fun StructuredExplanationContent(
                     }
                 }
             } else if (!parsed.intro.isNullOrBlank()) {
-                LatexText(
+                ExplanationTextOrTable(
                     text = parsed.intro,
                     color = colors.inkBold,
                     fontSize = 15.sp,
@@ -583,7 +670,7 @@ fun StructuredExplanationContent(
                     // Single-item explanation: Render directly as clean continuous narrative,
                     // without prepending pseudo-option letter tags or bullet pills.
                     val singleContent = parsed.options.first().content
-                    LatexText(
+                    ExplanationTextOrTable(
                         text = singleContent,
                         color = colors.ink,
                         fontSize = 14.5.sp,
@@ -618,7 +705,7 @@ fun StructuredExplanationContent(
                                     fontWeight = FontWeight.Bold,
                                     color = colors.inkBold
                                 )
-                                LatexText(
+                                ExplanationTextOrTable(
                                     text = item.content,
                                     color = colors.ink,
                                     fontSize = 14.5.sp,
@@ -650,7 +737,7 @@ fun StructuredExplanationContent(
                 if (!parsed.intro.isNullOrBlank() || parsed.pedagogicalSections.isNotEmpty() || parsed.options.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                 }
-                LatexText(
+                ExplanationTextOrTable(
                     text = parsed.outro,
                     color = colors.ink,
                     fontSize = 14.sp,

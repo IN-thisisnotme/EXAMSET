@@ -178,6 +178,7 @@ fun MarkdownTableCard(
             ) {
                 Column(modifier = Modifier.width(IntrinsicSize.Max)) {
                     // Header Row
+                    val isCompactTable = table.headers.size >= 4 || table.headers.all { it.length <= 8 }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -185,10 +186,11 @@ fun MarkdownTableCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         table.headers.forEachIndexed { colIndex, headerText ->
-                            val cellWidth = when (colIndex) {
-                                0 -> Modifier.widthIn(min = 140.dp)
-                                1 -> Modifier.widthIn(min = 180.dp)
-                                else -> Modifier.widthIn(min = 120.dp)
+                            val cellWidth = when {
+                                isCompactTable -> if (colIndex == 0) Modifier.widthIn(min = 90.dp) else Modifier.widthIn(min = 60.dp)
+                                colIndex == 0 -> Modifier.widthIn(min = 130.dp)
+                                colIndex == 1 && table.headers.size <= 2 -> Modifier.widthIn(min = 160.dp)
+                                else -> Modifier.widthIn(min = 110.dp)
                             }
                             Box(
                                 modifier = Modifier
@@ -220,10 +222,11 @@ fun MarkdownTableCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             rowCells.forEachIndexed { colIndex, cellText ->
-                                val cellWidth = when (colIndex) {
-                                    0 -> Modifier.widthIn(min = 140.dp)
-                                    1 -> Modifier.widthIn(min = 180.dp)
-                                    else -> Modifier.widthIn(min = 120.dp)
+                                val cellWidth = when {
+                                    isCompactTable -> if (colIndex == 0) Modifier.widthIn(min = 90.dp) else Modifier.widthIn(min = 60.dp)
+                                    colIndex == 0 -> Modifier.widthIn(min = 130.dp)
+                                    colIndex == 1 && table.headers.size <= 2 -> Modifier.widthIn(min = 160.dp)
+                                    else -> Modifier.widthIn(min = 110.dp)
                                 }
                                 Box(
                                     modifier = Modifier

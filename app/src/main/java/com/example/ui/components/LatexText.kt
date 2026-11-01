@@ -39,7 +39,10 @@ fun LatexText(
 ) {
     val style = LocalTextStyle.current
     val targetFontSize = if (fontSize != TextUnit.Unspecified) fontSize else style.fontSize
-    val trimmed = text.trim()
+    val cleanText = remember(text) {
+        LatexHelper.normalizeLatexAndMarkdown(text)
+    }
+    val trimmed = cleanText.trim()
     val isPureDisplayMath = (trimmed.startsWith("\\[") && trimmed.endsWith("\\]")) ||
             (trimmed.startsWith("$$") && trimmed.endsWith("$$")) ||
             (trimmed.startsWith("\\begin{") && trimmed.contains("\\end{"))
@@ -58,18 +61,18 @@ fun LatexText(
             modifier = modifier.padding(vertical = 5.dp)
         )
     } else {
-        val annotatedString = remember(text, color, targetFontSize, isBold) {
+        val annotatedString = remember(cleanText, color, targetFontSize, isBold) {
             try {
-                if (LatexHelper.hasLatex(text)) {
+                if (LatexHelper.hasLatex(cleanText)) {
                     LatexHelper.buildLatexAnnotatedString(
-                        text = text,
+                        text = cleanText,
                         baseColor = color,
                         baseFontSize = targetFontSize,
                         isBold = isBold
                     )
                 } else {
                     RichTextHelper.buildRichText(
-                        text = text,
+                        text = cleanText,
                         baseColor = color,
                         baseFontSize = targetFontSize,
                         isBold = isBold
@@ -77,7 +80,7 @@ fun LatexText(
                 }
             } catch (e: Exception) {
                 RichTextHelper.buildRichText(
-                    text = text,
+                    text = cleanText,
                     baseColor = color,
                     baseFontSize = targetFontSize,
                     isBold = isBold

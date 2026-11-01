@@ -385,6 +385,9 @@ object LatexHelper {
             "**${it.groupValues[1]}**"
         }
 
+        // Normalize stray series commas followed by standalone backslashes: e.g. "AZ,\\ BY", "7,\\ 15", "DW,\\ ?" -> "AZ, BY", "7, 15", "DW, ?"
+        res = res.replace(Regex("""(?<!\\),\s*\\+(?![a-zA-Z])\s*"""), ", ")
+
         // 2. Normalize multi-escaped LaTeX commands and delimiters:
         // e.g. \\\frac, \\frac -> \frac; \\\[, \\\[ -> \[; \\\], \\\] -> \]; \\\(, \\( -> \(; \\\), \\) -> \)
         // Preserves matrix row breaks (\\\\ followed by space, digits, or newline)

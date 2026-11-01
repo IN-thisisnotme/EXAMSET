@@ -346,4 +346,19 @@ Explanation 2
         assertEquals("pmatrix", matrixNode?.environment)
         assertEquals(2, matrixNode?.rows?.size)
     }
+
+    @Test
+    fun testSeriesBackslashNormalization() {
+        val seriesLetters = "AZ,\\\\ BY,\\\\ CX,\\\\ DW,\\\\ ?"
+        val normalizedLetters = LatexHelper.normalizeLatexAndMarkdown(seriesLetters)
+        assertEquals("AZ, BY, CX, DW, ?", normalizedLetters)
+
+        val seriesNumbers = "7,\\\\ 15,\\\\ 31,\\\\ 63,\\\\ 127,\\\\ ?"
+        val normalizedNumbers = LatexHelper.normalizeLatexAndMarkdown(seriesNumbers)
+        assertEquals("7, 15, 31, 63, 127, ?", normalizedNumbers)
+
+        val greekEquation = "\\alpha + \\beta = \\theta, \\mu = 5"
+        val normalizedGreek = LatexHelper.normalizeLatexAndMarkdown(greekEquation)
+        assertTrue(normalizedGreek.contains("\\mu"))
+    }
 }

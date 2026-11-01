@@ -321,7 +321,7 @@ fun MasterViewTab(
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
                 top = 4.dp,
-                bottom = 96.dp
+                bottom = 140.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -855,19 +855,23 @@ fun MasterViewTab(
         if (explainedQuestions.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(10.dp))
-                Card(
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.surface),
-                    border = BorderStroke(0.8.dp, colors.border)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.surface,
+                    border = BorderStroke(0.8.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Lightbulb,
                                 contentDescription = null,
@@ -880,9 +884,12 @@ fun MasterViewTab(
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkBold,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.teal.copy(alpha = 0.15f)
@@ -892,7 +899,7 @@ fun MasterViewTab(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.tealDark,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                             )
                         }
                     }

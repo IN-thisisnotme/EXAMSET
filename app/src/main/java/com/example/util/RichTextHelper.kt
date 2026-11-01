@@ -63,6 +63,7 @@ object RichTextHelper {
             .replace(Regex("""(?m)^\|\s*([A-Za-z\u0900-\u097F\s&:\-]+?)\s*\|$""")) {
                 "**${it.groupValues[1]}**"
             }
+            .replace(Regex("""(?<!\\),\s*\\+(?![a-zA-Z])\s*"""), ", ")
 
         // First convert raw Unicode sub/sup into standard tags so tokenizer can parse them uniformly
         var tagged = sanitizeSubSuper(prepared)
