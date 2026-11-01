@@ -74,7 +74,7 @@ Output ONLY a strict, valid JSON array of objects without markdown fences, comme
   }
 ]
 Requirements:
-1. Exactly 4 mutually exclusive options (A, B, C, D).
+1. STRICT 4-OPTION CONSTRAINT: Exactly 4 mutually exclusive options (a, b, c, d). Never include option E or more than 4 options under any circumstances.
 2. "correctAnswer" must be a single uppercase letter "A", "B", "C", or "D".
 3. Valid JSON only. Do not truncate.`;
       } else {
@@ -95,7 +95,7 @@ Output MUST be an unbroken, valid JSON array of objects without markdown fences 
   }
 ]
 Strict Rules:
-- Universal Options: Exactly four distinct options: a, b, c, and d.
+- STRICT 4-OPTION CONSTRAINT: Exactly four distinct options: a, b, c, and d. Never include option e or more than 4 options.
 - Balanced Key Distribution: Distribute answers evenly across A, B, C, and D.
 - Return raw JSON only so it parses immediately without preprocessing.`;
       }
@@ -108,7 +108,9 @@ Output MUST be formatted as a Markdown Pipe Table with these exact column header
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Sample question text? | Choice A | Choice B | Choice C | Choice D | A | Detailed rationale in ${effectiveExplanationLang} |
 
-Ensure each question is on its own row, with Answer being a single letter (A, B, C, or D).`;
+Rules:
+1. STRICT 4-OPTION CONSTRAINT: Exactly 4 options (Option A, Option B, Option C, Option D). Never include Option E.
+2. Ensure each question is on its own row, with Answer being a single letter (A, B, C, or D).`;
     }
 
     // Default: Standard Text / Aiken

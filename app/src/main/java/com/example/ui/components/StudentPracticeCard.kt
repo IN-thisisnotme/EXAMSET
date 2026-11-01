@@ -263,13 +263,10 @@ fun StudentPracticeCard(
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = RichTextHelper.buildRichText(
-                                text = arParts.reason,
-                                baseColor = colors.inkBold,
-                                baseFontSize = 16.sp,
-                                isBold = false
-                            ),
+                        LatexText(
+                            text = arParts.reason,
+                            color = colors.inkBold,
+                            fontSize = 16.sp,
                             lineHeight = 24.sp,
                             modifier = Modifier.weight(1f)
                         )
@@ -278,26 +275,21 @@ fun StudentPracticeCard(
 
                 if (!arParts.leadOut.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = RichTextHelper.buildRichText(
-                            text = arParts.leadOut,
-                            baseColor = colors.ink,
-                            baseFontSize = 15.5.sp,
-                            isBold = false
-                        ),
+                    LatexText(
+                        text = arParts.leadOut,
+                        color = colors.ink,
+                        fontSize = 15.5.sp,
                         lineHeight = 23.sp
                     )
                 }
             } else {
                 val qLines = q.question.lines()
                 if (qLines.size <= 1) {
-                    Text(
-                        text = RichTextHelper.buildRichText(
-                            text = q.question,
-                            baseColor = colors.inkBold,
-                            baseFontSize = 16.5.sp,
-                            isBold = true
-                        ),
+                    LatexText(
+                        text = q.question,
+                        color = colors.inkBold,
+                        fontSize = 16.5.sp,
+                        isBold = true,
                         lineHeight = 25.sp
                     )
                 } else {
@@ -305,13 +297,10 @@ fun StudentPracticeCard(
                         qLines.forEach { line ->
                             val trimmed = line.trim()
                             if (trimmed.isNotEmpty()) {
-                                Text(
-                                    text = RichTextHelper.buildRichText(
-                                        text = trimmed,
-                                        baseColor = colors.inkBold,
-                                        baseFontSize = 16.5.sp,
-                                        isBold = false
-                                    ),
+                                LatexText(
+                                    text = trimmed,
+                                    color = colors.inkBold,
+                                    fontSize = 16.5.sp,
                                     lineHeight = 25.sp
                                 )
                             }
@@ -427,13 +416,11 @@ fun StudentPracticeCard(
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            Text(
-                                text = RichTextHelper.buildRichText(
-                                    text = item.text,
-                                    baseColor = textColor,
-                                    baseFontSize = 16.sp,
-                                    isBold = isSelected || (showResult && isCorrect)
-                                ),
+                            LatexText(
+                                text = item.text,
+                                color = textColor,
+                                fontSize = 16.sp,
+                                isBold = isSelected || (showResult && isCorrect),
                                 lineHeight = 24.sp,
                                 modifier = Modifier.weight(1f)
                             )

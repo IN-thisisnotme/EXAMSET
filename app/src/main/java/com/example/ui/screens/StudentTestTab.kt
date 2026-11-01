@@ -108,6 +108,7 @@ import com.example.model.QuestionPaper
 import com.example.ui.ExamTimerMode
 import com.example.ui.components.StudentPracticeCard
 import com.example.ui.components.AttemptHistoryDialog
+import com.example.ui.components.LatexText
 import com.example.ui.components.ExamPaletteSideSheet
 import com.example.ui.components.StudentHistoricalAnalysisDialog
 import com.example.ui.theme.ExamTheme
@@ -1848,7 +1849,7 @@ private fun ActiveExamView(
                             val arParts = QuestionFormatter.parseAssertionReason(currentQuestion.question)
                             if (arParts != null) {
                                 if (!arParts.leadIn.isNullOrBlank()) {
-                                    Text(
+                                    LatexText(
                                         text = arParts.leadIn,
                                         fontSize = qFontSize,
                                         fontWeight = FontWeight.Medium,
@@ -1865,7 +1866,7 @@ private fun ActiveExamView(
                                 ) {
                                     Row(modifier = Modifier.padding(10.dp)) {
                                         Text("Assertion (A): ", fontWeight = FontWeight.Bold, fontSize = qFontSize, color = colors.teal)
-                                        Text(arParts.assertion, fontSize = qFontSize, color = colors.inkBold, lineHeight = qLineHeight)
+                                        LatexText(text = arParts.assertion, fontSize = qFontSize, color = colors.inkBold, lineHeight = qLineHeight)
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -1877,11 +1878,11 @@ private fun ActiveExamView(
                                 ) {
                                     Row(modifier = Modifier.padding(10.dp)) {
                                         Text("Reason (R): ", fontWeight = FontWeight.Bold, fontSize = qFontSize, color = Color(0xFFD97706))
-                                        Text(arParts.reason, fontSize = qFontSize, color = colors.inkBold, lineHeight = qLineHeight)
+                                        LatexText(text = arParts.reason, fontSize = qFontSize, color = colors.inkBold, lineHeight = qLineHeight)
                                     }
                                 }
                             } else {
-                                Text(
+                                LatexText(
                                     text = currentQuestion.question,
                                     fontSize = qFontSize,
                                     fontWeight = FontWeight.Bold,
@@ -1953,7 +1954,7 @@ private fun ActiveExamView(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
+                                        LatexText(
                                             text = "$key. $optText",
                                             fontSize = optFontSize,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
@@ -2222,7 +2223,7 @@ private fun ActiveExamView(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // Question Stem
-                            Text(
+                            LatexText(
                                 text = q.question,
                                 fontSize = qFontSize,
                                 fontWeight = FontWeight.Bold,
@@ -2295,7 +2296,7 @@ private fun ActiveExamView(
                                                 }
                                             }
                                             Spacer(modifier = Modifier.width(10.dp))
-                                            Text(
+                                            LatexText(
                                                 text = optText,
                                                 fontSize = optFontSize,
                                                 fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,

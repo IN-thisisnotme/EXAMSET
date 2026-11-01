@@ -197,54 +197,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
           >
             Science & Tech (5 MCQs)
           </button>
-          <button
-            onClick={() => {
-              const sampleJson = `[
-  {
-    "num": 1,
-    "question": "Which layer of Earth's atmosphere contains the highest concentration of ozone (O₃) and absorbs harmful UV-B radiation?",
-    "options": {
-      "a": "Troposphere",
-      "b": "Stratosphere",
-      "c": "Mesosphere",
-      "d": "Thermosphere"
-    },
-    "correctAnswer": "B",
-    "explanation": "The ozone layer is primarily situated in the lower portion of the stratosphere, approximately 15 to 35 km above Earth. It absorbs 97-99% of the Sun's medium-frequency ultraviolet radiation."
-  },
-  {
-    "num": 2,
-    "question": "What is the equivalent electrical resistance when three resistors of 6 Ω, 3 Ω, and 2 Ω are connected in parallel?",
-    "options": {
-      "a": "1.0 Ω",
-      "b": "2.0 Ω",
-      "c": "11.0 Ω",
-      "d": "0.5 Ω"
-    },
-    "correctAnswer": "A",
-    "explanation": "Using the parallel resistance formula 1/R_eq = 1/6 + 1/3 + 1/2 = 6/6 = 1.0 Ω. Therefore, R_eq = 1.0 Ω."
-  },
-  {
-    "num": 3,
-    "question": "Which enzyme is responsible for catalyzing the synthesis of RNA from a DNA template during transcription?",
-    "options": {
-      "a": "DNA Polymerase I",
-      "b": "DNA Ligase",
-      "c": "RNA Polymerase",
-      "d": "Reverse Transcriptase"
-    },
-    "correctAnswer": "C",
-    "explanation": "RNA Polymerase binds to the promoter sequence and synthesizes a complementary RNA strand from the DNA template in the 5' to 3' direction."
-  }
-]`;
-              setRawInput(sampleJson);
-              setSelectedPreviewIndex(0);
-            }}
-            className="px-2.5 py-1 text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-md border border-amber-200 transition"
-            title="JSON array format with options, answer key, and detailed explanations"
-          >
-            JSON Format (3 MCQs)
-          </button>
+
           <button
             onClick={() => { setRawInput(SAMPLE_BIOLOGY_ADVANCED); setSelectedPreviewIndex(0); }}
             className="px-2.5 py-1 text-xs font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-md border border-emerald-200 transition"

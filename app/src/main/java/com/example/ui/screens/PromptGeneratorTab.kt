@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -172,7 +173,7 @@ fun PromptGeneratorTab(
                         append("  }\n")
                         append("]\n\n")
                         append("Rules:\n")
-                        append("1. Each question must have exactly 4 options labeled \"a\", \"b\", \"c\", and \"d\".\n")
+                        append("1. STRICT 4-OPTION CONSTRAINT: Each question must contain EXACTLY 4 options labeled \"a\", \"b\", \"c\", and \"d\". Never include a 5th option \"e\" or more than 4 options under any circumstances.\n")
                         append("2. \"correctAnswer\" must be the single uppercase letter (\"A\", \"B\", \"C\", or \"D\").\n")
                         append("3. Provide a thorough, step-by-step explanation for each question in \"explanation\" (Language: $effectiveExplanationLanguage).\n")
                         append("4. Balanced key distribution (~25% each across A, B, C, D).\n")
@@ -205,14 +206,15 @@ fun PromptGeneratorTab(
                         append("]\n\n")
                         append("### 3. PSYCHOMETRIC & DISTRACTOR RULES\n")
                         append("1. COGNITIVE LEVEL ($difficulty): Multi-step analytical deduction, authentic examination caliber, and plausible distractors.\n")
-                        append("2. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
-                        append("3. LENGTH CONTROL: The correct option must NOT be noticeably longer than other options.\n")
-                        append("4. BALANCED KEYS: Distribute correct answers evenly (~25% each across A, B, C, D).\n")
+                        append("2. STRICT 4-OPTION CONSTRAINT: Each question must have EXACTLY 4 options labeled \"a\", \"b\", \"c\", and \"d\". Never generate a 5th option \"e\" or more than 4 options.\n")
+                        append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
+                        append("4. LENGTH CONTROL: The correct option must NOT be noticeably longer than other options.\n")
+                        append("5. BALANCED KEYS: Distribute correct answers evenly (~25% each across A, B, C, D).\n")
                         if (explainAllFourOptions) {
-                            append("5. EXPLANATION DEPTH: In \"explanation\", provide the governing principle followed by why the correct option is right and why distractors fail.\n")
+                            append("6. EXPLANATION DEPTH: In \"explanation\", provide the governing principle followed by why the correct option is right and why distractors fail.\n")
                         }
                         if (includeFormulasAndDiagrams) {
-                            append("6. LATEX MATH: Enclose all mathematical and chemical expressions in LaTeX dollar signs (e.g. \$E = mc^2\$).\n")
+                            append("7. LATEX MATH: Enclose all mathematical and chemical expressions in LaTeX dollar signs (e.g. \$E = mc^2\$).\n")
                         }
                         append("\nExecute now by producing the JSON array starting with [ and ending with ].")
                     }
@@ -226,11 +228,12 @@ fun PromptGeneratorTab(
                     append("| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n")
                     append("|---|---|---|---|---|---|:---:|---|\n\n")
                     append("Rules:\n")
-                    append("1. Put each question in a single table row.\n")
-                    append("2. In the 'Answer' column, write strictly 'A', 'B', 'C', or 'D'.\n")
-                    append("3. In the 'Explanation' column, provide a concise, step-by-step rationale (in $effectiveExplanationLanguage).\n")
-                    append("4. Balanced key distribution across A, B, C, and D.\n")
-                    append("5. Do not include extra commentary or greeting text before or after the table.")
+                    append("1. STRICT 4-OPTION CONSTRAINT: Each question must have EXACTLY 4 options (Option A, Option B, Option C, Option D). Never include Option E or more than 4 options.\n")
+                    append("2. Put each question in a single table row.\n")
+                    append("3. In the 'Answer' column, write strictly 'A', 'B', 'C', or 'D'.\n")
+                    append("4. In the 'Explanation' column, provide a concise, step-by-step rationale (in $effectiveExplanationLanguage).\n")
+                    append("5. Balanced key distribution across A, B, C, and D.\n")
+                    append("6. Do not include extra commentary or greeting text before or after the table.")
                 }
             } else {
                 buildString {
@@ -263,12 +266,13 @@ fun PromptGeneratorTab(
                             append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across diverse examination formats.\n")
                         }
                     }
-                    append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
-                    append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default.\n")
-                    append("5. ORDERING: If options contain numerical values or dates, order them strictly from lowest to highest.\n")
-                    append("6. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
+                    append("3. STRICT 4-OPTION CONSTRAINT: Every question must contain EXACTLY 4 options labeled (A), (B), (C), and (D). Never include a fifth option (E) or more than 4 options under any circumstances.\n")
+                    append("4. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
+                    append("5. LENGTH CONTROL: The correct option must NOT be the longest option by default.\n")
+                    append("6. ORDERING: If options contain numerical values or dates, order them strictly from lowest to highest.\n")
+                    append("7. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
                     if (includeFormulasAndDiagrams) {
-                        append("7. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions in LaTeX (e.g. \$E = mc^2\$).\n")
+                        append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions in LaTeX (e.g. \$E = mc^2\$).\n")
                     }
                     append("\n")
 
@@ -825,6 +829,110 @@ fun PromptGeneratorTab(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                     )
                                 }
+                            }
+                        }
+
+                        // Format Specification & Sample Viewer
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(0.6.dp, colors.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = when (targetOutputFormat) {
+                                            "Strict JSON" -> "JSON Schema (Strict 4-Option)"
+                                            "Markdown Table" -> "Markdown Table (Strict 4-Option)"
+                                            else -> "Structured Text (Strict 4-Option)"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.tealDark
+                                    )
+
+                                    val sampleText = when (targetOutputFormat) {
+                                        "Strict JSON" -> """[
+  {
+    "num": 1,
+    "question": "Which gas is most abundant in Earth's atmosphere?",
+    "options": {
+      "a": "Oxygen",
+      "b": "Nitrogen",
+      "c": "Carbon Dioxide",
+      "d": "Argon"
+    },
+    "correctAnswer": "B",
+    "explanation": "Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."
+  }
+]"""
+                                        "Markdown Table" -> """| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |
+|---|---|---|---|---|---|:---:|---|
+| 1 | Which gas is most abundant in Earth's atmosphere? | Oxygen | Nitrogen | Carbon Dioxide | Argon | B | Nitrogen accounts for approximately 78% of Earth's atmosphere by volume. |"""
+                                        else -> """Phase 1: Questions
+
+Q1. Which gas is most abundant in Earth's atmosphere?
+(A) Oxygen
+(B) Nitrogen
+(C) Carbon Dioxide
+(D) Argon
+
+Phase 2: Answer Key
+Q1: (B)
+
+Phase 3: Explanations & Solution
+Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
+                                    }
+
+                                    Surface(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            val clip = ClipData.newPlainText("Sample Format", sampleText)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(context, "Copied sample $targetOutputFormat format", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = colors.surface,
+                                        border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.5f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = null,
+                                                tint = colors.tealDark,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Copy Sample Format",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.tealDark
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = when (targetOutputFormat) {
+                                        "Strict JSON" -> "JSON array with num, question, options (a, b, c, d), correctAnswer, and explanation. Always strictly 4 options (no option E)."
+                                        "Markdown Table" -> "8-column table with strictly 4 options (Option A, Option B, Option C, Option D). Never includes Option E."
+                                        else -> "Standard Aiken/Structured format with Q1.. (A)-(D), Answer Key, and Detailed Explanations. Strictly 4 options."
+                                    },
+                                    fontSize = 10.sp,
+                                    color = colors.inkMuted,
+                                    lineHeight = 13.5.sp
+                                )
                             }
                         }
 
