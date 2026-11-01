@@ -116,6 +116,11 @@ import kotlinx.coroutines.launch
 
 enum class ReviewFilter { ALL, CORRECT, INCORRECT, UNANSWERED }
 
+enum class ExamInterfaceMode(val title: String, val subtitle: String) {
+    TCS_CBT("TCS iON CBT Mode", "Single question with Save & Next latency, Review & Next, and 5-state palette"),
+    SCROLLABLE_PAPER("Scrollable Paper Mode", "Continuous scrollable exam paper with instant option selection")
+}
+
 @Composable
 fun StudentTestTab(
     paper: QuestionPaper,
@@ -166,6 +171,7 @@ fun StudentTestTab(
 
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
+    var examInterfaceMode by remember { mutableStateOf(ExamInterfaceMode.TCS_CBT) }
 
     // Active questions: targeted retry set or full paper
     val activeQuestions = remember(paper.questions, retryQuestionNumbers) {
@@ -236,6 +242,7 @@ fun StudentTestTab(
                 todayTestSeconds = todayTestSeconds,
                 shuffleOptions = shuffleOptions,
                 sessionSeed = sessionSeed,
+                initialInterfaceMode = examInterfaceMode,
                 onSelectAnswer = onSelectAnswer,
                 onSubmitExam = onSubmitExam,
                 onExitToOverview = onExitToOverview,
@@ -257,6 +264,8 @@ fun StudentTestTab(
                 todayTestSeconds = todayTestSeconds,
                 dailyGoalMinutes = dailyGoalMinutes,
                 shuffleOptions = shuffleOptions,
+                examInterfaceMode = examInterfaceMode,
+                onSelectExamInterfaceMode = { examInterfaceMode = it },
                 onToggleShuffleOptions = onToggleShuffleOptions,
                 onSetTimerMode = onSetTimerMode,
                 onSetCustomTimeLimit = onSetCustomTimeLimit,
@@ -290,6 +299,8 @@ private fun ExamStartOverviewView(
     todayTestSeconds: Long,
     dailyGoalMinutes: Int,
     shuffleOptions: Boolean,
+    examInterfaceMode: ExamInterfaceMode = ExamInterfaceMode.TCS_CBT,
+    onSelectExamInterfaceMode: (ExamInterfaceMode) -> Unit = {},
     onToggleShuffleOptions: (Boolean) -> Unit,
     onSetTimerMode: (ExamTimerMode) -> Unit,
     onSetCustomTimeLimit: (Int) -> Unit,
@@ -581,6 +592,145 @@ private fun ExamStartOverviewView(
                             color = colors.tealDark,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // Examination Interface Style Selector: TCS iON CBT Mode vs Scrollable Paper Mode
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(1.2.dp, colors.teal.copy(alpha = 0.5f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = if (colors.isDark) 0.dp else 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Apps,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Exam Interface Style",
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFFEFF6FF) else colors.tealLight,
+                            border = BorderStroke(0.8.dp, if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF2563EB) else colors.teal)
+                        ) {
+                            Text(
+                                text = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) "TCS iON CBT" else "Scrollable Paper",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF2563EB) else colors.teal,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Mode Selection Options
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Option 1: TCS iON CBT Mode
+                        val isCbtSelected = examInterfaceMode == ExamInterfaceMode.TCS_CBT
+                        Surface(
+                            onClick = { onSelectExamInterfaceMode(ExamInterfaceMode.TCS_CBT) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isCbtSelected) Color(0xFFEFF6FF) else colors.surfaceVariant,
+                            border = BorderStroke(
+                                width = if (isCbtSelected) 2.dp else 1.dp,
+                                color = if (isCbtSelected) Color(0xFF2563EB) else colors.border
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "TCS iON CBT",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = if (isCbtSelected) Color(0xFF1E3A8A) else colors.inkBold
+                                    )
+                                    Icon(
+                                        imageVector = if (isCbtSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (isCbtSelected) Color(0xFF2563EB) else colors.muted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Single question viewport, Save & Next delay, Review & Next, and 5-state palette.",
+                                    fontSize = 11.sp,
+                                    color = if (isCbtSelected) Color(0xFF1E40AF) else colors.muted,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+
+                        // Option 2: Scrollable Paper Mode
+                        val isScrollSelected = examInterfaceMode == ExamInterfaceMode.SCROLLABLE_PAPER
+                        Surface(
+                            onClick = { onSelectExamInterfaceMode(ExamInterfaceMode.SCROLLABLE_PAPER) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isScrollSelected) colors.tealLight.copy(alpha = 0.5f) else colors.surfaceVariant,
+                            border = BorderStroke(
+                                width = if (isScrollSelected) 2.dp else 1.dp,
+                                color = if (isScrollSelected) colors.teal else colors.border
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Scrollable Paper",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = if (isScrollSelected) colors.tealDark else colors.inkBold
+                                    )
+                                    Icon(
+                                        imageVector = if (isScrollSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (isScrollSelected) colors.teal else colors.muted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Continuous all-in-one question feed with immediate option selection.",
+                                    fontSize = 11.sp,
+                                    color = if (isScrollSelected) colors.tealDark else colors.muted,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1113,11 +1263,12 @@ private fun ExamStartOverviewView(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                        val modePrefix = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) "Start TCS CBT Exam" else "Start Scrollable Exam"
                         Text(
                             text = if (timerMode == ExamTimerMode.COUNTDOWN) {
-                                "Start Timed Exam (${customTimeLimitMinutes}m)"
+                                "$modePrefix (${customTimeLimitMinutes}m)"
                             } else {
-                                "Start Practice"
+                                modePrefix
                             },
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
@@ -1188,6 +1339,7 @@ private fun ActiveExamView(
     todayTestSeconds: Long = 0L,
     shuffleOptions: Boolean = false,
     sessionSeed: Long = 0L,
+    initialInterfaceMode: ExamInterfaceMode = ExamInterfaceMode.TCS_CBT,
     onSelectAnswer: (Int, String) -> Unit,
     onSubmitExam: () -> Unit,
     onExitToOverview: () -> Unit,
@@ -1200,6 +1352,31 @@ private fun ActiveExamView(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? android.app.Activity
+
+    var interfaceMode by remember { mutableStateOf(initialInterfaceMode) }
+    var fontScaleDelta by remember { mutableIntStateOf(0) }
+    val scrollListState = rememberLazyListState()
+
+    val qFontSize = when (fontScaleDelta) {
+        -1 -> 13.5.sp
+        1 -> 18.sp
+        else -> 15.5.sp
+    }
+    val optFontSize = when (fontScaleDelta) {
+        -1 -> 12.5.sp
+        1 -> 16.5.sp
+        else -> 14.5.sp
+    }
+    val qLineHeight = when (fontScaleDelta) {
+        -1 -> 20.sp
+        1 -> 27.sp
+        else -> 23.sp
+    }
+    val optLineHeight = when (fontScaleDelta) {
+        -1 -> 18.sp
+        1 -> 24.sp
+        else -> 21.sp
+    }
 
     var currentIndex by remember { mutableIntStateOf(0) }
     val currentQuestion = activeQuestions.getOrNull(currentIndex) ?: activeQuestions.first()
@@ -1365,7 +1542,7 @@ private fun ActiveExamView(
             .fillMaxSize()
             .background(colors.background)
     ) {
-        // --- 1. Authentic TCS Header Strip ---
+        // --- 1. Top Header Bar (Matching HTML CBT: Font Scaling, Mode Switch, Digital Timer, Palette) ---
         Surface(
             color = Color(0xFF0F172A),
             shadowElevation = 4.dp,
@@ -1374,11 +1551,12 @@ private fun ActiveExamView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                // Left: Back button + Title & Progress
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
                     IconButton(
                         onClick = { showExitConfirmDialog = true },
                         modifier = Modifier.size(32.dp)
@@ -1393,36 +1571,81 @@ private fun ActiveExamView(
                     Spacer(modifier = Modifier.width(4.dp))
                     Column {
                         Text(
-                            text = paper.metadata.title.ifBlank { "TCS iON CBT Exam" },
-                            fontSize = 13.sp,
+                            text = paper.metadata.subject.ifBlank { paper.metadata.title.ifBlank { "Examination" } },
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Question ${currentIndex + 1} of $totalQuestions • ${paper.metadata.setNumber}",
-                            fontSize = 11.sp,
+                            text = if (interfaceMode == ExamInterfaceMode.TCS_CBT) "Q ${currentIndex + 1} / $totalQuestions" else "$answeredCount / $totalQuestions answered",
+                            fontSize = 10.5.sp,
                             color = Color(0xFF94A3B8)
                         )
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Fullscreen Toggle Button
-                    IconButton(
-                        onClick = { isFullscreen = !isFullscreen },
-                        modifier = Modifier.size(32.dp)
+                // Right controls: Font Scale (A-, A, A+), Mode Switch (CBT vs Paper), Timer Pill, Fullscreen, Palette
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Font Scale Group (A-, A, A+) matching HTML CBT
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFF1E293B),
+                        border = BorderStroke(0.6.dp, Color(0xFF334155))
                     ) {
-                        Icon(
-                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen Mode",
-                            tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp)) {
+                            Text(
+                                text = "A-",
+                                fontSize = 10.sp,
+                                fontWeight = if (fontScaleDelta == -1) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (fontScaleDelta == -1) Color(0xFF38BDF8) else Color(0xFF94A3B8),
+                                modifier = Modifier
+                                    .clickable { fontScaleDelta = -1 }
+                                    .padding(horizontal = 5.dp, vertical = 3.dp)
+                            )
+                            Text(
+                                text = "A",
+                                fontSize = 10.sp,
+                                fontWeight = if (fontScaleDelta == 0) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (fontScaleDelta == 0) Color(0xFF38BDF8) else Color(0xFF94A3B8),
+                                modifier = Modifier
+                                    .clickable { fontScaleDelta = 0 }
+                                    .padding(horizontal = 5.dp, vertical = 3.dp)
+                            )
+                            Text(
+                                text = "A+",
+                                fontSize = 10.sp,
+                                fontWeight = if (fontScaleDelta == 1) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (fontScaleDelta == 1) Color(0xFF38BDF8) else Color(0xFF94A3B8),
+                                modifier = Modifier
+                                    .clickable { fontScaleDelta = 1 }
+                                    .padding(horizontal = 5.dp, vertical = 3.dp)
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    // Mode Switch Button (TCS CBT vs Scrollable Paper)
+                    Surface(
+                        onClick = {
+                            interfaceMode = if (interfaceMode == ExamInterfaceMode.TCS_CBT) {
+                                ExamInterfaceMode.SCROLLABLE_PAPER
+                            } else {
+                                ExamInterfaceMode.TCS_CBT
+                            }
+                        },
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (interfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF1E3A8A) else Color(0xFF0F766E),
+                        border = BorderStroke(0.8.dp, if (interfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF3B82F6) else Color(0xFF14B8A6))
+                    ) {
+                        Text(
+                            text = if (interfaceMode == ExamInterfaceMode.TCS_CBT) "Paper" else "CBT",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                    }
 
                     // Digital Timer Pill (TCS Style)
                     val formattedTime = if (timerMode == ExamTimerMode.COUNTDOWN) {
@@ -1437,39 +1660,51 @@ private fun ActiveExamView(
                         String.format(java.util.Locale.US, "%02d:%02d", m, s)
                     }
 
+                    val isTimerWarning = timerMode == ExamTimerMode.COUNTDOWN && timeRemainingSeconds <= 300L
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF0D9488).copy(alpha = 0.25f),
-                        border = BorderStroke(1.dp, Color(0xFF14B8A6))
+                        color = if (isTimerWarning) Color(0xFF991B1B).copy(alpha = 0.4f) else Color(0xFF0D9488).copy(alpha = 0.25f),
+                        border = BorderStroke(1.dp, if (isTimerWarning) Color(0xFFEF4444) else Color(0xFF14B8A6))
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.HourglassBottom,
                                 contentDescription = null,
-                                tint = Color(0xFF5EEAD4),
-                                modifier = Modifier.size(13.dp)
+                                tint = if (isTimerWarning) Color(0xFFFCA5A5) else Color(0xFF5EEAD4),
+                                modifier = Modifier.size(12.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = formattedTime,
-                                fontSize = 12.5.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF5EEAD4),
+                                color = if (isTimerWarning) Color(0xFFFCA5A5) else Color(0xFF5EEAD4),
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    // Fullscreen Toggle Button
+                    IconButton(
+                        onClick = { isFullscreen = !isFullscreen },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen Mode",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
 
                     // Palette Grid Button
                     IconButton(
                         onClick = { showCbtPaletteSideSheet = true },
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(28.dp)
                             .testTag("cbt_header_palette_button")
                     ) {
                         Icon(
@@ -1483,380 +1718,654 @@ private fun ActiveExamView(
             }
         }
 
-        // --- 2. Horizontal Quick Jump Strip with TCS 5-State Color Badges ---
-        Surface(
-            color = colors.surface,
-            border = BorderStroke(0.6.dp, colors.border),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+        // =====================================================================
+        // MODE A: TCS iON CBT Mode (Authentic single question, Save & Next latency, 5-state palette)
+        // =====================================================================
+        if (interfaceMode == ExamInterfaceMode.TCS_CBT) {
+            // Horizontal Quick Jump Strip with TCS 5-State Color Badges
+            Surface(
+                color = colors.surface,
+                border = BorderStroke(0.6.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                itemsIndexed(activeQuestions, key = { _, q -> "cbt_strip_${q.num}" }) { idx, q ->
-                    val isCurrent = idx == currentIndex
-                    val isAnswered = answers[q.num]?.isNotBlank() == true
-                    val isMarked = markedForReview.contains(q.num)
-                    val isVisited = visitedQuestions.contains(q.num)
-                    val isAnsMarked = isAnswered && isMarked
-
-                    val (bg, textCol) = when {
-                        isAnsMarked || isMarked -> Pair(Color(0xFF7C3AED), Color.White)
-                        isAnswered -> Pair(Color(0xFF22C55E), Color.White)
-                        isVisited -> Pair(Color(0xFFEF4444), Color.White)
-                        else -> Pair(Color(0xFFE2E8F0), Color(0xFF334155))
-                    }
-
-                    Surface(
-                        onClick = {
-                            currentIndex = idx
-                            if (!visitedQuestions.contains(q.num)) visitedQuestions.add(q.num)
-                        },
-                        shape = RoundedCornerShape(6.dp),
-                        color = bg,
-                        border = BorderStroke(
-                            width = if (isCurrent) 2.5.dp else 0.8.dp,
-                            color = if (isCurrent) Color(0xFF0F172A) else Color.Transparent
-                        ),
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(
-                                text = "${q.num}",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Bold,
-                                color = textCol
-                            )
-                            if (isAnsMarked) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(2.dp)
-                                        .size(6.dp)
-                                        .background(Color(0xFF22C55E), CircleShape)
-                                        .border(0.5.dp, Color.White, CircleShape)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- 3. Main Single Question Viewport ---
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item { Spacer(modifier = Modifier.height(6.dp)) }
-
-            // Question Meta Tag Bar
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Question No. ${currentQuestion.num}",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.inkBold
-                    )
+                    itemsIndexed(activeQuestions, key = { _, q -> "cbt_strip_${q.num}" }) { idx, q ->
+                        val isCurrent = idx == currentIndex
+                        val isAnswered = answers[q.num]?.isNotBlank() == true
+                        val isMarked = markedForReview.contains(q.num)
+                        val isVisited = visitedQuestions.contains(q.num)
+                        val isAnsMarked = isAnswered && isMarked
 
-                    val posStr = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
-                    val negStr = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFDCFCE7)) {
-                            Text(
-                                text = "$posStr Mark",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF15803D),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                        val (bg, textCol) = when {
+                            isAnsMarked || isMarked -> Pair(Color(0xFF7C3AED), Color.White)
+                            isAnswered -> Pair(Color(0xFF22C55E), Color.White)
+                            isVisited -> Pair(Color(0xFFEF4444), Color.White)
+                            else -> Pair(Color(0xFFE2E8F0), Color(0xFF334155))
                         }
-                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFFEE2E2)) {
-                            Text(
-                                text = "$negStr Penalty",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFB91C1C),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-            }
 
-            // Question Stem Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.surface),
-                    border = BorderStroke(1.2.dp, colors.border),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        val arParts = QuestionFormatter.parseAssertionReason(currentQuestion.question)
-                        if (arParts != null) {
-                            if (!arParts.leadIn.isNullOrBlank()) {
+                        Surface(
+                            onClick = {
+                                currentIndex = idx
+                                if (!visitedQuestions.contains(q.num)) visitedQuestions.add(q.num)
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = bg,
+                            border = BorderStroke(
+                                width = if (isCurrent) 2.5.dp else 0.8.dp,
+                                color = if (isCurrent) Color(0xFF0F172A) else Color.Transparent
+                            ),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                 Text(
-                                    text = arParts.leadIn,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = colors.muted,
-                                    lineHeight = 22.sp
+                                    text = "${q.num}",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Bold,
+                                    color = textCol
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = colors.surfaceVariant,
-                                border = BorderStroke(0.8.dp, colors.border),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.padding(10.dp)) {
-                                    Text("Assertion (A): ", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.teal)
-                                    Text(arParts.assertion, fontSize = 14.sp, color = colors.inkBold, lineHeight = 21.sp)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = colors.surfaceVariant,
-                                border = BorderStroke(0.8.dp, colors.border),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.padding(10.dp)) {
-                                    Text("Reason (R): ", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFD97706))
-                                    Text(arParts.reason, fontSize = 14.sp, color = colors.inkBold, lineHeight = 21.sp)
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = currentQuestion.question,
-                                fontSize = 15.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                lineHeight = 24.sp
-                            )
-                        }
-
-                        if (!currentQuestion.formula.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = colors.surfaceVariant,
-                                border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.5f))
-                            ) {
-                                Text(
-                                    text = currentQuestion.formula ?: "",
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    fontSize = 13.sp,
-                                    color = colors.teal,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Radio Options List (A, B, C, D)
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val rawOptions = listOf(
-                        "A" to currentQuestion.options.a,
-                        "B" to currentQuestion.options.b,
-                        "C" to currentQuestion.options.c,
-                        "D" to currentQuestion.options.d
-                    )
-
-                    rawOptions.forEach { (key, optText) ->
-                        if (optText.isNotBlank()) {
-                            val isSelected = pendingOption.equals(key, ignoreCase = true)
-                            Surface(
-                                onClick = {
-                                    // Tapping radio updates pending draft selection (does NOT save or color green until Save & Next)
-                                    pendingOption = key
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) Color(0xFFEFF6FF) else colors.surface,
-                                border = BorderStroke(
-                                    width = if (isSelected) 1.8.dp else 1.dp,
-                                    color = if (isSelected) Color(0xFF2563EB) else colors.border
-                                ),
-                                shadowElevation = if (isSelected) 1.dp else 0.dp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("option_${key}_q${currentQuestion.num}")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
-                                        contentDescription = null,
-                                        tint = if (isSelected) Color(0xFF2563EB) else colors.muted,
-                                        modifier = Modifier.size(20.dp)
+                                if (isAnsMarked) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(2.dp)
+                                            .size(6.dp)
+                                            .background(Color(0xFF22C55E), CircleShape)
+                                            .border(0.5.dp, Color.White, CircleShape)
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Main Single Question Viewport
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(6.dp)) }
+
+                // Question Meta Tag Bar
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Question No. ${currentQuestion.num}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = colors.inkBold
+                        )
+
+                        val posStr = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
+                        val negStr = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFDCFCE7)) {
+                                Text(
+                                    text = "$posStr Mark",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFFEE2E2)) {
+                                Text(
+                                    text = "$negStr Penalty",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB91C1C),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Question Stem Card
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.surface),
+                        border = BorderStroke(1.2.dp, colors.border),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            val arParts = QuestionFormatter.parseAssertionReason(currentQuestion.question)
+                            if (arParts != null) {
+                                if (!arParts.leadIn.isNullOrBlank()) {
                                     Text(
-                                        text = "$key. $optText",
-                                        fontSize = 14.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color(0xFF1E3A8A) else colors.inkBold,
-                                        lineHeight = 21.sp,
-                                        modifier = Modifier.weight(1f)
+                                        text = arParts.leadIn,
+                                        fontSize = qFontSize,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.muted,
+                                        lineHeight = qLineHeight
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, colors.border),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(modifier = Modifier.padding(10.dp)) {
+                                        Text("Assertion (A): ", fontWeight = FontWeight.Bold, fontSize = qFontSize, color = colors.teal)
+                                        Text(arParts.assertion, fontSize = qFontSize, color = colors.inkBold, lineHeight = qLineHeight)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, colors.border),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(modifier = Modifier.padding(10.dp)) {
+                                        Text("Reason (R): ", fontWeight = FontWeight.Bold, fontSize = qFontSize, color = Color(0xFFD97706))
+                                        Text(arParts.reason, fontSize = qFontSize, color = colors.inkBold, lineHeight = qLineHeight)
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = currentQuestion.question,
+                                    fontSize = qFontSize,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    lineHeight = qLineHeight
+                                )
+                            }
+
+                            if (!currentQuestion.formula.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = currentQuestion.formula ?: "",
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontSize = 13.sp,
+                                        color = colors.teal,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            item { Spacer(modifier = Modifier.height(14.dp)) }
-        }
+                // Radio Options List (A, B, C, D)
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val rawOptions = listOf(
+                            "A" to currentQuestion.options.a,
+                            "B" to currentQuestion.options.b,
+                            "C" to currentQuestion.options.c,
+                            "D" to currentQuestion.options.d
+                        )
 
-        // --- 4. Authentic TCS Bottom Sticky Action Bar ---
-        Surface(
-            color = colors.surface,
-            border = BorderStroke(1.dp, colors.border),
-            shadowElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Mark for Review & Next (Purple)
-                    OutlinedButton(
-                        onClick = {
-                            if (pendingOption.isNotBlank()) {
-                                onSelectAnswer(currentQuestion.num, pendingOption)
-                            }
-                            if (!markedForReview.contains(currentQuestion.num)) {
-                                markedForReview.add(currentQuestion.num)
-                            }
-                            if (currentIndex < activeQuestions.size - 1) {
-                                currentIndex++
-                                if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
-                                    visitedQuestions.add(activeQuestions[currentIndex].num)
+                        rawOptions.forEach { (key, optText) ->
+                            if (optText.isNotBlank()) {
+                                val isSelected = pendingOption.equals(key, ignoreCase = true)
+                                Surface(
+                                    onClick = {
+                                        // Tapping radio updates pending draft selection (does NOT save or color green until Save & Next)
+                                        pendingOption = key
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) Color(0xFFEFF6FF) else colors.surface,
+                                    border = BorderStroke(
+                                        width = if (isSelected) 1.8.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF2563EB) else colors.border
+                                    ),
+                                    shadowElevation = if (isSelected) 1.dp else 0.dp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("option_${key}_q${currentQuestion.num}")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color(0xFF2563EB) else colors.muted,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = "$key. $optText",
+                                            fontSize = optFontSize,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color(0xFF1E3A8A) else colors.inkBold,
+                                            lineHeight = optLineHeight,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
                             }
-                        },
-                        border = BorderStroke(1.2.dp, Color(0xFF7C3AED)),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C3AED)),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Review & Next", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
                     }
+                }
 
-                    // Clear Response
-                    OutlinedButton(
-                        onClick = {
-                            pendingOption = ""
-                            onSelectAnswer(currentQuestion.num, "")
-                            markedForReview.remove(currentQuestion.num)
-                        },
-                        border = BorderStroke(1.dp, Color(0xFFEA580C)),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEA580C)),
-                        modifier = Modifier.weight(0.9f)
+                item { Spacer(modifier = Modifier.height(14.dp)) }
+            }
+
+            // Authentic TCS Bottom Sticky Action Bar
+            Surface(
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Clear", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    }
-
-                    // Save & Next (With simulated TCS server latency of 400ms)
-                    Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                isSavingNext = true
-                                delay(400) // Simulated TCS network save delay
-                                onSelectAnswer(currentQuestion.num, pendingOption)
-                                markedForReview.remove(currentQuestion.num)
-                                isSavingNext = false
-
+                        // Mark for Review & Next (Purple)
+                        OutlinedButton(
+                            onClick = {
+                                if (pendingOption.isNotBlank()) {
+                                    onSelectAnswer(currentQuestion.num, pendingOption)
+                                }
+                                if (!markedForReview.contains(currentQuestion.num)) {
+                                    markedForReview.add(currentQuestion.num)
+                                }
                                 if (currentIndex < activeQuestions.size - 1) {
                                     currentIndex++
                                     if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
                                         visitedQuestions.add(activeQuestions[currentIndex].num)
                                     }
-                                } else {
-                                    showSubmitConfirmDialog = true
+                                }
+                            },
+                            border = BorderStroke(1.2.dp, Color(0xFF7C3AED)),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C3AED)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Review & Next", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+
+                        // Clear Response
+                        OutlinedButton(
+                            onClick = {
+                                pendingOption = ""
+                                onSelectAnswer(currentQuestion.num, "")
+                                markedForReview.remove(currentQuestion.num)
+                            },
+                            border = BorderStroke(1.dp, Color(0xFFEA580C)),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEA580C)),
+                            modifier = Modifier.weight(0.9f)
+                        ) {
+                            Text("Clear", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+
+                        // Save & Next (With simulated TCS server latency of 400ms)
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    isSavingNext = true
+                                    delay(400) // Simulated TCS network save delay
+                                    onSelectAnswer(currentQuestion.num, pendingOption)
+                                    markedForReview.remove(currentQuestion.num)
+                                    isSavingNext = false
+
+                                    if (currentIndex < activeQuestions.size - 1) {
+                                        currentIndex++
+                                        if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
+                                            visitedQuestions.add(activeQuestions[currentIndex].num)
+                                        }
+                                    } else {
+                                        showSubmitConfirmDialog = true
+                                    }
+                                }
+                            },
+                            enabled = !isSavingNext,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            if (isSavingNext) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(15.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Saving...", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text(
+                                    text = if (currentIndex == activeQuestions.size - 1) "Save & Submit" else "Save & Next",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                if (currentIndex > 0) {
+                                    currentIndex--
+                                    if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
+                                        visitedQuestions.add(activeQuestions[currentIndex].num)
+                                    }
+                                }
+                            },
+                            enabled = currentIndex > 0,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.heightIn(min = 36.dp)
+                        ) {
+                            Text("← Previous", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        Button(
+                            onClick = { showSubmitConfirmDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                            modifier = Modifier.heightIn(min = 36.dp)
+                        ) {
+                            Text("Submit Test ($answeredCount/$totalQuestions)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+        // =====================================================================
+        // MODE B: Scrollable Paper Mode (Continuous multi-card feed with instant option tap)
+        // =====================================================================
+        else {
+            // Horizontal Quick Jump Strip for Scrollable Paper
+            Surface(
+                color = colors.surface,
+                border = BorderStroke(0.6.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    itemsIndexed(activeQuestions, key = { _, q -> "scroll_strip_${q.num}" }) { idx, q ->
+                        val isAnswered = answers[q.num]?.isNotBlank() == true
+                        val isMarked = markedForReview.contains(q.num)
+                        val bg = when {
+                            isMarked -> Color(0xFF7C3AED)
+                            isAnswered -> Color(0xFF22C55E)
+                            else -> Color(0xFFE2E8F0)
+                        }
+                        val textCol = if (isAnswered || isMarked) Color.White else Color(0xFF334155)
+
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    scrollListState.animateScrollToItem(idx)
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = bg,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Text(
+                                    text = "${q.num}",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textCol
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Continuous Questions Feed
+            LazyColumn(
+                state = scrollListState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(4.dp)) }
+
+                itemsIndexed(activeQuestions, key = { _, q -> "scroll_q_${q.num}" }) { _, q ->
+                    val isMarked = markedForReview.contains(q.num)
+                    val selectedAns = answers[q.num] ?: ""
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.surface),
+                        border = BorderStroke(1.2.dp, if (isMarked) Color(0xFF7C3AED) else colors.border),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            // Header: Number + Marks + Review Bookmark Icon
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = if (selectedAns.isNotBlank()) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (selectedAns.isNotBlank()) Color(0xFF22C55E) else colors.border)
+                                    ) {
+                                        Text(
+                                            text = "Q ${q.num}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selectedAns.isNotBlank()) Color(0xFF15803D) else colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "+${String.format(java.util.Locale.US, "%.0f", positiveMarks)} / -${String.format(java.util.Locale.US, "%.0f", negativeMarks)}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.muted
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        if (markedForReview.contains(q.num)) markedForReview.remove(q.num)
+                                        else markedForReview.add(q.num)
+                                    },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Bookmark,
+                                        contentDescription = "Bookmark",
+                                        tint = if (isMarked) Color(0xFF7C3AED) else colors.muted.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
-                        },
-                        enabled = !isSavingNext,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                        modifier = Modifier.weight(1.2f)
-                    ) {
-                        if (isSavingNext) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(15.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Saving...", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                        } else {
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Question Stem
                             Text(
-                                text = if (currentIndex == activeQuestions.size - 1) "Save & Submit" else "Save & Next",
-                                fontSize = 11.5.sp,
+                                text = q.question,
+                                fontSize = qFontSize,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1
+                                color = colors.inkBold,
+                                lineHeight = qLineHeight
                             )
+
+                            if (!q.formula.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = q.formula ?: "",
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontSize = 12.5.sp,
+                                        color = colors.teal,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Options List (Instant Tap Response)
+                            val options = listOf(
+                                "A" to q.options.a,
+                                "B" to q.options.b,
+                                "C" to q.options.c,
+                                "D" to q.options.d
+                            )
+
+                            options.forEach { (key, optText) ->
+                                if (optText.isNotBlank()) {
+                                    val isChosen = selectedAns.equals(key, ignoreCase = true)
+                                    Surface(
+                                        onClick = {
+                                            // Instant selection toggle
+                                            onSelectAnswer(q.num, if (isChosen) "" else key)
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isChosen) Color(0xFFEFF6FF) else colors.surfaceVariant.copy(alpha = 0.6f),
+                                        border = BorderStroke(
+                                            width = if (isChosen) 1.6.dp else 0.8.dp,
+                                            color = if (isChosen) Color(0xFF2563EB) else colors.border
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = if (isChosen) Color(0xFF2563EB) else Color.White,
+                                                border = BorderStroke(1.2.dp, if (isChosen) Color(0xFF2563EB) else colors.border),
+                                                modifier = Modifier.size(22.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                                    Text(
+                                                        text = key,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isChosen) Color.White else colors.inkBold
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = optText,
+                                                fontSize = optFontSize,
+                                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isChosen) Color(0xFF1E3A8A) else colors.inkBold,
+                                                lineHeight = optLineHeight,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                item { Spacer(modifier = Modifier.height(14.dp)) }
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            if (currentIndex > 0) {
-                                currentIndex--
-                                if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
-                                    visitedQuestions.add(activeQuestions[currentIndex].num)
-                                }
-                            }
-                        },
-                        enabled = currentIndex > 0,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.heightIn(min = 36.dp)
+            // Bottom Sticky Bar for Scrollable Paper Mode
+            Surface(
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("← Previous", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "Answered: $answeredCount of $totalQuestions",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF15803D)
+                        )
+                        Text(
+                            text = "Marked: ${markedOnlyCount + ansMarkedCount}",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF7C3AED)
+                        )
                     }
 
-                    Button(
-                        onClick = { showSubmitConfirmDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
-                        modifier = Modifier.heightIn(min = 36.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Submit Test ($answeredCount/$totalQuestions)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        OutlinedButton(
+                            onClick = {
+                                interfaceMode = ExamInterfaceMode.TCS_CBT
+                                currentIndex = scrollListState.firstVisibleItemIndex.coerceIn(0, totalQuestions - 1)
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Switch to TCS CBT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { showSubmitConfirmDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Submit Test", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -1879,9 +2388,14 @@ private fun ActiveExamView(
         markedForReview = markedForReview.toSet(),
         visitedQuestions = visitedQuestions.toSet(),
         onQuestionClick = { index, _ ->
+            showCbtPaletteSideSheet = false
             currentIndex = index
-            if (!visitedQuestions.contains(activeQuestions[index].num)) {
-                visitedQuestions.add(activeQuestions[index].num)
+            val qNum = activeQuestions[index].num
+            if (!visitedQuestions.contains(qNum)) {
+                visitedQuestions.add(qNum)
+            }
+            if (interfaceMode == ExamInterfaceMode.SCROLLABLE_PAPER) {
+                coroutineScope.launch { scrollListState.animateScrollToItem(index) }
             }
         }
     )
