@@ -3,7 +3,9 @@ package com.example.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import com.example.util.QuestionFormatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,17 +36,23 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay
@@ -56,6 +64,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -70,6 +79,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -80,6 +91,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -1151,7 +1163,15 @@ private fun ExamStartOverviewView(
 }
 
 /**
- * Screen 2: Active Exam Session with live timer, question jump palette, and confirmation modal.
+ * Screen 2: Authentic TCS iON Computer-Based Test (CBT) Active Exam Session.
+ * Replicates the exact TCS exam interface:
+ * - Single question viewport with high-contrast fonts
+ * - Staged pending option selection (does NOT auto-save or turn green on click)
+ * - "Save & Next" with realistic simulated local server save latency (400ms spinner)
+ * - "Mark for Review & Next", "Clear Response", and "Previous" action buttons
+ * - Immersive Full-Screen mode toggle for distraction-free exam simulation
+ * - Official TCS 5-State question status logic and geometry
+ * - Full TCS Examination Summary modal upon submission
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1177,25 +1197,64 @@ private fun ActiveExamView(
 ) {
     val colors = ExamTheme.colors
     val haptic = LocalHapticFeedback.current
-    val activeListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val answeredCount = activeQuestions.count { answers.containsKey(it.num) }
-    val total = activeQuestions.size
-    val unattempted = total - answeredCount
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+
+    var currentIndex by remember { mutableIntStateOf(0) }
+    val currentQuestion = activeQuestions.getOrNull(currentIndex) ?: activeQuestions.first()
+
+    // Authentic TCS iON 5-State tracking
+    val markedForReview = remember { mutableStateListOf<Int>() }
+    val visitedQuestions = remember { mutableStateListOf<Int>().apply { add(currentQuestion.num) } }
+
+    // Two-Phase selection: Tapping an option sets pendingOption (draft radio selection).
+    // It is ONLY committed to official answers and marked Answered (Green) when candidate clicks "Save & Next"!
+    var pendingOption by remember(currentQuestion.num) {
+        mutableStateOf(answers[currentQuestion.num] ?: "")
+    }
+
+    var isSavingNext by remember { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
 
     var showSubmitConfirmDialog by remember { mutableStateOf(false) }
     var showExitConfirmDialog by remember { mutableStateOf(false) }
     var showCbtPaletteSideSheet by remember { mutableStateOf(false) }
 
-    // Folding toggle state (commented out per user preference; uncomment if folding toggle is needed)
-    // var isPaletteFolded by remember { mutableStateOf(false) }
+    // Immersive Full-Screen controller
+    LaunchedEffect(isFullscreen) {
+        activity?.window?.let { window ->
+            val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            if (isFullscreen) {
+                insetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                insetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                insetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
+    // Auto-submission when countdown expires
+    LaunchedEffect(timerMode, timeRemainingSeconds) {
+        if (timerMode == ExamTimerMode.COUNTDOWN && timeRemainingSeconds <= 0L) {
+            onSubmitExam()
+        }
+    }
+
+    val totalQuestions = activeQuestions.size
+    val answeredCount = activeQuestions.count { answers[it.num]?.isNotBlank() == true && it.num !in markedForReview }
+    val notAnsweredCount = activeQuestions.count { it.num in visitedQuestions && answers[it.num].isNullOrBlank() && it.num !in markedForReview }
+    val markedOnlyCount = activeQuestions.count { answers[it.num].isNullOrBlank() && it.num in markedForReview }
+    val ansMarkedCount = activeQuestions.count { answers[it.num]?.isNotBlank() == true && it.num in markedForReview }
+    val notVisitedCount = activeQuestions.count { it.num !in visitedQuestions }
+
+    // Exit / Pause Confirmation
     if (showExitConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showExitConfirmDialog = false },
             icon = { Icon(Icons.Default.Info, contentDescription = null, tint = colors.teal) },
             title = { Text("Pause or Exit Test?", fontWeight = FontWeight.Bold) },
-            text = { Text("Your answers are saved. You can resume anytime from the exam overview.") },
+            text = { Text("Your saved answers are preserved. You can resume anytime from the exam overview.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -1215,35 +1274,67 @@ private fun ActiveExamView(
         )
     }
 
+    // Official TCS Exam Summary Submission Modal
     if (showSubmitConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showSubmitConfirmDialog = false },
-            icon = {
-                Icon(
-                    imageVector = if (unattempted > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (unattempted > 0) colors.red else colors.green
-                )
-            },
             title = {
-                Text(
-                    text = if (unattempted > 0) "Unattempted Questions!" else "Submit Examination?",
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Assessment, contentDescription = null, tint = colors.teal)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("TCS iON Examination Summary", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             },
             text = {
-                Column {
-                    if (unattempted > 0) {
-                        Text(
-                            text = "You have $unattempted unattended question(s) (-0.10 penalty each).",
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.red
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Once submitted, your final score and detailed solution explanations will be displayed immediately at the top.",
-                        fontSize = 13.sp,
+                        text = "${paper.metadata.title.ifBlank { "Examination Paper" }} • ${paper.metadata.setNumber}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.muted
+                    )
+
+                    // Official TCS Summary Grid
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, colors.border),
+                        color = colors.surfaceVariant
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TcsSummaryRow(label = "Total Questions", value = "$totalQuestions", color = colors.inkBold)
+                            TcsSummaryRow(label = "Answered", value = "$answeredCount", color = Color(0xFF22C55E))
+                            TcsSummaryRow(label = "Not Answered", value = "$notAnsweredCount", color = Color(0xFFEF4444))
+                            TcsSummaryRow(label = "Marked for Review", value = "$markedOnlyCount", color = Color(0xFF7C3AED))
+                            TcsSummaryRow(label = "Ans & Marked for Review", value = "$ansMarkedCount", color = Color(0xFF7C3AED))
+                            TcsSummaryRow(label = "Not Visited", value = "$notVisitedCount", color = colors.muted)
+                        }
+                    }
+
+                    if (notAnsweredCount + notVisitedCount > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFEE2E2),
+                            border = BorderStroke(0.8.dp, Color(0xFFEF4444))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Notice: ${notAnsweredCount + notVisitedCount} question(s) are unattempted.",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFB91C1C)
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "Are you sure you want to submit? After submission you will not be able to change your answers.",
+                        fontSize = 12.sp,
                         color = colors.ink
                     )
                 }
@@ -1255,7 +1346,7 @@ private fun ActiveExamView(
                         showSubmitConfirmDialog = false
                         onSubmitExam()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
                     modifier = Modifier.testTag("confirm_submit_test_button")
                 ) {
                     Text("Yes, Submit Test", fontWeight = FontWeight.Bold)
@@ -1263,7 +1354,7 @@ private fun ActiveExamView(
             },
             dismissButton = {
                 OutlinedButton(onClick = { showSubmitConfirmDialog = false }) {
-                    Text("Keep Practicing")
+                    Text("Resume Test")
                 }
             }
         )
@@ -1272,352 +1363,182 @@ private fun ActiveExamView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
+            .background(colors.background)
     ) {
-        // Fixed compact Question Bubbles bar at the top with CBT Grid Palette button
+        // --- 1. Authentic TCS Header Strip ---
         Surface(
-            color = colors.background,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
+            color = Color(0xFF0F172A),
+            shadowElevation = 4.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 2.dp)
-                ) {
-                    itemsIndexed(activeQuestions, key = { _, q -> "palette_bubble_${q.num}" }) { index, q ->
-                        val isAnswered = answers.containsKey(q.num)
-                        Surface(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clickable {
-                                    coroutineScope.launch {
-                                        // item 0 is Spacer, item 1 is Header Card, questions begin at index + 2
-                                        activeListState.animateScrollToItem(index + 2)
-                                    }
-                                },
-                            shape = CircleShape,
-                            color = if (isAnswered) colors.teal else colors.surface,
-                            border = BorderStroke(1.dp, if (isAnswered) colors.teal else colors.border)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "${q.num}",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isAnswered) colors.surface else colors.inkBold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                Surface(
-                    onClick = { showCbtPaletteSideSheet = true },
-                    shape = RoundedCornerShape(8.dp),
-                    color = colors.teal.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.4f)),
-                    modifier = Modifier.testTag("cbt_strip_palette_button")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    IconButton(
+                        onClick = { showExitConfirmDialog = true },
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Apps,
-                            contentDescription = "Open Full CBT Palette",
-                            tint = colors.teal,
-                            modifier = Modifier.size(15.dp)
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Exit to Overview",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Column {
                         Text(
-                            text = "Grid",
-                            fontSize = 11.5.sp,
+                            text = paper.metadata.title.ifBlank { "TCS iON CBT Exam" },
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.tealDark
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Question ${currentIndex + 1} of $totalQuestions • ${paper.metadata.setNumber}",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
                         )
                     }
                 }
-            }
-        }
 
-        LazyColumn(
-            state = activeListState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-        item { Spacer(modifier = Modifier.height(4.dp)) }
-
-        // Live Header Bar
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                border = BorderStroke(1.dp, colors.border),
-                elevation = CardDefaults.cardElevation(defaultElevation = if (colors.isDark) 0.dp else 1.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Fullscreen Toggle Button
+                    IconButton(
+                        onClick = { isFullscreen = !isFullscreen },
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { showExitConfirmDialog = true },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Exit to Overview",
-                                    tint = colors.inkBold,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Active Test",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold
-                            )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Today's Cumulative Study Timer Chip
-                            Surface(
-                                onClick = onOpenAnalytics,
-                                shape = RoundedCornerShape(14.dp),
-                                color = colors.tealLight.copy(alpha = 0.5f),
-                                border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.5f)),
-                                modifier = Modifier
-                                    .padding(end = 6.dp)
-                                    .testTag("active_test_today_timer_chip")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Timer,
-                                        contentDescription = "Today's Study Timer",
-                                        tint = colors.teal,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    val todayH = todayTestSeconds / 3600
-                                    val todayM = (todayTestSeconds % 3600) / 60
-                                    val todayS = todayTestSeconds % 60
-                                    val todayTimeStr = if (todayH > 0) {
-                                        String.format(java.util.Locale.US, "Today %02d:%02d:%02d", todayH, todayM, todayS)
-                                    } else {
-                                        String.format(java.util.Locale.US, "Today %02d:%02d", todayM, todayS)
-                                    }
-                                    Text(
-                                        text = todayTimeStr,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.tealDark
-                                    )
-                                }
-                            }
-
-                            // Live timer badge
-                        if (timerMode == ExamTimerMode.COUNTDOWN) {
-                            val remM = timeRemainingSeconds / 60
-                            val remS = timeRemainingSeconds % 60
-                            val isUrgent = timeRemainingSeconds <= 60L
-                            val isWarning = timeRemainingSeconds in 61L..300L
-
-                            val badgeBg = when {
-                                isUrgent -> colors.redLight
-                                isWarning -> Color(0xFFFEF3C7)
-                                else -> colors.tealLight
-                            }
-                            val badgeBorder = when {
-                                isUrgent -> colors.red
-                                isWarning -> Color(0xFFD97706)
-                                else -> colors.teal.copy(alpha = 0.4f)
-                            }
-                            val badgeText = when {
-                                isUrgent -> colors.red
-                                isWarning -> Color(0xFFB45309)
-                                else -> colors.teal
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = badgeBg,
-                                border = BorderStroke(1.dp, badgeBorder)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = if (isUrgent) Icons.Default.Warning else Icons.Default.HourglassBottom,
-                                        contentDescription = null,
-                                        tint = badgeText,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = String.format(java.util.Locale.US, "%02d:%02d", remM, remS),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = badgeText
-                                    )
-                                    if (isUrgent) {
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = "LEFT",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = badgeText
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            val m = timeSpentSeconds / 60
-                            val s = timeSpentSeconds % 60
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = colors.tealLight,
-                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.4f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Timer, contentDescription = null, tint = colors.teal, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = String.format(java.util.Locale.US, "%02d:%02d", m, s),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.teal
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-                        IconButton(
-                            onClick = { showCbtPaletteSideSheet = true },
-                            modifier = Modifier
-                                .size(28.dp)
-                                .testTag("cbt_header_palette_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Apps,
-                                contentDescription = "Open CBT Palette",
-                                tint = colors.teal,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "$answeredCount of $total Answered",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.teal
-                        )
-                        Text(
-                            text = if (unattempted > 0) "$unattempted Remaining" else "All Attempted! 🎉",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (unattempted > 0) colors.muted else colors.green
+                        Icon(
+                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen Mode",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
 
-                    LinearProgressIndicator(
-                        progress = { if (total > 0) answeredCount.toFloat() / total else 0f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp),
-                        color = colors.teal,
-                        trackColor = colors.borderLight
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
+                    // Digital Timer Pill (TCS Style)
+                    val formattedTime = if (timerMode == ExamTimerMode.COUNTDOWN) {
+                        val h = timeRemainingSeconds / 3600
+                        val m = (timeRemainingSeconds % 3600) / 60
+                        val s = timeRemainingSeconds % 60
+                        if (h > 0) String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, s)
+                        else String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                    } else {
+                        val m = timeSpentSeconds / 60
+                        val s = timeSpentSeconds % 60
+                        String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                    }
 
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = colors.surfaceVariant,
-                        border = BorderStroke(0.6.dp, colors.border),
-                        modifier = Modifier.fillMaxWidth()
+                        color = Color(0xFF0D9488).copy(alpha = 0.25f),
+                        border = BorderStroke(1.dp, Color(0xFF14B8A6))
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val bannerPos = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
-                            val bannerNeg = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
-                            Text(
-                                text = "Marking: $bannerPos Correct • $bannerNeg Incorrect • 0.00 Unattended",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.inkBold
+                            Icon(
+                                imageVector = Icons.Default.HourglassBottom,
+                                contentDescription = null,
+                                tint = Color(0xFF5EEAD4),
+                                modifier = Modifier.size(13.dp)
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Min: 0.00",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.teal
+                                text = formattedTime,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF5EEAD4),
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
                         }
                     }
 
-                    // If in focused retry mode, show distinct guidance banner
-                    if (retryQuestionNumbers != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.tealLight,
-                            border = BorderStroke(0.5.dp, colors.teal.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "⚡ Focused Retry Session ($total Questions)",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.teal
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Palette Grid Button
+                    IconButton(
+                        onClick = { showCbtPaletteSideSheet = true },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("cbt_header_palette_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Apps,
+                            contentDescription = "Open CBT Palette",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- 2. Horizontal Quick Jump Strip with TCS 5-State Color Badges ---
+        Surface(
+            color = colors.surface,
+            border = BorderStroke(0.6.dp, colors.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                itemsIndexed(activeQuestions, key = { _, q -> "cbt_strip_${q.num}" }) { idx, q ->
+                    val isCurrent = idx == currentIndex
+                    val isAnswered = answers[q.num]?.isNotBlank() == true
+                    val isMarked = markedForReview.contains(q.num)
+                    val isVisited = visitedQuestions.contains(q.num)
+                    val isAnsMarked = isAnswered && isMarked
+
+                    val (bg, textCol) = when {
+                        isAnsMarked || isMarked -> Pair(Color(0xFF7C3AED), Color.White)
+                        isAnswered -> Pair(Color(0xFF22C55E), Color.White)
+                        isVisited -> Pair(Color(0xFFEF4444), Color.White)
+                        else -> Pair(Color(0xFFE2E8F0), Color(0xFF334155))
+                    }
+
+                    Surface(
+                        onClick = {
+                            currentIndex = idx
+                            if (!visitedQuestions.contains(q.num)) visitedQuestions.add(q.num)
+                        },
+                        shape = RoundedCornerShape(6.dp),
+                        color = bg,
+                        border = BorderStroke(
+                            width = if (isCurrent) 2.5.dp else 0.8.dp,
+                            color = if (isCurrent) Color(0xFF0F172A) else Color.Transparent
+                        ),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = "${q.num}",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Bold,
+                                color = textCol
+                            )
+                            if (isAnsMarked) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(2.dp)
+                                        .size(6.dp)
+                                        .background(Color(0xFF22C55E), CircleShape)
+                                        .border(0.5.dp, Color.White, CircleShape)
                                 )
-                                TextButton(
-                                    onClick = onSwitchToFull,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.heightIn(min = 34.dp)
-                                ) {
-                                    Text("Switch to Full Paper", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
-                                }
                             }
                         }
                     }
@@ -1625,73 +1546,361 @@ private fun ActiveExamView(
             }
         }
 
+        // --- 3. Main Single Question Viewport ---
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item { Spacer(modifier = Modifier.height(6.dp)) }
 
+            // Question Meta Tag Bar
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Question No. ${currentQuestion.num}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colors.inkBold
+                    )
 
-        // Question Practice Cards
-        items(activeQuestions, key = { "practice_${it.num}" }) { q ->
-            StudentPracticeCard(
-                question = q,
-                selectedAnswer = answers[q.num],
-                onSelectAnswer = { onSelectAnswer(q.num, it) },
-                showResult = false,
-                shuffleOptions = shuffleOptions,
-                sessionSeed = sessionSeed
-            )
+                    val posStr = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
+                    val negStr = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFDCFCE7)) {
+                            Text(
+                                text = "$posStr Mark",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF15803D),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFFEE2E2)) {
+                            Text(
+                                text = "$negStr Penalty",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB91C1C),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Question Stem Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                    border = BorderStroke(1.2.dp, colors.border),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        val arParts = QuestionFormatter.parseAssertionReason(currentQuestion.question)
+                        if (arParts != null) {
+                            if (!arParts.leadIn.isNullOrBlank()) {
+                                Text(
+                                    text = arParts.leadIn,
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = colors.muted,
+                                    lineHeight = 22.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(0.8.dp, colors.border),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(modifier = Modifier.padding(10.dp)) {
+                                    Text("Assertion (A): ", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.teal)
+                                    Text(arParts.assertion, fontSize = 14.sp, color = colors.inkBold, lineHeight = 21.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(0.8.dp, colors.border),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(modifier = Modifier.padding(10.dp)) {
+                                    Text("Reason (R): ", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFD97706))
+                                    Text(arParts.reason, fontSize = 14.sp, color = colors.inkBold, lineHeight = 21.sp)
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = currentQuestion.question,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                lineHeight = 24.sp
+                            )
+                        }
+
+                        if (!currentQuestion.formula.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = currentQuestion.formula ?: "",
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 13.sp,
+                                    color = colors.teal,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Radio Options List (A, B, C, D)
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val rawOptions = listOf(
+                        "A" to currentQuestion.options.a,
+                        "B" to currentQuestion.options.b,
+                        "C" to currentQuestion.options.c,
+                        "D" to currentQuestion.options.d
+                    )
+
+                    rawOptions.forEach { (key, optText) ->
+                        if (optText.isNotBlank()) {
+                            val isSelected = pendingOption.equals(key, ignoreCase = true)
+                            Surface(
+                                onClick = {
+                                    // Tapping radio updates pending draft selection (does NOT save or color green until Save & Next)
+                                    pendingOption = key
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) Color(0xFFEFF6FF) else colors.surface,
+                                border = BorderStroke(
+                                    width = if (isSelected) 1.8.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFF2563EB) else colors.border
+                                ),
+                                shadowElevation = if (isSelected) 1.dp else 0.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("option_${key}_q${currentQuestion.num}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color(0xFF2563EB) else colors.muted,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "$key. $optText",
+                                        fontSize = 14.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color(0xFF1E3A8A) else colors.inkBold,
+                                        lineHeight = 21.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(14.dp)) }
         }
 
-        // Bottom Submit Button
-        item {
-            Button(
-                onClick = { showSubmitConfirmDialog = true },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.navyBanner,
-                    contentColor = colors.navyBannerText
-                ),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 50.dp)
-                    .testTag("submit_exam_button")
-            ) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Submit Test ($answeredCount/$total)",
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
+        // --- 4. Authentic TCS Bottom Sticky Action Bar ---
+        Surface(
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.border),
+            shadowElevation = 8.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Mark for Review & Next (Purple)
+                    OutlinedButton(
+                        onClick = {
+                            if (pendingOption.isNotBlank()) {
+                                onSelectAnswer(currentQuestion.num, pendingOption)
+                            }
+                            if (!markedForReview.contains(currentQuestion.num)) {
+                                markedForReview.add(currentQuestion.num)
+                            }
+                            if (currentIndex < activeQuestions.size - 1) {
+                                currentIndex++
+                                if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
+                                    visitedQuestions.add(activeQuestions[currentIndex].num)
+                                }
+                            }
+                        },
+                        border = BorderStroke(1.2.dp, Color(0xFF7C3AED)),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C3AED)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Review & Next", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+
+                    // Clear Response
+                    OutlinedButton(
+                        onClick = {
+                            pendingOption = ""
+                            onSelectAnswer(currentQuestion.num, "")
+                            markedForReview.remove(currentQuestion.num)
+                        },
+                        border = BorderStroke(1.dp, Color(0xFFEA580C)),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEA580C)),
+                        modifier = Modifier.weight(0.9f)
+                    ) {
+                        Text("Clear", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+
+                    // Save & Next (With simulated TCS server latency of 400ms)
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                isSavingNext = true
+                                delay(400) // Simulated TCS network save delay
+                                onSelectAnswer(currentQuestion.num, pendingOption)
+                                markedForReview.remove(currentQuestion.num)
+                                isSavingNext = false
+
+                                if (currentIndex < activeQuestions.size - 1) {
+                                    currentIndex++
+                                    if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
+                                        visitedQuestions.add(activeQuestions[currentIndex].num)
+                                    }
+                                } else {
+                                    showSubmitConfirmDialog = true
+                                }
+                            }
+                        },
+                        enabled = !isSavingNext,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        modifier = Modifier.weight(1.2f)
+                    ) {
+                        if (isSavingNext) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(15.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Saving...", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Text(
+                                text = if (currentIndex == activeQuestions.size - 1) "Save & Submit" else "Save & Next",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            if (currentIndex > 0) {
+                                currentIndex--
+                                if (!visitedQuestions.contains(activeQuestions[currentIndex].num)) {
+                                    visitedQuestions.add(activeQuestions[currentIndex].num)
+                                }
+                            }
+                        },
+                        enabled = currentIndex > 0,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.heightIn(min = 36.dp)
+                    ) {
+                        Text("← Previous", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = { showSubmitConfirmDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                        modifier = Modifier.heightIn(min = 36.dp)
+                    ) {
+                        Text("Submit Test ($answeredCount/$totalQuestions)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
-
-        item { Spacer(modifier = Modifier.height(32.dp)) }
     }
-}
 
-    // CBT Exam Question Palette Side Sheet (TCS iON Standard)
+    // CBT Exam Question Palette Side Sheet (TCS iON Standard with Candidate Identity Card)
     ExamPaletteSideSheet(
         isOpen = showCbtPaletteSideSheet,
         onDismiss = { showCbtPaletteSideSheet = false },
         questions = activeQuestions,
+        currentQuestionNum = currentQuestion.num,
         paperTitle = paper.metadata.title,
         setNumber = paper.metadata.setNumber,
         isCbtMode = true,
+        candidateName = paper.metadata.rollNumber.ifBlank { "Candidate" },
+        rollNumber = paper.metadata.rollNumber.ifBlank { "0000000001" },
+        systemNodeId = "LAB-02 • NODE-94",
         answers = answers,
-        visitedQuestions = remember(activeQuestions, answers) {
-            answers.keys.toSet()
-        },
+        markedForReview = markedForReview.toSet(),
+        visitedQuestions = visitedQuestions.toSet(),
         onQuestionClick = { index, _ ->
-            coroutineScope.launch {
-                val target = index + 2
-                if (kotlin.math.abs(activeListState.firstVisibleItemIndex - target) > 8) {
-                    activeListState.scrollToItem(target)
-                } else {
-                    activeListState.animateScrollToItem(target)
-                }
+            currentIndex = index
+            if (!visitedQuestions.contains(activeQuestions[index].num)) {
+                visitedQuestions.add(activeQuestions[index].num)
             }
         }
     )
+}
+
+@Composable
+private fun TcsSummaryRow(
+    label: String,
+    value: String,
+    color: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 12.5.sp, color = Color(0xFF475569), fontWeight = FontWeight.Medium)
+        Text(text = value, fontSize = 13.sp, color = color, fontWeight = FontWeight.Bold)
+    }
 }
 
 /**

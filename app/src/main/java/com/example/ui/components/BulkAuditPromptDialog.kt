@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -169,19 +170,25 @@ fun BulkAuditPromptDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        val setSubtitle = remember(paper.metadata) {
+            val rawSet = paper.metadata.setNumber.trim()
+            val cleanSet = if (rawSet.startsWith("Set", ignoreCase = true)) rawSet else "Set $rawSet"
+            if (rawSet.isBlank()) paper.metadata.title else "${paper.metadata.title} • $cleanSet"
+        }
+
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surface),
             border = BorderStroke(1.dp, colors.border),
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.94f)
+                .fillMaxWidth(0.96f)
+                .fillMaxHeight(0.95f)
                 .testTag("bulk_audit_prompt_dialog")
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
+                    .fillMaxSize()
+                    .padding(16.dp)
             ) {
                 // Top Header Row
                 Row(
@@ -189,46 +196,37 @@ fun BulkAuditPromptDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = colors.tealLight,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Layers,
                                     contentDescription = null,
                                     tint = colors.teal,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "3-Phase Quality Auditor",
-                                    fontSize = 15.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = colors.teal.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = "${paper.questions.size} Questions",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.teal,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "${paper.metadata.title} • Set ${paper.metadata.setNumber}",
+                                text = "3-Phase Quality Auditor",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = setSubtitle,
                                 fontSize = 11.5.sp,
                                 color = colors.muted,
                                 maxLines = 1,
@@ -237,15 +235,39 @@ fun BulkAuditPromptDialog(
                         }
                     }
 
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.testTag("bulk_audit_close_button")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = colors.muted
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.teal.copy(alpha = 0.12f),
+                            border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "${paper.questions.size} Questions",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.teal,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("bulk_audit_close_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = colors.muted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
@@ -256,7 +278,7 @@ fun BulkAuditPromptDialog(
                 // Phase Stepper Selector Tabs
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     AuditPhaseTab(
                         phase = AuditPhase.PHASE_1_KEYS,
@@ -290,13 +312,13 @@ fun BulkAuditPromptDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Phase Instructions & Scope Bar
                 Card(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant),
-                    border = BorderStroke(0.6.dp, colors.border)
+                    border = BorderStroke(0.8.dp, colors.border)
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -320,7 +342,7 @@ fun BulkAuditPromptDialog(
                         }
 
                         if (selectedPhase == AuditPhase.PHASE_1_KEYS || selectedPhase == AuditPhase.PHASE_3_EXPLANATIONS) {
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -367,72 +389,109 @@ fun BulkAuditPromptDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Prompt Preview Card
+                // Prompt Header Info
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "${selectedPhase.shortTitle} Payload (${generatedPrompt.length} chars • ~${generatedPrompt.length / 4} tokens):",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.inkBold
-                    )
-                    Text(
-                        text = "Raw JSON enclosed",
-                        fontSize = 10.sp,
-                        color = colors.muted
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FactCheck,
+                            contentDescription = null,
+                            tint = colors.teal,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "${selectedPhase.shortTitle} Payload Preview",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkBold
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = colors.surfaceVariant,
+                        border = BorderStroke(0.6.dp, colors.border)
+                    ) {
+                        Text(
+                            text = "${generatedPrompt.length} chars • ~${generatedPrompt.length / 4} tokens",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                Box(
+                // Bounded Code Box
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, colors.border),
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .background(colors.surfaceVariant, RoundedCornerShape(8.dp))
-                        .padding(8.dp)
                 ) {
-                    SelectionContainer {
+                    val scrollState = rememberScrollState()
+                    SelectionContainer(modifier = Modifier.fillMaxSize()) {
                         Text(
                             text = generatedPrompt,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
+                            lineHeight = 16.sp,
                             color = colors.inkBold,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                                .padding(10.dp)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Action Buttons Footer
+                // Action Buttons Footer (Pinned at bottom, 48dp touch targets)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = { copyPrompt() },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, if (copiedToClipboard) colors.teal else colors.border),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (copiedToClipboard) colors.tealLight.copy(alpha = 0.3f) else colors.surface,
+                            contentColor = if (copiedToClipboard) colors.teal else colors.inkBold
+                        ),
                         modifier = Modifier
                             .weight(1f)
+                            .fillMaxHeight()
                             .testTag("bulk_audit_copy_button")
                     ) {
                         Icon(
                             imageVector = if (copiedToClipboard) Icons.Default.Check else Icons.Default.ContentCopy,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = colors.teal
+                            tint = if (copiedToClipboard) colors.teal else colors.inkBold
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (copiedToClipboard) "Copied!" else "Copy Step Prompt",
-                            fontSize = 11.5.sp,
+                            text = if (copiedToClipboard) "Copied Prompt!" else "Copy Step Prompt",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -442,13 +501,14 @@ fun BulkAuditPromptDialog(
                             onDismiss()
                             onOpenResolutionHub(null)
                         },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
                         ),
                         modifier = Modifier
-                            .weight(1.2f)
+                            .weight(1.15f)
+                            .fillMaxHeight()
                             .testTag("bulk_audit_open_hub_button")
                     ) {
                         Icon(
@@ -460,7 +520,7 @@ fun BulkAuditPromptDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Resolution Hub",
-                            fontSize = 11.5.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.primaryButtonText
                         )
@@ -481,23 +541,23 @@ private fun AuditPhaseTab(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (isSelected) colors.primaryButtonBg else colors.surfaceVariant,
         border = BorderStroke(0.8.dp, if (isSelected) colors.primaryButtonBg else colors.border),
         modifier = modifier.heightIn(min = 48.dp)
     ) {
         Column(
             modifier = Modifier
-                .padding(vertical = 5.dp, horizontal = 4.dp)
+                .padding(vertical = 6.dp, horizontal = 4.dp)
                 .wrapContentHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = "Step ${phase.stepNumber}",
-                fontSize = 9.sp,
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isSelected) colors.primaryButtonText.copy(alpha = 0.8f) else colors.muted
+                color = if (isSelected) colors.primaryButtonText.copy(alpha = 0.85f) else colors.muted
             )
             Text(
                 text = when (phase) {
@@ -505,11 +565,11 @@ private fun AuditPhaseTab(
                     AuditPhase.PHASE_2_REPLACEMENTS -> "Replacements"
                     AuditPhase.PHASE_3_EXPLANATIONS -> "Explanations"
                 },
-                fontSize = 10.5.sp,
+                fontSize = 11.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = if (isSelected) colors.primaryButtonText else colors.inkBold,
-                maxLines = 2,
-                softWrap = true,
+                maxLines = 1,
+                softWrap = false,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 overflow = TextOverflow.Ellipsis
             )
@@ -528,13 +588,13 @@ private fun ScopeChip(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = if (isSelected) colors.teal else colors.surface,
-        border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border),
+        border = BorderStroke(0.8.dp, if (isSelected) colors.teal else colors.border),
         modifier = Modifier.heightIn(min = 34.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)) {
             Text(
                 text = label,
-                fontSize = 10.sp,
+                fontSize = 10.5.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                 color = if (isSelected) Color.White else colors.inkMuted,
                 maxLines = 1

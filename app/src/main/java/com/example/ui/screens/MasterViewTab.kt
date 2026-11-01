@@ -408,28 +408,28 @@ fun MasterViewTab(
                                 // AI Bulk Audit Action
                                 Surface(
                                     onClick = { showBulkAuditDialog = true },
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = RoundedCornerShape(10.dp),
                                     color = colors.tealLight.copy(alpha = 0.6f),
                                     border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
                                     modifier = Modifier
-                                        .heightIn(min = 44.dp)
+                                        .heightIn(min = 48.dp)
                                         .testTag("toolbar_ai_audit_button")
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.AutoAwesome,
                                             contentDescription = null,
                                             tint = colors.teal,
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(16.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "AI Audit",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
                                             color = colors.inkBold
                                         )
                                     }
@@ -441,27 +441,27 @@ fun MasterViewTab(
                                         initialAuditFeedbackText = null
                                         showResolutionHubDialog = true
                                     },
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = RoundedCornerShape(10.dp),
                                     color = colors.teal.copy(alpha = 0.12f),
                                     border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.6f)),
                                     modifier = Modifier
-                                        .heightIn(min = 44.dp)
+                                        .heightIn(min = 48.dp)
                                         .testTag("toolbar_resolution_hub_button")
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.CheckCircle,
                                             contentDescription = null,
                                             tint = colors.teal,
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(16.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "Resolution Hub",
-                                            fontSize = 11.5.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = colors.teal
                                         )

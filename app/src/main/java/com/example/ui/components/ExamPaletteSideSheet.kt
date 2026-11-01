@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -98,6 +99,9 @@ fun ExamPaletteSideSheet(
     onScrollToAnswerKey: (() -> Unit)? = null,
     // CBT Exam options:
     isCbtMode: Boolean = false,
+    candidateName: String = "Candidate",
+    rollNumber: String = "0000000001",
+    systemNodeId: String = "C-104 • LAB 2",
     answers: Map<Int, String> = emptyMap(),
     markedForReview: Set<Int> = emptySet(),
     visitedQuestions: Set<Int> = emptySet(),
@@ -129,11 +133,22 @@ fun ExamPaletteSideSheet(
     val missingOptionCount = remember(questions) { questions.count { it.options.hasMissingOptions } }
     val completeCount = remember(questions) { questions.count { !it.correctAnswer.isNullOrBlank() && !it.explanation.isNullOrBlank() } }
 
-    val answeredCount = remember(questions, answers) { questions.count { answers.containsKey(it.num) } }
-    val markedCount = remember(questions, markedForReview) { questions.count { markedForReview.contains(it.num) } }
-    val visitedCount = remember(questions, visitedQuestions) { questions.count { visitedQuestions.contains(it.num) } }
-    val notAnsweredCount = (visitedCount - answeredCount).coerceAtLeast(0)
-    val notVisitedCount = (totalCount - visitedCount).coerceAtLeast(0)
+    // Authentic TCS iON 5-State breakdown
+    val answeredCount = remember(questions, answers, markedForReview) {
+        questions.count { answers[it.num]?.isNotBlank() == true && !markedForReview.contains(it.num) }
+    }
+    val notAnsweredCount = remember(questions, answers, markedForReview, visitedQuestions) {
+        questions.count { visitedQuestions.contains(it.num) && answers[it.num].isNullOrBlank() && !markedForReview.contains(it.num) }
+    }
+    val markedCount = remember(questions, answers, markedForReview) {
+        questions.count { answers[it.num].isNullOrBlank() && markedForReview.contains(it.num) }
+    }
+    val ansMarkedCount = remember(questions, answers, markedForReview) {
+        questions.count { answers[it.num]?.isNotBlank() == true && markedForReview.contains(it.num) }
+    }
+    val notVisitedCount = remember(questions, visitedQuestions) {
+        questions.count { !visitedQuestions.contains(it.num) }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -240,47 +255,120 @@ fun ExamPaletteSideSheet(
 
                 // Mode-specific Overview / Legend Section
                 if (isCbtMode) {
-                    // CBT Exam Legend & Real-Time Counters (TCS iON Standard)
-                    Column(
+                    // Candidate Identity Details (TCS iON Standard)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.surfaceVariant,
+                        border = BorderStroke(1.dp, colors.border),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                     ) {
                         Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = colors.surface,
+                                border = BorderStroke(1.dp, colors.border),
+                                modifier = Modifier.size(width = 38.dp, height = 44.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Quiz,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = colors.teal
+                                    )
+                                    Text("PHOTO", fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, color = colors.muted)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = candidateName.ifBlank { "Candidate" },
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Roll: $rollNumber",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.muted
+                                )
+                                Text(
+                                    text = "System: $systemNodeId",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.teal
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // CBT Exam Legend & Real-Time Counters (TCS iON Standard 5 States)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CbtLegendPill(
-                                color = Color(0xFF10B981),
+                                color = Color(0xFF22C55E),
                                 label = "Answered",
                                 count = answeredCount,
-                                colors = colors
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
                             )
                             CbtLegendPill(
                                 color = Color(0xFFEF4444),
                                 label = "Not Answered",
                                 count = notAnsweredCount,
-                                colors = colors
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CbtLegendPill(
-                                color = Color(0xFF8B5CF6),
-                                label = "Review",
+                                color = Color(0xFF7C3AED),
+                                label = "Marked Review",
                                 count = markedCount,
-                                colors = colors
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
                             )
                             CbtLegendPill(
                                 color = Color(0xFF94A3B8),
                                 label = "Not Visited",
                                 count = notVisitedCount,
-                                colors = colors
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
                             )
                         }
+                        CbtLegendPill(
+                            color = Color(0xFF7C3AED),
+                            hasDot = true,
+                            label = "Ans & Marked Review (Evaluated)",
+                            count = ansMarkedCount,
+                            colors = colors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 } else {
                     // Master View Diagnostic Filter Chips
@@ -402,31 +490,32 @@ fun ExamPaletteSideSheet(
                         val isCurrent = currentQuestionNum == q.num
 
                         val (bubbleBg, bubbleBorder, bubbleTextColor) = if (isCbtMode) {
-                            // CBT State
-                            val isAnswered = answers.containsKey(q.num)
+                            // Authentic TCS 5-State
+                            val isAnswered = answers[q.num]?.isNotBlank() == true
                             val isMarked = markedForReview.contains(q.num)
                             val isVisited = visitedQuestions.contains(q.num)
+                            val isAnsMarked = isAnswered && isMarked
 
                             when {
-                                isAnswered -> Triple(
-                                    colors.badgeSuccessBg,
-                                    colors.green,
-                                    colors.badgeSuccessText
+                                isAnsMarked || isMarked -> Triple(
+                                    Color(0xFF7C3AED),
+                                    Color(0xFF6D28D9),
+                                    Color.White
                                 )
-                                isMarked -> Triple(
-                                    if (colors.isDark) Color(0xFF3B1D54) else Color(0xFFF3E8FF),
-                                    if (colors.isDark) Color(0xFFA855F7) else Color(0xFF9333EA),
-                                    if (colors.isDark) Color(0xFFD8B4FE) else Color(0xFF6B21A8)
+                                isAnswered -> Triple(
+                                    Color(0xFF22C55E),
+                                    Color(0xFF16A34A),
+                                    Color.White
                                 )
                                 isVisited -> Triple(
-                                    colors.badgeDangerBg,
-                                    colors.red,
-                                    colors.badgeDangerText
+                                    Color(0xFFEF4444),
+                                    Color(0xFFDC2626),
+                                    Color.White
                                 )
                                 else -> Triple(
-                                    colors.surfaceVariant,
-                                    colors.border,
-                                    colors.muted
+                                    Color(0xFFE2E8F0),
+                                    Color(0xFFCBD5E1),
+                                    Color(0xFF334155)
                                 )
                             }
                         } else {
@@ -465,6 +554,8 @@ fun ExamPaletteSideSheet(
                             }
                         }
 
+                        val isAnsMarked = isCbtMode && answers[q.num]?.isNotBlank() == true && markedForReview.contains(q.num)
+
                         Surface(
                             onClick = {
                                 onQuestionClick(origIdx, q.num)
@@ -473,21 +564,35 @@ fun ExamPaletteSideSheet(
                             shape = RoundedCornerShape(8.dp),
                             color = bubbleBg,
                             border = BorderStroke(
-                                width = if (isCurrent) 2.dp else 1.dp,
-                                color = if (isCurrent) colors.teal else bubbleBorder
+                                width = if (isCurrent) 2.5.dp else 1.dp,
+                                color = if (isCurrent) Color(0xFF0F172A) else bubbleBorder
                             ),
-                            shadowElevation = if (isCurrent) 3.dp else 0.dp,
+                            shadowElevation = if (isCurrent) 4.dp else 0.dp,
                             modifier = Modifier
                                 .size(44.dp)
                                 .testTag("side_palette_bubble_${q.num}")
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
                                     text = "${q.num}",
-                                    fontSize = 12.5.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Bold,
-                                    color = if (isCurrent) colors.tealDark else bubbleTextColor
+                                    color = bubbleTextColor
                                 )
+
+                                if (isAnsMarked) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(3.dp)
+                                            .size(7.dp)
+                                            .background(Color(0xFF22C55E), CircleShape)
+                                            .border(1.dp, Color.White, CircleShape)
+                                    )
+                                }
                             }
                         }
                     }
@@ -542,25 +647,56 @@ private fun CbtLegendPill(
     color: Color,
     label: String,
     count: Int,
-    colors: com.example.ui.theme.ExamColorPalette
+    colors: com.example.ui.theme.ExamColorPalette,
+    modifier: Modifier = Modifier,
+    hasDot: Boolean = false
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier
-            .background(colors.surfaceVariant, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = colors.surfaceVariant,
+        border = BorderStroke(0.8.dp, colors.border),
+        modifier = modifier
     ) {
-        Box(
-            modifier = Modifier
-                .size(9.dp)
-                .background(color, CircleShape)
-        )
-        Text(
-            text = "$label: $count",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color = colors.inkBold
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .background(color, CircleShape)
+                ) {
+                    if (hasDot) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .align(Alignment.BottomEnd)
+                                .background(Color(0xFF22C55E), CircleShape)
+                                .border(0.5.dp, Color.White, CircleShape)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.inkBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = "$count",
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.inkBold
+            )
+        }
     }
 }

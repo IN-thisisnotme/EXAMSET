@@ -1433,6 +1433,21 @@ object PrintDocumentHelper {
             from { opacity: 0; transform: translate(-50%, 10px); }
             to { opacity: 1; transform: translate(-50%, 0); }
         }
+        @keyframes cbt-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .btn-spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.35);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: cbt-spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
 
         /* Mobile & Tablet Responsiveness */
         @media (max-width: 850px) {
@@ -1816,6 +1831,8 @@ object PrintDocumentHelper {
         let answers = {};
         let reviewStatus = {};
         let visitedStatus = {};
+        let pendingAnswer = '';
+        let isSavingNext = false;
         let timeRemaining = (EXAM_DATA.meta.durationMinutes || 60) * 60;
         let timerInterval = null;
         let examStarted = false;
@@ -2006,6 +2023,7 @@ object PrintDocumentHelper {
                 btn.id = 'palette-btn-' + idx;
                 btn.textContent = q.num || (idx + 1);
                 btn.onclick = () => {
+                    if (isSavingNext) return;
                     loadQuestion(idx);
                     if (window.innerWidth <= 850) {
                         toggleMobilePalette(false);
@@ -2030,6 +2048,7 @@ object PrintDocumentHelper {
                 jumpBtn.className = 'btn-jump-q';
                 jumpBtn.textContent = 'Go to Question';
                 jumpBtn.onclick = () => {
+                    if (isSavingNext) return;
                     closeQuestionPaperModal();
                     loadQuestion(idx);
                 };
@@ -2057,6 +2076,7 @@ object PrintDocumentHelper {
             if (index < 0 || index >= EXAM_DATA.questions.length) return;
             currentIndex = index;
             visitedStatus[index] = true;
+            pendingAnswer = answers[index] || '';
 
             const q = EXAM_DATA.questions[index];
             document.getElementById('hdr-q-indicator').textContent = 'Q ' + (q.num || (index + 1)) + ' / ' + EXAM_DATA.questions.length;
@@ -2073,11 +2093,11 @@ object PrintDocumentHelper {
 
             const optsContainer = document.getElementById('options-container');
             optsContainer.innerHTML = '';
-            const selectedOpt = answers[index];
 
             q.options.forEach(opt => {
                 const optItem = document.createElement('div');
-                optItem.className = 'option-item' + (selectedOpt === opt.key ? ' selected' : '');
+                optItem.className = 'option-item' + (pendingAnswer === opt.key ? ' selected' : '');
+                optItem.id = 'opt-row-' + opt.key;
                 optItem.onclick = () => selectOption(opt.key);
 
                 const bubble = document.createElement('div');
@@ -2107,31 +2127,83 @@ object PrintDocumentHelper {
         }
 
         function selectOption(key) {
-            answers[currentIndex] = key;
-            loadQuestion(currentIndex);
+            if (isSavingNext) return;
+            pendingAnswer = key;
+            const q = EXAM_DATA.questions[currentIndex];
+            if (!q) return;
+            q.options.forEach(opt => {
+                const row = document.getElementById('opt-row-' + opt.key);
+                if (row) {
+                    if (opt.key === key) row.classList.add('selected');
+                    else row.classList.remove('selected');
+                }
+            });
         }
 
         function clearCurrentResponse() {
+            if (isSavingNext) return;
+            pendingAnswer = '';
             delete answers[currentIndex];
             delete reviewStatus[currentIndex];
-            loadQuestion(currentIndex);
+            const q = EXAM_DATA.questions[currentIndex];
+            if (q) {
+                q.options.forEach(opt => {
+                    const row = document.getElementById('opt-row-' + opt.key);
+                    if (row) row.classList.remove('selected');
+                });
+            }
+            updatePaletteItem(currentIndex);
+            updateLegendCounts();
+            saveSession();
         }
 
         function markForReviewAndNext() {
+            if (isSavingNext) return;
+            if (pendingAnswer) {
+                answers[currentIndex] = pendingAnswer;
+            } else {
+                delete answers[currentIndex];
+            }
             reviewStatus[currentIndex] = true;
             goToNextQuestion();
         }
 
         function saveAndNext() {
-            delete reviewStatus[currentIndex];
-            if (currentIndex === EXAM_DATA.questions.length - 1) {
-                openSubmitModal();
-            } else {
-                goToNextQuestion();
-            }
+            if (isSavingNext) return;
+            const saveNextBtn = document.getElementById('btn-save-next');
+            const isLast = (currentIndex === EXAM_DATA.questions.length - 1);
+            isSavingNext = true;
+            saveNextBtn.disabled = true;
+            saveNextBtn.innerHTML = '<span class="btn-spinner"></span>Saving...';
+
+            setTimeout(() => {
+                isSavingNext = false;
+                saveNextBtn.disabled = false;
+                if (isLast) {
+                    saveNextBtn.innerHTML = 'Save & Submit &rarr;';
+                } else {
+                    saveNextBtn.innerHTML = 'Save & Next &rarr;';
+                }
+
+                if (pendingAnswer) {
+                    answers[currentIndex] = pendingAnswer;
+                    delete reviewStatus[currentIndex];
+                } else {
+                    delete answers[currentIndex];
+                }
+
+                if (isLast) {
+                    updatePaletteItem(currentIndex);
+                    updateLegendCounts();
+                    openSubmitModal();
+                } else {
+                    goToNextQuestion();
+                }
+            }, 400);
         }
 
         function goToPrevQuestion() {
+            if (isSavingNext) return;
             if (currentIndex > 0) loadQuestion(currentIndex - 1);
         }
 
