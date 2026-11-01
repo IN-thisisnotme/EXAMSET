@@ -101,7 +101,7 @@ fun AuditResolutionHubDialog(
 
     var currentPhase by remember { mutableStateOf(AuditPhase.PHASE_1_KEYS) }
     var feedbackInput by remember { mutableStateOf(initialFeedbackText ?: "") }
-    var isInputExpanded by remember { mutableStateOf(initialFeedbackText.isNullOrBlank()) }
+    var isInputExpanded by remember { mutableStateOf(true) }
     var activeTab by remember { mutableStateOf("ALL") } // "ALL", "WRONG_KEYS", "FLAWED", "CLEAN", "SEALED"
 
     // Audit report items mapped to question paper
@@ -238,7 +238,6 @@ fun AuditResolutionHubDialog(
             Toast.makeText(context, "Running heuristic pre-audit scan...", Toast.LENGTH_SHORT).show()
         } else {
             reports = QuestionAuditHelper.parseAuditReport(feedbackInput, paper, existingReports = reports)
-            isInputExpanded = false
             Toast.makeText(context, "Parsed & merged audit feedback for ${reports.size} questions", Toast.LENGTH_SHORT).show()
         }
     }
@@ -660,549 +659,567 @@ fun AuditResolutionHubDialog(
                 HorizontalDivider(color = colors.border, thickness = 0.8.dp)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Jumpable 3-Phase Stepper Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    PhaseStepButton(
-                        stepNum = 1,
-                        label = "Q&A Check",
-                        badgeCount = metrics.wrongKeysCount + metrics.flawedQuestionsCount,
-                        badgeColor = if (metrics.wrongKeysCount > 0) colors.red else colors.teal,
-                        isActive = currentPhase == AuditPhase.PHASE_1_KEYS,
-                        onClick = { currentPhase = AuditPhase.PHASE_1_KEYS },
-                        colors = colors,
-                        modifier = Modifier.weight(1f)
-                    )
-                    PhaseStepButton(
-                        stepNum = 2,
-                        label = "Replacements",
-                        badgeCount = metrics.flawedQuestionsCount + metrics.missingOptionsCount,
-                        badgeColor = Color(0xFFEA580C),
-                        isActive = currentPhase == AuditPhase.PHASE_2_REPLACEMENTS,
-                        onClick = { currentPhase = AuditPhase.PHASE_2_REPLACEMENTS },
-                        colors = colors,
-                        modifier = Modifier.weight(1f)
-                    )
-                    PhaseStepButton(
-                        stepNum = 3,
-                        label = "Explanations",
-                        badgeCount = unappliedExplanations.size,
-                        badgeColor = colors.teal,
-                        isActive = currentPhase == AuditPhase.PHASE_3_EXPLANATIONS,
-                        onClick = { currentPhase = AuditPhase.PHASE_3_EXPLANATIONS },
-                        colors = colors,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // KPI Summary Metrics Cards
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    KpiCard(
-                        title = "Wrong Keys",
-                        count = metrics.wrongKeysCount,
-                        color = colors.red,
-                        modifier = Modifier.weight(1f)
-                    )
-                    KpiCard(
-                        title = "Flawed",
-                        count = metrics.flawedQuestionsCount + metrics.missingOptionsCount,
-                        color = Color(0xFFEA580C),
-                        modifier = Modifier.weight(1f)
-                    )
-                    KpiCard(
-                        title = "Verified / Sealed",
-                        count = metrics.verifiedCount,
-                        color = colors.teal,
-                        modifier = Modifier.weight(1f)
-                    )
-                    KpiCard(
-                        title = "Neutralized",
-                        count = metrics.neutralizedCount,
-                        color = Color(0xFF6B7280),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Context-Aware Phase Action Bar & Quick Tools
-                Card(
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant),
-                    border = BorderStroke(0.8.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = colors.teal.copy(alpha = 0.15f),
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = when (currentPhase) {
-                                                AuditPhase.PHASE_1_KEYS -> Icons.Default.FactCheck
-                                                AuditPhase.PHASE_2_REPLACEMENTS -> Icons.Default.AutoAwesome
-                                                AuditPhase.PHASE_3_EXPLANATIONS -> Icons.Default.Psychology
-                                            },
-                                            contentDescription = null,
-                                            tint = colors.teal,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        text = currentPhase.title,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold
-                                    )
-                                    Text(
-                                        text = when (currentPhase) {
-                                            AuditPhase.PHASE_1_KEYS -> "Stem integrity check & answer key fact-checking"
-                                            AuditPhase.PHASE_2_REPLACEMENTS -> "$flawedCount flawed question${if (flawedCount == 1) "" else "s"} requiring replacement"
-                                            AuditPhase.PHASE_3_EXPLANATIONS -> "${unappliedExplanations.size} step-by-step derivations pending attach"
-                                        },
-                                        fontSize = 10.sp,
-                                        color = colors.inkMuted
-                                    )
-                                }
-                            }
-
-                            // Quick Toggle for LLM JSON Paste box
-                            IconButton(
-                                onClick = { isInputExpanded = !isInputExpanded },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isInputExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Toggle JSON input",
-                                    tint = colors.muted
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Phase Action Buttons Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // 1. Copy Phase Prompt Button
-                            OutlinedButton(
-                                onClick = { copyCurrentPhasePrompt() },
-                                shape = RoundedCornerShape(6.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).testTag("copy_phase_prompt_button")
-                            ) {
-                                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(13.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copy Prompt", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            }
-
-                            // 2. Phase-Specific Auto Action Button
-                            when (currentPhase) {
-                                AuditPhase.PHASE_1_KEYS -> {
-                                    Button(
-                                        onClick = { parseInput() },
-                                        shape = RoundedCornerShape(6.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.primaryButtonBg,
-                                            contentColor = colors.primaryButtonText
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.weight(1f).testTag("run_phase1_scan_button")
-                                    ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.primaryButtonText)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Scan Stem/Keys", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText, maxLines = 1)
-                                    }
-                                }
-                                AuditPhase.PHASE_2_REPLACEMENTS -> {
-                                    Button(
-                                        onClick = { autoSynthesizeReplacements() },
-                                        shape = RoundedCornerShape(6.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.teal,
-                                            contentColor = Color.White
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.weight(1f).testTag("synthesize_replacements_button")
-                                    ) {
-                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Auto-Synthesize", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
-                                    }
-                                }
-                                AuditPhase.PHASE_3_EXPLANATIONS -> {
-                                    Button(
-                                        onClick = { autoGenerateExplanations() },
-                                        shape = RoundedCornerShape(6.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.teal,
-                                            contentColor = Color.White
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.weight(1f).testTag("auto_generate_explanations_button")
-                                    ) {
-                                        Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Auto-Explain", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
-                                    }
-                                }
-                            }
-
-                            // 3. Step 3 Certification Button
-                            if (currentPhase == AuditPhase.PHASE_3_EXPLANATIONS) {
-                                OutlinedButton(
-                                    onClick = { showCertificationDialog = true },
-                                    shape = RoundedCornerShape(6.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.weight(1f).testTag("certify_paper_button")
-                                ) {
-                                    Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.teal)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Certify Paper", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-                        }
-
-                        // Collapsible LLM Input Box
-                        AnimatedVisibility(visible = isInputExpanded) {
-                            Column {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                HorizontalDivider(color = colors.border, thickness = 0.6.dp)
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Paste JSON response from ChatGPT/Gemini for ${currentPhase.shortTitle}:",
-                                    fontSize = 10.5.sp,
-                                    color = colors.inkMuted
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                OutlinedTextField(
-                                    value = feedbackInput,
-                                    onValueChange = { feedbackInput = it },
-                                    placeholder = {
-                                        Text(
-                                            text = "Paste [{\"qNum\": ..., ...}]",
-                                            fontSize = 11.sp,
-                                            color = colors.muted
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 60.dp, max = 110.dp)
-                                        .testTag("audit_feedback_text_field"),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = clipboard.primaryClip
-                                            if (clip != null && clip.itemCount > 0) {
-                                                feedbackInput = clip.getItemAt(0).text?.toString() ?: ""
-                                                parseInput()
-                                            } else {
-                                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(6.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(13.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Paste & Parse", fontSize = 11.sp)
-                                    }
-
-                                    Button(
-                                        onClick = { parseInput() },
-                                        shape = RoundedCornerShape(6.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.primaryButtonBg,
-                                            contentColor = colors.primaryButtonText
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.primaryButtonText)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Analyze", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Batch Action Banner for Step 1 Answer Keys
-                if (unresolvedWrongKeys.isNotEmpty()) {
-                    Card(
-                        shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.teal.copy(alpha = 0.12f)),
-                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentHeight()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = colors.teal,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        text = "${unresolvedWrongKeys.size} Answer Key Fixes Available",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Updates keys & attaches rechecked explanations",
-                                        fontSize = 10.sp,
-                                        color = colors.teal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Button(
-                                onClick = { applyBatchKeyFixes() },
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = colors.teal,
-                                    contentColor = Color.White
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.testTag("fix_all_keys_button")
-                            ) {
-                                Text("Fix All Keys", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-
-                // Batch Action Banner for Step 2 Replacements
-                if (readyReplacements.isNotEmpty()) {
-                    Card(
-                        shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEA580C).copy(alpha = 0.12f)),
-                        border = BorderStroke(1.dp, Color(0xFFEA580C).copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentHeight()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEA580C),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        text = "${readyReplacements.size} Question Replacements Ready",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Replaces flawed MCQs while preserving total numbering",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFFEA580C),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Button(
-                                onClick = { applyBatchReplacements() },
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFEA580C),
-                                    contentColor = Color.White
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.testTag("apply_all_replacements_button")
-                            ) {
-                                Text("Replace All", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-
-
-                // Batch Action Banner for Step 3 Explanations
-                if (currentPhase == AuditPhase.PHASE_3_EXPLANATIONS && unappliedExplanations.isNotEmpty()) {
-                    Card(
-                        shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.teal.copy(alpha = 0.12f)),
-                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentHeight()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = colors.teal,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        text = "${unappliedExplanations.size} Detailed Explanations Ready",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Attaches step-by-step derivations & key ideas",
-                                        fontSize = 10.sp,
-                                        color = colors.teal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Button(
-                                onClick = { applyBatchExplanations() },
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = colors.teal,
-                                    contentColor = Color.White
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.testTag("apply_all_explanations_button")
-                            ) {
-                                Text("Apply All", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-            }
-
-                // Filter Category Pills
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    CategoryPill(
-                        label = "All (${reports.size})",
-                        isSelected = activeTab == "ALL",
-                        onClick = { activeTab = "ALL" },
-                        colors = colors
-                    )
-                    CategoryPill(
-                        label = "Keys (${metrics.wrongKeysCount})",
-                        isSelected = activeTab == "WRONG_KEYS",
-                        onClick = { activeTab = "WRONG_KEYS" },
-                        colors = colors
-                    )
-                    CategoryPill(
-                        label = "Flawed (${metrics.flawedQuestionsCount + metrics.missingOptionsCount})",
-                        isSelected = activeTab == "FLAWED",
-                        onClick = { activeTab = "FLAWED" },
-                        colors = colors
-                    )
-                    CategoryPill(
-                        label = "Sealed (${metrics.verifiedCount})",
-                        isSelected = activeTab == "SEALED",
-                        onClick = { activeTab = "SEALED" },
-                        colors = colors
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Scrollable List of Audit Report Items
+                // Scrollable Container for Phase Header, Tools, Metrics & Questions
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // 1. Jumpable 3-Phase Stepper Header
+                    item(key = "phase_stepper") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            PhaseStepButton(
+                                stepNum = 1,
+                                label = "Q&A Check",
+                                badgeCount = metrics.wrongKeysCount + metrics.flawedQuestionsCount,
+                                badgeColor = if (metrics.wrongKeysCount > 0) colors.red else colors.teal,
+                                isActive = currentPhase == AuditPhase.PHASE_1_KEYS,
+                                onClick = { currentPhase = AuditPhase.PHASE_1_KEYS },
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            PhaseStepButton(
+                                stepNum = 2,
+                                label = "Replacements",
+                                badgeCount = metrics.flawedQuestionsCount + metrics.missingOptionsCount,
+                                badgeColor = Color(0xFFEA580C),
+                                isActive = currentPhase == AuditPhase.PHASE_2_REPLACEMENTS,
+                                onClick = { currentPhase = AuditPhase.PHASE_2_REPLACEMENTS },
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            PhaseStepButton(
+                                stepNum = 3,
+                                label = "Explanations",
+                                badgeCount = unappliedExplanations.size,
+                                badgeColor = colors.teal,
+                                isActive = currentPhase == AuditPhase.PHASE_3_EXPLANATIONS,
+                                onClick = { currentPhase = AuditPhase.PHASE_3_EXPLANATIONS },
+                                colors = colors,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // 2. KPI Summary Metrics Cards
+                    item(key = "kpi_cards") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            KpiCard(
+                                title = "Wrong Keys",
+                                count = metrics.wrongKeysCount,
+                                color = colors.red,
+                                modifier = Modifier.weight(1f)
+                            )
+                            KpiCard(
+                                title = "Flawed",
+                                count = metrics.flawedQuestionsCount + metrics.missingOptionsCount,
+                                color = Color(0xFFEA580C),
+                                modifier = Modifier.weight(1f)
+                            )
+                            KpiCard(
+                                title = "Verified / Sealed",
+                                count = metrics.verifiedCount,
+                                color = colors.teal,
+                                modifier = Modifier.weight(1f)
+                            )
+                            KpiCard(
+                                title = "Neutralized",
+                                count = metrics.neutralizedCount,
+                                color = Color(0xFF6B7280),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // 3. Context-Aware Phase Action Bar & Quick Tools
+                    item(key = "phase_tools_card") {
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant),
+                            border = BorderStroke(0.8.dp, colors.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = colors.teal.copy(alpha = 0.15f),
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = when (currentPhase) {
+                                                        AuditPhase.PHASE_1_KEYS -> Icons.Default.FactCheck
+                                                        AuditPhase.PHASE_2_REPLACEMENTS -> Icons.Default.AutoAwesome
+                                                        AuditPhase.PHASE_3_EXPLANATIONS -> Icons.Default.Psychology
+                                                    },
+                                                    contentDescription = null,
+                                                    tint = colors.teal,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column {
+                                            Text(
+                                                text = currentPhase.title,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.inkBold
+                                            )
+                                            Text(
+                                                text = when (currentPhase) {
+                                                    AuditPhase.PHASE_1_KEYS -> "Stem integrity check & answer key fact-checking"
+                                                    AuditPhase.PHASE_2_REPLACEMENTS -> "$flawedCount flawed question${if (flawedCount == 1) "" else "s"} requiring replacement"
+                                                    AuditPhase.PHASE_3_EXPLANATIONS -> "${unappliedExplanations.size} step-by-step derivations pending attach"
+                                                },
+                                                fontSize = 10.sp,
+                                                color = colors.inkMuted
+                                            )
+                                        }
+                                    }
+
+                                    // Quick Toggle for LLM JSON Paste box
+                                    IconButton(
+                                        onClick = { isInputExpanded = !isInputExpanded },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isInputExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Toggle JSON input",
+                                            tint = colors.muted
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Phase Action Buttons Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    // 1. Copy Phase Prompt Button
+                                    OutlinedButton(
+                                        onClick = { copyCurrentPhasePrompt() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.weight(1f).testTag("copy_phase_prompt_button")
+                                    ) {
+                                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Copy Prompt", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    }
+
+                                    // 2. Phase-Specific Auto Action Button
+                                    when (currentPhase) {
+                                        AuditPhase.PHASE_1_KEYS -> {
+                                            Button(
+                                                onClick = { parseInput() },
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = colors.primaryButtonBg,
+                                                    contentColor = colors.primaryButtonText
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.weight(1f).testTag("run_phase1_scan_button")
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.primaryButtonText)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Scan Stem/Keys", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText, maxLines = 1)
+                                            }
+                                        }
+                                        AuditPhase.PHASE_2_REPLACEMENTS -> {
+                                            Button(
+                                                onClick = { autoSynthesizeReplacements() },
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = colors.teal,
+                                                    contentColor = Color.White
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.weight(1f).testTag("synthesize_replacements_button")
+                                            ) {
+                                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Auto-Synthesize", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+                                            }
+                                        }
+                                        AuditPhase.PHASE_3_EXPLANATIONS -> {
+                                            Button(
+                                                onClick = { autoGenerateExplanations() },
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = colors.teal,
+                                                    contentColor = Color.White
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.weight(1f).testTag("auto_generate_explanations_button")
+                                            ) {
+                                                Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Auto-Explain", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+                                            }
+                                        }
+                                    }
+
+                                    // 3. Step 3 Certification Button
+                                    if (currentPhase == AuditPhase.PHASE_3_EXPLANATIONS) {
+                                        OutlinedButton(
+                                            onClick = { showCertificationDialog = true },
+                                            shape = RoundedCornerShape(6.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            modifier = Modifier.weight(1f).testTag("certify_paper_button")
+                                        ) {
+                                            Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.teal)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Certify Paper", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        }
+                                    }
+                                }
+
+                                // Collapsible LLM Input Box
+                                AnimatedVisibility(visible = isInputExpanded) {
+                                    Column {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        HorizontalDivider(color = colors.border, thickness = 0.6.dp)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Paste JSON response from ChatGPT/Gemini for ${currentPhase.shortTitle}:",
+                                                fontSize = 10.5.sp,
+                                                color = colors.inkMuted
+                                            )
+                                            if (feedbackInput.isNotBlank()) {
+                                                TextButton(
+                                                    onClick = { feedbackInput = "" },
+                                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                                    modifier = Modifier.height(24.dp)
+                                                ) {
+                                                    Text("Clear", fontSize = 10.sp, color = colors.inkMuted)
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        OutlinedTextField(
+                                            value = feedbackInput,
+                                            onValueChange = { feedbackInput = it },
+                                            placeholder = {
+                                                Text(
+                                                    text = "Paste [{\"qNum\": ..., ...}]",
+                                                    fontSize = 11.sp,
+                                                    color = colors.muted
+                                                )
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 60.dp, max = 110.dp)
+                                                .testTag("audit_feedback_text_field"),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    val clip = clipboard.primaryClip
+                                                    if (clip != null && clip.itemCount > 0) {
+                                                        feedbackInput = clip.getItemAt(0).text?.toString() ?: ""
+                                                        parseInput()
+                                                    } else {
+                                                        Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(6.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Paste & Parse", fontSize = 11.sp)
+                                            }
+
+                                            Button(
+                                                onClick = { parseInput() },
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = colors.primaryButtonBg,
+                                                    contentColor = colors.primaryButtonText
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp), tint = colors.primaryButtonText)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Analyze", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. Batch Action Banner for Step 1 Answer Keys
+                    if (unresolvedWrongKeys.isNotEmpty()) {
+                        item(key = "batch_keys_banner") {
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.teal.copy(alpha = 0.12f)),
+                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column {
+                                            Text(
+                                                text = "${unresolvedWrongKeys.size} Answer Key Fixes Available",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.inkBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Updates keys & attaches rechecked explanations",
+                                                fontSize = 10.sp,
+                                                color = colors.teal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = { applyBatchKeyFixes() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.teal,
+                                            contentColor = Color.White
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.testTag("fix_all_keys_button")
+                                    ) {
+                                        Text("Fix All Keys", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. Batch Action Banner for Step 2 Replacements
+                    if (readyReplacements.isNotEmpty()) {
+                        item(key = "batch_replacements_banner") {
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFEA580C).copy(alpha = 0.12f)),
+                                border = BorderStroke(1.dp, Color(0xFFEA580C).copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color(0xFFEA580C),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column {
+                                            Text(
+                                                text = "${readyReplacements.size} Question Replacements Ready",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.inkBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Replaces flawed MCQs while preserving total numbering",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFFEA580C),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = { applyBatchReplacements() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFEA580C),
+                                            contentColor = Color.White
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.testTag("apply_all_replacements_button")
+                                    ) {
+                                        Text("Replace All", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 6. Batch Action Banner for Step 3 Explanations
+                    if (currentPhase == AuditPhase.PHASE_3_EXPLANATIONS && unappliedExplanations.isNotEmpty()) {
+                        item(key = "batch_explanations_banner") {
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.teal.copy(alpha = 0.12f)),
+                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = colors.teal,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column {
+                                            Text(
+                                                text = "${unappliedExplanations.size} Detailed Explanations Ready",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.inkBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Attaches step-by-step derivations & key ideas",
+                                                fontSize = 10.sp,
+                                                color = colors.teal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = { applyBatchExplanations() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.teal,
+                                            contentColor = Color.White
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.testTag("apply_all_explanations_button")
+                                    ) {
+                                        Text("Apply All", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 7. Filter Category Pills
+                    item(key = "filter_category_pills") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CategoryPill(
+                                label = "All (${reports.size})",
+                                isSelected = activeTab == "ALL",
+                                onClick = { activeTab = "ALL" },
+                                colors = colors
+                            )
+                            CategoryPill(
+                                label = "Keys (${metrics.wrongKeysCount})",
+                                isSelected = activeTab == "WRONG_KEYS",
+                                onClick = { activeTab = "WRONG_KEYS" },
+                                colors = colors
+                            )
+                            CategoryPill(
+                                label = "Flawed (${metrics.flawedQuestionsCount + metrics.missingOptionsCount})",
+                                isSelected = activeTab == "FLAWED",
+                                onClick = { activeTab = "FLAWED" },
+                                colors = colors
+                            )
+                            CategoryPill(
+                                label = "Sealed (${metrics.verifiedCount})",
+                                isSelected = activeTab == "SEALED",
+                                onClick = { activeTab = "SEALED" },
+                                colors = colors
+                            )
+                        }
+                    }
+
+                    // 8. Questions List Items
                     if (filteredReports.isEmpty()) {
-                        item {
+                        item(key = "empty_state") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()

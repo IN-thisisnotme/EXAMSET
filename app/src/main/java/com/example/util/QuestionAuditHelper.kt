@@ -323,28 +323,25 @@ object QuestionAuditHelper {
         includeExplanations: Boolean = true
     ) {
         appendLine("Paper: ${paper.metadata.title} (Subject: ${paper.metadata.subject}, Set: ${paper.metadata.setNumber})")
-        appendLine("Total Questions in this Batch: ${questions.size}")
+        appendLine("Total Questions: ${questions.size}")
         appendLine("--------------------------------------------------")
-        appendLine()
 
         questions.forEach { q ->
-            appendLine("Q${q.num}. ${q.question}")
+            appendLine("Q${q.num}. ${q.question.trim()}")
             if (!q.diagramLabel.isNullOrBlank()) {
                 appendLine("   [Diagram / Figure Reference: ${q.diagramLabel}]")
             }
             if (!q.formula.isNullOrBlank()) {
                 appendLine("   [Formula: ${q.formula}]")
             }
-            appendLine("   A) ${q.options.a}")
-            appendLine("   B) ${q.options.b}")
-            appendLine("   C) ${q.options.c}")
-            appendLine("   D) ${q.options.d}")
-            if (q.options.e.isNotBlank()) {
-                appendLine("   E) ${q.options.e}")
+            val optLine = buildString {
+                append("   A) ${q.options.a.trim()} | B) ${q.options.b.trim()} | C) ${q.options.c.trim()} | D) ${q.options.d.trim()}")
+                if (q.options.e.isNotBlank()) append(" | E) ${q.options.e.trim()}")
             }
+            appendLine(optLine)
             appendLine("   Marked Key: ${q.correctAnswer ?: "[NOT ASSIGNED]"}")
             if (includeExplanations && !q.explanation.isNullOrBlank()) {
-                appendLine("   Existing Explanation: ${q.explanation}")
+                appendLine("   Existing Explanation: ${q.explanation.trim()}")
             }
             appendLine()
         }
@@ -643,32 +640,71 @@ object QuestionAuditHelper {
         if (jsonArray != null) {
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.optJSONObject(i) ?: continue
-                val qNum = obj.optInt("qNum", obj.optInt("num", obj.optInt("questionNumber", -1)))
+                val qNum = obj.optInt("qNum", obj.optInt("q", obj.optInt("num", obj.optInt("questionNumber", -1))))
                 if (qNum <= 0) continue
 
                 val originalQ = qMap[qNum]
                 val statusStr = obj.optString("status", "").uppercase()
-                val currentKey = obj.optString("currentKey", originalQ?.correctAnswer ?: "").ifBlank { originalQ?.correctAnswer }
-                val suggestedKey = obj.optString("suggestedKey", obj.optString("correctedKey", obj.optString("correctKey", ""))).ifBlank { null }?.uppercase()
-                val flawReason = obj.optString("flawReason", obj.optString("flaw", obj.optString("reason", ""))).ifBlank { null }
-                val recheckedExplanation = obj.optString("explanation").ifBlank {
-                    obj.optString("recheckedExplanation").ifBlank {
-                        obj.optString("detailedExplanation").ifBlank {
-                            obj.optString("solution").ifBlank { null }
+                val currentKey = (
+                    obj.optString("currentKey").ifBlank {
+                        obj.optString("cur").ifBlank {
+                            obj.optString("markedKey").ifBlank {
+                                obj.optString("current", "")
+                            }
                         }
                     }
-                }
+                ).trim().uppercase().ifBlank { originalQ?.correctAnswer }
 
-                // Flexible replacement question extraction (supports nested 'replacementQuestion' or top-level 'question')
+                val suggestedKey = (
+                    obj.optString("suggestedKey").ifBlank {
+                        obj.optString("key").ifBlank {
+                            obj.optString("correctKey").ifBlank {
+                                obj.optString("correctedKey").ifBlank {
+                                    obj.optString("suggested").ifBlank {
+                                        obj.optString("answer").ifBlank {
+                                            obj.optString("correctAnswer", "")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ).trim().uppercase().ifBlank { null }
+
+                val flawReason = (
+                    obj.optString("flawReason").ifBlank {
+                        obj.optString("flaw").ifBlank {
+                            obj.optString("reason").ifBlank {
+                                obj.optString("issue").ifBlank {
+                                    obj.optString("defect", "")
+                                }
+                            }
+                        }
+                    }
+                ).trim().ifBlank { null }
+
+                val recheckedExplanation = (
+                    obj.optString("explanation").ifBlank {
+                        obj.optString("exp").ifBlank {
+                            obj.optString("recheckedExplanation").ifBlank {
+                                obj.optString("detailedExplanation").ifBlank {
+                                    obj.optString("solution", "")
+                                }
+                            }
+                        }
+                    }
+                ).trim().ifBlank { null }
+
+                // Flexible replacement question extraction (supports nested 'replacementQuestion', 'replacement', or top-level fields)
                 val replacementObj = obj.optJSONObject("replacementQuestion")
                     ?: obj.optJSONObject("replacement")
                     ?: obj.optJSONObject("newQuestion")
-                    ?: if (obj.has("question") && obj.has("options")) obj else null
+                    ?: if ((obj.has("question") || obj.has("stem")) && (obj.has("options") || obj.has("opts"))) obj else null
 
                 val replacementQ = if (replacementObj != null) {
-                    val repStem = replacementObj.optString("question", replacementObj.optString("stem", ""))
-                    val repOptionsObj = replacementObj.optJSONObject("options")
-                    val repOptionsArray = replacementObj.optJSONArray("options")
+                    val repStem = replacementObj.optString("question", replacementObj.optString("stem", replacementObj.optString("q", "")))
+                    val repOptionsObj = replacementObj.optJSONObject("options") ?: replacementObj.optJSONObject("opts")
+                    val repOptionsArray = replacementObj.optJSONArray("options") ?: replacementObj.optJSONArray("opts")
                     val repOptions = when {
                         repOptionsObj != null -> QuestionOptions(
                             a = repOptionsObj.optString("a", ""),
@@ -686,12 +722,28 @@ object QuestionAuditHelper {
                         )
                         else -> QuestionOptions()
                     }
-                    val repKey = replacementObj.optString("correctAnswer", replacementObj.optString("answer", replacementObj.optString("key", ""))).uppercase().ifBlank { null }
-                    val repExp = replacementObj.optString("explanation", replacementObj.optString("recheckedExplanation", "")).ifBlank { null }
+                    val repKey = (
+                        replacementObj.optString("correctAnswer").ifBlank {
+                            replacementObj.optString("answer").ifBlank {
+                                replacementObj.optString("key").ifBlank {
+                                    replacementObj.optString("correctKey", "")
+                                }
+                            }
+                        }
+                    ).trim().uppercase().ifBlank { null }
+
+                    val repExp = (
+                        replacementObj.optString("explanation").ifBlank {
+                            replacementObj.optString("exp").ifBlank {
+                                replacementObj.optString("recheckedExplanation", "")
+                            }
+                        }
+                    ).trim().ifBlank { null }
+
                     if (repStem.isNotBlank()) {
                         McqQuestion(
                             num = qNum,
-                            question = repStem,
+                            question = repStem.trim(),
                             options = repOptions,
                             correctAnswer = repKey,
                             explanation = repExp
@@ -759,19 +811,52 @@ object QuestionAuditHelper {
 
     private fun extractJsonArray(text: String): JSONArray? {
         val trimmed = text.trim()
-        val jsonPattern = Regex("""```(?:json)?\s*(\[\s*\{.*?\}\s*\])\s*```""", RegexOption.DOT_MATCHES_ALL)
-        val match = jsonPattern.find(trimmed)
-        val candidate = match?.groupValues?.get(1) ?: trimmed
+        val codeFenceRegex = Regex("""```(?:json)?\s*([\s\S]*?)\s*```""", RegexOption.IGNORE_CASE)
+        val codeFenceMatch = codeFenceRegex.find(trimmed)
+        val content = codeFenceMatch?.groupValues?.get(1)?.trim() ?: trimmed
 
-        return try {
-            val startIdx = candidate.indexOf('[')
-            val endIdx = candidate.lastIndexOf(']')
-            if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
-                JSONArray(candidate.substring(startIdx, endIdx + 1))
-            } else null
-        } catch (_: Exception) {
-            null
+        // 1. Direct array bracket check [ ... ]
+        val startBracket = content.indexOf('[')
+        val endBracket = content.lastIndexOf(']')
+        if (startBracket != -1 && endBracket != -1 && endBracket > startBracket) {
+            val candidate = content.substring(startBracket, endBracket + 1)
+            try {
+                return JSONArray(candidate)
+            } catch (_: Exception) {}
         }
+
+        // 2. Wrapped in JSON object { "questions": [ ... ] } or { "audit": [ ... ] }
+        val startBrace = content.indexOf('{')
+        val endBrace = content.lastIndexOf('}')
+        if (startBrace != -1 && endBrace != -1 && endBrace > startBrace) {
+            val candidate = content.substring(startBrace, endBrace + 1)
+            try {
+                val jsonObject = JSONObject(candidate)
+                val arrayKeys = listOf("questions", "audit", "results", "reports", "items", "data", "list", "array")
+                for (k in arrayKeys) {
+                    val arr = jsonObject.optJSONArray(k)
+                    if (arr != null && arr.length() > 0) return arr
+                }
+                val keys = jsonObject.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val arr = jsonObject.optJSONArray(k)
+                    if (arr != null && arr.length() > 0) return arr
+                }
+                if (jsonObject.has("qNum") || jsonObject.has("q") || jsonObject.has("num")) {
+                    return JSONArray().put(jsonObject)
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Fallback: try wrapping as array if starts and ends with braces
+        if (content.startsWith("{") && content.endsWith("}")) {
+            try {
+                return JSONArray("[$content]")
+            } catch (_: Exception) {}
+        }
+
+        return null
     }
 
     private fun parseTextReport(

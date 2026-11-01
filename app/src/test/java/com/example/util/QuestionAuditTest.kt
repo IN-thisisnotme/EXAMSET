@@ -241,6 +241,50 @@ class QuestionAuditTest {
         val q3 = merged.find { it.qNum == 3 }!!
         assertNotNull("Q3 replacement should be attached", q3.replacementQuestion)
     }
+
+    @Test
+    fun testCompactJsonParsingWithShorthandKeys() {
+        val compactJson = """
+            [
+              {"q": 1, "status": "CLEAN", "key": "B"},
+              {"q": 2, "status": "WRONG_KEY", "cur": "B", "key": "A", "flaw": "Option B is incorrect."},
+              {"q": 3, "status": "FLAWED", "flaw": "Duplicate choices"}
+            ]
+        """.trimIndent()
+
+        val parsed = QuestionAuditHelper.parseAuditReport(compactJson, samplePaper)
+        assertEquals(4, parsed.size)
+
+        val q1 = parsed.find { it.qNum == 1 }!!
+        assertEquals(AuditIssueType.CLEAN, q1.status)
+        assertEquals("B", q1.currentKey)
+
+        val q2 = parsed.find { it.qNum == 2 }!!
+        assertEquals(AuditIssueType.WRONG_KEY, q2.status)
+        assertEquals("B", q2.currentKey)
+        assertEquals("A", q2.suggestedKey)
+
+        val q3 = parsed.find { it.qNum == 3 }!!
+        assertEquals(AuditIssueType.FLAWED_QUESTION, q3.status)
+        assertEquals("Duplicate choices", q3.flawReason)
+    }
+
+    @Test
+    fun testWrappedJsonObjectParsing() {
+        val wrappedJson = """
+            {
+              "questions": [
+                {"qNum": 2, "status": "WRONG_KEY", "currentKey": "B", "suggestedKey": "A", "explanation": "Speed is 3x10^8"}
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = QuestionAuditHelper.parseAuditReport(wrappedJson, samplePaper)
+        val q2 = parsed.find { it.qNum == 2 }!!
+        assertEquals(AuditIssueType.WRONG_KEY, q2.status)
+        assertEquals("A", q2.suggestedKey)
+        assertEquals("Speed is 3x10^8", q2.recheckedExplanation)
+    }
 }
 
 

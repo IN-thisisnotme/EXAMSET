@@ -113,17 +113,31 @@ fun BulkAuditPromptDialog(
         }
     }
 
-    val phase1Questions = remember(paper, auditScope, unverifiedQuestions, pendingQuestions) {
-        when (auditScope) {
-            "ALL" -> paper.questions
-            "PENDING" -> if (pendingQuestions.isNotEmpty()) pendingQuestions else paper.questions
-            else -> if (unverifiedQuestions.isNotEmpty()) unverifiedQuestions else paper.questions
+    val phaseTargetQuestions = remember(paper, auditScope, selectedPhase, unverifiedQuestions, pendingQuestions) {
+        when (selectedPhase) {
+            AuditPhase.PHASE_3_EXPLANATIONS -> {
+                when (auditScope) {
+                    "ALL" -> paper.questions
+                    "PENDING" -> {
+                        val missingExp = paper.questions.filter { it.explanation.isNullOrBlank() }
+                        if (missingExp.isNotEmpty()) missingExp else paper.questions
+                    }
+                    else -> if (unverifiedQuestions.isNotEmpty()) unverifiedQuestions else paper.questions
+                }
+            }
+            else -> {
+                when (auditScope) {
+                    "ALL" -> paper.questions
+                    "PENDING" -> if (pendingQuestions.isNotEmpty()) pendingQuestions else paper.questions
+                    else -> if (unverifiedQuestions.isNotEmpty()) unverifiedQuestions else paper.questions
+                }
+            }
         }
     }
 
-    val generatedPrompt = remember(paper, selectedPhase, phase1Questions, flawedReports, keyCorrectionReports) {
+    val generatedPrompt = remember(paper, selectedPhase, phaseTargetQuestions, flawedReports, keyCorrectionReports) {
         when (selectedPhase) {
-            AuditPhase.PHASE_1_KEYS -> QuestionAuditHelper.generatePhase1KeyAndFlawAuditPrompt(paper, phase1Questions)
+            AuditPhase.PHASE_1_KEYS -> QuestionAuditHelper.generatePhase1KeyAndFlawAuditPrompt(paper, phaseTargetQuestions)
             AuditPhase.PHASE_2_REPLACEMENTS -> {
                 if (flawedReports.isNotEmpty()) {
                     QuestionAuditHelper.generatePhase2FlawedReplacementPrompt(paper, flawedReports)
@@ -135,7 +149,7 @@ fun BulkAuditPromptDialog(
                 }
             }
             AuditPhase.PHASE_3_EXPLANATIONS -> {
-                QuestionAuditHelper.generatePhase3ExplanationAuditPrompt(paper, heuristicReports)
+                QuestionAuditHelper.generatePhase3ExplanationAuditPrompt(paper, phaseTargetQuestions)
             }
         }
     }
@@ -305,7 +319,7 @@ fun BulkAuditPromptDialog(
                             )
                         }
 
-                        if (selectedPhase == AuditPhase.PHASE_1_KEYS) {
+                        if (selectedPhase == AuditPhase.PHASE_1_KEYS || selectedPhase == AuditPhase.PHASE_3_EXPLANATIONS) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -328,7 +342,17 @@ fun BulkAuditPromptDialog(
                                     onClick = { auditScope = "ALL" },
                                     colors = colors
                                 )
-                                if (pendingQuestions.isNotEmpty()) {
+                                if (selectedPhase == AuditPhase.PHASE_3_EXPLANATIONS) {
+                                    val missingExpCount = paper.questions.count { it.explanation.isNullOrBlank() }
+                                    if (missingExpCount > 0) {
+                                        ScopeChip(
+                                            label = "No Explanation ($missingExpCount)",
+                                            isSelected = auditScope == "PENDING",
+                                            onClick = { auditScope = "PENDING" },
+                                            colors = colors
+                                        )
+                                    }
+                                } else if (pendingQuestions.isNotEmpty()) {
                                     ScopeChip(
                                         label = "Draft Issues (${pendingQuestions.size})",
                                         isSelected = auditScope == "PENDING",
@@ -350,8 +374,8 @@ fun BulkAuditPromptDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${selectedPhase.shortTitle} Payload (${generatedPrompt.length} chars):",
-                        fontSize = 11.5.sp,
+                        text = "${selectedPhase.shortTitle} Payload (${generatedPrompt.length} chars • ~${generatedPrompt.length / 4} tokens):",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkBold
                     )
