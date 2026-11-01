@@ -35,6 +35,71 @@ export class McqParser {
       };
     }
 
+    const trimmed = rawText.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('```json')) {
+      try {
+        let cleanJson = trimmed;
+        if (cleanJson.startsWith('```')) {
+          cleanJson = cleanJson.substring(cleanJson.indexOf('\n') + 1);
+        }
+        if (cleanJson.endsWith('```')) {
+          cleanJson = cleanJson.substring(0, cleanJson.lastIndexOf('```')).trim();
+        }
+        const parsed = JSON.parse(cleanJson);
+        const questions: QuestionItem[] = [];
+        const rawArray = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.questionSets?.[0]?.questions || []);
+        
+        rawArray.forEach((item: any, idx: number) => {
+          const num = item.num || idx + 1;
+          const question = item.question || item.stem || item.text || '';
+          let opts: QuestionOptions = { a: '', b: '', c: '', d: '' };
+          if (Array.isArray(item.options)) {
+            opts = { a: item.options[0] || '', b: item.options[1] || '', c: item.options[2] || '', d: item.options[3] || '' };
+          } else if (item.options && typeof item.options === 'object') {
+            opts = {
+              a: item.options.a || item.options.A || '',
+              b: item.options.b || item.options.B || '',
+              c: item.options.c || item.options.C || '',
+              d: item.options.d || item.options.D || ''
+            };
+          }
+          const rawAns = item.correctAnswer || item.answer || item.ans || item.correctOption;
+          const ans = typeof rawAns === 'string' && /^[A-D]$/i.test(rawAns.trim()) ? rawAns.trim().toUpperCase() as CorrectOption : undefined;
+          const exp = item.explanation || item.detailedExplanation || item.solution || item.rationale;
+          questions.push({
+            id: `q-${num}`,
+            num,
+            question,
+            options: opts,
+            correctAnswer: ans,
+            explanation: exp
+          });
+        });
+
+        if (questions.length > 0) {
+          return {
+            paper: {
+              metadata: parsed.metadata || {
+                id: 'paper-json',
+                title: parsed.title || 'Imported Question Set',
+                subject: parsed.subject || 'General Studies',
+                topic: parsed.topic || '',
+                setNumber: parsed.setNumber || '01',
+                createdAt: Date.now()
+              },
+              questions
+            },
+            rawCount: questions.length,
+            hasAnswerKeys: questions.some(q => q.correctAnswer),
+            hasExplanations: questions.some(q => q.explanation),
+            warnings: []
+          };
+        }
+      } catch (e) {
+        // Fall back to standard text parser
+      }
+    }
+
     const metadata = this.extractMetadata(rawText);
     const { questionText, answerText, explanationText } = this.splitSections(rawText);
 

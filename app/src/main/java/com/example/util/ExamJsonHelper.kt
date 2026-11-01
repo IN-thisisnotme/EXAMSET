@@ -146,10 +146,38 @@ object ExamJsonHelper {
     }
 
     /**
-     * Parses a JSON string (single paper or extracted bundle) into a QuestionPaper.
+     * Strips Markdown code block delimiters (```json ... ```) if present.
+     */
+    fun cleanJsonString(raw: String): String {
+        var text = raw.trim()
+        if (text.startsWith("```")) {
+            text = text.substringAfter("\n")
+        }
+        if (text.endsWith("```")) {
+            text = text.substringBeforeLast("```").trim()
+        }
+        return text.trim()
+    }
+
+    /**
+     * Parses a JSON string (single paper, questions array, or extracted bundle) into a QuestionPaper.
      */
     fun fromJson(jsonStr: String): QuestionPaper {
-        val root = JSONObject(jsonStr)
+        val cleaned = cleanJsonString(jsonStr)
+        if (cleaned.startsWith("[")) {
+            val arr = JSONArray(cleaned)
+            if (arr.length() > 0) {
+                val first = arr.opt(0)
+                if (first is JSONObject && !first.has("questions") && (first.has("question") || first.has("stem") || first.has("options"))) {
+                    return parseFromQuestionsArray(arr)
+                } else if (first is JSONObject) {
+                    return fromJson(first.toString())
+                }
+            }
+            return parseFromQuestionsArray(arr)
+        }
+
+        val root = JSONObject(cleaned)
 
         // Polymorphic check: if bundle root is passed, extract first question set
         if (root.has("questionSets")) {
@@ -222,41 +250,7 @@ object ExamJsonHelper {
 
         for (i in 0 until qArray.length()) {
             val qObj = qArray.getJSONObject(i)
-            val num = qObj.optInt("num", i + 1)
-            val questionText = qObj.optString("question", "")
-
-            val optObj = qObj.optJSONObject("options")
-            val options = if (optObj != null) {
-                QuestionOptions(
-                    a = optObj.optString("a", ""),
-                    b = optObj.optString("b", ""),
-                    c = optObj.optString("c", ""),
-                    d = optObj.optString("d", "")
-                )
-            } else {
-                QuestionOptions()
-            }
-
-            val ans = if (qObj.isNull("correctAnswer")) null else qObj.optString("correctAnswer", null)
-            val exp = qObj.optString("explanation", "").ifBlank { null }
-            val qType = qObj.optString("questionType", "").ifBlank { null }
-            val diagramUrl = qObj.optString("diagramUrl", "").ifBlank { null }
-            val diagramLabel = qObj.optString("diagramLabel", "").ifBlank { null }
-            val formula = qObj.optString("formula", "").ifBlank { null }
-
-            questions.add(
-                McqQuestion(
-                    num = num,
-                    question = questionText,
-                    options = options,
-                    correctAnswer = ans,
-                    explanation = exp,
-                    questionType = qType,
-                    diagramUrl = diagramUrl,
-                    diagramLabel = diagramLabel,
-                    formula = formula
-                )
-            )
+            questions.add(parseQuestionObject(qObj, i + 1))
         }
 
         val keysCount = questions.count { it.correctAnswer != null }
@@ -272,12 +266,116 @@ object ExamJsonHelper {
     }
 
     /**
+     * Parses a single question from a JSONObject, supporting flexible field aliases.
+     */
+    fun parseQuestionObject(qObj: JSONObject, defaultNum: Int): McqQuestion {
+        val num = qObj.optInt("num", qObj.optInt("id", defaultNum))
+        val questionText = qObj.optString("question", qObj.optString("stem", qObj.optString("text", "")))
+
+        // Flexible options: can be JSONObject or JSONArray
+        val options = if (qObj.has("options")) {
+            val optVal = qObj.get("options")
+            if (optVal is JSONObject) {
+                QuestionOptions(
+                    a = optVal.optString("a", optVal.optString("A", "")),
+                    b = optVal.optString("b", optVal.optString("B", "")),
+                    c = optVal.optString("c", optVal.optString("C", "")),
+                    d = optVal.optString("d", optVal.optString("D", ""))
+                )
+            } else if (optVal is JSONArray) {
+                QuestionOptions(
+                    a = optVal.optString(0, ""),
+                    b = optVal.optString(1, ""),
+                    c = optVal.optString(2, ""),
+                    d = optVal.optString(3, "")
+                )
+            } else {
+                QuestionOptions()
+            }
+        } else {
+            // Check top-level option fields
+            QuestionOptions(
+                a = qObj.optString("a", qObj.optString("optionA", qObj.optString("A", ""))),
+                b = qObj.optString("b", qObj.optString("optionB", qObj.optString("B", ""))),
+                c = qObj.optString("c", qObj.optString("optionC", qObj.optString("C", ""))),
+                d = qObj.optString("d", qObj.optString("optionD", qObj.optString("D", "")))
+            )
+        }
+
+        val rawAns = if (qObj.isNull("correctAnswer")) {
+            qObj.optString("answer", qObj.optString("ans", qObj.optString("correctOption", "")))
+        } else {
+            qObj.optString("correctAnswer", "")
+        }
+        val ans = rawAns.trim().uppercase().takeIf { it in listOf("A", "B", "C", "D", "1", "2", "3", "4") }?.let {
+            when (it) {
+                "1" -> "A"; "2" -> "B"; "3" -> "C"; "4" -> "D"; else -> it
+            }
+        }
+
+        val exp = qObj.optString("explanation", qObj.optString("detailedExplanation", qObj.optString("solution", qObj.optString("rationale", qObj.optString("exp", ""))))).ifBlank { null }
+        val qType = qObj.optString("questionType", qObj.optString("type", "")).ifBlank { null }
+        val diagramUrl = qObj.optString("diagramUrl", "").ifBlank { null }
+        val diagramLabel = qObj.optString("diagramLabel", "").ifBlank { null }
+        val formula = qObj.optString("formula", "").ifBlank { null }
+
+        return McqQuestion(
+            num = num,
+            question = questionText,
+            options = options,
+            correctAnswer = ans,
+            explanation = exp,
+            questionType = qType,
+            diagramUrl = diagramUrl,
+            diagramLabel = diagramLabel,
+            formula = formula
+        )
+    }
+
+    /**
+     * Parses a QuestionPaper directly from a JSON array of question objects.
+     */
+    fun parseFromQuestionsArray(arr: JSONArray, title: String = "Imported Question Set"): QuestionPaper {
+        val questions = mutableListOf<McqQuestion>()
+        for (i in 0 until arr.length()) {
+            val qObj = arr.optJSONObject(i) ?: continue
+            questions.add(parseQuestionObject(qObj, i + 1))
+        }
+
+        val keysCount = questions.count { it.correctAnswer != null }
+        val expCount = questions.count { !it.explanation.isNullOrBlank() }
+
+        val metadata = PaperMetadata(
+            title = title,
+            subject = "General Studies",
+            topic = "",
+            setNumber = "01",
+            rollNumber = ExamNumberGenerator.generateRollNumber(),
+            bookletNumber = ExamNumberGenerator.generateBookletNumber()
+        )
+
+        return QuestionPaper(
+            metadata = metadata,
+            questions = questions,
+            quickAnswersCount = keysCount,
+            explanationsCount = expCount,
+            createdAt = metadata.createdAt
+        )
+    }
+
+    /**
      * Polymorphic importer that parses multi-set bundles, arrays, or single papers into a list of QuestionPapers.
      */
     fun bundleFromJson(jsonStr: String): List<QuestionPaper> {
-        val trimmed = jsonStr.trim()
-        if (trimmed.startsWith("[")) {
-            val arr = JSONArray(trimmed)
+        val cleaned = cleanJsonString(jsonStr)
+        if (cleaned.startsWith("[")) {
+            val arr = JSONArray(cleaned)
+            if (arr.length() > 0) {
+                val first = arr.opt(0)
+                if (first is JSONObject && !first.has("questions") && (first.has("question") || first.has("stem") || first.has("options"))) {
+                    return listOf(parseFromQuestionsArray(arr))
+                }
+            }
             val list = mutableListOf<QuestionPaper>()
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
@@ -286,7 +384,7 @@ object ExamJsonHelper {
             return list
         }
 
-        val root = JSONObject(trimmed)
+        val root = JSONObject(cleaned)
         if (root.has("questionSets")) {
             val arr = root.getJSONArray("questionSets")
             val list = mutableListOf<QuestionPaper>()
@@ -306,7 +404,51 @@ object ExamJsonHelper {
             return list
         }
 
-        return listOf(fromJson(trimmed))
+        return listOf(fromJson(cleaned))
+    }
+
+    /**
+     * Generates a sample JSON string for testing or user inspection.
+     */
+    fun getSampleQuestionsJson(): String {
+        return """[
+  {
+    "num": 1,
+    "question": "Which layer of Earth's atmosphere contains the highest concentration of ozone (${'$'}\\text{O}_3${'$'}) and absorbs harmful UV-B radiation?",
+    "options": {
+      "a": "Troposphere",
+      "b": "Stratosphere",
+      "c": "Mesosphere",
+      "d": "Thermosphere"
+    },
+    "correctAnswer": "B",
+    "explanation": "The ozone layer is primarily situated in the lower portion of the stratosphere, approximately 15 to 35 km above Earth. It absorbs 97-99% of the Sun's medium-frequency ultraviolet radiation."
+  },
+  {
+    "num": 2,
+    "question": "What is the equivalent electrical resistance when three resistors of 6 ${'$'}\\Omega${'$'}, 3 ${'$'}\\Omega${'$'}, and 2 ${'$'}\\Omega${'$'} are connected in parallel?",
+    "options": {
+      "a": "1.0 Ω",
+      "b": "2.0 Ω",
+      "c": "11.0 Ω",
+      "d": "0.5 Ω"
+    },
+    "correctAnswer": "A",
+    "explanation": "Using the parallel resistance formula 1/R_eq = 1/6 + 1/3 + 1/2 = 1/6 + 2/6 + 3/6 = 6/6 = 1.0 Ω. Therefore, R_eq = 1.0 Ω."
+  },
+  {
+    "num": 3,
+    "question": "Which enzyme is responsible for catalyzing the synthesis of RNA from a DNA template during transcription?",
+    "options": {
+      "a": "DNA Polymerase I",
+      "b": "DNA Ligase",
+      "c": "RNA Polymerase",
+      "d": "Reverse Transcriptase"
+    },
+    "correctAnswer": "C",
+    "explanation": "RNA Polymerase binds to the promoter sequence and synthesizes a complementary RNA strand from the DNA template in the 5' to 3' direction."
+  }
+]""".trimIndent()
     }
 
     data class OmrExportPayload(

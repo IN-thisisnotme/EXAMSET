@@ -29,6 +29,8 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
   const [explanationChoice, setExplanationChoice] = useState<string>('Same as Question');
   const [customExplanationLang, setCustomExplanationLang] = useState<string>('');
   const [includeExplanations, setIncludeExplanations] = useState<boolean>(true);
+  const [targetFormat, setTargetFormat] = useState<'JSON' | 'Text' | 'Table'>('JSON');
+  const [promptDensity, setPromptDensity] = useState<'Concise' | 'Comprehensive'>('Concise');
   const [copied, setCopied] = useState<boolean>(false);
 
   const effectiveExplanationLang = useMemo(() => {
@@ -52,88 +54,110 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
   // Dynamically constructed AI prompt
   const generatedPrompt = useMemo(() => {
     const qLang = questionLanguage.trim() || 'English';
+
+    if (targetFormat === 'JSON') {
+      if (promptDensity === 'Concise') {
+        return `Generate exactly ${questionCount} multiple-choice questions (MCQs) for ${examType} at ${difficulty} standard on ${subject}${topic ? ` (${topic})` : ''} in ${qLang}.
+Output ONLY a strict, valid JSON array of objects without markdown fences, comments, or extra text. Format:
+[
+  {
+    "num": 1,
+    "question": "Question text...",
+    "options": {
+      "a": "Option A text",
+      "b": "Option B text",
+      "c": "Option C text",
+      "d": "Option D text"
+    },
+    "correctAnswer": "A",
+    "explanation": "Concise reasoning in ${effectiveExplanationLang}..."
+  }
+]
+Requirements:
+1. Exactly 4 mutually exclusive options (A, B, C, D).
+2. "correctAnswer" must be a single uppercase letter "A", "B", "C", or "D".
+3. Valid JSON only. Do not truncate.`;
+      } else {
+        return `Generate exactly ${questionCount} multiple-choice questions (MCQs) at ${difficulty} difficulty standard on ${subject}${topic ? ` (Focus Topics: ${topic})` : ''}, tailored specifically for ${examType} preparation in ${qLang}.
+Output MUST be an unbroken, valid JSON array of objects without markdown fences or extraneous text:
+[
+  {
+    "num": 1,
+    "question": "Question text...",
+    "options": {
+      "a": "Option A text",
+      "b": "Option B text",
+      "c": "Option C text",
+      "d": "Option D text"
+    },
+    "correctAnswer": "A",
+    "explanation": "Core principle and breakdown of why A is right and distractors are wrong in ${effectiveExplanationLang}."
+  }
+]
+Strict Rules:
+- Universal Options: Exactly four distinct options: a, b, c, and d.
+- Balanced Key Distribution: Distribute answers evenly across A, B, C, and D.
+- Return raw JSON only so it parses immediately without preprocessing.`;
+      }
+    }
+
+    if (targetFormat === 'Table') {
+      return `Generate exactly ${questionCount} multiple-choice questions (MCQs) on ${subject}${topic ? ` (${topic})` : ''} for ${examType} at ${difficulty} standard in ${qLang}.
+Output MUST be formatted as a Markdown Pipe Table with these exact column headers:
+| Question | Option A | Option B | Option C | Option D | Answer | Explanation |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Sample question text? | Choice A | Choice B | Choice C | Choice D | A | Detailed rationale in ${effectiveExplanationLang} |
+
+Ensure each question is on its own row, with Answer being a single letter (A, B, C, or D).`;
+    }
+
+    // Default: Standard Text / Aiken
+    if (promptDensity === 'Concise') {
+      return `Generate ${questionCount} MCQs for ${examType} on ${subject}${topic ? ` (${topic})` : ''} in ${qLang}.
+Output format:
+Q1. Question text
+(A) Option A
+(B) Option B
+(C) Option C
+(D) Option D
+ANSWER: A
+EXPLANATION: Solution in ${effectiveExplanationLang}
+
+(Repeat for all ${questionCount} questions sequentially)`;
+    }
+
     return `Generate exactly ${questionCount} multiple-choice questions (MCQs) at ${difficulty} difficulty standard on ${subject}${topic ? ` (Focus Topics: ${topic})` : ''}, tailored specifically for ${examType} preparation, based on the latest authoritative syllabus and examination pattern.
 
 Language & Notation Specification:
 - Questions and options must be written entirely in ${qLang}.
 - Explanations must be written in ${effectiveExplanationLang}.
-- Universal Option Convention: Label options strictly as (A), (B), (C), and (D) across all languages to ensure uniform structural formatting.
-- Plain Text Anti-List & Zero-Indentation: Every single line must start flush-left at the margin (Column 0). Never use bullet points (•, *), list hyphens (-), blockquotes (>), or markdown table alignments for options. Never use markdown numbered lists like '1. ' so copying into Microsoft Word or Google Docs never triggers auto-lists.
-
-Execution Directives:
-1. Start directly with Phase 1 without any preamble, personalization, greetings, corrections, or introductory remarks.
-2. Output all phases in strict sequential order: Phase 1 (Questions) -> Phase 2 (Answer Key) -> Phase 3 (Detailed Explanations).
-3. After completing Phase 3, do NOT ask follow-up questions, request additional information, suggest further tasks, or add any closing remarks.
-4. No Markdown Code Fences: Do not wrap the output in ``` blocks.
+- Universal Option Convention: Label options strictly as (A), (B), (C), and (D) across all languages.
+- Plain Text Anti-List & Zero-Indentation: Every single line must start flush-left at the margin.
 
 ## Phase 1: Questions
 1. Provide Questions 1 through ${questionCount} first, labeled sequentially as Q1., Q2. through Q${questionCount}.
-2. Every question must have exactly four options: (A), (B), (C), and (D), each on its own fresh line flush-left with exactly one space: '(A) [Option text]'.
-3. Present ALL questions first without revealing answers, hints, explanations, or clues that make the correct option easy to guess.
-4. Option Quality & Anti-Bias Constraints:
-   - Ensure all four options are distinct, academically plausible, and mutually exclusive.
-   - Keep all four options comparable in length and grammatical structure to eliminate length bias (the correct answer must NOT be noticeably longer or more detailed than distractors).
-   - Strictly avoid 'All of the above', 'None of the above', repeated options, or obviously absurd distractors.
-   - For numerical values, years, or quantities, arrange options in strictly ascending or descending numerical order.
-   - Maintain a balanced distribution of correct answers across (A), (B), (C), and (D) without predictable patterns.
-5. Mandatory Format Diversity (Authentic Competitive Exam Blueprint):
-   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these ${questionCount} questions across authentic examination formats:
-   - Multi-Statement Questions (e.g., 'Consider the following statements: 1. [...] 2. [...] Which of the statements given above is/are correct? (A) 1 and 2 only (B) 2 and 3 only (C) 1 and 3 only (D) 1, 2 and 3')
-   - Assertion (A) & Reason (R) Questions (e.g., 'Assertion (A): [...] \nReason (R): [...] \n(A) Both A and R are true, and R is the correct explanation of A...')
-   - Match-the-Following (e.g., 'Match List-I with List-II: \nList-I \n1. [...] \n2. [...] \nList-II \nP. [...] \nQ. [...] \n(A) 1-P, 2-Q, 3-S, 4-R...')
-   - Chronological / Process Sequence Questions (e.g., 'Arrange the following stages/events in the correct order: 1. [...] 2. [...] (A) 1-2-3-4 (B) 2-1-4-3...')
-   - Quantitative / Numerical Calculation Questions
-   - Direct Conceptual & Scenario Analysis Questions
-   STRICT PROHIBITION ON CATEGORY LABELS: Do NOT print category headers, type prefixes, or bracketed tags (such as [Assertion-Reason], [Match the Following], [Statement-Based], or 'Type: ...') anywhere in the questions. Present every question naturally as an authentic examination item starting immediately with 'Q[N]. [Question text]'.
+2. Every question must have exactly four options: (A), (B), (C), and (D).
 
 ## Phase 2: Answer Key
-Immediately after Question ${questionCount}, output the answer key in this exact format:
-
+Immediately after Question ${questionCount}, output the answer key:
 ## Answer Key
 Q1: (C)
 Q2: (A)
-Q3: (D)
 ...
-Q${questionCount}: (B)
-
-Do NOT provide any explanations, comments, or notes in Phase 2.
 
 ${includeExplanations ? `## Phase 3: Detailed Explanations
-Immediately after the Answer Key, create:
-
 ## Detailed Explanation
-
-Requirements for Phase 3:
-- Explanations must be written in ${effectiveExplanationLang}.
-- Do NOT repeat the correct answer as a separate standalone line (e.g., do NOT write 'Correct Answer: (B)'), since it is already provided in Phase 2.
-- Do NOT use standalone markdown horizontal divider lines (---) anywhere in the explanations.
-- Synchronization: Every question's explanation must strictly match the exact correct option letter specified in Phase 2.
-- Keep all explanations concise, precise, analytical, non-repetitive, and easy to remember.
-- Avoid unnecessary filler background information; include only what is necessary to understand the reasoning and distinguish the options.
-- All lines must be flush-left with zero indentation and NO bullet points.
-
-For each question (numbered sequentially Q1 to Q${questionCount}), follow this exact structure:
-
+For each question Q1 to Q${questionCount}:
 Q1.
-Core Concept & Principle: [Concise, conceptually complete explanation of the underlying governing concept, theory, formula, or law]
-Option (A) [Correct/Incorrect]: [Brief, non-repetitive explanation stating why this option is correct or incorrect, and the key distinction]
-Option (B) [Correct/Incorrect]: [Why this option is correct or incorrect]
-Option (C) [Correct/Incorrect]: [Why this option is correct or incorrect]
-Option (D) [Correct/Incorrect]: [Why this option is correct or incorrect]
-Memory Anchor: [Highlight the essential fact, formula, distinction, or rule needed to remember the answer]
-
-Explanation Rules:
-- Explain ALL FOUR options individually. Never skip an option.
-- For every incorrect option, explain WHY it is not correct and what concept it actually represents.
-- Never simply write 'Incorrect' or 'This is false'. Every option must have a meaningful pedagogical explanation.
-
-` : ''}## Phase 4: Complete Unbroken Generation
-1. Generate all ${questionCount} questions sequentially from 1 to ${questionCount} in one continuous, complete response.
-2. Do NOT stop early, summarize, omit numbers, or split into artificial batches.
-3. Strictly deliver all ${questionCount} questions first in Phase 1, then the full Answer Key in Phase 2${includeExplanations ? `, then the Detailed Explanations for all ${questionCount} questions in Phase 3` : ''}.
-
+Core Concept & Principle: [Explanation]
+Option (A) [Correct/Incorrect]: [Reasoning]
+Option (B) [Correct/Incorrect]: [Reasoning]
+Option (C) [Correct/Incorrect]: [Reasoning]
+Option (D) [Correct/Incorrect]: [Reasoning]
+Memory Anchor: [Key mnemonic/rule]
+` : ''}
 Execute the instructions now, starting directly with Phase 1.`;
-  }, [examType, subject, topic, questionCount, difficulty, questionLanguage, effectiveExplanationLang, includeExplanations]);
+  }, [examType, subject, topic, questionCount, difficulty, questionLanguage, effectiveExplanationLang, includeExplanations, targetFormat, promptDensity]);
 
   const handleCopyPrompt = () => {
     navigator.clipboard.writeText(generatedPrompt);
@@ -215,6 +239,50 @@ Execute the instructions now, starting directly with Phase 1.`;
                   placeholder="e.g. Revolt of 1857, Socio-religious reform movements..."
                   className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
+              </div>
+
+              {/* Target Format & Density Selector */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-700 font-semibold">Target Output Format</label>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">{targetFormat}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['JSON', 'Text', 'Table'] as const).map((fmt) => (
+                    <button
+                      key={fmt}
+                      type="button"
+                      onClick={() => setTargetFormat(fmt)}
+                      className={`px-2 py-1.5 rounded-md font-semibold text-xs border transition ${
+                        targetFormat === fmt
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {fmt === 'JSON' ? '{ } JSON' : fmt === 'Table' ? '⊞ Table' : '¶ Text'}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                  <span className="text-slate-600 text-[11px] font-medium">Prompt Length:</span>
+                  <div className="flex gap-1">
+                    {(['Concise', 'Comprehensive'] as const).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setPromptDensity(d)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition ${
+                          promptDensity === d
+                            ? 'bg-slate-800 text-white'
+                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                        }`}
+                      >
+                        {d === 'Concise' ? 'Concise (Fast)' : 'Detailed'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

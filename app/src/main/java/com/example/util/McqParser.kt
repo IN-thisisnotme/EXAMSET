@@ -261,6 +261,27 @@ object McqParser {
             )
         }
 
+        // 1. Explicit / Auto JSON format detection
+        val isLikelyJson = cleanInput.startsWith("```json") ||
+                (cleanInput.startsWith("{") && cleanInput.endsWith("}")) ||
+                (cleanInput.startsWith("[") && cleanInput.endsWith("]"))
+        if (isLikelyJson) {
+            try {
+                val jsonPaper = ExamJsonHelper.fromJson(cleanInput)
+                if (jsonPaper.questions.isNotEmpty()) {
+                    return jsonPaper.copy(rawText = rawText)
+                }
+            } catch (_: Exception) {
+                // If JSON parsing fails, fall through to table or natural text parser
+            }
+        }
+
+        // 2. Markdown Table / CSV format detection
+        val tableParsed = parseTableOrCsv(cleanInput)
+        if (tableParsed != null && tableParsed.questions.isNotEmpty()) {
+            return tableParsed.copy(rawText = rawText)
+        }
+
         val metadata = extractMetadata(cleanInput)
         val (questionSection, answerSection, explanationSection) = findSections(cleanInput)
 
@@ -1796,5 +1817,203 @@ object McqParser {
         }
 
         return sb.toString().trim()
+    }
+
+    /**
+     * Explicitly parses JSON string into QuestionPaper.
+     */
+    fun parseFromJson(jsonText: String): QuestionPaper {
+        return ExamJsonHelper.fromJson(jsonText)
+    }
+
+    /**
+     * Parses Markdown Table or CSV/TSV formatted question sets.
+     * Activates only when the input contains an explicit table header and divider,
+     * or an unambiguous CSV/TSV header row.
+     */
+    fun parseTableOrCsv(text: String): QuestionPaper? {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.size < 2) return null
+
+        // 1. Markdown Table Check: Requires 5+ column pipe syntax with explicit header AND divider row
+        val hasDivider = lines.any { line ->
+            Regex("""^\|?[\s\-:|]{3,}\|[\s\-:|]+\|?$""").matches(line) && line.count { it == '|' } >= 4
+        }
+        val hasTableHeader = lines.take(5).any { line ->
+            val l = line.lowercase()
+            line.contains("|") && line.count { it == '|' } >= 4 &&
+                    (l.contains("question") || l.contains("q.")) &&
+                    (l.contains("option a") || l.contains("option 1") || l.contains("choice a") || (l.contains("option") && l.contains("ans")))
+        }
+
+        if (hasDivider && hasTableHeader) {
+            val pipeLines = lines.filter { it.contains("|") }
+            val questions = mutableListOf<McqQuestion>()
+            var qIndex = 1
+
+            for (line in pipeLines) {
+                // Skip markdown table dividers like | --- | :---: |
+                if (Regex("""^\|?[\s\-:|]+\|?$""").matches(line)) continue
+                
+                // Split cells by pipe
+                val rawCells = line.split("|").map { it.trim() }.filterIndexed { idx, _ ->
+                    !(idx == 0 && line.startsWith("|")) && !(idx == line.split("|").lastIndex && line.endsWith("|"))
+                }
+
+                if (rawCells.size < 5) continue
+
+                // Check if this is a header row
+                val firstCell = rawCells[0].lowercase()
+                if (firstCell in listOf("#", "no", "qno", "s.no", "sl.no", "question", "q", "sn", "item", "question statement")) {
+                    continue
+                }
+
+                var cIdx = 0
+                val qNum = if (rawCells[0].all { it.isDigit() }) {
+                    cIdx = 1
+                    rawCells[0].toIntOrNull() ?: qIndex
+                } else {
+                    qIndex
+                }
+
+                if (cIdx + 4 > rawCells.size) continue
+
+                val qStem = rawCells[cIdx]
+                val optA = rawCells.getOrNull(cIdx + 1) ?: ""
+                val optB = rawCells.getOrNull(cIdx + 2) ?: ""
+                val optC = rawCells.getOrNull(cIdx + 3) ?: ""
+                val optD = rawCells.getOrNull(cIdx + 4) ?: ""
+
+                // Ignore header row if option cells look like headers
+                if (optA.equals("Option A", ignoreCase = true) || optA.equals("A", ignoreCase = true)) {
+                    continue
+                }
+
+                val rawAns = rawCells.getOrNull(cIdx + 5)
+                val rawExp = rawCells.getOrNull(cIdx + 6)
+
+                val ans = canonicalAnswer(rawAns)
+                val exp = rawExp?.takeIf { it.isNotBlank() }
+
+                questions.add(
+                    McqQuestion(
+                        num = qNum,
+                        question = qStem,
+                        options = QuestionOptions(a = optA, b = optB, c = optC, d = optD),
+                        correctAnswer = ans,
+                        explanation = exp
+                    )
+                )
+                qIndex++
+            }
+
+            if (questions.isNotEmpty()) {
+                val metadata = extractMetadata(text)
+                return QuestionPaper(
+                    metadata = metadata,
+                    questions = questions,
+                    quickAnswersCount = questions.count { it.correctAnswer != null },
+                    explanationsCount = questions.count { !it.explanation.isNullOrBlank() },
+                    rawText = text
+                )
+            }
+        }
+
+        // 2. CSV / TSV fallback: Strictly requires an explicit CSV/TSV header row
+        val firstLine = lines.firstOrNull()?.lowercase() ?: ""
+        val isExplicitCsvHeader = (firstLine.startsWith("question,") || firstLine.startsWith("qno,") || firstLine.startsWith("s.no,") || firstLine.startsWith("#,") || firstLine.startsWith("no,")) &&
+                (firstLine.contains("option a") || firstLine.contains("option 1") || firstLine.contains("ans") || firstLine.contains(",a,"))
+        val isExplicitTsvHeader = (firstLine.startsWith("question\t") || firstLine.startsWith("qno\t") || firstLine.startsWith("s.no\t") || firstLine.startsWith("#\t")) &&
+                (firstLine.contains("option a") || firstLine.contains("option 1") || firstLine.contains("ans") || firstLine.contains("\ta\t"))
+
+        if (isExplicitCsvHeader || isExplicitTsvHeader) {
+            val delimiter = if (isExplicitTsvHeader) "\t" else ","
+            val questions = mutableListOf<McqQuestion>()
+            var qIndex = 1
+
+            for ((lineIdx, line) in lines.withIndex()) {
+                if (lineIdx == 0) continue // Skip header
+                val parts = if (delimiter == ",") {
+                    parseCsvLine(line)
+                } else {
+                    line.split("\t").map { it.trim() }
+                }
+
+                if (parts.size < 5) continue
+                val first = parts[0].lowercase()
+                if (first in listOf("#", "no", "qno", "s.no", "question", "q")) continue
+
+                var cIdx = 0
+                val qNum = if (parts[0].all { it.isDigit() }) {
+                    cIdx = 1
+                    parts[0].toIntOrNull() ?: qIndex
+                } else {
+                    qIndex
+                }
+
+                if (cIdx + 4 > parts.size) continue
+
+                val qStem = parts[cIdx]
+                val optA = parts.getOrNull(cIdx + 1) ?: ""
+                val optB = parts.getOrNull(cIdx + 2) ?: ""
+                val optC = parts.getOrNull(cIdx + 3) ?: ""
+                val optD = parts.getOrNull(cIdx + 4) ?: ""
+
+                if (optA.equals("Option A", ignoreCase = true) || optA.equals("A", ignoreCase = true)) continue
+
+                val rawAns = parts.getOrNull(cIdx + 5)
+                val rawExp = parts.getOrNull(cIdx + 6)
+
+                questions.add(
+                    McqQuestion(
+                        num = qNum,
+                        question = qStem,
+                        options = QuestionOptions(a = optA, b = optB, c = optC, d = optD),
+                        correctAnswer = canonicalAnswer(rawAns),
+                        explanation = rawExp?.takeIf { it.isNotBlank() }
+                    )
+                )
+                qIndex++
+            }
+
+            if (questions.size >= 2) {
+                val metadata = extractMetadata(text)
+                return QuestionPaper(
+                    metadata = metadata,
+                    questions = questions,
+                    quickAnswersCount = questions.count { it.correctAnswer != null },
+                    explanationsCount = questions.count { !it.explanation.isNullOrBlank() },
+                    rawText = text
+                )
+            }
+        }
+
+        return null
+    }
+
+    private fun parseCsvLine(line: String): List<String> {
+        val tokens = mutableListOf<String>()
+        var cur = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < line.length) {
+            val ch = line[i]
+            if (ch == '\"') {
+                if (inQuotes && i + 1 < line.length && line[i + 1] == '\"') {
+                    cur.append('\"')
+                    i++
+                } else {
+                    inQuotes = !inQuotes
+                }
+            } else if (ch == ',' && !inQuotes) {
+                tokens.add(cur.toString().trim())
+                cur = StringBuilder()
+            } else {
+                cur.append(ch)
+            }
+            i++
+        }
+        tokens.add(cur.toString().trim())
+        return tokens
     }
 }

@@ -97,6 +97,8 @@ fun PromptGeneratorTab(
     var explainAllFourOptions by remember { mutableStateOf(true) }
     var includeFormulasAndDiagrams by remember { mutableStateOf(true) }
     var promptPhasingStyle by remember { mutableStateOf("Standard") }
+    var targetOutputFormat by remember { mutableStateOf("Strict JSON") } // "Strict JSON", "Standard Text (Aiken)", "Markdown Table"
+    var promptDensity by remember { mutableStateOf("Concise") } // "Concise", "Comprehensive"
 
     // Format & Quantity Correction Rule (Disabled by default as requested: Unrestricted Full Stream)
     var enableQuantityCorrectionRule by remember { mutableStateOf(false) }
@@ -128,155 +130,189 @@ fun PromptGeneratorTab(
     val generatedPrompt by remember(
         examType, subject, topic, countInt, difficulty, questionType,
         questionLanguage, effectiveExplanationLanguage, explainAllFourOptions,
-        includeFormulasAndDiagrams, promptPhasingStyle, enableQuantityCorrectionRule
+        includeFormulasAndDiagrams, promptPhasingStyle, enableQuantityCorrectionRule,
+        targetOutputFormat, promptDensity
     ) {
         derivedStateOf {
-            buildString {
-                val qLang = questionLanguage.trim().ifBlank { "English" }
-                val targetExam = examType.trim().ifBlank { "Competitive Examination" }
-                val targetSubject = buildString {
-                    if (subject.isNotBlank()) {
-                        append(subject.trim())
-                        if (topic.isNotBlank()) {
-                            append(" (Focus: ${topic.trim()})")
+            val qLang = questionLanguage.trim().ifBlank { "English" }
+            val targetExam = examType.trim().ifBlank { "Competitive Examination" }
+            val targetSubject = buildString {
+                if (subject.isNotBlank()) {
+                    append(subject.trim())
+                    if (topic.isNotBlank()) {
+                        append(" (Focus: ${topic.trim()})")
+                    }
+                } else if (topic.isNotBlank()) {
+                    append("Focus: ${topic.trim()}")
+                } else {
+                    append("Comprehensive Subject Curriculum")
+                }
+            }
+
+            if (targetOutputFormat == "Strict JSON") {
+                if (promptDensity == "Concise") {
+                    buildString {
+                        append("You are an expert exam question creator for $targetExam.\n\n")
+                        append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject in $qLang at $difficulty difficulty (Pattern: $questionType).\n\n")
+                        append("CRITICAL FORMAT REQUIREMENT:\n")
+                        append("Output the question set, answer key, and detailed step-by-step explanations strictly as a raw JSON array inside clean text. Do not include introductory remarks, markdown code fences (like ```json), or trailing commentary.\n\n")
+                        append("JSON Schema to follow strictly:\n")
+                        append("[\n")
+                        append("  {\n")
+                        append("    \"num\": 1,\n")
+                        append("    \"question\": \"Question text here (LaTeX math like \$E = mc^2\$ is supported)\",\n")
+                        append("    \"options\": {\n")
+                        append("      \"a\": \"Option A text\",\n")
+                        append("      \"b\": \"Option B text\",\n")
+                        append("      \"c\": \"Option C text\",\n")
+                        append("      \"d\": \"Option D text\"\n")
+                        append("    },\n")
+                        append("    \"correctAnswer\": \"A\",\n")
+                        append("    \"explanation\": \"Detailed step-by-step pedagogical explanation of why this answer is correct and why other options are incorrect.\"\n")
+                        append("  }\n")
+                        append("]\n\n")
+                        append("Rules:\n")
+                        append("1. Each question must have exactly 4 options labeled \"a\", \"b\", \"c\", and \"d\".\n")
+                        append("2. \"correctAnswer\" must be the single uppercase letter (\"A\", \"B\", \"C\", or \"D\").\n")
+                        append("3. Provide a thorough, step-by-step explanation for each question in \"explanation\" (Language: $effectiveExplanationLanguage).\n")
+                        append("4. Balanced key distribution (~25% each across A, B, C, D).\n")
+                        if (includeFormulasAndDiagrams) {
+                            append("5. Scientific Notation: Wrap mathematical formulas and chemical symbols in standard LaTeX dollar signs (e.g., \$H_2SO_4\$, \$v = u + at\$).\n")
                         }
-                    } else if (topic.isNotBlank()) {
-                        append("Focus: ${topic.trim()}")
+                        append("6. Return ONLY the valid JSON array starting with [ and ending with ].")
+                    }
+                } else {
+                    buildString {
+                        append("Act as a senior psychometrician and chief examination paper setter for $targetExam.\n\n")
+                        append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty (Question Pattern: $questionType) in $qLang.\n\n")
+                        append("### 1. TARGET OUTPUT SPECIFICATION: STRICT JSON\n")
+                        append("You MUST output the complete examination question set, answer keys, and detailed pedagogical explanations as a valid, well-structured JSON array.\n")
+                        append("Do not include conversational greetings, disclaimers, or trailing remarks. Output ONLY the raw JSON array.\n\n")
+                        append("### 2. JSON SCHEMA DEFINITION:\n")
+                        append("[\n")
+                        append("  {\n")
+                        append("    \"num\": 1,\n")
+                        append("    \"question\": \"Question text here\",\n")
+                        append("    \"options\": {\n")
+                        append("      \"a\": \"Option A text\",\n")
+                        append("      \"b\": \"Option B text\",\n")
+                        append("      \"c\": \"Option C text\",\n")
+                        append("      \"d\": \"Option D text\"\n")
+                        append("    },\n")
+                        append("    \"correctAnswer\": \"A\",\n")
+                        append("    \"explanation\": \"Detailed step-by-step explanation\"\n")
+                        append("  }\n")
+                        append("]\n\n")
+                        append("### 3. PSYCHOMETRIC & DISTRACTOR RULES\n")
+                        append("1. COGNITIVE LEVEL ($difficulty): Multi-step analytical deduction, authentic examination caliber, and plausible distractors.\n")
+                        append("2. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
+                        append("3. LENGTH CONTROL: The correct option must NOT be noticeably longer than other options.\n")
+                        append("4. BALANCED KEYS: Distribute correct answers evenly (~25% each across A, B, C, D).\n")
+                        if (explainAllFourOptions) {
+                            append("5. EXPLANATION DEPTH: In \"explanation\", provide the governing principle followed by why the correct option is right and why distractors fail.\n")
+                        }
+                        if (includeFormulasAndDiagrams) {
+                            append("6. LATEX MATH: Enclose all mathematical and chemical expressions in LaTeX dollar signs (e.g. \$E = mc^2\$).\n")
+                        }
+                        append("\nExecute now by producing the JSON array starting with [ and ending with ].")
+                    }
+                }
+            } else if (targetOutputFormat == "Markdown Table") {
+                buildString {
+                    append("Act as an examination paper setter for $targetExam.\n\n")
+                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty in $qLang.\n\n")
+                    append("OUTPUT FORMAT: MARKDOWN TABLE\n")
+                    append("Format the entire question set as a clean, standardized Markdown table with the following column headers:\n")
+                    append("| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n")
+                    append("|---|---|---|---|---|---|:---:|---|\n\n")
+                    append("Rules:\n")
+                    append("1. Put each question in a single table row.\n")
+                    append("2. In the 'Answer' column, write strictly 'A', 'B', 'C', or 'D'.\n")
+                    append("3. In the 'Explanation' column, provide a concise, step-by-step rationale (in $effectiveExplanationLanguage).\n")
+                    append("4. Balanced key distribution across A, B, C, and D.\n")
+                    append("5. Do not include extra commentary or greeting text before or after the table.")
+                }
+            } else {
+                buildString {
+                    append("Act as a senior psychometrician and chief examination paper setter for $targetExam.\n\n")
+                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty (Question Pattern: $questionType) in $qLang.\n\n")
+
+                    append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
+                    if (effectiveExplanationLanguage == qLang || explanationChoice == "Same as Question") {
+                        append("- Language: Write the question stems, options, and explanations entirely in $qLang using natural, academically rigorous terminology.\n")
                     } else {
-                        append("Comprehensive Subject Curriculum")
+                        append("- Language: Write question stems and options in $qLang, and explanations in $effectiveExplanationLanguage, using natural, academically rigorous terminology.\n")
                     }
-                }
+                    append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as \"(A)\", \"(B)\", \"(C)\", \"(D)\" for universal OMR and parser compatibility.\n\n")
 
-                append("Act as a senior psychometrician and chief examination paper setter for $targetExam.\n\n")
-                append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty (Question Pattern: $questionType) in $qLang.\n\n")
-
-                append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
-                if (effectiveExplanationLanguage == qLang || explanationChoice == "Same as Question") {
-                    append("- Language: Write the question stems, options, and explanations entirely in $qLang using natural, academically rigorous terminology.\n")
-                } else {
-                    append("- Language: Write question stems and options in $qLang, and explanations in $effectiveExplanationLanguage, using natural, academically rigorous terminology.\n")
-                }
-                append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as \"(A)\", \"(B)\", \"(C)\", \"(D)\" for universal OMR and parser compatibility.\n\n")
-
-                append("### 2. PSYCHOMETRIC & DISTRACTOR RULES\n")
-                when (difficulty) {
-                    "Easy" -> append("1. COGNITIVE LEVEL (Easy / Foundational): Direct conceptual recall, core standard definitions, basic formulas, and straightforward identification with unambiguous distractors.\n")
-                    "Moderate" -> append("1. COGNITIVE LEVEL (Moderate / Standard): Standard examination caliber requiring multi-step comprehension, application of principles, and analytical deduction.\n")
-                    "Hard" -> append("1. COGNITIVE LEVEL (Hard / Advanced): Advanced analytical rigor, intricate edge cases, multi-layered calculations, and trap options diagnosing common misconceptions.\n")
-                    "Extreme" -> append("1. COGNITIVE LEVEL (Extreme Olympiad / Rank-Decider): Deep synthesis, Olympiad-level multi-concept integration, subtle distractor nuances, and demanding problem-solving.\n")
-                    else -> append("1. COGNITIVE LEVEL (Mixed Difficulty): Balanced distribution spanning ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging questions.\n")
-                }
-                when (questionType) {
-                    "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
-                    "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
-                    "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'.\n")
-                    "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
-                    else -> {
-                        append("2. MANDATORY FORMAT DIVERSITY (AUTHENTIC COMPETITIVE EXAM BLUEPRINT):\n")
-                        append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across the diverse examination formats used in real papers:\n")
-                        append("   - Multi-Statement Questions (e.g., 'Consider the following statements: 1. [...] 2. [...] 3. [...] Which of the statements given above is/are correct? (A) 1 and 2 only (B) 2 and 3 only (C) 1 and 3 only (D) 1, 2 and 3')\n")
-                        append("   - Assertion (A) & Reason (R) Questions (e.g., 'Assertion (A): [...] \\nReason (R): [...] \\n(A) Both A and R are true and R is the correct explanation of A...')\n")
-                        append("   - Match-the-Following (e.g., 'Match List-I with List-II: \\nList-I \\n1. [...] \\n2. [...] \\nList-II \\nP. [...] \\nQ. [...] \\n(A) 1-P, 2-Q, 3-S, 4-R...')\n")
-                        append("   - Chronological / Process Sequence Questions (e.g., 'Arrange the following stages/events in the correct order: 1. [...] 2. [...] (A) 1-2-3-4 (B) 2-1-4-3...')\n")
-                        append("   - Quantitative / Numerical Calculation Questions (clear parameters, formula application, and numerical options)\n")
-                        append("   - Direct Conceptual & Scenario Analysis Questions\n")
-                        append("   STRICT PROHIBITION ON CATEGORY LABELS: Do NOT print category headers, type prefixes, or bracketed tags (such as [Assertion-Reason], [Match the Following], [Statement-Based], or 'Type: ...') anywhere in the questions. Present every question naturally as an authentic examination item starting immediately with 'Q[N]. [Question text]'.\n")
+                    append("### 2. PSYCHOMETRIC & DISTRACTOR RULES\n")
+                    when (difficulty) {
+                        "Easy" -> append("1. COGNITIVE LEVEL (Easy / Foundational): Direct conceptual recall, core standard definitions, basic formulas, and straightforward identification with unambiguous distractors.\n")
+                        "Moderate" -> append("1. COGNITIVE LEVEL (Moderate / Standard): Standard examination caliber requiring multi-step comprehension, application of principles, and analytical deduction.\n")
+                        "Hard" -> append("1. COGNITIVE LEVEL (Hard / Advanced): Advanced analytical rigor, intricate edge cases, multi-layered calculations, and trap options diagnosing common misconceptions.\n")
+                        "Extreme" -> append("1. COGNITIVE LEVEL (Extreme Olympiad / Rank-Decider): Deep synthesis, Olympiad-level multi-concept integration, subtle distractor nuances, and demanding problem-solving.\n")
+                        else -> append("1. COGNITIVE LEVEL (Mixed Difficulty): Balanced distribution spanning ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging questions.\n")
                     }
-                }
-                append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
-                append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default. Maintain a tight word-count ratio across all 4 options (no option exceeding 1.25x the length of the shortest).\n")
-                append("5. ORDERING: If options contain numerical values, dates, or quantitative ranges, order them strictly from lowest to highest.\n")
-                append("6. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
-                append("7. NEGATIVE STEMS: Avoid negative questions where possible. If unavoidable, highlight the negative operator in uppercase bold (e.g., **NOT**, **EXCEPT**, **LEAST**).\n")
-                if (includeFormulasAndDiagrams) {
-                    append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
-                    append("9. DIAGRAMS: If a question references a diagram, chart, or figure, include: Diagram: [Figure title or description | Optional URL].\n")
-                } else {
-                    append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
-                }
-                append("\n")
-
-                append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
-                append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~25% each across A, B, C, D). Never allow more than two consecutive identical answer keys (e.g., A, A is allowed; A, A, A is strictly prohibited).\n")
-                if (promptPhasingStyle == "Reasoning-First") {
-                    append("2. PHASE SYNC: The final answer key declared in Phase 3 MUST strictly match the correct option derived and proven in Phase 2 (Explanations & Solution) without exception.\n")
-                } else {
-                    append("2. PHASE SYNC: The option declared in Phase 2 MUST match the option identified as \"Correct\" in Phase 3 without exception.\n")
-                }
-                append("3. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks, disclaimers, or closing text.\n")
-                append("4. NO DIVIDER LINES: Do NOT use markdown horizontal divider lines (---) anywhere in the questions or explanations.\n\n")
-
-                append("### 4. PLAIN-TEXT FORMATTING, ZERO-INDENTATION & ANTI-LIST RULES\n")
-                append("1. ZERO INDENTATION (FLUSH-LEFT): Every single line (questions, options, answers, and explanations) must start strictly at the left margin (Column 0). Never insert leading spaces or tab characters (\\t).\n")
-                append("2. ANTI-LIST RULE: Never use bullet points (•, *), list hyphens (-), or blockquotes (>). Never format question numbers as markdown numbered lists (e.g., '1. '). Use 'Q1.', 'Q2.' so that copying into Microsoft Word, Google Docs, or text editors pastes as pure plain text and never triggers automatic numbered or bulleted list styles.\n")
-                append("3. NO TABLES OR MULTI-SPACE ALIGNMENT: Never format options as a markdown table, HTML table, or aligned column grid. Each option must be on its own fresh line with exactly ONE space after the label: '(A) [Option text]'. Never use multiple spaces or tabs to align numbers, units, or option letters.\n")
-                append("4. NO CODE FENCES: Do not wrap the output inside markdown code fences (```). Output directly selectable, continuous plain text.\n\n")
-
-                append("### EXACT OUTPUT FORMAT TEMPLATE:\n\n")
-                append("Phase 1: Questions\n\n")
-                append("Q1. [Clear, unambiguous question stem or scenario]\n")
-                append("(A) [Option A]\n")
-                append("(B) [Option B]\n")
-                append("(C) [Option C]\n")
-                append("(D) [Option D]\n\n")
-                append("[Repeat through Q$countInt]\n\n")
-
-                if (promptPhasingStyle == "Reasoning-First") {
-                    append("Phase 2: Explanations & Solution\n\n")
-                    if (explainAllFourOptions) {
-                        append("Q1.\n")
-                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                        append("Option (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Option (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Option (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Option (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
-                    } else {
-                        append("Q1.\n")
-                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                        append("Why Correct: [Direct explanation with underlying reason for the correct option]\n")
-                        append("Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
-                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                    when (questionType) {
+                        "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
+                        "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
+                        "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'.\n")
+                        "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
+                        else -> {
+                            append("2. MANDATORY FORMAT DIVERSITY (AUTHENTIC COMPETITIVE EXAM BLUEPRINT):\n")
+                            append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across diverse examination formats.\n")
+                        }
                     }
-                    append("[Repeat through Q$countInt without any horizontal divider lines (---)]\n\n")
+                    append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
+                    append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default.\n")
+                    append("5. ORDERING: If options contain numerical values or dates, order them strictly from lowest to highest.\n")
+                    append("6. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
+                    if (includeFormulasAndDiagrams) {
+                        append("7. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions in LaTeX (e.g. \$E = mc^2\$).\n")
+                    }
+                    append("\n")
 
-                    append("Phase 3: Answer Key\n\n")
-                    append("Q1: (A)\n")
-                    append("Q2: (C)\n")
+                    append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
+                    append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~25% each across A, B, C, D).\n")
+                    append("2. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks or disclaimers.\n\n")
+
+                    append("### 4. PLAIN-TEXT FORMATTING RULES\n")
+                    append("1. ZERO INDENTATION: Every line starts flush-left.\n")
+                    append("2. ANTI-LIST RULE: Do not use bullet points or markdown lists. Use Q1., (A), (B), (C), (D).\n\n")
+
+                    append("### EXACT OUTPUT FORMAT TEMPLATE:\n\n")
+                    append("Phase 1: Questions\n\n")
+                    append("Q1. [Question stem]\n")
+                    append("(A) [Option A]\n")
+                    append("(B) [Option B]\n")
+                    append("(C) [Option C]\n")
+                    append("(D) [Option D]\n\n")
                     append("[Repeat through Q$countInt]\n\n")
-                } else {
-                    append("Phase 2: Answer Key\n\n")
-                    append("Q1: (A)\n")
-                    append("Q2: (C)\n")
-                    append("[Repeat through Q$countInt]\n\n")
 
-                    append("Phase 3: Explanations & Solution\n\n")
-                    if (explainAllFourOptions) {
+                    if (promptPhasingStyle == "Reasoning-First") {
+                        append("Phase 2: Explanations & Solution\n\n")
                         append("Q1.\n")
-                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                        append("Option (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Option (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Option (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Option (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                        append("Core Concept & Reasoning: [Reasoning]\n")
+                        append("Option (A) [Correct/Incorrect]: [Explanation]\n")
+                        append("Option (B) [Correct/Incorrect]: [Explanation]\n")
+                        append("Option (C) [Correct/Incorrect]: [Explanation]\n")
+                        append("Option (D) [Correct/Incorrect]: [Explanation]\n\n")
+                        append("Phase 3: Answer Key\n\n")
+                        append("Q1: (A)\n")
+                        append("Q2: (C)\n\n")
                     } else {
+                        append("Phase 2: Answer Key\n\n")
+                        append("Q1: (A)\n")
+                        append("Q2: (C)\n\n")
+                        append("Phase 3: Explanations & Solution\n\n")
                         append("Q1.\n")
-                        append("Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                        append("Why Correct: [Direct explanation with underlying reason for the correct option]\n")
-                        append("Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
-                        append("Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+                        append("Core Concept & Reasoning: [Reasoning]\n")
+                        append("Why Correct: [Reason for correct option]\n")
+                        append("Distractor Breakdown: [Why other options fail]\n\n")
                     }
-                    append("[Repeat through Q$countInt without any horizontal divider lines (---)]\n\n")
-                }
 
-                if (enableQuantityCorrectionRule) {
-                    append("Phase 4: Format & Quantity Enforcement (Truncation Guard Active)\n")
-                    append("1. Strict Quantity Check: Generate exactly all $countInt questions from 1 to $countInt without stopping early or omitting questions.\n")
-                    append("2. High-Density Token Budget: To fit all $countInt questions and explanations completely without token limit cutoffs, keep each option's explanation to 2 to 3 concise, high-impact sentences (30–45 words).\n")
-                    append("3. Depth Uniformity: Maintain identical pedagogical depth from Question 1 through Question $countInt. Do not rush or shorten later questions.\n\n")
+                    append("Execute the instructions now, starting directly with Phase 1: Questions.")
                 }
-
-                append("Execute the instructions now, starting directly with Phase 1: Questions.")
             }
         }
     }
@@ -730,6 +766,100 @@ fun PromptGeneratorTab(
                                 )
                             }
                         }
+                    // TARGET AI OUTPUT FORMAT SELECTOR (JSON vs Standard Text vs Markdown Table)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.surfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            .border(0.8.dp, colors.border, RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Target Output Format",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = colors.teal.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = targetOutputFormat,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.tealDark,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Strict JSON", "Standard Text (Aiken)", "Markdown Table").forEach { fmt ->
+                                val isSelected = targetOutputFormat == fmt
+                                Surface(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        targetOutputFormat = fmt
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) colors.teal else colors.surface,
+                                    border = BorderStroke(if (isSelected) 1.2.dp else 0.6.dp, if (isSelected) colors.teal else colors.border)
+                                ) {
+                                    Text(
+                                        text = fmt,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else colors.ink,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Prompt Density / Conciseness Selector
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Prompt Style / Length",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.inkMuted
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("Concise", "Comprehensive").forEach { density ->
+                                    val isSelected = promptDensity == density
+                                    Surface(
+                                        onClick = { promptDensity = density },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (isSelected) colors.tealDark else colors.surface,
+                                        border = BorderStroke(0.6.dp, if (isSelected) colors.tealDark else colors.border)
+                                    ) {
+                                        Text(
+                                            text = if (density == "Concise") "Concise (Fast)" else "Detailed",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else colors.inkMuted,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // 1. Difficulty Level Selector
@@ -961,6 +1091,7 @@ fun PromptGeneratorTab(
                             }
                         }
                     }
+                }
 
                     Spacer(modifier = Modifier.height(2.dp))
 

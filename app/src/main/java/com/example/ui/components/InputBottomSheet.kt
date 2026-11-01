@@ -157,8 +157,11 @@ import com.example.model.QuestionPaper
 import com.example.ui.components.QuestionCard
 import com.example.util.CameraCaptureHelper
 import com.example.util.FeatureToggles
+import com.example.util.ExamJsonHelper
 import com.example.util.HandwrittenNotesExtractor
 import com.example.util.McqParser
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -217,6 +220,17 @@ fun InputBottomSheet(
     val colors = ExamTheme.colors
     val haptic = LocalHapticFeedback.current
     var textInput by remember(initialText) { mutableStateOf(initialText) }
+    var inputContentFormat by remember { mutableStateOf("Text / Aiken") }
+
+    // Auto-detect format when input is pasted or updated
+    LaunchedEffect(textInput) {
+        val trimmed = textInput.trim()
+        if (trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("```json")) {
+            inputContentFormat = "JSON Format"
+        } else if (trimmed.contains("|") && trimmed.lines().count { it.contains("|") } >= 2) {
+            inputContentFormat = "Markdown Table / CSV"
+        }
+    }
 
     // Debounced background preview parsing metrics to prevent UI freezes on large pastes
     var parsedPreview by remember { mutableStateOf<QuestionPaper?>(null) }
@@ -1339,36 +1353,207 @@ fun InputBottomSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Text Area Input Header with Stable Height Status Pill (Prevents Screen Jumps)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "MCQ Practice Content",
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.inkBold
-                )
-
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (textInput.isNotBlank()) colors.tealLight else colors.surfaceVariant,
-                    border = BorderStroke(0.8.dp, if (textInput.isNotBlank()) colors.teal.copy(alpha = 0.4f) else colors.border)
+            // Text Area Input Header with Format Mode Selection & Stable Height Status Pill
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (textInput.isNotBlank()) {
-                            "${textInput.lines().size} lines • ${textInput.length} chars"
-                        } else {
-                            "0 lines • Ready"
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (textInput.isNotBlank()) colors.tealDark else colors.muted,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        maxLines = 1
+                        text = "MCQ Practice Content",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
                     )
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (textInput.isNotBlank()) colors.tealLight else colors.surfaceVariant,
+                        border = BorderStroke(0.8.dp, if (textInput.isNotBlank()) colors.teal.copy(alpha = 0.4f) else colors.border)
+                    ) {
+                        Text(
+                            text = if (textInput.isNotBlank()) {
+                                "${textInput.lines().size} lines • ${textInput.length} chars"
+                            } else {
+                                "0 lines • Ready"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (textInput.isNotBlank()) colors.tealDark else colors.muted,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Explicit Format Selector (Text / Aiken vs JSON Format vs Markdown Table / CSV)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Format:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.muted)
+
+                    listOf(
+                        "Text / Aiken" to Icons.Default.EditNote,
+                        "JSON Format" to Icons.Default.Science,
+                        "Markdown Table / CSV" to Icons.AutoMirrored.Filled.Assignment
+                    ).forEach { (fmt, icon) ->
+                        val isSelected = inputContentFormat == fmt
+                        Surface(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                inputContentFormat = fmt
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) colors.teal else colors.surfaceVariant,
+                            border = BorderStroke(if (isSelected) 1.2.dp else 0.6.dp, if (isSelected) colors.teal else colors.border)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = if (isSelected) Color.White else colors.ink
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = fmt,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.White else colors.ink
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // JSON Mode Banner with Validation & Sample Loader
+                if (inputContentFormat == "JSON Format") {
+                    val isCleanJson = try {
+                        val cleaned = ExamJsonHelper.cleanJsonString(textInput)
+                        if (cleaned.isNotBlank() && (cleaned.startsWith("[") || cleaned.startsWith("{"))) {
+                            ExamJsonHelper.fromJson(cleaned)
+                            true
+                        } else false
+                    } catch (_: Exception) {
+                        false
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (textInput.isBlank()) colors.surfaceVariant else if (isCleanJson) colors.greenLight else colors.amberLight,
+                        border = BorderStroke(0.6.dp, if (textInput.isBlank()) colors.border else if (isCleanJson) colors.green else colors.amber),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(
+                                    imageVector = if (isCleanJson) Icons.Default.Check else Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = if (isCleanJson) colors.green else colors.amber,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (textInput.isBlank()) {
+                                        "JSON Mode Active: Paste JSON array of questions or full paper object"
+                                    } else if (isCleanJson) {
+                                        "Valid JSON: ${parsedPreview?.questions?.size ?: 0} questions (${parsedPreview?.quickAnswersCount ?: 0} keys, ${parsedPreview?.explanationsCount ?: 0} explanations)"
+                                    } else {
+                                        "Checking JSON: Ensure brackets [ ] match and keys are double-quoted"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isCleanJson) colors.green else colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton(
+                                    onClick = {
+                                        textInput = ExamJsonHelper.getSampleQuestionsJson()
+                                        Toast.makeText(context, "Loaded Sample JSON", Toast.LENGTH_SHORT).show()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("Sample JSON", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                                }
+
+                                if (textInput.isNotBlank()) {
+                                    TextButton(
+                                        onClick = {
+                                            try {
+                                                val cleaned = ExamJsonHelper.cleanJsonString(textInput)
+                                                textInput = if (cleaned.startsWith("[")) {
+                                                    JSONArray(cleaned).toString(2)
+                                                } else {
+                                                    JSONObject(cleaned).toString(2)
+                                                }
+                                                Toast.makeText(context, "Prettified JSON", Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Syntax error: Cannot prettify", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("Prettify", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.tealDark)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (inputContentFormat == "Markdown Table / CSV") {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.surfaceVariant,
+                        border = BorderStroke(0.6.dp, colors.border),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Table Mode: | Question | Option A | Option B | Option C | Option D | Answer | Explanation |",
+                                fontSize = 10.5.sp,
+                                color = colors.inkMuted,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            TextButton(
+                                onClick = {
+                                    textInput = """| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |
+|---|---|---|---|---|---|:---:|---|
+| 1 | Which gas is most abundant in Earth's atmosphere? | Oxygen | Nitrogen | Carbon Dioxide | Argon | B | Nitrogen accounts for approximately 78% of Earth's atmosphere by volume. |
+| 2 | What is the chemical formula of table salt? | NaCl | KCl | CaCl2 | MgCl2 | A | Sodium chloride (NaCl) is common table salt. |
+| 3 | What is the SI unit of electric current? | Volt | Ohm | Ampere | Watt | C | The ampere (symbol: A) is the base unit of electric current in the International System of Units (SI). |"""
+                                    Toast.makeText(context, "Loaded Sample Table", Toast.LENGTH_SHORT).show()
+                                },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Sample Table", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1571,12 +1756,24 @@ fun InputBottomSheet(
                 OutlinedTextField(
                     value = textInput,
                     onValueChange = { textInput = it },
-                    label = { Text(if (isTextAreaExpanded) "MCQ Practice Text (Expanded View)" else "MCQ Practice Text") },
+                    label = {
+                        val lbl = when (inputContentFormat) {
+                            "JSON Format" -> if (isTextAreaExpanded) "JSON Array / Paper Object (Expanded)" else "JSON Format Input"
+                            "Markdown Table / CSV" -> if (isTextAreaExpanded) "Table / CSV Content (Expanded)" else "Table / CSV Format Input"
+                            else -> if (isTextAreaExpanded) "MCQ Practice Text (Expanded View)" else "MCQ Practice Text"
+                        }
+                        Text(lbl)
+                    },
                     placeholder = {
+                        val ph = when (inputContentFormat) {
+                            "JSON Format" -> "[\n  {\n    \"num\": 1,\n    \"question\": \"Question stem here...\",\n    \"options\": {\n      \"a\": \"Option A\",\n      \"b\": \"Option B\",\n      \"c\": \"Option C\",\n      \"d\": \"Option D\"\n    },\n    \"correctAnswer\": \"A\",\n    \"explanation\": \"Detailed explanation here...\"\n  }\n]"
+                            "Markdown Table / CSV" -> "| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n| 1 | Question stem... | Opt A | Opt B | Opt C | Opt D | A | Detailed explanation... |"
+                            else -> "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\n\nAnswer Key\n1: A\n\nDetailed Explanations\n1. (A) Reason..."
+                        }
                         Text(
-                            "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\n\nAnswer Key\n1: A\n\nDetailed Explanations\n1. (A) Reason...",
+                            ph,
                             color = colors.muted.copy(alpha = 0.6f),
-                            fontSize = 12.sp
+                            fontSize = 11.5.sp
                         )
                     },
                     colors = fieldColors,
