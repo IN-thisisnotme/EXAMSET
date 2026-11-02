@@ -119,6 +119,21 @@ object ExamNumberGenerator {
     }
 
     /**
+     * Formats a clean display label for a set number, avoiding duplicates like "Set Set 01" or "Set Set A".
+     * E.g. "Set A" -> "Set A", "01" -> "Set 01", "Set 01" -> "Set 01", "Set Set 02" -> "Set 02", "Series B" -> "Set B".
+     */
+    fun formatSetDisplayLabel(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return "Set 01"
+        val stripped = trimmed.replace(Regex("^(?:(?:Set|SET|Series)\\s*[:\\-]?\\s*)+", RegexOption.IGNORE_CASE), "").trim()
+        return if (stripped.isBlank()) {
+            "Set 01"
+        } else {
+            "Set $stripped"
+        }
+    }
+
+    /**
      * Derives a dynamic list of numeric booklet set codes (e.g. ["01", "02", "03", "04"]).
      */
     fun resolveBookletSets(activeSetCode: String): List<String> {

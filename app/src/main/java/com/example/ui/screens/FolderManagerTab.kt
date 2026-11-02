@@ -87,6 +87,7 @@ import com.example.data.PaperEntity
 import com.example.model.FolderItem
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
+import com.example.util.ExamNumberGenerator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -1207,7 +1208,7 @@ fun FolderManagerTab(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "Set ${lastPaper.setNumber.ifBlank { "01" }} • ${lastPaper.subject} • ${lastPaper.questionCount} Questions",
+                                    text = "${ExamNumberGenerator.formatSetDisplayLabel(lastPaper.setNumber)} • ${lastPaper.subject} • ${lastPaper.questionCount} Questions",
                                     fontSize = 11.5.sp,
                                     color = colors.inkMuted,
                                     maxLines = 1,
@@ -1836,7 +1837,7 @@ fun FolderManagerTab(
                             },
                             onExport = {
                                 val json = viewModel.exportSinglePaperAsJson(paper)
-                                triggerShare(json, "${paper.title} - Set ${paper.setNumber.ifBlank { "01" }}")
+                                triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
                             },
                             onDelete = { viewModel.deleteSavedPaper(paper) }
                         )
@@ -1887,7 +1888,7 @@ fun FolderManagerTab(
                                 },
                                 onExport = {
                                     val json = viewModel.exportSinglePaperAsJson(paper)
-                                    triggerShare(json, "${paper.title} - Set ${paper.setNumber.ifBlank { "01" }}")
+                                    triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
                                 },
                                 onDelete = { viewModel.deleteSavedPaper(paper) }
                             )
@@ -1940,7 +1941,7 @@ fun FolderManagerTab(
                                 },
                                 onExport = {
                                     val json = viewModel.exportSinglePaperAsJson(paper)
-                                    triggerShare(json, "${paper.title} - Set ${paper.setNumber.ifBlank { "01" }}")
+                                    triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
                                 },
                                 onDelete = { viewModel.deleteSavedPaper(paper) }
                             )
@@ -2483,13 +2484,8 @@ private fun getStageCategory(paper: PaperEntity): String {
  * Normalizes set numbers into structured 2-digit series (Set 01, Set 02, etc.).
  */
 private fun getSetSeriesCategory(paper: PaperEntity): String {
-    val raw = paper.setNumber.trim()
-    return when {
-        raw.isBlank() -> "Set 01 Series"
-        raw.startsWith("Set", ignoreCase = true) -> raw.uppercase()
-        raw.all { it.isDigit() } -> "Set ${raw.padStart(2, '0')}"
-        else -> "Set ${raw.uppercase()}"
-    }
+    val clean = ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)
+    return "$clean Series"
 }
 
 private data class FlattenedFolderNode(
@@ -3312,7 +3308,7 @@ private fun PaperCardItem(
                         border = BorderStroke(0.5.dp, colors.border)
                     ) {
                         Text(
-                            text = "Set ${paper.setNumber.ifBlank { "01" }}",
+                            text = ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.ink,

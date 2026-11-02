@@ -318,12 +318,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Saves raw draft, parses with telemetry, and auto-persists to Room database.
      */
     fun onRawInputChanged(text: String) {
+        val paperIdAtSchedule = _currentPaperEntityId.value
         _rawInputText.value = text
         _autoSaveStatus.value = AutoSaveStatus.SAVING
 
         inputDebounceJob?.cancel()
         inputDebounceJob = viewModelScope.launch(Dispatchers.Default) {
             delay(500) // 500ms debounce
+            if (_currentPaperEntityId.value != paperIdAtSchedule) {
+                return@launch
+            }
             appPreferences.setDraftRawText(text)
 
             val result = McqParser.parseWithResult(text)
@@ -365,18 +369,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     paperDao.insertPaper(newEntity)
                 }
 
+                if (_currentPaperEntityId.value != paperIdAtSchedule) {
+                    return@launch
+                }
+
                 appPreferences.setLastActivePaperId(paperId)
 
                 withContext(Dispatchers.Main) {
-                    _currentPaperEntityId.value = paperId
-                    _currentPaper.value = result.paper.copy(id = paperId)
-                    _autoSaveStatus.value = AutoSaveStatus.SAVED
-                    updateTimestamp()
+                    if (_currentPaperEntityId.value == paperIdAtSchedule) {
+                        _currentPaperEntityId.value = paperId
+                        _currentPaper.value = result.paper.copy(id = paperId)
+                        _autoSaveStatus.value = AutoSaveStatus.SAVED
+                        updateTimestamp()
+                    }
                 }
             } else {
                 withContext(Dispatchers.Main) {
-                    _autoSaveStatus.value = AutoSaveStatus.SAVED
-                    updateTimestamp()
+                    if (_currentPaperEntityId.value == paperIdAtSchedule) {
+                        _autoSaveStatus.value = AutoSaveStatus.SAVED
+                        updateTimestamp()
+                    }
                 }
             }
         }
@@ -386,18 +398,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Debounced autosave when user modifies questions, reorders, or alters paper details.
      */
     private fun schedulePaperAutoSave(updatedPaper: QuestionPaper) {
+        val paperIdAtSchedule = _currentPaperEntityId.value
         _currentPaper.value = updatedPaper
         _autoSaveStatus.value = AutoSaveStatus.SAVING
 
         paperDebounceJob?.cancel()
         paperDebounceJob = viewModelScope.launch(Dispatchers.IO) {
             delay(500) // 500ms debounce
+
+            // Identity Binding Guard:
+            // Abort immediately if the active paper changed or was cleared while debounce was waiting
+            if (_currentPaperEntityId.value != paperIdAtSchedule) {
+                return@launch
+            }
+
             val raw = McqParser.reconstructToRaw(updatedPaper)
             appPreferences.setDraftRawText(raw)
 
-            val currentId = _currentPaperEntityId.value
-            val targetId: Long = if (currentId != null && currentId > 0) {
-                val existing = paperDao.getPaperById(currentId)
+            val targetId: Long = if (paperIdAtSchedule != null && paperIdAtSchedule > 0) {
+                val existing = paperDao.getPaperById(paperIdAtSchedule)
                 if (existing != null) {
                     val updated = existing.copy(
                         title = updatedPaper.metadata.title,
@@ -488,6 +507,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 targetId
             }
 
+            // Identity Binding Guard after database write
+            if (_currentPaperEntityId.value != paperIdAtSchedule) {
+                return@launch
+            }
+
             appPreferences.setLastActivePaperId(targetId)
 
             // Recalculate any submitted attempts for this paper so scores/breakdown stay 100% accurate
@@ -496,13 +520,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val freshSavedEntity = if (targetId > 0) paperDao.getPaperById(targetId) else null
 
             withContext(Dispatchers.Main) {
-                if (freshSavedEntity != null) {
-                    _lastOpenedPaper.value = freshSavedEntity
+                if (_currentPaperEntityId.value == paperIdAtSchedule) {
+                    if (freshSavedEntity != null) {
+                        _lastOpenedPaper.value = freshSavedEntity
+                    }
+                    _currentPaperEntityId.value = targetId
+                    _rawInputText.value = raw
+                    _autoSaveStatus.value = AutoSaveStatus.SAVED
+                    updateTimestamp()
                 }
-                _currentPaperEntityId.value = targetId
-                _rawInputText.value = raw
-                _autoSaveStatus.value = AutoSaveStatus.SAVED
-                updateTimestamp()
             }
         }
     }
@@ -937,6 +963,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customPositiveMarks: Double? = null,
         customNegativeMarks: Double? = null
     ) {
+        // Immediately cancel any running or scheduled auto-save debounces and decouple active paper ID
+        paperDebounceJob?.cancel()
+        paperDebounceJob = null
+        inputDebounceJob?.cancel()
+        inputDebounceJob = null
+        _currentPaperEntityId.value = null
+
         viewModelScope.launch(Dispatchers.Default) {
             val result = McqParser.parseWithResult(text)
             val parsed = result.paper
@@ -1073,6 +1106,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadSavedPaper(entity: PaperEntity, onComplete: (() -> Unit)? = null) {
+        // Cancel pending debounced autosaves so they don't overwrite this loaded paper
+        paperDebounceJob?.cancel()
+        paperDebounceJob = null
+        inputDebounceJob?.cancel()
+        inputDebounceJob = null
+
         _isLoadingPaper.value = true
         _currentPaperEntityId.value = entity.id
         // Immediately synchronize timer limits and countdown to prevent lag/stale timer display

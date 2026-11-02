@@ -84,6 +84,7 @@ import com.example.model.AuditQuestionReport
 import com.example.model.McqQuestion
 import com.example.model.QuestionPaper
 import com.example.ui.theme.ExamTheme
+import com.example.util.ExamNumberGenerator
 import com.example.util.QuestionAuditHelper
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1579,7 +1580,7 @@ fun AuditResolutionHubDialog(
                             color = colors.inkBold
                         )
                         Text(
-                            text = "Set ${paper.metadata.setNumber} • ${paper.questions.size} Questions • ${paper.metadata.subject}",
+                            text = "${ExamNumberGenerator.formatSetDisplayLabel(paper.metadata.setNumber)} • ${paper.questions.size} Questions • ${paper.metadata.subject}",
                             fontSize = 11.sp,
                             color = colors.muted
                         )

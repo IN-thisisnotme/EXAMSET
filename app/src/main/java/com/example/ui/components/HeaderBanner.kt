@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
+import com.example.util.ExamNumberGenerator
 
 /**
  * Signature Navy Header Banner directly recreating Python ReportLab's draw_first_page banner.
@@ -222,7 +223,7 @@ fun HeaderBanner(
                     fontSize = 11.sp
                 )
                 Text(
-                    text = if (metadata.setNumber.isNotBlank()) "Set ${metadata.setNumber}" else "Set 01",
+                    text = ExamNumberGenerator.formatSetDisplayLabel(metadata.setNumber),
                     color = colors.navyBannerText.copy(alpha = 0.85f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium

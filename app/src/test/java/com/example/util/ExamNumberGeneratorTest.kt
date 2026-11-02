@@ -92,5 +92,20 @@ class ExamNumberGeneratorTest {
         assertTrue("CSV data must contain booklet number", csv.contains("\"7100001\""))
         assertTrue("CSV data must contain answer key pattern", csv.contains("1:B;2:A"))
     }
+
+    @Test
+    fun testFormatSetDisplayLabel() {
+        assertEquals("Set 01", ExamNumberGenerator.formatSetDisplayLabel("01"))
+        assertEquals("Set 01", ExamNumberGenerator.formatSetDisplayLabel("Set 01"))
+        assertEquals("Set 01", ExamNumberGenerator.formatSetDisplayLabel("Set Set 01"))
+        assertEquals("Set 01", ExamNumberGenerator.formatSetDisplayLabel("Set Set"))
+        assertEquals("Set A", ExamNumberGenerator.formatSetDisplayLabel("Set A"))
+        assertEquals("Set A", ExamNumberGenerator.formatSetDisplayLabel("A"))
+        assertEquals("Set B", ExamNumberGenerator.formatSetDisplayLabel("SET B"))
+        assertEquals("Set C", ExamNumberGenerator.formatSetDisplayLabel("Series C"))
+        assertEquals("Set 11", ExamNumberGenerator.formatSetDisplayLabel("Set 11"))
+        assertEquals("Set 01", ExamNumberGenerator.formatSetDisplayLabel(""))
+        assertEquals("Set 01", ExamNumberGenerator.formatSetDisplayLabel("   "))
+    }
 }
 

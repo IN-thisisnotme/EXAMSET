@@ -215,7 +215,16 @@ fun InputBottomSheet(
     savedPapers: List<PaperEntity> = emptyList(),
     folders: List<FolderItem> = emptyList(),
     onDismiss: () -> Unit,
-    onGenerate: (text: String, title: String, subject: String, topic: String, setNumber: String) -> Unit,
+    onGenerate: (
+        text: String,
+        title: String,
+        subject: String,
+        topic: String,
+        setNumber: String,
+        durationMinutes: Int,
+        positiveMarks: Double,
+        negativeMarks: Double
+    ) -> Unit,
     onGenerateConfig: ((ExamConfig) -> Unit)? = null,
     onPickFile: () -> Unit,
     onLoadSample: (Int) -> Unit,
@@ -1886,25 +1895,15 @@ fun InputBottomSheet(
                                 val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                                 val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
 
-                                onGenerateConfig?.invoke(
-                                    ExamConfig(
-                                        examTitle = customTitle.ifBlank { "OBJECTIVE EVALUATION TEST" },
-                                        subject = cleanSubject.ifBlank { "General Assessment" },
-                                        topic = customTopic,
-                                        seriesCode = customSetNumber.ifBlank { "SET - 1" },
-                                        durationMinutes = parsedDuration,
-                                        timeAllowed = "$parsedDuration Minutes",
-                                        positiveMarks = parsedPosMarks,
-                                        negativeMarks = parsedNegMarks,
-                                        negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
-                                    )
-                                )
                                 onGenerate(
                                     textInput,
                                     customTitle,
                                     cleanSubject,
                                     customTopic,
-                                    customSetNumber
+                                    customSetNumber,
+                                    parsedDuration,
+                                    parsedPosMarks,
+                                    parsedNegMarks
                                 )
                                 onDismiss()
                             }

@@ -117,6 +117,7 @@ import com.example.data.AttemptEntity
 import com.example.data.PaperEntity
 import com.example.data.toQuestionPaper
 import com.example.util.McqParser
+import com.example.util.ExamNumberGenerator
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -308,7 +309,7 @@ fun HomeScreen(
                             )
                             currentPaper?.let { paper ->
                                 Text(
-                                    text = "Set ${paper.metadata.setNumber.ifBlank { "01" }} • ${paper.metadata.subject}",
+                                    text = "${ExamNumberGenerator.formatSetDisplayLabel(paper.metadata.setNumber)} • ${paper.metadata.subject}",
                                     fontSize = 10.5.sp,
                                     color = colors.tealDark,
                                     fontWeight = FontWeight.Medium,
@@ -927,7 +928,7 @@ fun HomeScreen(
                 showInputSheet = false
                 creationTargetFolderId = null
             },
-            onGenerate = { text, title, subject, topic, setNumber ->
+            onGenerate = { text, title, subject, topic, setNumber, duration, posMarks, negMarks ->
                 val targetFolder = creationTargetFolderId
                 creationTargetFolderId = null
                 viewModel.parseAndSetPaper(
@@ -936,11 +937,11 @@ fun HomeScreen(
                     customSubject = subject,
                     customTopic = topic,
                     customSetNumber = setNumber,
-                    customFolderId = targetFolder
+                    customFolderId = targetFolder,
+                    customDurationMinutes = duration,
+                    customPositiveMarks = posMarks,
+                    customNegativeMarks = negMarks
                 )
-            },
-            onGenerateConfig = { newConfig ->
-                viewModel.updateExamConfig(newConfig)
             },
             onPickFile = {
                 filePickerLauncher.launch(arrayOf("text/plain", "text/markdown", "*/*"))

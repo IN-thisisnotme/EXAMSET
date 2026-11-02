@@ -58,6 +58,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.AttemptEntity
 import com.example.data.PaperEntity
 import com.example.ui.theme.ExamTheme
+import com.example.util.ExamNumberGenerator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -383,7 +384,7 @@ private fun SubjectPaperItem(
                             modifier = Modifier.padding(end = 6.dp)
                         ) {
                             Text(
-                                text = "Set ${paper.setNumber.ifBlank { "01" }}",
+                                text = ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal,
@@ -514,11 +515,6 @@ private fun getDialogStageCategory(paper: PaperEntity): String {
 }
 
 private fun getDialogSetSeries(paper: PaperEntity): String {
-    val raw = paper.setNumber.trim()
-    return when {
-        raw.isBlank() -> "Set 01 Series"
-        raw.startsWith("Set", ignoreCase = true) -> raw.uppercase()
-        raw.all { it.isDigit() } -> "Set ${raw.padStart(2, '0')}"
-        else -> "Set ${raw.uppercase()}"
-    }
+    val clean = ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)
+    return "$clean Series"
 }
