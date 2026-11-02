@@ -14,8 +14,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -102,6 +106,7 @@ import kotlinx.coroutines.launch
  * - Safe Backup & Batch JSON Export / Import Hub.
  * - Safe Read-Only Question Inspector.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CreatorTab(
     viewModel: MainViewModel,
@@ -179,64 +184,63 @@ fun CreatorTab(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = colors.teal.copy(alpha = 0.12f),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Tune,
-                                        contentDescription = null,
-                                        tint = colors.teal,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Exam Tools & Diagnostics",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-                                Text(
-                                    text = "Active Set Inspector & Readability Settings",
-                                    fontSize = 12.sp,
-                                    color = colors.inkMuted
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.teal.copy(alpha = 0.12f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Exam Tools & Diagnostics",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = "Active Set Inspector & Readability Settings",
+                                fontSize = 12.sp,
+                                color = colors.inkMuted
+                            )
+                        }
+                    }
 
-                        // Protection Badge
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = colors.greenLight,
-                            border = BorderStroke(0.6.dp, colors.green.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Protection Badge
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.greenLight,
+                        border = BorderStroke(0.6.dp, colors.green.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = colors.green,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Active Set Protected",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.green
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = colors.green,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Active Set Protected",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.green
+                            )
                         }
                     }
 
@@ -292,11 +296,10 @@ fun CreatorTab(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             // Quick Action Navigation Buttons
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(
                                     onClick = onScanOmr,
@@ -386,39 +389,37 @@ fun CreatorTab(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = colors.teal.copy(alpha = 0.12f),
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.CameraAlt,
-                                            contentDescription = null,
-                                            tint = colors.teal,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Scan Handwritten Notes",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold
-                                    )
-                                    Text(
-                                        text = "On-device AI / OCR document recognition",
-                                        fontSize = 11.5.sp,
-                                        color = colors.inkMuted
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.teal.copy(alpha = 0.12f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        tint = colors.teal,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Scan Handwritten Notes",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "On-device AI / OCR document recognition",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkMuted
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = colors.greenLight,
@@ -817,12 +818,10 @@ fun CreatorTab(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // 1. Batch Import Files
                         Button(

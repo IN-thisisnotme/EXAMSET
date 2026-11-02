@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -500,11 +502,10 @@ fun PromptGeneratorTab(
                         "SAT / ACT",
                         "School Board"
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         examPresets.forEach { preset ->
                             val isSelected = examType.equals(preset, ignoreCase = true) || (examType.isNotBlank() && examType.startsWith(preset.take(6)))
@@ -556,11 +557,10 @@ fun PromptGeneratorTab(
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkMuted
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         quickSubjects.forEach { quickSub ->
                             val isSubSelected = subject.equals(quickSub, ignoreCase = true)
@@ -631,11 +631,10 @@ fun PromptGeneratorTab(
                         Spacer(modifier = Modifier.height(4.dp))
                         
                         // Preset Count Chips (5, 10, 25, 50, 100, 180) - synchronized with max 200
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             presetCounts.forEach { cnt ->
                                 val isSelected = countInt == cnt
@@ -784,11 +783,10 @@ fun PromptGeneratorTab(
 
                             Spacer(modifier = Modifier.height(5.dp))
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val explanationOptions = listOf(
                                     "Same as Question" to "Same as Question",
@@ -871,11 +869,10 @@ fun PromptGeneratorTab(
                             }
                         }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf("Strict JSON", "Standard Text (Aiken)", "Markdown Table").forEach { fmt ->
                                 val isSelected = targetOutputFormat == fmt
@@ -914,16 +911,15 @@ fun PromptGeneratorTab(
                                 ) {
                                     Text(
                                         text = when (targetOutputFormat) {
-                                            "Strict JSON" -> "JSON Schema (Strict 4-Option)"
-                                            "Markdown Table" -> "Markdown Table (Strict 4-Option)"
-                                            else -> "Structured Text (Strict 4-Option)"
+                                            "Strict JSON" -> "JSON Schema (4-Option)"
+                                            "Markdown Table" -> "Markdown Table (4-Option)"
+                                            else -> "Structured Text (4-Option)"
                                         },
-                                        fontSize = 11.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.tealDark,
                                         modifier = Modifier.weight(1f, fill = false),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 1
                                     )
 
                                     val sampleText = when (targetOutputFormat) {
@@ -1052,9 +1048,10 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             Text("Difficulty Level", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
                             Text(difficulty, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf("Easy", "Moderate", "Hard", "Extreme", "Mixed").forEach { diff ->
                                 val label = when(diff) {
@@ -1093,9 +1090,10 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             Text("Question Format & Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
                             Text(questionType, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf(
                                 "Mixed Formats",
@@ -1191,13 +1189,16 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                         }
 
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Min),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             val isReasoning = promptPhasingStyle == "Reasoning-First"
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
+                                    .fillMaxHeight()
                                     .clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         promptPhasingStyle = "Reasoning-First"
@@ -1236,6 +1237,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
+                                    .fillMaxHeight()
                                     .clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         promptPhasingStyle = "Standard"

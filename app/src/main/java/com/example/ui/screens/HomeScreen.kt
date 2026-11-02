@@ -13,8 +13,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -135,7 +139,7 @@ import com.example.ui.components.StudentHistoricalAnalysisDialog
 import com.example.ui.components.SubjectFolderDialog
 import com.example.ui.theme.ExamTheme
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
@@ -297,7 +301,7 @@ fun HomeScreen(
                             }
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "ExamSet",
                                 fontSize = 17.sp,
@@ -381,20 +385,7 @@ fun HomeScreen(
                         )
                     }
 
-                    // Typography & Scaling Selector (Standard 100% Fixed, Compact, Large, Extra Large, Follow System)
-                    val fontScaleMode by viewModel.fontScaleMode.collectAsState()
-                    IconButton(
-                        onClick = { showFontSizeDialog = true },
-                        modifier = Modifier.testTag("font_size_scale_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FormatSize,
-                            contentDescription = "Typography Scale",
-                            tint = if (fontScaleMode == AppFontScaleMode.STANDARD_FIXED) colors.inkBold else colors.teal
-                        )
-                    }
-
-                    // Overflow Menu for Paper Operations (Edit Details, Psychometrics, Share)
+                    // Overflow Menu for Paper Operations (Edit Details, Psychometrics, Typography, Share)
                     Box {
                         IconButton(
                             onClick = { showTopBarOverflowMenu = true },
@@ -441,7 +432,8 @@ fun HomeScreen(
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.FormatSize, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
-                                }
+                                },
+                                modifier = Modifier.testTag("font_size_scale_button")
                             )
                             val activePaper = currentPaper
                             if (activePaper != null) {
@@ -571,6 +563,7 @@ fun HomeScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
                         .background(colors.surface)
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -585,14 +578,14 @@ fun HomeScreen(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 44.dp)
+                                .fillMaxHeight()
                                 .clickable { viewModel.selectTab(tabIdx) },
                             shape = RoundedCornerShape(8.dp),
                             color = if (isSubSelected) colors.tealLight else colors.surfaceVariant,
                             border = BorderStroke(1.dp, if (isSubSelected) colors.teal else colors.border)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -600,7 +593,7 @@ fun HomeScreen(
                                     imageVector = icon,
                                     contentDescription = null,
                                     tint = if (isSubSelected) colors.teal else colors.muted,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
@@ -621,14 +614,13 @@ fun HomeScreen(
 
             // Quick Stats & Chips Row
             currentPaper?.let { paper ->
-                Row(
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.surface)
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .horizontalScroll(rememberScrollState()),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     // Set Number Chip
                     Surface(
@@ -1049,6 +1041,7 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EmptyStateView(
     savedPapers: List<PaperEntity>,
@@ -1167,13 +1160,12 @@ private fun EmptyStateView(
         Spacer(modifier = Modifier.height(16.dp))
 
         // Multilingual & Multi-Format Sample options for convenience
-        Row(
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .horizontalScroll(rememberScrollState()),
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             TextButton(onClick = { onLoadSample(0) }) {
                 Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.teal)
@@ -1223,6 +1215,7 @@ data class SubjectStat(
     val topics: Set<String>
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SubjectDashboard(
     savedPapers: List<PaperEntity>,
@@ -1354,13 +1347,12 @@ fun SubjectDashboard(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Filter and Sort Chips Row
-        Row(
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             DashboardSortOption.values().forEach { option ->
                 val selected = selectedSort == option

@@ -527,7 +527,7 @@ private fun CompactOptionItem(
 
     Row(
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         Surface(
             shape = RoundedCornerShape(5.dp),
