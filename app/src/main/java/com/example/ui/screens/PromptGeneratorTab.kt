@@ -51,7 +51,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -72,6 +71,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
 
@@ -151,73 +151,133 @@ fun PromptGeneratorTab(
             }
 
             if (targetOutputFormat == "Strict JSON") {
-                if (promptDensity == "Concise") {
-                    buildString {
-                        append("You are an expert exam question creator for $targetExam.\n\n")
-                        append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject in $qLang at $difficulty difficulty (Pattern: $questionType).\n\n")
-                        append("CRITICAL FORMAT REQUIREMENT:\n")
-                        append("Output the question set, answer key, and detailed step-by-step explanations strictly as a raw JSON array inside clean text. Do not include introductory remarks, markdown code fences (like ```json), or trailing commentary.\n\n")
-                        append("JSON Schema to follow strictly:\n")
-                        append("[\n")
-                        append("  {\n")
-                        append("    \"num\": 1,\n")
-                        append("    \"question\": \"Question text here (LaTeX math like \$E = mc^2\$ is supported)\",\n")
-                        append("    \"options\": {\n")
-                        append("      \"a\": \"Option A text\",\n")
-                        append("      \"b\": \"Option B text\",\n")
-                        append("      \"c\": \"Option C text\",\n")
-                        append("      \"d\": \"Option D text\"\n")
-                        append("    },\n")
-                        append("    \"correctAnswer\": \"A\",\n")
-                        append("    \"explanation\": \"Detailed step-by-step pedagogical explanation of why this answer is correct and why other options are incorrect.\"\n")
-                        append("  }\n")
-                        append("]\n\n")
-                        append("Rules:\n")
-                        append("1. STRICT 4-OPTION CONSTRAINT: Each question must contain EXACTLY 4 options labeled \"a\", \"b\", \"c\", and \"d\". Never include a 5th option \"e\" or more than 4 options under any circumstances.\n")
-                        append("2. \"correctAnswer\" must be the single uppercase letter (\"A\", \"B\", \"C\", or \"D\").\n")
-                        append("3. Provide a thorough, step-by-step explanation for each question in \"explanation\" (Language: $effectiveExplanationLanguage).\n")
-                        append("4. Balanced key distribution (~25% each across A, B, C, D).\n")
-                        if (includeFormulasAndDiagrams) {
-                            append("5. Scientific Notation: Wrap mathematical formulas and chemical symbols in standard LaTeX dollar signs (e.g., \$H_2SO_4\$, \$v = u + at\$).\n")
-                        }
-                        append("6. Return ONLY the valid JSON array starting with [ and ending with ].")
+                buildString {
+                    append(
+                        """
+                        Act as a senior psychometrician and chief examination paper setter for $targetExam.
+
+                        Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject in $qLang at $difficulty difficulty (Question Pattern: $questionType).
+
+                        ### 1. STRICT JSON OUTPUT REQUIREMENTS
+                        Output only a valid JSON array containing the complete question set, correct answers, and explanations. Do not include introductory remarks, Markdown code fences, or trailing commentary.
+
+                        ### 2. JSON SCHEMA
+                        [
+                            {
+                                "num": 1,
+                                "question": "Question text here",
+                                "options": {
+                                "a": "Option A text",
+                                "b": "Option B text",
+                                "c": "Option C text",
+                                "d": "Option D text"
+                                },
+                                "correctAnswer": "A",
+                                "explanation": "Explanation text here"
+                            }
+                        ]
+
+                        ### 3. QUESTION QUALITY AND ANSWER RULES
+                        1. Generate exactly $countInt questions relevant to $targetSubject and appropriate for $targetExam.
+                        2. Each question must contain EXACTLY four options, with keys "a", "b", "c", and "d". Never include an option "e" or any additional options.
+                        3. Each option must be plausible, relevant, and clearly distinguishable from the others. Avoid overlapping options, grammatical clues, and making the correct option noticeably longer without a valid reason.
+                        4. The "correctAnswer" value must be exactly one uppercase letter: "A", "B", "C", or "D". It must identify the option that is factually and logically correct.
+                        5. Distribute correct answers approximately evenly across A, B, C, and D when feasible. Never compromise correctness to balance the answer key.
+
+                        ### 4. EXPLANATION REQUIREMENTS
+                        Write every explanation in $effectiveExplanationLanguage. Ensure that the reasoning is accurate, specific to the question, and sufficient to justify the answer. Avoid repetition, filler, vague claims, and unrelated background information.
+                        """.trimIndent()
+                    )
+                    
+                    append("\n\n")
+
+                    if (promptDensity == "Concise") {
+                        append(
+                            """
+
+                            EXPLANATION DEPTH
+                            Keep explanations concise but complete. State the decisive reasoning and include only the concepts, key terms, formulas, or calculations needed to establish the answer.
+                            """.trimIndent()
+                        )
+                    } else {
+                        append(
+                            """
+
+                            EXPLANATION DEPTH
+                            Provide a detailed, logically organized explanation. Explain the relevant concepts, key terms, principles, formulas, and calculations where applicable. Show why the reasoning leads to the answer rather than merely restating the correct option.
+                            """.trimIndent()
+                        )
                     }
-                } else {
-                    buildString {
-                        append("Act as a senior psychometrician and chief examination paper setter for $targetExam.\n\n")
-                        append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty (Question Pattern: $questionType) in $qLang.\n\n")
-                        append("### 1. TARGET OUTPUT SPECIFICATION: STRICT JSON\n")
-                        append("You MUST output the complete examination question set, answer keys, and detailed pedagogical explanations as a valid, well-structured JSON array.\n")
-                        append("Do not include conversational greetings, disclaimers, or trailing remarks. Output ONLY the raw JSON array.\n\n")
-                        append("### 2. JSON SCHEMA DEFINITION:\n")
-                        append("[\n")
-                        append("  {\n")
-                        append("    \"num\": 1,\n")
-                        append("    \"question\": \"Question text here\",\n")
-                        append("    \"options\": {\n")
-                        append("      \"a\": \"Option A text\",\n")
-                        append("      \"b\": \"Option B text\",\n")
-                        append("      \"c\": \"Option C text\",\n")
-                        append("      \"d\": \"Option D text\"\n")
-                        append("    },\n")
-                        append("    \"correctAnswer\": \"A\",\n")
-                        append("    \"explanation\": \"Detailed step-by-step explanation\"\n")
-                        append("  }\n")
-                        append("]\n\n")
-                        append("### 3. PSYCHOMETRIC & DISTRACTOR RULES\n")
-                        append("1. COGNITIVE LEVEL ($difficulty): Multi-step analytical deduction, authentic examination caliber, and plausible distractors.\n")
-                        append("2. STRICT 4-OPTION CONSTRAINT: Each question must have EXACTLY 4 options labeled \"a\", \"b\", \"c\", and \"d\". Never generate a 5th option \"e\" or more than 4 options.\n")
-                        append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
-                        append("4. LENGTH CONTROL: The correct option must NOT be noticeably longer than other options.\n")
-                        append("5. BALANCED KEYS: Distribute correct answers evenly (~25% each across A, B, C, D).\n")
-                        if (explainAllFourOptions) {
-                            append("6. EXPLANATION DEPTH: In \"explanation\", provide the governing principle followed by why the correct option is right and why distractors fail.\n")
-                        }
-                        if (includeFormulasAndDiagrams) {
-                            append("7. LATEX MATH: Enclose all mathematical and chemical expressions in LaTeX dollar signs (e.g. \$E = mc^2\$).\n")
-                        }
-                        append("\nExecute now by producing the JSON array starting with [ and ending with ].")
+
+                    if (explainAllFourOptions) {
+                        append(
+                            """
+
+                            OPTION-BY-OPTION EXPLANATION
+                            Explain options A, B, C, and D individually and in that order. For each option, explicitly state whether it is correct or incorrect and give a specific reason. Explain why the correct option is valid and why each distractor fails. Do not repeat the same reasoning in different words.
+                            """.trimIndent()
+                        )
+                    } else {
+                        append(
+                            """
+
+                            ANSWER EXPLANATION
+                            Explain why the correct answer is right and identify the decisive reasoning. Do not provide a separate explanation for every incorrect option.
+                            """.trimIndent()
+                        )
                     }
+
+                    append("\n\n")
+
+                    append(
+                        """
+
+                        ### 5. ADAPT EXPLANATIONS TO THE QUESTION TYPE
+                        - Conceptual questions: Explain the governing concept and connect it directly to the answer.
+                        - Definition-based questions: Clarify the key term or definition that determines the answer.
+                        - Numerical questions: Identify the relevant given information, state the applicable formula or principle, show substitution and essential calculations, and state the final result.
+                        - Formula-based questions: Explain the relevant formula and how it applies to the problem.
+                        - Statement-based questions: Evaluate the relevant statements and explain the reasoning behind the answer.
+                        - Comparison questions: Explain the decisive similarities, differences, or relationships.
+                        - Process-based questions: Explain the relevant stages or causal relationships in logical order.
+
+                        Use only the explanation elements relevant to each question. Do not force conceptual questions into numerical steps or use an identical explanation structure for every question.
+                        """.trimIndent()
+                    )
+
+                    append("\n\n")
+
+                    if (includeFormulasAndDiagrams) {
+                        append(
+                            """
+
+                            ### 6. MATHEMATICAL NOTATION
+                            Use LaTeX formatting for mathematical expressions and chemical formulas when it improves clarity. Ordinary text is acceptable when sufficient. Do not add unnecessary formulas, LaTeX delimiters, or backslashes.
+                            """.trimIndent()
+                        )
+                    }
+                    
+                    append("\n\n")
+
+                    append(
+                        """
+
+                        ### 7. JSON STRING ESCAPING
+                        Use ordinary text wherever possible. Do not add unnecessary escape characters. When a JSON string contains a literal backslash, escape it as two consecutive backslashes. Escape double quotes and control characters according to JSON rules. Represent line breaks inside JSON string values using the JSON newline escape sequence, not an unescaped line break. Ensure that all strings are valid JSON strings.
+
+                        ### 8. FINAL VALIDATION
+                        Before returning the result, verify that:
+                        - The array contains exactly $countInt question objects.
+                        - Question numbers are sequential, starting at 1.
+                        - Every object contains exactly the fields "num", "question", "options", "correctAnswer", and "explanation".
+                        - Every options object contains exactly the keys "a", "b", "c", and "d".
+                        - Every correctAnswer matches the correct option and uses one uppercase letter.
+                        - Explanations follow the selected explanation depth and option-explanation setting.
+                        - All JSON strings are correctly escaped and there are no trailing commas or comments.
+
+                        Return ONLY the valid JSON array, beginning with [ and ending with ].
+                        """.trimIndent()
+                    )
                 }
             } else if (targetOutputFormat == "Markdown Table") {
                 buildString {
@@ -397,7 +457,13 @@ fun PromptGeneratorTab(
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
-                            Text(if (copied) "Copied!" else "Copy Prompt", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (copied) "Copied!" else "Copy Prompt",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -770,6 +836,7 @@ fun PromptGeneratorTab(
                                 )
                             }
                         }
+                    }
                     // TARGET AI OUTPUT FORMAT SELECTOR (JSON vs Standard Text vs Markdown Table)
                     Column(
                         modifier = Modifier
@@ -853,7 +920,10 @@ fun PromptGeneratorTab(
                                         },
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = colors.tealDark
+                                        color = colors.tealDark,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
 
                                     val sampleText = when (targetOutputFormat) {
@@ -916,7 +986,9 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                                 text = "Copy Sample Format",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = colors.tealDark
+                                                color = colors.tealDark,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -1199,7 +1271,6 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             }
                         }
                     }
-                }
 
                     Spacer(modifier = Modifier.height(2.dp))
 

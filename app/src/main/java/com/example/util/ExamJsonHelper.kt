@@ -156,6 +156,40 @@ object ExamJsonHelper {
         if (text.endsWith("```")) {
             text = text.substringBeforeLast("```").trim()
         }
+        text = text.trim()
+
+        // Strip LaTeX math block wrappers: \[ ... \] or \\[ ... \\] or $$ ... $$
+        while (text.startsWith("\\[") || text.startsWith("\\\\[") || text.startsWith("$$") || text.startsWith("$")) {
+            if (text.startsWith("\\\\[")) text = text.removePrefix("\\\\[").trim()
+            else if (text.startsWith("\\[")) text = text.removePrefix("\\[").trim()
+            else if (text.startsWith("$$")) text = text.removePrefix("$$").trim()
+            else if (text.startsWith("$") && !(text.length > 1 && text[1] == '{')) text = text.removePrefix("$").trim()
+            else break
+        }
+
+        while (text.endsWith("\\]") || text.endsWith("\\\\]") || text.endsWith("$$") || text.endsWith("$")) {
+            if (text.endsWith("\\\\]")) text = text.removeSuffix("\\\\]").trim()
+            else if (text.endsWith("\\]")) text = text.removeSuffix("\\]").trim()
+            else if (text.endsWith("$$")) text = text.removeSuffix("$$").trim()
+            else if (text.endsWith("$")) text = text.removeSuffix("$").trim()
+            else break
+        }
+
+        // Bracket matching: If surrounded by arbitrary preamble or postscript, extract outermost JSON array [ ... ] or object { ... }
+        val firstSquare = text.indexOf('[')
+        val firstCurly = text.indexOf('{')
+        if (firstSquare != -1 && (firstCurly == -1 || firstSquare < firstCurly)) {
+            val lastSquare = text.lastIndexOf(']')
+            if (lastSquare > firstSquare) {
+                text = text.substring(firstSquare, lastSquare + 1)
+            }
+        } else if (firstCurly != -1) {
+            val lastCurly = text.lastIndexOf('}')
+            if (lastCurly > firstCurly) {
+                text = text.substring(firstCurly, lastCurly + 1)
+            }
+        }
+
         return text.trim()
     }
 

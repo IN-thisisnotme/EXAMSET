@@ -169,16 +169,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.ui.theme.ExamTheme
 
-fun computeNextSetForSubject(subject: String, papers: List<PaperEntity>): String {
+fun computeNextSetForSubject(
+    subject: String,
+    papers: List<PaperEntity>,
+    targetFolderId: String? = null
+): String {
     val cleanSubject = subject.trim()
-    if (cleanSubject.isBlank()) return "01"
+    val relevantPapers = papers.filter { p ->
+        val matchesFolder = !targetFolderId.isNullOrBlank() && p.folderId == targetFolderId
+        val matchesSubject = cleanSubject.isNotBlank() && p.subject.trim().equals(cleanSubject, ignoreCase = true)
+        matchesFolder || matchesSubject
+    }
+    if (relevantPapers.isEmpty()) return "01"
 
-    val subjectPapers = papers.filter { it.subject.trim().equals(cleanSubject, ignoreCase = true) }
-    if (subjectPapers.isEmpty()) return "01"
-
-    val usedNumbers = subjectPapers.mapNotNull { p ->
+    val foundNumbers = relevantPapers.mapNotNull { p ->
         val trimmed = p.setNumber.trim()
         val numMatch = Regex("""\b(?:Set|Series)?\s*(\d+)\b""", RegexOption.IGNORE_CASE).find(trimmed)
+            ?: Regex("""\b(?:Set|Series)?\s*(\d+)\b""", RegexOption.IGNORE_CASE).find(p.title)
         if (numMatch != null) {
             numMatch.groupValues[1].toIntOrNull()
         } else {
@@ -188,12 +195,11 @@ fun computeNextSetForSubject(subject: String, papers: List<PaperEntity>): String
                 char - 'A' + 1
             } else null
         }
-    }.toSet()
-
-    var nextNum = 1
-    while (nextNum in usedNumbers) {
-        nextNum++
     }
+
+    if (foundNumbers.isEmpty()) return "01"
+    val maxNum = foundNumbers.maxOrNull() ?: 0
+    val nextNum = maxNum + 1
     return String.format(java.util.Locale.US, "%02d", nextNum)
 }
 
@@ -256,7 +262,7 @@ fun InputBottomSheet(
     var customTitle by remember { mutableStateOf("") }
     var customSubject by remember(initialSubject) { mutableStateOf(initialSubject) }
     var customTopic by remember { mutableStateOf("") }
-    var customSetNumber by remember { mutableStateOf("01") }
+    var customSetNumber by remember(initialSubject) { mutableStateOf(computeNextSetForSubject(initialSubject, savedPapers)) }
     var customDurationMinutesStr by remember { mutableStateOf("60") }
     var customPositiveMarksStr by remember { mutableStateOf("4.0") }
     var customNegativeMarksStr by remember { mutableStateOf("1.0") }

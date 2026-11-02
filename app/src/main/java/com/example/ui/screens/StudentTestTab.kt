@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1977,7 +1978,9 @@ private fun ActiveExamView(
                 color = colors.surface,
                 border = BorderStroke(1.dp, colors.border),
                 shadowElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                     Row(
@@ -2003,9 +2006,19 @@ private fun ActiveExamView(
                             border = BorderStroke(1.2.dp, Color(0xFF7C3AED)),
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C3AED)),
-                            modifier = Modifier.weight(1f)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 40.dp)
                         ) {
-                            Text("Review & Next", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(
+                                "Review & Next",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         // Clear Response
@@ -2018,9 +2031,18 @@ private fun ActiveExamView(
                             border = BorderStroke(1.dp, Color(0xFFEA580C)),
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEA580C)),
-                            modifier = Modifier.weight(0.9f)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .heightIn(min = 40.dp)
                         ) {
-                            Text("Clear", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(
+                                "Clear",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
                         // Save & Next (With simulated TCS server latency of 400ms)
@@ -2046,7 +2068,10 @@ private fun ActiveExamView(
                             enabled = !isSavingNext,
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                            modifier = Modifier.weight(1.2f)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .heightIn(min = 40.dp)
                         ) {
                             if (isSavingNext) {
                                 CircularProgressIndicator(
@@ -2055,13 +2080,21 @@ private fun ActiveExamView(
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Saving...", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Saving...",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             } else {
                                 Text(
                                     text = if (currentIndex == activeQuestions.size - 1) "Save & Submit" else "Save & Next",
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -2085,18 +2118,33 @@ private fun ActiveExamView(
                             },
                             enabled = currentIndex > 0,
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.heightIn(min = 36.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 38.dp)
                         ) {
-                            Text("← Previous", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "← Previous",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
                         Button(
                             onClick = { showSubmitConfirmDialog = true },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
-                            modifier = Modifier.heightIn(min = 36.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 38.dp)
                         ) {
-                            Text("Submit Test ($answeredCount/$totalQuestions)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Submit Test ($answeredCount/$totalQuestions)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }

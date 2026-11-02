@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1280,7 +1281,8 @@ fun AuditResolutionHubDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .wrapContentHeight(),
+                        .wrapContentHeight()
+                        .navigationBarsPadding(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1289,7 +1291,9 @@ fun AuditResolutionHubDialog(
                             text = "${reports.count { it.isResolved || it.isVerified }} of ${reports.size} Resolved",
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.inkBold
+                            color = colors.inkBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "${metrics.verifiedCount} questions sealed",
@@ -1323,7 +1327,9 @@ fun AuditResolutionHubDialog(
                                 "Quality Seal",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.teal
+                                color = colors.teal,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
@@ -1343,7 +1349,9 @@ fun AuditResolutionHubDialog(
                                 "Done",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.primaryButtonText
+                                color = colors.primaryButtonText,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

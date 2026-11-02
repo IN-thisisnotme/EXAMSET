@@ -262,12 +262,13 @@ object McqParser {
         }
 
         // 1. Explicit / Auto JSON format detection
+        val preCleaned = ExamJsonHelper.cleanJsonString(cleanInput)
         val isLikelyJson = cleanInput.startsWith("```json") ||
-                (cleanInput.startsWith("{") && cleanInput.endsWith("}")) ||
-                (cleanInput.startsWith("[") && cleanInput.endsWith("]"))
+                preCleaned.startsWith("{") ||
+                preCleaned.startsWith("[")
         if (isLikelyJson) {
             try {
-                val jsonPaper = ExamJsonHelper.fromJson(cleanInput)
+                val jsonPaper = ExamJsonHelper.fromJson(preCleaned)
                 if (jsonPaper.questions.isNotEmpty()) {
                     return jsonPaper.copy(rawText = rawText)
                 }

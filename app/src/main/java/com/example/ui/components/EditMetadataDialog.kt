@@ -1,6 +1,8 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -688,11 +690,13 @@ fun EditMetadataDialog(
 
                         // Quick duration preset chips
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Duration:", fontSize = 10.sp, color = colors.muted, fontWeight = FontWeight.Bold)
+                            Text("Duration:", fontSize = 10.sp, color = colors.muted, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                             listOf(30, 45, 60, 90, 120, 180).forEach { mins ->
                                 val isSelected = durationMinutesStr == mins.toString()
                                 Surface(
@@ -706,7 +710,9 @@ fun EditMetadataDialog(
                                         fontSize = 10.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSelected) Color.White else colors.ink,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -763,7 +769,9 @@ fun EditMetadataDialog(
                     color = colors.surfaceVariant,
                     tonalElevation = 3.dp,
                     border = BorderStroke(0.5.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
                 ) {
                     Row(
                         modifier = Modifier
@@ -780,7 +788,7 @@ fun EditMetadataDialog(
                                 .testTag("cancel_metadata_button")
                                 .heightIn(min = 44.dp)
                         ) {
-                            Text("Cancel")
+                            Text("Cancel", maxLines = 1, softWrap = false)
                         }
 
                         Spacer(modifier = Modifier.width(10.dp))
@@ -817,7 +825,7 @@ fun EditMetadataDialog(
                                 .testTag("save_metadata_button")
                                 .heightIn(min = 44.dp)
                         ) {
-                            Text("Save Details")
+                            Text("Save Details", maxLines = 1, softWrap = false)
                         }
                     }
                 }

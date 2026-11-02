@@ -978,6 +978,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val finalPaper = parsed.copy(metadata = finalMetadata)
 
+            if (finalPaper.questions.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "No valid questions detected. Please verify your format (JSON array or Q1. (A)..(D))."
+                }
+                return@launch
+            }
+
             val existing = paperDao.findPaperByRawText(text.trim())
             val entityId: Long = if (existing != null) {
                 // When an existing set is re-saved or moved to another folder, preserve its existing set number
