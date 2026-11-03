@@ -349,24 +349,27 @@ object BatchExamImporter {
                     a = optObj.optString("a", optObj.optString("A", "")),
                     b = optObj.optString("b", optObj.optString("B", "")),
                     c = optObj.optString("c", optObj.optString("C", "")),
-                    d = optObj.optString("d", optObj.optString("D", ""))
+                    d = optObj.optString("d", optObj.optString("D", "")),
+                    e = optObj.optString("e", optObj.optString("E", ""))
                 )
             } else {
-                // Check if options are an array: ["opt1", "opt2", "opt3", "opt4"]
+                // Check if options are an array: ["opt1", "opt2", "opt3", "opt4", "opt5"]
                 val optArr = qObj.optJSONArray("options")
                 if (optArr != null) {
                     QuestionOptions(
                         a = optArr.optString(0, ""),
                         b = optArr.optString(1, ""),
                         c = optArr.optString(2, ""),
-                        d = optArr.optString(3, "")
+                        d = optArr.optString(3, ""),
+                        e = optArr.optString(4, "")
                     )
                 } else {
                     QuestionOptions(
                         a = qObj.optString("optionA", qObj.optString("option_a", "")),
                         b = qObj.optString("optionB", qObj.optString("option_b", "")),
                         c = qObj.optString("optionC", qObj.optString("option_c", "")),
-                        d = qObj.optString("optionD", qObj.optString("option_d", ""))
+                        d = qObj.optString("optionD", qObj.optString("option_d", "")),
+                        e = qObj.optString("optionE", qObj.optString("option_e", ""))
                     )
                 }
             }
@@ -489,7 +492,7 @@ object BatchExamImporter {
             }
 
             // Options check
-            val validOpts = listOf(q.options.a, q.options.b, q.options.c, q.options.d).filter { it.isNotBlank() }
+            val validOpts = listOf(q.options.a, q.options.b, q.options.c, q.options.d, q.options.e).filter { it.isNotBlank() }
             if (validOpts.size < 2) {
                 lowOptionCount++
                 issues.add(
@@ -503,7 +506,7 @@ object BatchExamImporter {
                 issues.add(
                     ValidationIssue(
                         severity = ValidationSeverity.INFO,
-                        message = "Question #${q.num} has ${validOpts.size} options (standard is 4).",
+                        message = "Question #${q.num} has ${validOpts.size} options (standard is 4 or 5).",
                         questionNumber = q.num
                     )
                 )
@@ -514,12 +517,12 @@ object BatchExamImporter {
                 missingKeysCount++
             } else {
                 val cleanedAns = q.correctAnswer.uppercase()
-                if (cleanedAns !in listOf("A", "B", "C", "D")) {
+                if (cleanedAns !in listOf("A", "B", "C", "D", "E")) {
                     nonStandardKeyCount++
                     issues.add(
                         ValidationIssue(
                             severity = ValidationSeverity.WARNING,
-                            message = "Question #${q.num} answer key \"${q.correctAnswer}\" is non-standard (expected A, B, C, or D).",
+                            message = "Question #${q.num} answer key \"${q.correctAnswer}\" is non-standard (expected A, B, C, D, or E).",
                             questionNumber = q.num
                         )
                     )

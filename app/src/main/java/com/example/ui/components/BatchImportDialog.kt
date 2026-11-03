@@ -1120,6 +1120,9 @@ private fun BatchPaperCard(
                                         Text("(C) ${q.options.c}", fontSize = 10.sp, color = colors.inkMuted, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text("(D) ${q.options.d}", fontSize = 10.sp, color = colors.inkMuted, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
+                                    if (q.options.e.isNotBlank()) {
+                                        Text("(E) ${q.options.e}", fontSize = 10.sp, color = colors.inkMuted, modifier = Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                     if (q.correctAnswer != null) {
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(

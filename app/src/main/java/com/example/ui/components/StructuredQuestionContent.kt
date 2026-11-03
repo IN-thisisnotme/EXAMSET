@@ -512,6 +512,20 @@ private fun GridOptionsLayout(
                 modifier = Modifier.weight(1f)
             )
         }
+        if (question.options.e.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CompactOptionItem(
+                    letter = "E",
+                    text = question.options.e,
+                    isCorrect = showAnswerIndicator && (canonicalAnswer == "E" || question.correctAnswer.equals("E", ignoreCase = true)),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
     }
 }
 

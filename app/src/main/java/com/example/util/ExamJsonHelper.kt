@@ -58,6 +58,9 @@ object ExamJsonHelper {
                     put("b", q.options.b)
                     put("c", q.options.c)
                     put("d", q.options.d)
+                    if (q.options.e.isNotBlank()) {
+                        put("e", q.options.e)
+                    }
                 }
                 put("options", optObj)
 
@@ -314,14 +317,16 @@ object ExamJsonHelper {
                     a = optVal.optString("a", optVal.optString("A", "")),
                     b = optVal.optString("b", optVal.optString("B", "")),
                     c = optVal.optString("c", optVal.optString("C", "")),
-                    d = optVal.optString("d", optVal.optString("D", ""))
+                    d = optVal.optString("d", optVal.optString("D", "")),
+                    e = optVal.optString("e", optVal.optString("E", ""))
                 )
             } else if (optVal is JSONArray) {
                 QuestionOptions(
                     a = optVal.optString(0, ""),
                     b = optVal.optString(1, ""),
                     c = optVal.optString(2, ""),
-                    d = optVal.optString(3, "")
+                    d = optVal.optString(3, ""),
+                    e = optVal.optString(4, "")
                 )
             } else {
                 QuestionOptions()
@@ -332,7 +337,8 @@ object ExamJsonHelper {
                 a = qObj.optString("a", qObj.optString("optionA", qObj.optString("A", ""))),
                 b = qObj.optString("b", qObj.optString("optionB", qObj.optString("B", ""))),
                 c = qObj.optString("c", qObj.optString("optionC", qObj.optString("C", ""))),
-                d = qObj.optString("d", qObj.optString("optionD", qObj.optString("D", "")))
+                d = qObj.optString("d", qObj.optString("optionD", qObj.optString("D", ""))),
+                e = qObj.optString("e", qObj.optString("optionE", qObj.optString("E", "")))
             )
         }
 
@@ -341,9 +347,9 @@ object ExamJsonHelper {
         } else {
             qObj.optString("correctAnswer", "")
         }
-        val ans = rawAns.trim().uppercase().takeIf { it in listOf("A", "B", "C", "D", "1", "2", "3", "4") }?.let {
+        val ans = rawAns.trim().uppercase().takeIf { it in listOf("A", "B", "C", "D", "E", "1", "2", "3", "4", "5") }?.let {
             when (it) {
-                "1" -> "A"; "2" -> "B"; "3" -> "C"; "4" -> "D"; else -> it
+                "1" -> "A"; "2" -> "B"; "3" -> "C"; "4" -> "D"; "5" -> "E"; else -> it
             }
         }
 

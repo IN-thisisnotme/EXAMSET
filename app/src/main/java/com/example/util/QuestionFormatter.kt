@@ -600,6 +600,11 @@ object QuestionFormatter {
             return false
         }
 
+        // 5-option questions (Option E present) are stacked vertically for balanced, distortion-free readability
+        if (options.e.isNotBlank()) {
+            return true
+        }
+
         val type = qType.orEmpty().lowercase()
 
         if (

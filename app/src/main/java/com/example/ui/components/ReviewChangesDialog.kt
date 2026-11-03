@@ -100,6 +100,7 @@ fun getOptionTextByKey(q: McqQuestion?, key: String?): String? {
         "B" -> q.options.b
         "C" -> q.options.c
         "D" -> q.options.d
+        "E" -> q.options.e
         else -> null
     }
 }
@@ -148,6 +149,9 @@ fun computeQuestionDiffs(
             }
             if (original.options.d.trim() != current.options.d.trim()) {
                 changedOpts.add(ChangedOptionDiff("D", original.options.d, current.options.d))
+            }
+            if (original.options.e.trim() != current.options.e.trim()) {
+                changedOpts.add(ChangedOptionDiff("E", original.options.e, current.options.e))
             }
 
             if (keyChanged || stemChanged || expChanged || changedOpts.isNotEmpty()) {
@@ -669,11 +673,12 @@ private fun FullContextDiffCard(diff: QuestionDiff) {
 
                     AnimatedVisibility(visible = showAllOptions) {
                         Column(modifier = Modifier.padding(top = 8.dp)) {
-                            listOf(
+                            listOfNotNull(
                                 "A" to activeQuestion.options.a,
                                 "B" to activeQuestion.options.b,
                                 "C" to activeQuestion.options.c,
-                                "D" to activeQuestion.options.d
+                                "D" to activeQuestion.options.d,
+                                if (activeQuestion.options.e.isNotBlank()) "E" to activeQuestion.options.e else null
                             ).forEach { (letter, optText) ->
                                 val isSelectedAnswer = activeQuestion.correctAnswer.equals(letter, ignoreCase = true)
                                 val isPreviousKey = diff.oldAnswerKey.equals(letter, ignoreCase = true) && diff.answerKeyChanged

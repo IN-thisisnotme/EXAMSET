@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -171,9 +172,13 @@ fun BulkAuditPromptDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         val setSubtitle = remember(paper.metadata) {
+            val title = paper.metadata.title.ifBlank { "Exam Paper" }
             val rawSet = paper.metadata.setNumber.trim()
-            val cleanSet = if (rawSet.startsWith("Set", ignoreCase = true)) rawSet else "Set $rawSet"
-            if (rawSet.isBlank()) paper.metadata.title else "${paper.metadata.title} • $cleanSet"
+            when {
+                rawSet.isBlank() -> title
+                rawSet.startsWith("Set", ignoreCase = true) -> "$title • $rawSet"
+                else -> "$title • Set $rawSet"
+            }
         }
 
         Card(
@@ -197,7 +202,7 @@ fun BulkAuditPromptDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f, fill = false),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
@@ -215,7 +220,7 @@ fun BulkAuditPromptDialog(
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column {
                             Text(
                                 text = "3-Phase Quality Auditor",
                                 fontSize = 16.sp,
@@ -461,11 +466,12 @@ fun BulkAuditPromptDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Action Buttons Footer (Pinned at bottom, 48dp touch targets)
+                // Action Buttons Footer (Flexible height, no text clipping)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .heightIn(min = 48.dp)
+                        .wrapContentHeight(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -477,9 +483,10 @@ fun BulkAuditPromptDialog(
                             containerColor = if (copiedToClipboard) colors.tealLight.copy(alpha = 0.3f) else colors.surface,
                             contentColor = if (copiedToClipboard) colors.teal else colors.inkBold
                         ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight()
+                            .heightIn(min = 48.dp)
                             .testTag("bulk_audit_copy_button")
                     ) {
                         Icon(
@@ -490,9 +497,11 @@ fun BulkAuditPromptDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (copiedToClipboard) "Copied Prompt!" else "Copy Step Prompt",
+                            text = if (copiedToClipboard) "Copied!" else "Copy Prompt",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
@@ -506,9 +515,10 @@ fun BulkAuditPromptDialog(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
                         ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier
                             .weight(1.15f)
-                            .fillMaxHeight()
+                            .heightIn(min = 48.dp)
                             .testTag("bulk_audit_open_hub_button")
                     ) {
                         Icon(
@@ -522,7 +532,9 @@ fun BulkAuditPromptDialog(
                             text = "Resolution Hub",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.primaryButtonText
+                            color = colors.primaryButtonText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }

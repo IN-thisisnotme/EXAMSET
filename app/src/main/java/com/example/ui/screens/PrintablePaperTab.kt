@@ -831,9 +831,10 @@ fun PrintablePaperTab(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Smart adaptive options layout:
-                        // If all options are short (<= 18 chars), display in 2 columns.
+                        // If all options are short (<= 18 chars) and exactly 4 options, display in 2 columns.
                         // Otherwise, stack each option on its own row to guarantee zero text warping!
-                        val allOptionsShort = listOf(q.options.a, q.options.b, q.options.c, q.options.d).all { it.length <= 18 }
+                        val hasOptionE = q.options.e.isNotBlank()
+                        val allOptionsShort = !hasOptionE && listOf(q.options.a, q.options.b, q.options.c, q.options.d).all { it.length <= 18 }
 
                         if (allOptionsShort) {
                             Row(
@@ -881,11 +882,12 @@ fun PrintablePaperTab(
                             }
                         } else {
                             // Stacked format: clean full-width rows with bold letter headers
-                            listOf(
+                            listOfNotNull(
                                 "A" to q.options.a,
                                 "B" to q.options.b,
                                 "C" to q.options.c,
-                                "D" to q.options.d
+                                "D" to q.options.d,
+                                if (hasOptionE) "E" to q.options.e else null
                             ).forEach { (optKey, optVal) ->
                                 Row(
                                     modifier = Modifier

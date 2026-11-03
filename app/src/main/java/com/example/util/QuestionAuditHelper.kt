@@ -107,8 +107,8 @@ object QuestionAuditHelper {
             appendLine("2. FULLY TEXT-SOLVABLE: Must NOT depend on unseen diagrams or external images.")
             appendLine("3. COMPLETE MCQ PACKAGE: Must include:")
             appendLine("   - \"question\": Clear, unambiguous question stem.")
-            appendLine("   - \"options\": Four distinct, valid choices {\"a\": \"...\", \"b\": \"...\", \"c\": \"...\", \"d\": \"...\"}.")
-            appendLine("   - \"correctAnswer\": Exact correct key letter (A, B, C, or D).")
+            appendLine("   - \"options\": Distinct, valid choices {\"a\": \"...\", \"b\": \"...\", \"c\": \"...\", \"d\": \"...\"} (include \"e\" if the paper uses 5 choices).")
+            appendLine("   - \"correctAnswer\": Exact correct key letter (A, B, C, D, or E).")
             appendLine("   - \"explanation\": Clear, pedagogical step-by-step solution explaining why the key is correct.")
             appendLine()
             appendLine("=== EXACT JSON SCHEMA FOR PHASE 2 ===")
@@ -357,7 +357,8 @@ object QuestionAuditHelper {
                 if (q.options.a.isNotBlank()) q.options.a.trim() else null,
                 if (q.options.b.isNotBlank()) q.options.b.trim() else null,
                 if (q.options.c.isNotBlank()) q.options.c.trim() else null,
-                if (q.options.d.isNotBlank()) q.options.d.trim() else null
+                if (q.options.d.isNotBlank()) q.options.d.trim() else null,
+                if (q.options.e.isNotBlank()) q.options.e.trim() else null
             )
             val distinctCount = optionsList.map { it.lowercase() }.distinct().size
             val hasDuplicateOptions = optionsList.size >= 2 && distinctCount < optionsList.size
@@ -526,12 +527,13 @@ object QuestionAuditHelper {
                 val optB = originalQ.options.b.ifBlank { "Secondary deduction" }
                 val optC = originalQ.options.c.ifBlank { "Alternative outcome" }
                 val optD = originalQ.options.d.ifBlank { "Independent constant" }
-                val key = originalQ.correctAnswer?.takeIf { it in listOf("A", "B", "C", "D") } ?: "A"
+                val optE = originalQ.options.e.trim()
+                val key = originalQ.correctAnswer?.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "A"
 
                 McqQuestion(
                     num = num,
                     question = cleanStem,
-                    options = QuestionOptions(a = optA, b = optB, c = optC, d = optD),
+                    options = QuestionOptions(a = optA, b = optB, c = optC, d = optD, e = optE),
                     correctAnswer = key,
                     explanation = "Step 1: Direct analysis of the scientific premise confirms Option $key.\nStep 2: Alternate options fail to satisfy the governing theorem.\n**Core Concept:** Standard academic syllabus alignment.\n**Key Idea:** Option $key is the uniquely correct choice."
                 )

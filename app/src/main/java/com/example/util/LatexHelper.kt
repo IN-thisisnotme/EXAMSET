@@ -828,7 +828,8 @@ object LatexHelper {
                     a = toRichTextString(question.options.a),
                     b = toRichTextString(question.options.b),
                     c = toRichTextString(question.options.c),
-                    d = toRichTextString(question.options.d)
+                    d = toRichTextString(question.options.d),
+                    e = toRichTextString(question.options.e)
                 ),
                 explanation = question.explanation?.let { toRichTextString(it) },
                 formula = question.formula?.let { toRichTextString(it) }

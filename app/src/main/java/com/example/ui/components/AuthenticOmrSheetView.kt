@@ -491,6 +491,7 @@ fun AuthenticOmrSheetView(
                                         .border(BorderStroke(0.5.dp, OMR_MAGENTA))
                                 ) {
                                     // Column Header
+                                    val has5Options = paper.questions.any { it.options.e.isNotBlank() }
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -500,11 +501,14 @@ fun AuthenticOmrSheetView(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text("Q.No.", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(if (has5Options) 5.dp else 7.dp)) {
                                             Text("1", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                             Text("2", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                             Text("3", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                             Text("4", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            if (has5Options) {
+                                                Text("5", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
                                         }
                                     }
 
@@ -529,14 +533,15 @@ fun AuthenticOmrSheetView(
                                                 color = OMR_MAGENTA
                                             )
                                             Row(
-                                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(if (has5Options) 2.dp else 3.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                listOf("1", "2", "3", "4").forEach { opt ->
+                                                val bubbleOpts = if (has5Options) listOf("1", "2", "3", "4", "5") else listOf("1", "2", "3", "4")
+                                                bubbleOpts.forEach { opt ->
                                                     MicroBubble(
                                                         text = opt,
                                                         isDarkened = false,
-                                                        sizeDp = 13
+                                                        sizeDp = if (has5Options) 11 else 13
                                                     )
                                                 }
                                             }

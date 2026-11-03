@@ -2593,6 +2593,7 @@ object PrintDocumentHelper {
                         <div class="opt-cell"><span class="opt-key">(B)</span><span class="opt-text">${escapeRichHtml(q.options.b)}</span></div>
                         <div class="opt-cell"><span class="opt-key">(C)</span><span class="opt-text">${escapeRichHtml(q.options.c)}</span></div>
                         <div class="opt-cell"><span class="opt-key">(D)</span><span class="opt-text">${escapeRichHtml(q.options.d)}</span></div>
+                        ${if (q.options.e.isNotBlank()) "<div class=\"opt-cell\"><span class=\"opt-key\">(E)</span><span class=\"opt-text\">${escapeRichHtml(q.options.e)}</span></div>" else ""}
                     </div>
                 </div>
                 """.trimIndent())
@@ -2893,6 +2894,7 @@ object PrintDocumentHelper {
                         <div class="opt-item ${if (q.correctAnswer.equals("B", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(B)</span> ${escapeRichHtml(q.options.b)}</div>
                         <div class="opt-item ${if (q.correctAnswer.equals("C", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(C)</span> ${escapeRichHtml(q.options.c)}</div>
                         <div class="opt-item ${if (q.correctAnswer.equals("D", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(D)</span> ${escapeRichHtml(q.options.d)}</div>
+                        ${if (q.options.e.isNotBlank()) "<div class=\"opt-item ${if (q.correctAnswer.equals("E", ignoreCase = true)) "opt-correct" else ""}\"><span class=\"opt-badge\">(E)</span> ${escapeRichHtml(q.options.e)}</div>" else ""}
                     </div>
                 </div>
                 """.trimIndent())
@@ -3169,6 +3171,7 @@ object PrintDocumentHelper {
                 "B" -> q.options.b
                 "C" -> q.options.c
                 "D" -> q.options.d
+                "E" -> q.options.e
                 else -> null
             }
             val ansLine = if (letter != null && !optText.isNullOrBlank()) {
@@ -3830,41 +3833,45 @@ object PrintDocumentHelper {
                 </div>
 
                 <!-- Right Question Grid (Continuous 4 Columns of 50 Questions Each, 100% Full Opacity) -->
-                <div class="omr-right-grid">
-                    ${(0 until OmrGeometry.NUM_GRID_COLUMNS).joinToString("") { col ->
-                        val startQ = col * OmrGeometry.ROWS_PER_COLUMN + 1
-                        val endQ = (col + 1) * OmrGeometry.ROWS_PER_COLUMN
-                        buildString {
-                            append("""<div class="omr-column">""")
-                            append("""
-                                <div class="omr-col-header">
-                                    <span class="header-qnum-lbl">Q. No.</span>
-                                    <div class="header-resp-wrap">
-                                        <span class="header-opt-lbl">1</span>
-                                        <span class="header-opt-lbl">2</span>
-                                        <span class="header-opt-lbl">3</span>
-                                        <span class="header-opt-lbl">4</span>
-                                    </div>
-                                </div>
-                            """.trimIndent())
-                            for (q in startQ..endQ) {
-                                val blockIndex = (q - 1) / 5
-                                val isShaded = (blockIndex % 2) == 1
-                                val shadedClass = if (isShaded) "omr-row-shaded" else ""
-                                val qPadded = String.format("%03d", q)
+                    ${run {
+                        val has5Options = paper.questions.any { it.options.e.isNotBlank() }
+                        (0 until OmrGeometry.NUM_GRID_COLUMNS).joinToString("") { col ->
+                            val startQ = col * OmrGeometry.ROWS_PER_COLUMN + 1
+                            val endQ = (col + 1) * OmrGeometry.ROWS_PER_COLUMN
+                            buildString {
+                                append("""<div class="omr-column">""")
                                 append("""
-                                    <div class="omr-row $shadedClass">
-                                        <span class="omr-qnum">$qPadded</span>
-                                        <div class="bubble-group">
-                                            <span class="bubble">1</span>
-                                            <span class="bubble">2</span>
-                                            <span class="bubble">3</span>
-                                            <span class="bubble">4</span>
+                                    <div class="omr-col-header">
+                                        <span class="header-qnum-lbl">Q. No.</span>
+                                        <div class="header-resp-wrap">
+                                            <span class="header-opt-lbl">1</span>
+                                            <span class="header-opt-lbl">2</span>
+                                            <span class="header-opt-lbl">3</span>
+                                            <span class="header-opt-lbl">4</span>
+                                            ${if (has5Options) "<span class=\"header-opt-lbl\">5</span>" else ""}
                                         </div>
                                     </div>
                                 """.trimIndent())
+                                for (q in startQ..endQ) {
+                                    val blockIndex = (q - 1) / 5
+                                    val isShaded = (blockIndex % 2) == 1
+                                    val shadedClass = if (isShaded) "omr-row-shaded" else ""
+                                    val qPadded = String.format("%03d", q)
+                                    append("""
+                                        <div class="omr-row $shadedClass">
+                                            <span class="omr-qnum">$qPadded</span>
+                                            <div class="bubble-group">
+                                                <span class="bubble">1</span>
+                                                <span class="bubble">2</span>
+                                                <span class="bubble">3</span>
+                                                <span class="bubble">4</span>
+                                                ${if (has5Options) "<span class=\"bubble\">5</span>" else ""}
+                                            </div>
+                                        </div>
+                                    """.trimIndent())
+                                }
+                                append("</div>")
                             }
-                            append("</div>")
                         }
                     }}
                 </div>

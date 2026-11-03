@@ -95,6 +95,7 @@ fun PromptGeneratorTab(
     var questionLanguage by remember { mutableStateOf("English") }
     var explanationChoice by remember { mutableStateOf("Same as Question") }
     var customExplanationLanguage by remember { mutableStateOf("") }
+    var optionCount by remember { mutableStateOf(4) } // 4 or 5 options
     var explainAllFourOptions by remember { mutableStateOf(true) }
     var includeFormulasAndDiagrams by remember { mutableStateOf(true) }
     var promptPhasingStyle by remember { mutableStateOf("Standard") }
@@ -132,7 +133,7 @@ fun PromptGeneratorTab(
         examType, subject, topic, countInt, difficulty, questionType,
         questionLanguage, effectiveExplanationLanguage, explainAllFourOptions,
         includeFormulasAndDiagrams, promptPhasingStyle, enableQuantityCorrectionRule,
-        targetOutputFormat, promptDensity
+        targetOutputFormat, promptDensity, optionCount
     ) {
         derivedStateOf {
             val qLang = questionLanguage.trim().ifBlank { "English" }
@@ -170,7 +171,7 @@ fun PromptGeneratorTab(
                                 "a": "Option A text",
                                 "b": "Option B text",
                                 "c": "Option C text",
-                                "d": "Option D text"
+                                "d": "Option D text"${if (optionCount == 5) ",\n                                \"e\": \"Option E text\"" else ""}
                                 },
                                 "correctAnswer": "A",
                                 "explanation": "Explanation text here"
@@ -179,10 +180,10 @@ fun PromptGeneratorTab(
 
                         ### 3. QUESTION QUALITY AND ANSWER RULES
                         1. Generate exactly $countInt questions relevant to $targetSubject and appropriate for $targetExam.
-                        2. Each question must contain EXACTLY four options, with keys "a", "b", "c", and "d". Never include an option "e" or any additional options.
+                        2. Each question must contain EXACTLY $optionCount options, with keys ${if (optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.${if (optionCount == 4) " Never include an option \"e\" or any additional options." else ""}
                         3. Each option must be plausible, relevant, and clearly distinguishable from the others. Avoid overlapping options, grammatical clues, and making the correct option noticeably longer without a valid reason.
-                        4. The "correctAnswer" value must be exactly one uppercase letter: "A", "B", "C", or "D". It must identify the option that is factually and logically correct.
-                        5. Distribute correct answers approximately evenly across A, B, C, and D when feasible. Never compromise correctness to balance the answer key.
+                        4. The "correctAnswer" value must be exactly one uppercase letter: ${if (optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct.
+                        5. Distribute correct answers approximately evenly across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} when feasible. Never compromise correctness to balance the answer key.
 
                         ### 4. EXPLANATION REQUIREMENTS
                         Write every explanation in $effectiveExplanationLanguage. Ensure that the reasoning is accurate, specific to the question, and sufficient to justify the answer. Avoid repetition, filler, vague claims, and unrelated background information.
@@ -214,7 +215,7 @@ fun PromptGeneratorTab(
                             """
 
                             OPTION-BY-OPTION EXPLANATION
-                            Explain options A, B, C, and D individually and in that order. For each option, explicitly state whether it is correct or incorrect and give a specific reason. Explain why the correct option is valid and why each distractor fails. Do not repeat the same reasoning in different words.
+                            Explain options ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} individually and in that order. For each option, explicitly state whether it is correct or incorrect and give a specific reason. Explain why the correct option is valid and why each distractor fails. Do not repeat the same reasoning in different words.
                             """.trimIndent()
                         )
                     } else {
@@ -270,7 +271,7 @@ fun PromptGeneratorTab(
                         - The array contains exactly $countInt question objects.
                         - Question numbers are sequential, starting at 1.
                         - Every object contains exactly the fields "num", "question", "options", "correctAnswer", and "explanation".
-                        - Every options object contains exactly the keys "a", "b", "c", and "d".
+                        - Every options object contains exactly the keys ${if (optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.
                         - Every correctAnswer matches the correct option and uses one uppercase letter.
                         - Explanations follow the selected explanation depth and option-explanation setting.
                         - All JSON strings are correctly escaped and there are no trailing commas or comments.
@@ -285,14 +286,19 @@ fun PromptGeneratorTab(
                     append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty in $qLang.\n\n")
                     append("OUTPUT FORMAT: MARKDOWN TABLE\n")
                     append("Format the entire question set as a clean, standardized Markdown table with the following column headers:\n")
-                    append("| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n")
-                    append("|---|---|---|---|---|---|:---:|---|\n\n")
+                    if (optionCount == 5) {
+                        append("| # | Question | Option A | Option B | Option C | Option D | Option E | Answer | Explanation |\n")
+                        append("|---|---|---|---|---|---|---|:---:|---|\n\n")
+                    } else {
+                        append("| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n")
+                        append("|---|---|---|---|---|---|:---:|---|\n\n")
+                    }
                     append("Rules:\n")
-                    append("1. STRICT 4-OPTION CONSTRAINT: Each question must have EXACTLY 4 options (Option A, Option B, Option C, Option D). Never include Option E or more than 4 options.\n")
+                    append("1. STRICT $optionCount-OPTION CONSTRAINT: Each question must have EXACTLY $optionCount options (${if (optionCount == 5) "Option A, B, C, D, E" else "Option A, Option B, Option C, Option D"}).\n")
                     append("2. Put each question in a single table row.\n")
-                    append("3. In the 'Answer' column, write strictly 'A', 'B', 'C', or 'D'.\n")
+                    append("3. In the 'Answer' column, write strictly ${if (optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}.\n")
                     append("4. In the 'Explanation' column, provide a concise, step-by-step rationale (in $effectiveExplanationLanguage).\n")
-                    append("5. Balanced key distribution across A, B, C, and D.\n")
+                    append("5. Balanced key distribution across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"}.\n")
                     append("6. Do not include extra commentary or greeting text before or after the table.")
                 }
             } else {
@@ -326,8 +332,8 @@ fun PromptGeneratorTab(
                             append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across diverse examination formats.\n")
                         }
                     }
-                    append("3. STRICT 4-OPTION CONSTRAINT: Every question must contain EXACTLY 4 options labeled (A), (B), (C), and (D). Never include a fifth option (E) or more than 4 options under any circumstances.\n")
-                    append("4. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel.\n")
+                    append("3. STRICT $optionCount-OPTION CONSTRAINT: Every question must contain EXACTLY $optionCount options labeled (A), (B), (C), (D)${if (optionCount == 5) ", and (E)" else ""}.\n")
+                    append("4. DISTRACTOR HOMOGENEITY: All $optionCount options must be mutually exclusive and grammatically parallel.\n")
                     append("5. LENGTH CONTROL: The correct option must NOT be the longest option by default.\n")
                     append("6. ORDERING: If options contain numerical values or dates, order them strictly from lowest to highest.\n")
                     append("7. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
@@ -337,7 +343,7 @@ fun PromptGeneratorTab(
                     append("\n")
 
                     append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
-                    append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~25% each across A, B, C, D).\n")
+                    append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~${100 / optionCount}% each across ${if (optionCount == 5) "A, B, C, D, E" else "A, B, C, D"}).\n")
                     append("2. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks or disclaimers.\n\n")
 
                     append("### 4. PLAIN-TEXT FORMATTING RULES\n")
@@ -350,7 +356,12 @@ fun PromptGeneratorTab(
                     append("(A) [Option A]\n")
                     append("(B) [Option B]\n")
                     append("(C) [Option C]\n")
-                    append("(D) [Option D]\n\n")
+                    append("(D) [Option D]\n")
+                    if (optionCount == 5) {
+                        append("(E) [Option E]\n\n")
+                    } else {
+                        append("\n")
+                    }
                     append("[Repeat through Q$countInt]\n\n")
 
                     if (promptPhasingStyle == "Reasoning-First") {
@@ -1123,6 +1134,48 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                         }
                     }
 
+                    // Options Count Selector (4 vs 5 Options)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Option Count per Question", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                            Text(if (optionCount == 5) "5 Options (A, B, C, D, E)" else "4 Options (A, B, C, D)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(
+                                modifier = Modifier.clickable { optionCount = 4 },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (optionCount == 4) colors.teal else colors.surfaceVariant,
+                                border = BorderStroke(0.5.dp, if (optionCount == 4) colors.teal else colors.border)
+                            ) {
+                                Text(
+                                    text = "4 Options (Standard SSC/Railways/JEE/NEET)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (optionCount == 4) Color.White else colors.inkBold,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                            Surface(
+                                modifier = Modifier.clickable { optionCount = 5 },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (optionCount == 5) colors.teal else colors.surfaceVariant,
+                                border = BorderStroke(0.5.dp, if (optionCount == 5) colors.teal else colors.border)
+                            ) {
+                                Text(
+                                    text = "5 Options (Banking/IBPS/State PSC)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (optionCount == 5) Color.White else colors.inkBold,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(2.dp))
 
                     // Option Explanations Checkbox
@@ -1134,7 +1187,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                         Spacer(modifier = Modifier.width(4.dp))
                         Column {
                             Text(
-                                text = "Explain All 4 Options Individually",
+                                text = "Explain All ${optionCount} Options Individually",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.inkBold

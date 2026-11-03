@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -240,6 +242,7 @@ fun AuditResolutionHubDialog(
             Toast.makeText(context, "Running heuristic pre-audit scan...", Toast.LENGTH_SHORT).show()
         } else {
             reports = QuestionAuditHelper.parseAuditReport(feedbackInput, paper, existingReports = reports)
+            isInputExpanded = false
             Toast.makeText(context, "Parsed & merged audit feedback for ${reports.size} questions", Toast.LENGTH_SHORT).show()
         }
     }
@@ -592,6 +595,7 @@ fun AuditResolutionHubDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .imePadding()
                     .padding(16.dp)
             ) {
                 // Header Bar
@@ -951,6 +955,7 @@ fun AuditResolutionHubDialog(
                                                     if (clip != null && clip.itemCount > 0) {
                                                         feedbackInput = clip.getItemAt(0).text?.toString() ?: ""
                                                         parseInput()
+                                                        isInputExpanded = false
                                                     } else {
                                                         Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
                                                     }
@@ -965,7 +970,12 @@ fun AuditResolutionHubDialog(
                                             }
 
                                             Button(
-                                                onClick = { parseInput() },
+                                                onClick = {
+                                                    parseInput()
+                                                    if (feedbackInput.isNotBlank()) {
+                                                        isInputExpanded = false
+                                                    }
+                                                },
                                                 shape = RoundedCornerShape(6.dp),
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = colors.primaryButtonBg,
@@ -1431,6 +1441,7 @@ fun AuditResolutionHubDialog(
             var optB by remember(rep) { mutableStateOf(rep.replacementQuestion?.options?.b ?: orig?.options?.b ?: "") }
             var optC by remember(rep) { mutableStateOf(rep.replacementQuestion?.options?.c ?: orig?.options?.c ?: "") }
             var optD by remember(rep) { mutableStateOf(rep.replacementQuestion?.options?.d ?: orig?.options?.d ?: "") }
+            var optE by remember(rep) { mutableStateOf(rep.replacementQuestion?.options?.e ?: orig?.options?.e ?: "") }
             var key by remember(rep) { mutableStateOf(rep.replacementQuestion?.correctAnswer ?: orig?.correctAnswer ?: "A") }
             var exp by remember(rep) { mutableStateOf(rep.replacementQuestion?.explanation ?: orig?.explanation ?: "") }
 
@@ -1491,12 +1502,20 @@ fun AuditResolutionHubDialog(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp)
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = optE,
+                            onValueChange = { optE = it },
+                            label = { Text("Option E (Optional)", fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text("Correct Answer Key:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("A", "B", "C", "D").forEach { optKey ->
+                            listOf("A", "B", "C", "D", "E").forEach { optKey ->
                                 val isSel = key.equals(optKey, ignoreCase = true)
                                 Surface(
                                     onClick = { key = optKey },
@@ -1533,7 +1552,13 @@ fun AuditResolutionHubDialog(
                             val newReplacement = com.example.model.McqQuestion(
                                 num = rep.qNum,
                                 question = stem.trim().ifBlank { orig?.question ?: "Replacement Question" },
-                                options = com.example.model.QuestionOptions(a = optA.trim(), b = optB.trim(), c = optC.trim(), d = optD.trim()),
+                                options = com.example.model.QuestionOptions(
+                                    a = optA.trim(),
+                                    b = optB.trim(),
+                                    c = optC.trim(),
+                                    d = optD.trim(),
+                                    e = optE.trim()
+                                ),
                                 correctAnswer = key.uppercase(),
                                 explanation = exp.trim()
                             )
@@ -1781,6 +1806,7 @@ private fun CategoryPill(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AuditReportItemCard(
     report: AuditQuestionReport,
@@ -2065,8 +2091,15 @@ private fun AuditReportItemCard(
                             color = colors.inkBold
                         )
                         Spacer(modifier = Modifier.height(3.dp))
+                        val repOpts = report.replacementQuestion.options
+                        val optionsText = buildString {
+                            append("A) ${repOpts.a}\nB) ${repOpts.b}\nC) ${repOpts.c}\nD) ${repOpts.d}")
+                            if (repOpts.e.isNotBlank()) {
+                                append("\nE) ${repOpts.e}")
+                            }
+                        }
                         Text(
-                            text = "A) ${report.replacementQuestion.options.a}\nB) ${report.replacementQuestion.options.b}\nC) ${report.replacementQuestion.options.c}\nD) ${report.replacementQuestion.options.d}",
+                            text = optionsText,
                             fontSize = 10.sp,
                             color = colors.inkMuted,
                             lineHeight = 13.5.sp
@@ -2116,10 +2149,10 @@ private fun AuditReportItemCard(
                     }
                 }
             } else {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     // Soft Neutralization (Preserves Question Numbering)
                     OutlinedButton(
@@ -2134,8 +2167,6 @@ private fun AuditReportItemCard(
                         Text("Neutralize", fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
                     // Hard Delete
                     OutlinedButton(
                         onClick = onRequestDelete,
@@ -2148,8 +2179,6 @@ private fun AuditReportItemCard(
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("Delete", fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
                     }
-
-                    Spacer(modifier = Modifier.width(6.dp))
 
                     // Step 2 Replacement Actions
                     if (report.replacementQuestion != null) {
@@ -2164,8 +2193,6 @@ private fun AuditReportItemCard(
                             Spacer(modifier = Modifier.width(3.dp))
                             Text("Edit", fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
                         }
-
-                        Spacer(modifier = Modifier.width(6.dp))
 
                         Button(
                             onClick = onApplyReplacement,
@@ -2190,8 +2217,6 @@ private fun AuditReportItemCard(
                             Spacer(modifier = Modifier.width(3.dp))
                             Text("Synthesize", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                         }
-
-                        Spacer(modifier = Modifier.width(6.dp))
 
                         OutlinedButton(
                             onClick = onAuthorReplacement,

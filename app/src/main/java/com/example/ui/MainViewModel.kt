@@ -607,7 +607,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         diagramUrl: String? = null,
         diagramLabel: String? = null,
         formula: String? = null,
-        allowDuplicate: Boolean = false
+        allowDuplicate: Boolean = false,
+        optionE: String = ""
     ): Pair<Boolean, Int> {
         val active = _currentPaper.value ?: QuestionPaper(
             metadata = PaperMetadata(title = "Practice Set", subject = "General Knowledge"),
@@ -630,9 +631,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 a = optionA.trim().ifBlank { "Option A" },
                 b = optionB.trim().ifBlank { "Option B" },
                 c = optionC.trim().ifBlank { "Option C" },
-                d = optionD.trim().ifBlank { "Option D" }
+                d = optionD.trim().ifBlank { "Option D" },
+                e = optionE.trim()
             ),
-            correctAnswer = correctAnswer?.trim()?.uppercase()?.takeIf { it in listOf("A", "B", "C", "D") },
+            correctAnswer = correctAnswer?.trim()?.uppercase()?.takeIf { it in listOf("A", "B", "C", "D", "E") },
             explanation = explanation?.trim()?.takeIf { it.isNotBlank() },
             questionType = questionType.ifBlank { "Direct Fact" },
             diagramUrl = diagramUrl?.trim()?.ifBlank { null },

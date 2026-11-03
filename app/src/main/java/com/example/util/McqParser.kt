@@ -73,12 +73,12 @@ object McqParser {
     }
 
     private val PAIR_ANSWER_REGEX = Pattern.compile(
-        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.\/\\]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
+        """(?<!\w)(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|सवाल|प्रश्नसंख्या|প্রশ্ন|கேள்வி|ప్రశ్న|문제|문|問|第\s*\d+\s*問|第\s*\d+\s*题|题|Вопрос|Задание|№|Задача|Item|Problem)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\:\-\.\/\\]\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?\s*[\(\[]?([ABCDE1-5कखगघङअबसदई१-५①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجде甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])[\)\]]?\s*(?:\*\*|__|\\[*]\\[*]|\\_\\_|\\\*|\\_|\*|_)?(?!\w)""",
         Pattern.CASE_INSENSITIVE
     )
 
     private val ANSWER_LABEL_REGEX = Pattern.compile(
-        """(?:\b(?:correct\s+(?:answer|option)|answer|ans)\b|(?:सही\s*उत्तर|उत्तर|정답|답|正解|解答|正确答案|答案|Правильный\s*ответ|Ответ))\s*[:\-]?\s*(?:option\s*)?[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁가나다라㈎㈏㈐㈑アイウエあいうえА-Да-д\u0410-\u0413\u0430-\u0433])[\)\]]?""",
+        """(?:\b(?:correct\s+(?:answer|option)|answer|ans)\b|(?:सही\s*उत्तर|उत्तर|정답|답|正解|解答|正确答案|答案|Правильный\s*ответ|Ответ))\s*[:\-]?\s*(?:option\s*)?[\(\[]?([ABCDE1-5कखगघङअबसदई१-५①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجде甲乙丙丁戊가나다라마㈎㈏㈐㈑㈒アイウエオあいうえおА-Да-д\u0410-\u0414\u0430-\u0434])[\)\]]?""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -125,10 +125,10 @@ object McqParser {
     private val PHASE_3_ANSWER_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:Phase|Part|Section|Stage|Step|Level|चरण|भाग|खण्ड|खंड|этап|часть|шаг|단계|단)\s*(?:3|३|৩|૩|III|iii|셋|삼|three|third|तीन|तीसरा|तृतीय|세\s*번째|три|третий|三)\b.*(?:answer|key|उत्तर(?=[\s:\-–—\d\(\[]|कुंजी|तालिका|$)|कुंजी|तालिका|ответ|정답|답)""")
     private val SINGLE_EXP_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:detailed\s+)?(?:explanation|exp|solution)|व्याख्या|विस्तृत\s*व्याख्या|व्याख्यात्मक\s*हल|해설|풀이|解説|解析|Пояснение|Решение|Объяснение)\s*[:\-–—]\s*\S+.*""")
     private val QUESTION_NUMBERED_LINE_REGEX = Regex("""^\s*(?:\*\*|__)?\s*(?:Q(?:uestion)?\s*)?\d{1,4}\s*[\.\:\)]""")
-    private val SINGLE_ANS_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:correct\s+)?(?:answer|ans)|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답|正解|答案)\s*[:\-–—]?\s*[\(\[]?[A-Da-d1-4कखगघअबसद१-४][\)\]]?(?:\s+[^\n]*)?$""")
-    private val OPTIONS_AHEAD_REGEX = Regex("""^\s*[\(\[]?[A-Da-d1-4][\)\]\.\-]\s+\S+""")
+    private val SINGLE_ANS_LINE_REGEX = Regex("""(?i)^\s*(?:#+\s*)?(?:(?:correct\s+)?(?:answer|ans)|उत्तर(?=[\s:\-–—\d\(\[]|$)|정답|正解|答案)\s*[:\-–—]?\s*[\(\[]?[A-Ea-e1-5कखगघङअबसदई१-५][\)\]]?(?:\s+[^\n]*)?$""")
+    private val OPTIONS_AHEAD_REGEX = Regex("""^\s*[\(\[]?[A-Ea-e1-5][\)\]\.\-]\s+\S+""")
     private val TRAILING_START_PATTERN = Pattern.compile(
-        """^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|Explanation|Exp|Sol|Solution)\.?\s*(?:No\.?|#)?\s*)?\b1\b\s*(?:[\.\:\)\-]\s*)?[\(\[]?[A-Da-d1-4][\)\]]?(?:\s|$|[\.\:\)\-])""",
+        """^\s*(?:\*\*|__)?\s*(?:(?:Q(?:uestion)?|MCQ[s]?|Explanation|Exp|Sol|Solution)\.?\s*(?:No\.?|#)?\s*)?\b1\b\s*(?:[\.\:\)\-]\s*)?[\(\[]?[A-Ea-e1-5][\)\]]?(?:\s|$|[\.\:\)\-])""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -179,41 +179,41 @@ object McqParser {
     private val PHASE_TAG_HEADING_REGEX = Regex("""^#(?:phase|part|section|stage)[a-zA-Z0-9_\-]*\b""", RegexOption.IGNORE_CASE)
     private val NOTE_HEADING_REGEX = Regex("""^(?:#+\s*)?(?:Final\s+revision|IMPORTANT\s+VERIFICATION\s+NOTE|Preparation\s+advice|Quality[- ]control)\b""", RegexOption.IGNORE_CASE)
     private val TABLE_CELL_PIPE_REGEX = Regex("""^\s*\|\s*|\s*\|\s*$""")
-    private val RECOVER_EMBEDDED_OPT_REGEX = Regex("""^\s*(?:[-*•]\s*)?(?:\*\*)?(?:Option\s+|Opt\s+)?[\(\[]?([A-Da-d1-4])[\)\]\.\:\-–—](?:\*\*)?\s*(.*)$""")
+    private val RECOVER_EMBEDDED_OPT_REGEX = Regex("""^\s*(?:[-*•]\s*)?(?:\*\*)?(?:Option\s+|Opt\s+)?[\(\[]?([A-Ea-e1-5कखगघङअबसदई१-५①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔ])[\)\]\.\:\-–—](?:\*\*)?\s*(.*)$""")
     private val RECOVER_PARTITION_REGEX = Regex("""(?i)^\s*(?:Part|Section|Claim|Task|Step|Phase)\b""")
 
     private val TABLE_CLEAN_NOTES_REGEX = Regex("""(?im)^\s*(?:###?\s*Final\s+revision|###?\s*IMPORTANT\s+VERIFICATION\s+NOTE|Quality[- ]control\s+notes?|Review\s+notes?|QC\s+notes?|Internal\s+check\b|Remarks?\b|Important\s+Notes?\b(?:\s*[:\-–—]))""")
     private val SUBPART_KEY_REGEX = Regex("""(?i)^\d+\s*[-–—]\s*[A-Za-z0-9ivIV]+$""")
     private val NOT_Q_ANS_REGEX = Regex("""(?i)^\s*Q(?:uestion)?\s+(?:Ans|Answer)""")
-    private val TAB_SEPARATED_ANS_REGEX = Regex("""(?i)^\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Item)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*[\t ]+[\(\[]?([ABCD1-4कखगघअबसद१-४①-④❶-❹⓵-⓸⒈-⒋Ⓐ-Ⓓⓐ-ⓓকখগঘઅબકડஅஆஇஈఅఆఇఈഎബിസിഡിأابجد甲乙丙丁])[\)\]]?\s*(?:[\t ]+(.*))?$""")
+    private val TAB_SEPARATED_ANS_REGEX = Regex("""(?i)^\s*(?:(?:Q(?:uestion)?|MCQ[s]?|प्रश्न|प्र|Problem|Item)\.?\s*(?:No\.?|#)?\s*)?(\d{1,4}|[\p{Nd}]{1,4})\s*[\t ]+[\(\[]?([ABCDE1-5कखगघङअबसदई१-५①-⑤❶-❺⓵-⓹⒈-⒌Ⓐ-Ⓔⓐ-ⓔকখগঘঙઅબકડઈஅஆஇஈஉఅఆఇఈఉഎബിസിഡിഇأابجде甲乙丙丁戊])[\)\]]?\s*(?:[\t ]+(.*))?$""")
     private val MATH_EXP_REGEX = Regex("""^[\d\.\\\(\)\+\*\/].*""")
     private val EXPLICIT_KEYWORD_REGEX = Regex("""(?i)(?:Explanation|Exp|Solution|Sol|व्याख्या|हल|Question|Q|MCQ[s]?|Problem|Prob|Item|सवाल|उत्तर)""")
     private val IS_ANSWER_HEADER_REGEX = Regex("""^(?:\*+|_+)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर|Option|Opt)\b""", RegexOption.IGNORE_CASE)
     private val IS_STATEMENT_EVAL_REGEX = Regex("""^(?:\*+|_+)?\s*(?:Correct|Incorrect|True|False|Right|Wrong|सही|गलत)\s*[\.\*_\-–—:]""", RegexOption.IGNORE_CASE)
     private val EXPLICIT_CORRECT_MATCH_REGEX = Regex(
-        """(?i)(?:^|\s|\n)(?:[-*•]\s*)?(?:Correct[\.:\-]?\s*[\(\[]?([ABCD1-4])\b[\)\]]?|Option\s+([ABCD1-4])\b\s+(?:is\s+)?correct\b|Option\s+([ABCD1-4])\s*[-—:]?\s*(?:is\s+)?correct\b|[\(\[]([ABCD1-4])[\)]\s*[-—:]?\s*(?:is\s+)?correct\b|\\boxed\{\s*(?:\\mathrm\{)?([ABCD1-4])\s*\}?|(?:[-*•]\s*)?[\(\[]?([A-Da-d1-4])[\)\]]?\s*(?:[-—:]\s*)?(?:सही|सत्य|सटीक|옳음|정답|Правильно|Верно)\b)"""
+        """(?i)(?:^|\s|\n)(?:[-*•]\s*)?(?:Correct[\.:\-]?\s*[\(\[]?([ABCDE1-5])\b[\)\]]?|Option\s+([ABCDE1-5])\b\s+(?:is\s+)?correct\b|Option\s+([ABCDE1-5])\s*[-—:]?\s*(?:is\s+)?correct\b|[\(\[]([ABCDE1-5])[\)]\s*[-—:]?\s*(?:is\s+)?correct\b|\\boxed\{\s*(?:\\mathrm\{)?([ABCDE1-5])\s*\}?|(?:[-*•]\s*)?[\(\[]?([A-Ea-e1-5])[\)\]]?\s*(?:[-—:]\s*)?(?:सही|सत्य|सटीक|옳음|정답|Правильно|Верно)\b)"""
     )
-    private val HAS_OPTION_BREAKDOWN_REGEX = Regex("""(?m)(?:^\s*|\s{2,}|\n)(?:Correct[\.:\-]?\s*)?(?:[\(\[][bcdBCD1-4][\)\]]|[bcdBCD1-4][\.\:\)\-–—]\s+)""")
-    private val STRIP_STANDALONE_ANS_LINE_REGEX = Regex("""^(?:\*+\s*)?(?:correct\s+(?:answer|option)|answer|ans|उत्तर)\s*[:\-]?\s*(?:option\s*)?[\(\[]?[ABCD1-4][\)\]]?\s*(?:\r?\n|$)""", RegexOption.IGNORE_CASE)
+    private val HAS_OPTION_BREAKDOWN_REGEX = Regex("""(?m)(?:^\s*|\s{2,}|\n)(?:Correct[\.:\-]?\s*)?(?:[\(\[][bcdeBCDE1-5][\)\]]|[bcdeBCDE1-5][\.\:\)\-–—]\s+)""")
+    private val STRIP_STANDALONE_ANS_LINE_REGEX = Regex("""^(?:\*+\s*)?(?:correct\s+(?:answer|option)|answer|ans|उत्तर)\s*[:\-]?\s*(?:option\s*)?[\(\[]?[ABCDE1-5][\)\]]?\s*(?:\r?\n|$)""", RegexOption.IGNORE_CASE)
     private val LEADING_ANS_MATCH_REGEX = Regex(
-        """^(?:\*\*|__)?\s*(?:[\(\[]([ABCD1-4])[\)\]]|([ABCD1-4])\s*[\.\:\-–—\)](?!\w)|([ABCD1-4])(?=\s*(?:\r?\n|$)))\s*(?:\*\*|__)?\s*""",
+        """^(?:\*\*|__)?\s*(?:[\(\[]([ABCDE1-5])[\)\]]|([ABCDE1-5])\s*[\.\:\-–—\)](?!\w)|([ABCDE1-5])(?=\s*(?:\r?\n|$)))\s*(?:\*\*|__)?\s*""",
         RegexOption.IGNORE_CASE
     )
     private val HAS_SUBSEQUENT_PAIRS_REGEX = Regex("""\b\d{1,4}\s*[\:\-\.\/\\]\s*[A-Ea-e1-5]\b""")
-    private val BARE_ANS_MATCH_REGEX = Regex("""\b([ABCD])\b""")
+    private val BARE_ANS_MATCH_REGEX = Regex("""\b([ABCDE])\b""")
     private val EXP_SECTION_HEADER_REGEX = Regex("""^(?:#+\s*)?(?:SECTION|PART|PHASE)\s+[A-Z0-9]+.*$""", RegexOption.IGNORE_CASE)
     private val EXP_DUP_QUESTION_REGEX = Regex(
         """^\s*(?:question|प्रश्न)\s*[:\-]?\s*(?:\*\*|__)?.{0,250}?(?:\*\*|__)?\s*(?=(?:\b(?:correct|answer|ans)\b|व्याख्या|उत्तर))""",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
     private val LATEX_ANS_REGEX = Regex("""(?<!\w)(\d{1,4})\s*[\.\:\-\)]\s*\\?\s*(?:\\mathrm\{|\\mathbf\{)?\s*([A-Ea-e1-5])\s*\}?""")
-    private val SINGLE_LINE_ANS_MATCH_REGEX = Regex("""^(?:(?:\*+|__)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर)\s*[:\-]?\s*)?[\(\[]?([ABCD1-4])[\)\]]?(?:\s*[\.:\-–—]\s*.*|\s*)$""", RegexOption.IGNORE_CASE)
+    private val SINGLE_LINE_ANS_MATCH_REGEX = Regex("""^(?:(?:\*+|__)?\s*(?:Correct\s+(?:Answer|Option)|Answer|Ans|उत्तर)\s*[:\-]?\s*)?[\(\[]?([ABCDE1-5])[\)\]]?(?:\s*[\.:\-–—]\s*.*|\s*)$""", RegexOption.IGNORE_CASE)
     private val EXP_KEYWORD_CHECK_REGEX = Regex("""^(?:\*+\s*)?(?:answer\s*key|answers?|उत्तर)\s*[:\-]""", RegexOption.IGNORE_CASE)
 
     private val QUESTION_TYPE_HEADER_REGEX = Regex("""(?i)^(?:Direct Conceptual|Statement[- ]Based|Assertion[-– ]Reason|Match the Following|Pair[- ]Based|Chronological Sequence|Process[/ ]Sequence|Multiple Statements|Numerical[/ ]Application|Case[- ]Based[/ ]Analytical)(?:\s+Questions?)?$""")
     private val QUESTION_TYPE_STRIP_REGEX = Regex("""(?i)\s*Questions?$""")
-    private val MATCH_PAIR_1_REGEX = Regex("""\b1\s*[-–—:]\s*[A-D]\b""")
-    private val MATCH_PAIR_2_REGEX = Regex("""\b[A-D]\s*[-–—:]\s*1\b""")
+    private val MATCH_PAIR_1_REGEX = Regex("""\b1\s*[-–—:]\s*[A-E]\b""")
+    private val MATCH_PAIR_2_REGEX = Regex("""\b[A-E]\s*[-–—:]\s*1\b""")
     private val NUMERICAL_EXP_1_REGEX = Regex("""\b\d+\s*×\s*10\b""")
     private val NUMERICAL_EXP_2_REGEX = Regex("""\bq²\b|\bp²\b|\b2pq\b""")
     private val NUMERICAL_EXP_3_REGEX = Regex("""\b\d+\.\d+\b""")
@@ -1081,7 +1081,9 @@ object McqParser {
 
         val prioritized = candidateSequences.sortedWith(
             compareBy<List<Triple<String, Int, Int>>> { seq ->
-                seq.size == 4
+                seq.size >= 4
+            }.thenBy { seq ->
+                seq.size
             }.thenBy { seq ->
                 val isBareDigit = seq.all { match ->
                     val t = cleanBlock.substring(match.second, match.third)
@@ -1200,7 +1202,9 @@ object McqParser {
             val cLine = optIndices["C"] ?: return null
             val dLine = optIndices["D"]
 
-            if (aLine < bLine && bLine < cLine && (dLine == null || cLine < dLine)) {
+            val eLine = optIndices["E"]
+
+            if (aLine < bLine && bLine < cLine && (dLine == null || cLine < dLine) && (eLine == null || (dLine != null && dLine < eLine))) {
                 var charOffset = 0
                 for (i in 0 until aLine) {
                     charOffset += lines[i].length + 1
@@ -1215,11 +1219,12 @@ object McqParser {
                 val optA = stripMarkdown(extractText(aLine, bLine))
                 val optB = stripMarkdown(extractText(bLine, cLine))
                 val optC = stripMarkdown(extractText(cLine, dLine ?: lines.size))
-                val optD = if (dLine != null) stripMarkdown(extractText(dLine, lines.size)) else ""
+                val optD = if (dLine != null) stripMarkdown(extractText(dLine, eLine ?: lines.size)) else ""
+                val optE = if (eLine != null) stripMarkdown(extractText(eLine, lines.size)) else ""
 
                 if (optA.isNotBlank() && optB.isNotBlank()) {
                     return Pair(
-                        QuestionOptions(a = optA, b = optB, c = optC, d = optD),
+                        QuestionOptions(a = optA, b = optB, c = optC, d = optD, e = optE),
                         charOffset.coerceAtMost(block.length)
                     )
                 }
@@ -1336,7 +1341,7 @@ object McqParser {
         // "Explanation 1", "MCQ 1", "1 (B) detail_1", "2(C) detail_2", "1. (B) detail", "1. व्याख्या: ...", "### 1. ..."
         val explicitItemKeyword = """(?:(?:Explanation|Exp|Solution|Sol|व्याख्या|हल|Question|Q|MCQ[s]?|Problem|Prob|Item|सवाल|उत्तर|വിശദീകരണം|விளக்கம்|వివరణ)\s*(?:for\s+)?(?:Q(?:uestion)?|MCQ[s]?|#|No\.?)?\s*)?"""
         val itemStartRegex = Pattern.compile(
-            """(?m)^\s*(?:#+\s*)?(?:\*\*|__)?\s*$explicitItemKeyword(\d{1,4}|[\p{Nd}]{1,4})\s*(?:[\.\:\)\-]\s*|(?=[\(\[]?[ABCD][\)\]]?\b)|\s+(?=[\(\[]?[ABCD][\)\]]?\b)|(?=\s*(?:Ans|उत्तर|सटीक|Correct))|(?=[\r\n]|$))""",
+            """(?m)^\s*(?:#+\s*)?(?:\*\*|__)?\s*$explicitItemKeyword(\d{1,4}|[\p{Nd}]{1,4})\s*(?:[\.\:\)\-]\s*|(?=[\(\[]?[ABCDE][\)\]]?\b)|\s+(?=[\(\[]?[ABCDE][\)\]]?\b)|(?=\s*(?:Ans|उत्तर|सटीक|Correct))|(?=[\r\n]|$))""",
             Pattern.CASE_INSENSITIVE
         )
         val matcher = itemStartRegex.matcher(cleanText)
@@ -1792,7 +1797,11 @@ object McqParser {
             sb.append("(A) ").append(q.options.a).append("\n")
             sb.append("(B) ").append(q.options.b).append("\n")
             sb.append("(C) ").append(q.options.c).append("\n")
-            sb.append("(D) ").append(q.options.d).append("\n\n")
+            sb.append("(D) ").append(q.options.d).append("\n")
+            if (q.options.e.isNotBlank()) {
+                sb.append("(E) ").append(q.options.e).append("\n")
+            }
+            sb.append("\n")
         }
 
         val hasKeys = paper.questions.any { it.correctAnswer != null }
@@ -1879,19 +1888,25 @@ object McqParser {
 
                 if (cIdx + 4 > rawCells.size) continue
 
+                val hasOptE = rawCells.size >= cIdx + 6 && (
+                    canonicalAnswer(rawCells.getOrNull(cIdx + 6)) != null ||
+                    (rawCells.getOrNull(cIdx + 5)?.let { canonicalAnswer(it) == null } == true && rawCells.size >= cIdx + 7)
+                )
+
                 val qStem = rawCells[cIdx]
                 val optA = rawCells.getOrNull(cIdx + 1) ?: ""
                 val optB = rawCells.getOrNull(cIdx + 2) ?: ""
                 val optC = rawCells.getOrNull(cIdx + 3) ?: ""
                 val optD = rawCells.getOrNull(cIdx + 4) ?: ""
+                val optE = if (hasOptE) (rawCells.getOrNull(cIdx + 5) ?: "") else ""
 
                 // Ignore header row if option cells look like headers
                 if (optA.equals("Option A", ignoreCase = true) || optA.equals("A", ignoreCase = true)) {
                     continue
                 }
 
-                val rawAns = rawCells.getOrNull(cIdx + 5)
-                val rawExp = rawCells.getOrNull(cIdx + 6)
+                val rawAns = if (hasOptE) rawCells.getOrNull(cIdx + 6) else rawCells.getOrNull(cIdx + 5)
+                val rawExp = if (hasOptE) rawCells.getOrNull(cIdx + 7) else rawCells.getOrNull(cIdx + 6)
 
                 val ans = canonicalAnswer(rawAns)
                 val exp = rawExp?.takeIf { it.isNotBlank() }
@@ -1900,7 +1915,7 @@ object McqParser {
                     McqQuestion(
                         num = qNum,
                         question = qStem,
-                        options = QuestionOptions(a = optA, b = optB, c = optC, d = optD),
+                        options = QuestionOptions(a = optA, b = optB, c = optC, d = optD, e = optE),
                         correctAnswer = ans,
                         explanation = exp
                     )
@@ -1954,22 +1969,28 @@ object McqParser {
 
                 if (cIdx + 4 > parts.size) continue
 
+                val hasOptE = parts.size >= cIdx + 6 && (
+                    canonicalAnswer(parts.getOrNull(cIdx + 6)) != null ||
+                    (parts.getOrNull(cIdx + 5)?.let { canonicalAnswer(it) == null } == true && parts.size >= cIdx + 7)
+                )
+
                 val qStem = parts[cIdx]
                 val optA = parts.getOrNull(cIdx + 1) ?: ""
                 val optB = parts.getOrNull(cIdx + 2) ?: ""
                 val optC = parts.getOrNull(cIdx + 3) ?: ""
                 val optD = parts.getOrNull(cIdx + 4) ?: ""
+                val optE = if (hasOptE) (parts.getOrNull(cIdx + 5) ?: "") else ""
 
                 if (optA.equals("Option A", ignoreCase = true) || optA.equals("A", ignoreCase = true)) continue
 
-                val rawAns = parts.getOrNull(cIdx + 5)
-                val rawExp = parts.getOrNull(cIdx + 6)
+                val rawAns = if (hasOptE) parts.getOrNull(cIdx + 6) else parts.getOrNull(cIdx + 5)
+                val rawExp = if (hasOptE) parts.getOrNull(cIdx + 7) else parts.getOrNull(cIdx + 6)
 
                 questions.add(
                     McqQuestion(
                         num = qNum,
                         question = qStem,
-                        options = QuestionOptions(a = optA, b = optB, c = optC, d = optD),
+                        options = QuestionOptions(a = optA, b = optB, c = optC, d = optD, e = optE),
                         correctAnswer = canonicalAnswer(rawAns),
                         explanation = rawExp?.takeIf { it.isNotBlank() }
                     )

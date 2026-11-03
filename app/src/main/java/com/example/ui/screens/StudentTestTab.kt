@@ -1918,11 +1918,12 @@ private fun ActiveExamView(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val rawOptions = listOf(
+                        val rawOptions = listOfNotNull(
                             "A" to currentQuestion.options.a,
                             "B" to currentQuestion.options.b,
                             "C" to currentQuestion.options.c,
-                            "D" to currentQuestion.options.d
+                            "D" to currentQuestion.options.d,
+                            if (currentQuestion.options.e.isNotBlank()) "E" to currentQuestion.options.e else null
                         )
 
                         rawOptions.forEach { (key, optText) ->
@@ -2299,11 +2300,12 @@ private fun ActiveExamView(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             // Options List (Instant Tap Response)
-                            val options = listOf(
+                            val options = listOfNotNull(
                                 "A" to q.options.a,
                                 "B" to q.options.b,
                                 "C" to q.options.c,
-                                "D" to q.options.d
+                                "D" to q.options.d,
+                                if (q.options.e.isNotBlank()) "E" to q.options.e else null
                             )
 
                             options.forEach { (key, optText) ->

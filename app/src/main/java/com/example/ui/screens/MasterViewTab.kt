@@ -1633,6 +1633,7 @@ private fun MasterQuestionCard(
                 var editedB by remember { mutableStateOf(question.options.b) }
                 var editedC by remember { mutableStateOf(question.options.c) }
                 var editedD by remember { mutableStateOf(question.options.d) }
+                var editedE by remember { mutableStateOf(question.options.e) }
                 var editedExp by remember { mutableStateOf(question.explanation ?: "") }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1691,6 +1692,18 @@ private fun MasterQuestionCard(
                             },
                             label = { Text("(D)", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    if (question.options.e.isNotBlank() || editedE.isNotBlank()) {
+                        OutlinedTextField(
+                            value = editedE,
+                            onValueChange = {
+                                editedE = it
+                                onUpdateQuestion(question.copy(options = question.options.copy(e = it)))
+                            },
+                            label = { Text("(E)", fontSize = 10.sp) },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
@@ -1757,6 +1770,7 @@ private fun AddQuestionDialog(
     var optB by remember { mutableStateOf("") }
     var optC by remember { mutableStateOf("") }
     var optD by remember { mutableStateOf("") }
+    var optE by remember { mutableStateOf("") }
     var selectedAnswer by remember { mutableStateOf("A") }
     var explanationText by remember { mutableStateOf("") }
     var questionType by remember { mutableStateOf("Direct Fact") }
@@ -2011,6 +2025,16 @@ private fun AddQuestionDialog(
                                     }
                                 }
 
+                                item {
+                                    OutlinedTextField(
+                                        value = optE,
+                                        onValueChange = { optE = it },
+                                        label = { Text("Option (E) (Optional - for 5-Option Exams)", fontSize = 10.5.sp) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true
+                                    )
+                                }
+
                                 // Correct Answer Selector
                                 item {
                                     Column(modifier = Modifier.padding(top = 4.dp)) {
@@ -2022,7 +2046,8 @@ private fun AddQuestionDialog(
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            listOf("A", "B", "C", "D").forEach { opt ->
+                                            val keysToOffer = if (optE.isNotBlank()) listOf("A", "B", "C", "D", "E") else listOf("A", "B", "C", "D")
+                                            keysToOffer.forEach { opt ->
                                                 val isSel = selectedAnswer == opt
                                                 Surface(
                                                     modifier = Modifier
@@ -2383,7 +2408,8 @@ Explanation: Mitochondria generate most of the cell's ATP.
                                             questionType = questionType,
                                             diagramUrl = customDiagramUrl,
                                             diagramLabel = customDiagramLabel,
-                                            formula = customFormula
+                                            formula = customFormula,
+                                            optionE = optE
                                         )
                                         if (res.first) {
                                             onDismiss()
