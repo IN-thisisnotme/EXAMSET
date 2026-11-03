@@ -239,12 +239,7 @@ object QuestionAuditHelper {
   {
     "qNum": 1,
     "status": "CLEAN",
-    "explanation": "Step 1: Solid carbon dioxide sublimes directly from solid to vapor at -78.5°C under 1 atm pressure without melting into liquid.\nStep 2: This substance is commonly known as dry ice.\n**Core Concept:** Sublimation under ambient pressure.\n**Key Idea:** Dry ice is solid CO2 and transitions directly to gas.\n**Distractor Analysis:** Nitrogen (B), carbon monoxide (C), and methane (D) have different sublimation/boiling points and do not form dry ice."
-  },
-  {
-    "qNum": 2,
-    "status": "CLEAN",
-    "explanation": "Step 1: The velocity of light in complete vacuum is an invariant physical constant c = 299,792,458 m/s.\nStep 2: Expressed in scientific notation, c ≈ 3 × 10^8 m/s (Option A).\n**Core Concept:** Speed of electromagnetic radiation in vacuum.\n**Key Idea:** Exactly defined speed is ~3 × 10^8 m/s; Option B (3 × 10^6 m/s) is off by 100x."
+    "explanation": "Step 1: The landmark Kesavananda Bharati judgment (1973) established the Basic Structure Doctrine.\nStep 2: Parliament cannot use its constituent power under Article 368 to damage or destroy the basic framework of the Constitution.\n**Core Concept:** Limits on legislative constitutional amending power.\n**Key Idea:** Article 368 does not grant unlimited power to alter fundamental democratic structures.\n**Distractor Analysis:** Options B, C, and D misrepresent constitutional provisions or historical amendments."
   }
 ]
 ```

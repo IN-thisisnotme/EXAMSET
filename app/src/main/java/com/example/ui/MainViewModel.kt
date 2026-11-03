@@ -109,6 +109,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _folders = MutableStateFlow<List<FolderItem>>(appPreferences.getCustomFolders())
     val folders: StateFlow<List<FolderItem>> = _folders.asStateFlow()
 
+    // Preserved active folder location
+    private val _lastActiveFolderId = MutableStateFlow<String>(appPreferences.getLastActiveFolderId())
+    val lastActiveFolderId: StateFlow<String> = _lastActiveFolderId.asStateFlow()
+
+    fun setLastActiveFolderId(folderId: String) {
+        _lastActiveFolderId.value = folderId
+        appPreferences.setLastActiveFolderId(folderId)
+    }
+
     // Active Tab:
     // 0: Creator, 1: Master View, 2: Print & OMR, 3: Student Portal, 4: Folders, 5: AI Prompt, 6: Share
     private val _selectedTab = MutableStateFlow(0)
@@ -236,17 +245,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restoreAutosavedState() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Clean up any previously auto-seeded starter paper if present
+            // Clean up any previously auto-seeded starter paper or boring example if present
             try {
-                val seededPaper = paperDao.findPaperByMetadata(
-                    title = "UPSC / SSC CGL Combined General Studies",
-                    subject = "General Science",
-                    setNumber = "Set A"
-                )
-                if (seededPaper != null && seededPaper.rawText == SampleData.SAMPLE_STARTER_PROMPT) {
-                    paperDao.deletePaperWithAttempts(seededPaper)
-                    if (appPreferences.getLastActivePaperId() == seededPaper.id) {
-                        appPreferences.setLastActivePaperId(-1L)
+                val allPapers = paperDao.getAllPapers().first()
+                for (p in allPapers) {
+                    val isBoringSample = p.rawText == SampleData.SAMPLE_STARTER_PROMPT ||
+                            p.rawText == SampleData.SAMPLE_SCIENCE_PAPER ||
+                            p.title == "National Science & Technology Olympiad" ||
+                            p.rawText.contains("Which chemical compound is commonly known as dry ice") ||
+                            (p.title == "UPSC / SSC CGL Combined General Studies" && p.subject == "General Science")
+                    if (isBoringSample) {
+                        paperDao.deletePaperWithAttempts(p)
+                        if (appPreferences.getLastActivePaperId() == p.id) {
+                            appPreferences.setLastActivePaperId(-1L)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -1228,13 +1240,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadStarterSample(key: String) {
         val (text, fallbackSubject) = when (key.lowercase()) {
-            "bio" -> Pair(SampleData.SAMPLE_BIOLOGY_ADVANCED, "Samples & Practice")
-            "patterns" -> Pair(SampleData.SAMPLE_NEXT_PATTERN, "Samples & Practice")
-            "hangul", "korean" -> Pair(SampleData.SAMPLE_KOREAN_EXAM, "Samples & Practice")
-            "hindi" -> Pair(SampleData.SAMPLE_HINDI_PAPER, "Samples & Practice")
-            "science" -> Pair(SampleData.SAMPLE_SCIENCE_PAPER, "Samples & Practice")
             "civil", "engineering", "gate" -> Pair(SampleData.SAMPLE_CIVIL_MIXED_PATTERN, "Civil & Environmental Engineering")
-            else -> Pair(SampleData.SAMPLE_STARTER_PROMPT, "Samples & Practice")
+            "bio" -> Pair(SampleData.SAMPLE_BIOLOGY_ADVANCED, "Biological Sciences")
+            "patterns" -> Pair(SampleData.SAMPLE_NEXT_PATTERN, "Advanced MCQs")
+            "hangul", "korean" -> Pair(SampleData.SAMPLE_KOREAN_EXAM, "World Languages")
+            "hindi" -> Pair(SampleData.SAMPLE_HINDI_PAPER, "Hindi Literature & Grammar")
+            "upsc", "mock" -> Pair(SampleData.SAMPLE_UPSC_GS1_FULL_MOCK_1, "UPSC CSE")
+            else -> Pair(SampleData.SAMPLE_CIVIL_MIXED_PATTERN, "Civil & Environmental Engineering")
         }
         parseAndSetPaper(
             text = text,
@@ -1248,13 +1260,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadSample(index: Int) {
         val key = when (index) {
-            0 -> "science"
+            0 -> "civil"
             1 -> "hindi"
             2 -> "hangul"
             3 -> "bio"
             4 -> "patterns"
-            5 -> "civil"
-            else -> "science"
+            5 -> "upsc"
+            else -> "civil"
         }
         loadStarterSample(key)
     }
@@ -2457,6 +2469,75 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "defence" in s || "defense" in s || "nda" in s || "cds" in s || "police" in s || "si" in s -> "#DC2626"
             "teaching" in s || "net" in s || "tet" in s -> "#4F46E5"
             else -> "#0284C7"
+        }
+    }
+
+    /**
+     * Loads a complete Testbook-style curated UPSC CSE General Studies 1 series,
+     * organizing mock tests, official previous year papers (PYQ), and sectional tests
+     * into a clean multi-level hierarchy: UPSC CSE > Prelims GS 1 > Mocks / PYQs / Sectionals.
+     */
+    fun loadCuratedUpscGs1Series(onComplete: (folderId: String) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Create root folder "UPSC CSE"
+                val upscRoot = createFolderDirect("UPSC CSE", "#0284C7", null)
+                val upscRootId = upscRoot?.id
+
+                // 2. Create subfolder "Prelims GS 1"
+                val gs1Folder = createFolderDirect("Prelims GS 1", "#2563EB", upscRootId)
+                val gs1Id = gs1Folder?.id
+
+                // 3. Create classified subfolders under "Prelims GS 1"
+                val mockFolder = createFolderDirect("Mock Tests (FLT)", "#2563EB", gs1Id)
+                val pyqFolder = createFolderDirect("Previous Year Papers (PYQ)", "#D97706", gs1Id)
+                val sectionalFolder = createFolderDirect("Sectional Tests", "#059669", gs1Id)
+
+                // 4. Helper to insert paper if not already present
+                suspend fun insertIfMissing(raw: String, folderId: String?) {
+                    val parsed = McqParser.parseWithResult(raw)
+                    val p = parsed.paper
+                    val existing = paperDao.findPaperByMetadata(p.metadata.title, p.metadata.subject, p.metadata.setNumber)
+                    if (existing == null) {
+                        val newEntity = PaperEntity(
+                            title = p.metadata.title,
+                            subject = p.metadata.subject,
+                            topic = p.metadata.topic,
+                            setNumber = p.metadata.setNumber,
+                            exam = p.metadata.exam,
+                            questionCount = p.questions.size,
+                            answerKeyCount = p.questions.count { it.correctAnswer != null },
+                            explanationCount = p.questions.count { !it.explanation.isNullOrBlank() },
+                            rawText = raw,
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis(),
+                            folderId = folderId,
+                            rollNumber = ExamNumberGenerator.generateRollNumber(),
+                            bookletNumber = ExamNumberGenerator.generateBookletNumber(),
+                            durationMinutes = p.metadata.durationMinutes,
+                            positiveMarks = p.metadata.positiveMarks,
+                            negativeMarks = p.metadata.negativeMarks
+                        )
+                        paperDao.insertPaper(newEntity)
+                    }
+                }
+
+                insertIfMissing(SampleData.SAMPLE_UPSC_GS1_FULL_MOCK_1, mockFolder?.id ?: gs1Id)
+                insertIfMissing(SampleData.SAMPLE_UPSC_GS1_PYQ_2024, pyqFolder?.id ?: gs1Id)
+                insertIfMissing(SampleData.SAMPLE_UPSC_GS1_PYQ_2023, pyqFolder?.id ?: gs1Id)
+                insertIfMissing(SampleData.SAMPLE_UPSC_GS1_SECTIONAL_POLITY, sectionalFolder?.id ?: gs1Id)
+
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Loaded Curated UPSC CSE GS 1 Series!"
+                    if (gs1Id != null) {
+                        onComplete(gs1Id)
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Error loading UPSC series: ${e.localizedMessage}"
+                }
+            }
         }
     }
 

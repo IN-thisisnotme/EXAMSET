@@ -20,9 +20,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -67,6 +78,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -155,10 +167,47 @@ fun matchesStageFilter(paper: PaperEntity, filter: ExamStageFilter, folderPath: 
  * Segregation modes for organizing papers inside folders.
  */
 enum class PaperSegregationMode(val label: String, val icon: ImageVector) {
+    CURATED_SERIES("Test Series", Icons.Default.ViewCarousel),
     ALL("All Sets", Icons.Default.ViewList),
-    BY_STAGE("By Paper Type", Icons.Default.Layers),
+    BY_STAGE("By Stage", Icons.Default.Layers),
     BY_SET_SERIES("By Set Number", Icons.Default.ViewAgenda)
 }
+
+/**
+ * Dedicated ed-tech / Testbook test series classifications.
+ */
+enum class ExamTestCategory(
+    val label: String,
+    val shortBadge: String,
+    val icon: ImageVector,
+    val primaryColor: Color,
+    val lightColor: Color
+) {
+    ALL("All Categories", "ALL", Icons.Default.ViewList, Color(0xFF0284C7), Color(0xFFE0F2FE)),
+    MOCK("Mock Tests (FLT)", "MOCK TEST", Icons.Default.Quiz, Color(0xFF2563EB), Color(0xFFEFF6FF)),
+    PYQ("Previous Year Papers", "OFFICIAL PYQ", Icons.Default.History, Color(0xFFD97706), Color(0xFFFEF3C7)),
+    SECTIONAL("Sectional Tests", "SECTIONAL", Icons.Default.Category, Color(0xFF059669), Color(0xFFD1FAE5)),
+    TOPIC_DRILL("Topic & Speed Drills", "SPEED DRILL", Icons.Default.FlashOn, Color(0xFF7C3AED), Color(0xFFEDE9FE))
+}
+
+fun detectPaperTestCategory(paper: PaperEntity): ExamTestCategory {
+    val text = "${paper.title} ${paper.topic} ${paper.subject} ${paper.setNumber}".lowercase(Locale.getDefault())
+    return when {
+        "pyq" in text || "previous year" in text || "official" in text || "2024" in text || "2023" in text || "2022" in text || "2021" in text || "2020" in text -> ExamTestCategory.PYQ
+        "mock" in text || "flt" in text || "full length" in text || "model" in text || "all india" in text -> ExamTestCategory.MOCK
+        "sectional" in text || "polity" in text || "history" in text || "economy" in text || "geography" in text || "environment" in text || "ecology" in text || "science" in text || "biology" in text -> ExamTestCategory.SECTIONAL
+        "drill" in text || "speed" in text || "quiz" in text || "chapter" in text || "topic" in text -> ExamTestCategory.TOPIC_DRILL
+        paper.questionCount >= 40 -> ExamTestCategory.MOCK
+        else -> ExamTestCategory.SECTIONAL
+    }
+}
+
+data class TestCategoryBuckets(
+    val mocks: List<PaperEntity>,
+    val pyqs: List<PaperEntity>,
+    val sectionals: List<PaperEntity>,
+    val drills: List<PaperEntity>
+)
 
 /**
  * Ordering options for child folders and categories (Step 8).
@@ -184,10 +233,32 @@ fun FolderManagerTab(
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val currentPaper by viewModel.currentPaper.collectAsState()
 
-    // Active folder state: "all" means root overview, or a folderId
-    var activeFolderId by remember { mutableStateOf("all") }
+    // Preserved active folder location state
+    val savedActiveFolderId by viewModel.lastActiveFolderId.collectAsState()
+    var activeFolderId by remember { mutableStateOf(savedActiveFolderId) }
+
+    val navigateToFolder: (String) -> Unit = remember {
+        { targetId ->
+            activeFolderId = targetId
+            viewModel.setLastActiveFolderId(targetId)
+        }
+    }
+
+    LaunchedEffect(savedActiveFolderId) {
+        if (savedActiveFolderId != activeFolderId) {
+            activeFolderId = savedActiveFolderId
+        }
+    }
+
+    LaunchedEffect(folders, savedActiveFolderId) {
+        if (savedActiveFolderId != "all" && folders.isNotEmpty() && folders.none { it.id == savedActiveFolderId }) {
+            navigateToFolder("all")
+        }
+    }
+
     var searchQuery by remember { mutableStateOf("") }
-    var segregationMode by remember { mutableStateOf(PaperSegregationMode.ALL) }
+    var segregationMode by remember { mutableStateOf(PaperSegregationMode.CURATED_SERIES) }
+    var activeTestCategoryFilter by remember { mutableStateOf(ExamTestCategory.ALL) }
     var includeSubfolderPapers by remember { mutableStateOf(true) }
 
     // Selection & Batch Move states
@@ -259,7 +330,7 @@ fun FolderManagerTab(
             }
             activeFolderId != "all" -> {
                 val curr = folders.find { it.id == activeFolderId }
-                activeFolderId = curr?.parentId ?: "all"
+                navigateToFolder(curr?.parentId ?: "all")
             }
         }
     }
@@ -331,14 +402,20 @@ fun FolderManagerTab(
                     paper.setNumber.contains(searchQuery, ignoreCase = true) ||
                     folderPath.contains(searchQuery, ignoreCase = true)
 
-            val matchesFolder = if (activeFolderId == "all" || (isDeepSearchAcrossAllFolders && searchQuery.isNotBlank())) {
+            val matchesFolder = if (isDeepSearchAcrossAllFolders && searchQuery.isNotBlank()) {
                 true
+            } else if (activeFolderId == "all") {
+                // If user is searching at root, search across all papers
+                if (searchQuery.isNotBlank()) true
+                // When browsing at root without search: do not flood screen with all subfolder papers.
+                // Only show unassigned papers (if any) at root level.
+                else paper.folderId == null
             } else {
                 val f = folders.find { it.id == activeFolderId }
                 if (f == null) true
                 else {
                     if (includeSubfolderPapers) {
-                        (paper.folderId != null && paper.folderId in descendantIds) ||
+                        (paper.folderId != null && (paper.folderId == activeFolderId || paper.folderId in descendantIds)) ||
                         paper.subject.equals(f.name, ignoreCase = true) ||
                         paper.subject.contains(f.name, ignoreCase = true) ||
                         paper.topic.contains(f.name, ignoreCase = true) ||
@@ -349,8 +426,27 @@ fun FolderManagerTab(
                     }
                 }
             }
+
             matchesSearch && matchesFolder
         }
+    }
+
+    // Memoized Testbook-style test categorization for zero-lag horizontal and vertical views
+    val categorizedPapers = remember(filteredPapers) {
+        val mocks = mutableListOf<PaperEntity>()
+        val pyqs = mutableListOf<PaperEntity>()
+        val sectionals = mutableListOf<PaperEntity>()
+        val drills = mutableListOf<PaperEntity>()
+        for (p in filteredPapers) {
+            when (detectPaperTestCategory(p)) {
+                ExamTestCategory.PYQ -> pyqs.add(p)
+                ExamTestCategory.MOCK -> mocks.add(p)
+                ExamTestCategory.SECTIONAL -> sectionals.add(p)
+                ExamTestCategory.TOPIC_DRILL -> drills.add(p)
+                ExamTestCategory.ALL -> mocks.add(p)
+            }
+        }
+        TestCategoryBuckets(mocks, pyqs, sectionals, drills)
     }
 
     val totalQuestionsCount = savedPapers.sumOf { it.questionCount }
@@ -699,7 +795,7 @@ fun FolderManagerTab(
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = if (activeFolderId == "all") colors.inkBold else Color.Transparent,
-                            modifier = Modifier.clickable { activeFolderId = "all" }
+                            modifier = Modifier.clickable { navigateToFolder("all") }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -720,7 +816,6 @@ fun FolderManagerTab(
                                 )
                             }
                         }
-
                         // Ancestor Breadcrumbs
                         breadcrumbPath.forEachIndexed { index, crumb ->
                             Icon(
@@ -735,7 +830,7 @@ fun FolderManagerTab(
                                 shape = RoundedCornerShape(6.dp),
                                 color = if (isLast) crumbColor.copy(alpha = 0.15f) else Color.Transparent,
                                 border = if (isLast) BorderStroke(0.8.dp, crumbColor) else null,
-                                modifier = Modifier.clickable { activeFolderId = crumb.id }
+                                modifier = Modifier.clickable { navigateToFolder(crumb.id) }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -806,7 +901,7 @@ fun FolderManagerTab(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (currentFolder != null) "Sub-Folders in ${currentFolder.name}" else "Main Exam Folders",
+                                text = if (currentFolder != null) "Sub-Folders in ${currentFolder.name}" else "Subjects & Exam Categories",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkBold
@@ -825,7 +920,6 @@ fun FolderManagerTab(
                                 )
                             }
                         }
-
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             // Sort folders pill
                             Surface(
@@ -859,7 +953,6 @@ fun FolderManagerTab(
                                     )
                                 }
                             }
-
                             TextButton(
                                 onClick = {
                                     parentFolderForNew = currentFolder
@@ -871,32 +964,28 @@ fun FolderManagerTab(
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(2.dp))
                                 Text(
-                                    text = if (currentFolder != null) "+ Sub-Folder" else "+ Main Folder",
+                                    text = if (currentFolder != null) "+ Sub-Folder" else "+ New Subject",
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
                     }
-
-                    // Horizontal or wrapped cards for immediate sub-folders
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                    // Horizontal lazy row for immediate sub-folders (recycled, smooth 60fps)
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                            immediateSubfolders.forEach { sub ->
+                        items(immediateSubfolders, key = { it.id }) { sub ->
                                 val subColor = parseHexColor(sub.color)
                                 val stats = subFolderStats[sub.id]
                                 val subChildCount = stats?.first ?: folders.count { it.parentId == sub.id }
                                 val subPapersCount = stats?.second ?: 0
                                 val subTotalSubtreeSets = stats?.third ?: 0
-
                                 Surface(
                                     modifier = Modifier
-                                        .width(180.dp)
-                                        .clickable { activeFolderId = sub.id },
+                                        .width(if (activeFolderId == "all") 210.dp else 180.dp)
+                                        .clickable { navigateToFolder(sub.id) },
                                     shape = RoundedCornerShape(10.dp),
                                     color = colors.surface,
                                     border = BorderStroke(1.dp, subColor.copy(alpha = 0.4f)),
@@ -1510,9 +1599,10 @@ fun FolderManagerTab(
             }
         }
 
-        // Paper Segregation Toolbar (Step 4)
-        item {
-            Card(
+        // Paper Segregation Toolbar (Step 4) - only shown when papers are present to segregate
+        if (filteredPapers.isNotEmpty()) {
+            item {
+                Card(
                 shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(0.8.dp, colors.border)
@@ -1576,9 +1666,93 @@ fun FolderManagerTab(
                             }
                         }
                     }
+                    if (segregationMode == PaperSegregationMode.CURATED_SERIES) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().height(0.6.dp),
+                            color = colors.border.copy(alpha = 0.6f)
+                        ) {}
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Test Classification Filter:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkMuted
+                            )
+                            if (activeTestCategoryFilter != ExamTestCategory.ALL) {
+                                Text(
+                                    text = "Reset to All",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.teal,
+                                    modifier = Modifier.clickable { activeTestCategoryFilter = ExamTestCategory.ALL }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(ExamTestCategory.values(), key = { it.name }) { cat ->
+                                val count = when (cat) {
+                                    ExamTestCategory.ALL -> filteredPapers.size
+                                    ExamTestCategory.MOCK -> categorizedPapers.mocks.size
+                                    ExamTestCategory.PYQ -> categorizedPapers.pyqs.size
+                                    ExamTestCategory.SECTIONAL -> categorizedPapers.sectionals.size
+                                    ExamTestCategory.TOPIC_DRILL -> categorizedPapers.drills.size
+                                }
+                                val isCatSelected = activeTestCategoryFilter == cat
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isCatSelected) cat.primaryColor else colors.surfaceVariant,
+                                    border = BorderStroke(0.6.dp, if (isCatSelected) cat.primaryColor else colors.border),
+                                    modifier = Modifier.clickable { activeTestCategoryFilter = cat }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = cat.icon,
+                                            contentDescription = null,
+                                            tint = if (isCatSelected) Color.White else cat.primaryColor,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = cat.label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isCatSelected) Color.White else colors.ink
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isCatSelected) Color.White.copy(alpha = 0.25f) else cat.lightColor
+                                        ) {
+                                            Text(
+                                                text = "$count",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isCatSelected) Color.White else cat.primaryColor,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
 
         // Stats Overview Row
         item {
@@ -1635,25 +1809,36 @@ fun FolderManagerTab(
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
+                        val emptyTitle = when {
+                            searchQuery.isNotBlank() -> "No papers match \"$searchQuery\""
+                            activeFolderId == "all" && immediateSubfolders.isNotEmpty() -> "Explore Subjects & Sub-Folders Above"
+                            immediateSubfolders.isNotEmpty() -> "Organized in Sub-Folders"
+                            else -> "No assessment papers in ${currentFolder?.name ?: "this folder"}"
+                        }
+
+                        val emptyDescription = when {
+                            searchQuery.isNotBlank() -> "Try searching with a different keyword, exam title, or subject."
+                            activeFolderId == "all" && immediateSubfolders.isNotEmpty() -> "Tap any subject card above to navigate into its curriculum and sub-folders."
+                            immediateSubfolders.isNotEmpty() -> "Assessment papers are categorized in the ${immediateSubfolders.size} sub-folder${if (immediateSubfolders.size == 1) "" else "s"} above. Tap a sub-folder to view its test papers."
+                            else -> "Create or import assessment question sets into this folder to start practicing or printing."
+                        }
+
                         Text(
-                            text = if (searchQuery.isNotBlank()) "No papers match \"$searchQuery\"" else "No assessment papers in this folder",
-                            fontSize = 14.5.sp,
+                            text = emptyTitle,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkBold,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) {
-                                "Try searching by exam title, subject, or folder name."
-                            } else {
-                                "Create a new question set from scratch or load one of the pre-configured curriculum samples below."
-                            },
-                            fontSize = 12.sp,
+                            text = emptyDescription,
+                            fontSize = 11.5.sp,
                             color = colors.inkMuted,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         if (searchQuery.isNotBlank()) {
                             OutlinedButton(
@@ -1666,134 +1851,56 @@ fun FolderManagerTab(
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text("Clear Search Query", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (immediateSubfolders.isNotEmpty()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            includeSubfolderPapers = true
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                                        modifier = Modifier.weight(1f).height(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Show Subtree Sets", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    }
+                                }
 
-                        Button(
-                            onClick = {
-                                val targetFolder = if (activeFolderId != "all") activeFolderId else null
-                                onCreateNewQuestionSet(targetFolder)
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = colors.navyBanner,
-                                contentColor = colors.navyBannerText
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .testTag("create_paper_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = colors.navyBannerText
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Create / Paste Question Set",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.navyBannerText
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Quick Practice Presets Card
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = colors.surfaceVariant.copy(alpha = 0.6f),
-                            border = BorderStroke(0.6.dp, colors.border),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = "LOAD STARTER PRACTICE EXAMS",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkMuted,
-                                    letterSpacing = 0.5.sp
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
+                                Button(
+                                    onClick = {
+                                        val targetFolder = if (activeFolderId != "all") activeFolderId else null
+                                        onCreateNewQuestionSet(targetFolder)
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.navyBanner,
+                                        contentColor = colors.navyBannerText
+                                    ),
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .testTag("create_paper_button")
                                 ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = colors.tealLight,
-                                        border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.4f)),
-                                        modifier = Modifier.clickable {
-                                            viewModel.loadSample(0)
-                                            onNavigateToMaster()
-                                        }
-                                    ) {
-                                        Text(
-                                            text = "🔬 General Science (EN)",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.tealDark,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = colors.surface,
-                                        border = BorderStroke(0.6.dp, colors.border),
-                                        modifier = Modifier.clickable {
-                                            viewModel.loadSample(3)
-                                            onNavigateToMaster()
-                                        }
-                                    ) {
-                                        Text(
-                                            text = "🧬 Biology & Genetics",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.inkBold,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = colors.surface,
-                                        border = BorderStroke(0.6.dp, colors.border),
-                                        modifier = Modifier.clickable {
-                                            viewModel.loadSample(4)
-                                            onNavigateToMaster()
-                                        }
-                                    ) {
-                                        Text(
-                                            text = "📊 Multi-Pattern MCQs",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.inkBold,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = colors.surface,
-                                        border = BorderStroke(0.6.dp, colors.border),
-                                        modifier = Modifier.clickable {
-                                            viewModel.loadSample(1)
-                                            onNavigateToMaster()
-                                        }
-                                    ) {
-                                        Text(
-                                            text = "🇮🇳 Hindi Paper (HI)",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.inkBold,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp),
+                                        tint = colors.navyBannerText
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "+ New Assessment",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.navyBannerText,
+                                        maxLines = 1
+                                    )
                                 }
                             }
                         }
@@ -1803,6 +1910,381 @@ fun FolderManagerTab(
         } else {
             // Segregated / Grouped Paper Rendering
             when (segregationMode) {
+                PaperSegregationMode.CURATED_SERIES -> {
+                    if (activeTestCategoryFilter == ExamTestCategory.ALL) {
+                        // 1. Full-Length Mock Tests (FLT) Horizontal Carousel
+                        if (categorizedPapers.mocks.isNotEmpty()) {
+                            item(key = "hdr_mocks") {
+                                TestSeriesCarouselHeader(
+                                    title = "Full-Length Mock Tests (FLT)",
+                                    subtitle = "Full syllabus simulations with official time & negative marking",
+                                    count = categorizedPapers.mocks.size,
+                                    color = Color(0xFF2563EB),
+                                    icon = Icons.Default.Quiz
+                                )
+                            }
+                            item(key = "row_mocks") {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(categorizedPapers.mocks, key = { "mock_${it.id}" }) { paper ->
+                                        val paperBreadcrumb = if (paper.folderId != null) {
+                                            viewModel.getFullFolderPath(paper.folderId)
+                                        } else null
+                                        TestSeriesHorizontalCard(
+                                            paper = paper,
+                                            category = ExamTestCategory.MOCK,
+                                            isActive = paper.id == currentPaperEntityId,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = paper.id in selectedPaperIds,
+                                            folderBreadcrumb = paperBreadcrumb,
+                                            onToggleSelect = {
+                                                selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                                    selectedPaperIds - paper.id
+                                                } else {
+                                                    selectedPaperIds + paper.id
+                                                }
+                                            },
+                                            onOpenMaster = {
+                                                viewModel.loadSavedPaper(paper)
+                                                onNavigateToMaster()
+                                            },
+                                            onTakeTest = {
+                                                viewModel.loadSavedPaper(paper) {
+                                                    viewModel.startExam()
+                                                }
+                                                onNavigateToStudent()
+                                            },
+                                            onAssignFolder = { paperToAssignFolder = paper },
+                                            onExport = {
+                                                val json = viewModel.exportSinglePaperAsJson(paper)
+                                                triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                            },
+                                            onDelete = { viewModel.deleteSavedPaper(paper) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Previous Year Papers (Official PYQ) Horizontal Carousel
+                        if (categorizedPapers.pyqs.isNotEmpty()) {
+                            item(key = "hdr_pyqs") {
+                                TestSeriesCarouselHeader(
+                                    title = "Official Previous Year Papers (PYQ)",
+                                    subtitle = "Past examination papers with verified master answer keys",
+                                    count = categorizedPapers.pyqs.size,
+                                    color = Color(0xFFD97706),
+                                    icon = Icons.Default.History
+                                )
+                            }
+                            item(key = "row_pyqs") {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(categorizedPapers.pyqs, key = { "pyq_${it.id}" }) { paper ->
+                                        val paperBreadcrumb = if (paper.folderId != null) {
+                                            viewModel.getFullFolderPath(paper.folderId)
+                                        } else null
+                                        TestSeriesHorizontalCard(
+                                            paper = paper,
+                                            category = ExamTestCategory.PYQ,
+                                            isActive = paper.id == currentPaperEntityId,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = paper.id in selectedPaperIds,
+                                            folderBreadcrumb = paperBreadcrumb,
+                                            onToggleSelect = {
+                                                selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                                    selectedPaperIds - paper.id
+                                                } else {
+                                                    selectedPaperIds + paper.id
+                                                }
+                                            },
+                                            onOpenMaster = {
+                                                viewModel.loadSavedPaper(paper)
+                                                onNavigateToMaster()
+                                            },
+                                            onTakeTest = {
+                                                viewModel.loadSavedPaper(paper) {
+                                                    viewModel.startExam()
+                                                }
+                                                onNavigateToStudent()
+                                            },
+                                            onAssignFolder = { paperToAssignFolder = paper },
+                                            onExport = {
+                                                val json = viewModel.exportSinglePaperAsJson(paper)
+                                                triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                            },
+                                            onDelete = { viewModel.deleteSavedPaper(paper) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Sectional & Subject-Wise Tests Horizontal Carousel
+                        if (categorizedPapers.sectionals.isNotEmpty()) {
+                            item(key = "hdr_sec") {
+                                TestSeriesCarouselHeader(
+                                    title = "Sectional & Subject-Wise Tests",
+                                    subtitle = "Polity, History, Economy, Geography, Science & Ecology modules",
+                                    count = categorizedPapers.sectionals.size,
+                                    color = Color(0xFF059669),
+                                    icon = Icons.Default.Category
+                                )
+                            }
+                            item(key = "row_sec") {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(categorizedPapers.sectionals, key = { "sec_${it.id}" }) { paper ->
+                                        val paperBreadcrumb = if (paper.folderId != null) {
+                                            viewModel.getFullFolderPath(paper.folderId)
+                                        } else null
+                                        TestSeriesHorizontalCard(
+                                            paper = paper,
+                                            category = ExamTestCategory.SECTIONAL,
+                                            isActive = paper.id == currentPaperEntityId,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = paper.id in selectedPaperIds,
+                                            folderBreadcrumb = paperBreadcrumb,
+                                            onToggleSelect = {
+                                                selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                                    selectedPaperIds - paper.id
+                                                } else {
+                                                    selectedPaperIds + paper.id
+                                                }
+                                            },
+                                            onOpenMaster = {
+                                                viewModel.loadSavedPaper(paper)
+                                                onNavigateToMaster()
+                                            },
+                                            onTakeTest = {
+                                                viewModel.loadSavedPaper(paper) {
+                                                    viewModel.startExam()
+                                                }
+                                                onNavigateToStudent()
+                                            },
+                                            onAssignFolder = { paperToAssignFolder = paper },
+                                            onExport = {
+                                                val json = viewModel.exportSinglePaperAsJson(paper)
+                                                triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                            },
+                                            onDelete = { viewModel.deleteSavedPaper(paper) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 4. Topic Drills & Speed Quizzes Horizontal Carousel
+                        if (categorizedPapers.drills.isNotEmpty()) {
+                            item(key = "hdr_drills") {
+                                TestSeriesCarouselHeader(
+                                    title = "Topic Drills & Speed Quizzes",
+                                    subtitle = "Rapid recall drills for quick retention & active revision",
+                                    count = categorizedPapers.drills.size,
+                                    color = Color(0xFF7C3AED),
+                                    icon = Icons.Default.FlashOn
+                                )
+                            }
+                            item(key = "row_drills") {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(categorizedPapers.drills, key = { "drill_${it.id}" }) { paper ->
+                                        val paperBreadcrumb = if (paper.folderId != null) {
+                                            viewModel.getFullFolderPath(paper.folderId)
+                                        } else null
+                                        TestSeriesHorizontalCard(
+                                            paper = paper,
+                                            category = ExamTestCategory.TOPIC_DRILL,
+                                            isActive = paper.id == currentPaperEntityId,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = paper.id in selectedPaperIds,
+                                            folderBreadcrumb = paperBreadcrumb,
+                                            onToggleSelect = {
+                                                selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                                    selectedPaperIds - paper.id
+                                                } else {
+                                                    selectedPaperIds + paper.id
+                                                }
+                                            },
+                                            onOpenMaster = {
+                                                viewModel.loadSavedPaper(paper)
+                                                onNavigateToMaster()
+                                            },
+                                            onTakeTest = {
+                                                viewModel.loadSavedPaper(paper) {
+                                                    viewModel.startExam()
+                                                }
+                                                onNavigateToStudent()
+                                            },
+                                            onAssignFolder = { paperToAssignFolder = paper },
+                                            onExport = {
+                                                val json = viewModel.exportSinglePaperAsJson(paper)
+                                                triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                            },
+                                            onDelete = { viewModel.deleteSavedPaper(paper) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Vertical Complete Directory List
+                        item(key = "hdr_complete_directory") {
+                            SegregationGroupHeader(
+                                title = "All Test Sets Directory",
+                                count = filteredPapers.size,
+                                icon = Icons.Default.ViewList,
+                                color = Color(0xFF0284C7)
+                            )
+                        }
+                        items(filteredPapers, key = { "dir_${it.id}" }) { paper ->
+                            val paperBreadcrumb = if (isDeepSearchAcrossAllFolders && paper.folderId != null) {
+                                viewModel.getFullFolderPath(paper.folderId)
+                            } else null
+                            PaperCardItem(
+                                paper = paper,
+                                isActive = paper.id == currentPaperEntityId,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = paper.id in selectedPaperIds,
+                                onToggleSelect = {
+                                    selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                        selectedPaperIds - paper.id
+                                    } else {
+                                        selectedPaperIds + paper.id
+                                    }
+                                },
+                                folderBreadcrumb = paperBreadcrumb,
+                                onOpenMaster = {
+                                    viewModel.loadSavedPaper(paper)
+                                    onNavigateToMaster()
+                                },
+                                onTakeTest = {
+                                    viewModel.loadSavedPaper(paper) {
+                                        viewModel.startExam()
+                                    }
+                                    onNavigateToStudent()
+                                },
+                                onAssignFolder = { paperToAssignFolder = paper },
+                                onExport = {
+                                    val json = viewModel.exportSinglePaperAsJson(paper)
+                                    triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                },
+                                onDelete = { viewModel.deleteSavedPaper(paper) }
+                            )
+                        }
+                    } else {
+                        // Specific Category Filter Selected
+                        val selectedCategoryPapers = when (activeTestCategoryFilter) {
+                            ExamTestCategory.MOCK -> categorizedPapers.mocks
+                            ExamTestCategory.PYQ -> categorizedPapers.pyqs
+                            ExamTestCategory.SECTIONAL -> categorizedPapers.sectionals
+                            ExamTestCategory.TOPIC_DRILL -> categorizedPapers.drills
+                            ExamTestCategory.ALL -> filteredPapers
+                        }
+                        item(key = "hdr_filter_${activeTestCategoryFilter.name}") {
+                            TestSeriesCarouselHeader(
+                                title = activeTestCategoryFilter.label,
+                                subtitle = "Showing ${selectedCategoryPapers.size} curated papers in this classification",
+                                count = selectedCategoryPapers.size,
+                                color = activeTestCategoryFilter.primaryColor,
+                                icon = activeTestCategoryFilter.icon
+                            )
+                        }
+                        if (selectedCategoryPapers.isNotEmpty()) {
+                            item(key = "row_filter_${activeTestCategoryFilter.name}") {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(selectedCategoryPapers, key = { "flt_${it.id}" }) { paper ->
+                                        val paperBreadcrumb = if (paper.folderId != null) {
+                                            viewModel.getFullFolderPath(paper.folderId)
+                                        } else null
+                                        TestSeriesHorizontalCard(
+                                            paper = paper,
+                                            category = activeTestCategoryFilter,
+                                            isActive = paper.id == currentPaperEntityId,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = paper.id in selectedPaperIds,
+                                            folderBreadcrumb = paperBreadcrumb,
+                                            onToggleSelect = {
+                                                selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                                    selectedPaperIds - paper.id
+                                                } else {
+                                                    selectedPaperIds + paper.id
+                                                }
+                                            },
+                                            onOpenMaster = {
+                                                viewModel.loadSavedPaper(paper)
+                                                onNavigateToMaster()
+                                            },
+                                            onTakeTest = {
+                                                viewModel.loadSavedPaper(paper) {
+                                                    viewModel.startExam()
+                                                }
+                                                onNavigateToStudent()
+                                            },
+                                            onAssignFolder = { paperToAssignFolder = paper },
+                                            onExport = {
+                                                val json = viewModel.exportSinglePaperAsJson(paper)
+                                                triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                            },
+                                            onDelete = { viewModel.deleteSavedPaper(paper) }
+                                        )
+                                    }
+                                }
+                            }
+                            items(selectedCategoryPapers, key = { "cat_list_${it.id}" }) { paper ->
+                                val paperBreadcrumb = if (isDeepSearchAcrossAllFolders && paper.folderId != null) {
+                                    viewModel.getFullFolderPath(paper.folderId)
+                                } else null
+                                PaperCardItem(
+                                    paper = paper,
+                                    isActive = paper.id == currentPaperEntityId,
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = paper.id in selectedPaperIds,
+                                    onToggleSelect = {
+                                        selectedPaperIds = if (paper.id in selectedPaperIds) {
+                                            selectedPaperIds - paper.id
+                                        } else {
+                                            selectedPaperIds + paper.id
+                                        }
+                                    },
+                                    folderBreadcrumb = paperBreadcrumb,
+                                    onOpenMaster = {
+                                        viewModel.loadSavedPaper(paper)
+                                        onNavigateToMaster()
+                                    },
+                                    onTakeTest = {
+                                        viewModel.loadSavedPaper(paper) {
+                                            viewModel.startExam()
+                                        }
+                                        onNavigateToStudent()
+                                    },
+                                    onAssignFolder = { paperToAssignFolder = paper },
+                                    onExport = {
+                                        val json = viewModel.exportSinglePaperAsJson(paper)
+                                        triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
+                                    },
+                                    onDelete = { viewModel.deleteSavedPaper(paper) }
+                                )
+                            }
+                        }
+                    }
+                }
                 PaperSegregationMode.ALL -> {
                     items(filteredPapers, key = { it.id }) { paper ->
                         val paperBreadcrumb = if (isDeepSearchAcrossAllFolders && paper.folderId != null) {
@@ -2161,7 +2643,7 @@ fun FolderManagerTab(
                 Button(
                     onClick = {
                         if (activeFolderId == target.id) {
-                            activeFolderId = target.parentId ?: "all"
+                            navigateToFolder(target.parentId ?: "all")
                         }
                         viewModel.deleteFolder(target.id)
                         folderToDelete = null
@@ -2397,7 +2879,7 @@ fun FolderManagerTab(
             papers = savedPapers,
             viewModel = viewModel,
             onSelectFolder = { selectedId ->
-                activeFolderId = selectedId
+                navigateToFolder(selectedId)
                 showQuickJumpDialog = false
             },
             onDismiss = { showQuickJumpDialog = false }
@@ -3618,5 +4100,445 @@ private fun parseHexColor(hex: String): Color {
         }
     } catch (e: Exception) {
         Color(0xFF0284C7)
+    }
+}
+
+@Composable
+private fun TestSeriesCarouselHeader(
+    title: String,
+    subtitle: String,
+    count: Int,
+    color: Color,
+    icon: ImageVector,
+    modifier: Modifier = Modifier
+) {
+    val colors = ExamTheme.colors
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = color.copy(alpha = 0.12f),
+                modifier = Modifier.size(32.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.ink
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = color.copy(alpha = 0.14f)
+                    ) {
+                        Text(
+                            text = "$count",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = color,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = subtitle,
+                    fontSize = 10.5.sp,
+                    color = colors.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TestSeriesHorizontalCard(
+    paper: PaperEntity,
+    category: ExamTestCategory,
+    isActive: Boolean,
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    folderBreadcrumb: String? = null,
+    onToggleSelect: () -> Unit,
+    onOpenMaster: () -> Unit,
+    onTakeTest: () -> Unit,
+    onAssignFolder: () -> Unit,
+    onExport: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = ExamTheme.colors
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) colors.tealLight.copy(alpha = 0.45f) else colors.surface
+        ),
+        border = BorderStroke(
+            width = if (isActive) 1.5.dp else 0.8.dp,
+            color = if (isActive) colors.teal else colors.border
+        ),
+        modifier = modifier
+            .width(285.dp)
+            .clickable {
+                if (isSelectionMode) onToggleSelect() else onOpenMaster()
+            }
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Top Row: Category Badge + Active Pill + Menu / Checkbox
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = category.lightColor,
+                        border = BorderStroke(0.5.dp, category.primaryColor.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = category.icon,
+                                contentDescription = null,
+                                tint = category.primaryColor,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.5.dp))
+                            Text(
+                                text = category.shortBadge,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = category.primaryColor
+                            )
+                        }
+                    }
+                    if (isActive) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.tealDark
+                        ) {
+                            Text(
+                                text = "ACTIVE",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onToggleSelect() },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = colors.teal,
+                            uncheckedColor = colors.inkMuted
+                        ),
+                        modifier = Modifier.size(28.dp)
+                    )
+                } else {
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Options",
+                                tint = colors.inkMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Open Master Editor", fontSize = 12.5.sp) },
+                                onClick = {
+                                    showMenu = false
+                                    onOpenMaster()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Move / Change Folder", fontSize = 12.5.sp) },
+                                onClick = {
+                                    showMenu = false
+                                    onAssignFolder()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export JSON / Share", fontSize = 12.5.sp) },
+                                onClick = {
+                                    showMenu = false
+                                    onExport()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete Test Set", fontSize = 12.5.sp, color = Color(0xFFEF4444)) },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteConfirm = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Test Title
+            Text(
+                text = paper.title.ifBlank { "Untitled Test Paper" },
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.ink,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Subtitle / Subject / Folder Location
+            val subtitle = paper.topic.ifBlank { paper.subject.ifBlank { "UPSC CSE GS Paper 1" } }
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal,
+                color = colors.inkMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (!folderBreadcrumb.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = colors.inkMuted,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = folderBreadcrumb,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.inkMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Spec & Verification Pills Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = colors.surfaceVariant
+                ) {
+                    Text(
+                        text = "${paper.questionCount} Qs",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.ink,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = colors.surfaceVariant
+                ) {
+                    Text(
+                        text = "${paper.durationMinutes} min",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.ink,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = colors.surfaceVariant
+                ) {
+                    val computedMarks = (paper.questionCount * paper.positiveMarks).toInt()
+                    Text(
+                        text = "$computedMarks Marks",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.ink,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Verification indicator
+                val hasKeys = paper.answerKeyCount >= paper.questionCount && paper.questionCount > 0
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (hasKeys) Color(0xFFD1FAE5) else Color(0xFFFEF3C7)
+                ) {
+                    Text(
+                        text = if (hasKeys) "✓ ${paper.answerKeyCount} Keys" else "${paper.answerKeyCount}/${paper.questionCount} Keys",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (hasKeys) Color(0xFF047857) else Color(0xFFB45309),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Action Buttons: Take Test (Primary) + Master (Secondary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onTakeTest,
+                    colors = ButtonDefaults.buttonColors(containerColor = category.primaryColor),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Take Test",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onOpenMaster,
+                    border = BorderStroke(0.8.dp, colors.border),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        tint = colors.ink,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Master",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.ink
+                    )
+                }
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = Color(0xFFEF4444)
+                )
+            },
+            title = {
+                Text(
+                    text = "Delete Question Paper?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete \"${paper.title.ifBlank { "Untitled Paper" }}\"? This action cannot be undone.",
+                    fontSize = 13.5.sp,
+                    color = colors.ink
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

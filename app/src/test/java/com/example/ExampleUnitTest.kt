@@ -153,11 +153,12 @@ Answer: C
   @Test
   fun testSciencePaperParsing() {
     val paper = McqParser.parse(com.example.data.SampleData.SAMPLE_SCIENCE_PAPER)
-    assertEquals(10, paper.questions.size)
-    assertEquals("A", paper.questions[0].correctAnswer)
+    assertEquals(5, paper.questions.size)
+    assertEquals("B", paper.questions[0].correctAnswer)
     assertEquals("B", paper.questions[1].correctAnswer)
-    assertEquals("C", paper.questions[2].correctAnswer)
-    assertEquals("C", paper.questions.last().correctAnswer)
+    assertEquals("B", paper.questions[2].correctAnswer)
+    assertEquals("A", paper.questions[3].correctAnswer)
+    assertEquals("B", paper.questions.last().correctAnswer)
   }
 
   @Test
@@ -3673,11 +3674,11 @@ D. अत्याचार = अति + आचार
     val bioPaper = McqParser.parse(com.example.data.SampleData.SAMPLE_BIOLOGY_ADVANCED)
     assertTrue("Bio sample should have questions", bioPaper.questions.isNotEmpty())
 
-    // 5. General Science Olympiad Sample
+    // 5. CSAT Quantitative & Reasoning Sample
     val sciencePaper = McqParser.parse(com.example.data.SampleData.SAMPLE_SCIENCE_PAPER)
-    assertEquals("Science sample should parse 10 questions", 10, sciencePaper.questions.size)
-    assertEquals("Science sample should have 10 quick answers", 10, sciencePaper.quickAnswersCount)
-    assertEquals("Science sample should have 10 explanations", 10, sciencePaper.explanationsCount)
+    assertEquals("CSAT sample should parse 5 questions", 5, sciencePaper.questions.size)
+    assertEquals("CSAT sample should have 5 quick answers", 5, sciencePaper.quickAnswersCount)
+    assertEquals("CSAT sample should have 5 explanations", 5, sciencePaper.explanationsCount)
   }
 
   @Test

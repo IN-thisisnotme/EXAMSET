@@ -128,6 +128,14 @@ class ExamSetPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_SHUFFLE_OPTIONS, enabled).apply()
     }
 
+    fun getLastActiveFolderId(): String {
+        return prefs.getString(KEY_LAST_ACTIVE_FOLDER_ID, "all") ?: "all"
+    }
+
+    fun setLastActiveFolderId(folderId: String) {
+        prefs.edit().putString(KEY_LAST_ACTIVE_FOLDER_ID, folderId).apply()
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -137,5 +145,6 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_FONT_SIZE_SCALE = "key_font_size_scale"
         private const val KEY_FONT_SCALE_MODE = "key_font_scale_mode"
         private const val KEY_SHUFFLE_OPTIONS = "key_shuffle_options"
+        private const val KEY_LAST_ACTIVE_FOLDER_ID = "key_last_active_folder_id"
     }
 }

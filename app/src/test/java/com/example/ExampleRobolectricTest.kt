@@ -35,24 +35,24 @@ class ExampleRobolectricTest {
     fun `parser parses science sample questions and answer keys correctly`() {
         val paper = McqParser.parse(SampleData.SAMPLE_SCIENCE_PAPER)
 
-        assertEquals("National Science & Technology Olympiad", paper.metadata.title)
-        assertEquals("General Science", paper.metadata.subject)
-        assertEquals(10, paper.questions.size)
+        assertEquals("UPSC CSE CSAT Paper II Diagnostic Assessment", paper.metadata.title)
+        assertEquals("Quantitative Aptitude & Analytical Reasoning", paper.metadata.subject)
+        assertEquals(5, paper.questions.size)
 
         // Question 1 verification
         val q1 = paper.questions.first()
         assertEquals(1, q1.num)
-        assertTrue(q1.question.contains("chemical compound is commonly known as dry ice"))
-        assertEquals("Solid Carbon Dioxide (CO₂)", q1.options.a)
-        assertEquals("Solid Nitrogen (N₂)", q1.options.b)
-        assertEquals("A", q1.correctAnswer)
+        assertTrue(q1.question.contains("compound interest amounts to ₹8,000"))
+        assertEquals("20%", q1.options.a)
+        assertEquals("25%", q1.options.b)
+        assertEquals("B", q1.correctAnswer)
         assertNotNull(q1.explanation)
-        assertTrue(q1.explanation!!.contains("sublimation") || q1.explanation!!.contains("sublimes"))
+        assertTrue(q1.explanation!!.contains("Interest earned in the 4th year"))
 
-        // Question 10 verification
-        val q10 = paper.questions.last()
-        assertEquals(10, q10.num)
-        assertEquals("C", q10.correctAnswer)
+        // Question 5 verification
+        val q5 = paper.questions.last()
+        assertEquals(5, q5.num)
+        assertEquals("B", q5.correctAnswer)
     }
 
     @Test
@@ -155,7 +155,7 @@ class ExampleRobolectricTest {
         assertTrue(html.contains("Instructions to Candidates:"))
 
         // Must contain questions
-        assertTrue(html.contains("chemical compound is commonly known as dry ice"))
+        assertTrue(html.contains("compound interest amounts to ₹8,000"))
         assertTrue(html.contains("(A)"))
         assertTrue(html.contains("(B)"))
 

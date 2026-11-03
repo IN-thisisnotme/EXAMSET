@@ -3,70 +3,60 @@ package com.example.data
 object SampleData {
 
     val SAMPLE_STARTER_PROMPT = """
-# UPSC / SSC CGL Combined General Studies
-Subject: General Science
+# UPSC CSE & State PSC Prelims Assessment
+Subject: Indian Polity & Governance
 Series: Set A
 Time: 120 Minutes
-Max Marks: 100
+Max Marks: 200
 
-1. Which chemical compound is commonly known as dry ice and sublimes directly into gas at -78.5°C?
-Formula: CO₂(s) ⇌ CO₂(g) [ΔH_{sub} = 25.2 kJ/mol at 1 atm]
-(A) Solid Carbon Dioxide (CO₂)
-(B) Solid Nitrogen (N₂)
-(C) Solid Carbon Monoxide (CO)
-(D) Solid Methane (CH₄)
+1. With reference to the 'Basic Structure Doctrine' of the Constitution of India, consider the following statements:
+Formula: Art. 368(1) ⇏ \text{Destruction of Basic Structure}
+(A) It was explicitly articulated in the landmark Kesavananda Bharati v. State of Kerala case (1973).
+(B) The Constitution explicitly defines what constitutes the Basic Structure under Article 368.
+(C) Judicial review was added to the Basic Structure doctrine only after the 44th Constitutional Amendment Act.
+(D) Parliament can amend any provision of the Constitution without judicial scrutiny if approved by a two-thirds majority in both Houses.
 
-2. What is the approximate velocity of light in a complete vacuum?
-Formula: c = 1 / √(μ₀ · ε₀) ≈ 3.0 × 10⁸ m/s
-Diagram: Figure 1: Electromagnetic Wave Propagation | https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80
-(A) 3 × 10⁶ m/s
-(B) 3 × 10⁸ m/s
-(C) 3 × 10¹⁰ m/s
-(D) 1.5 × 10⁸ m/s
+2. Which of the following monetary policy instruments directly alters the reserve money (M0) base of the banking system?
+Formula: \Delta M_0 = \Delta \text{Net Foreign Assets} + \Delta \text{Net RBI Credit to Government}
+(A) Statutory Liquidity Ratio (SLR)
+(B) Open Market Operations (OMO) outright purchase of government securities
+(C) Marginal Standing Facility (MSF) interest rate spread
+(D) Priority Sector Lending Certificates (PSLC)
 
-3. Which organelle in eukaryotic cells is primarily responsible for generating adenosine triphosphate (ATP)?
-Formula: C₆H₁₂O₆ + 6O₂ → 6CO₂ + 6H₂O + 36 ATP
-(A) Endoplasmic Reticulum
-(B) Golgi Apparatus
-(C) Mitochondria
-(D) Lysosome
+3. Under Article 280 of the Constitution of India, the recommendations of the Finance Commission with regard to horizontal tax devolution:
+(A) Are legally binding on the Union Government without presidential assent
+(B) Are of an advisory nature, though conventionally accepted by successive Union governments
+(C) Require a concurrent constitutional amendment resolution passed by half of state legislatures
+(D) Are subject to mandatory veto by the Comptroller and Auditor General (CAG)
 
-4. What is the pH value of pure neutral water at standard room temperature (25°C)?
-Formula: pH = -log₁₀[H⁺] = 7.0 [K_w = 1.0 × 10⁻¹⁴]
-(A) 5.5
-(B) 7.0
-(C) 8.5
-(D) 0.0
-
-5. Which allotrope of carbon consists of a single planar sheet of sp²-hybridized carbon atoms arranged in a honeycomb lattice?
-Diagram: Figure 2: Graphene Honeycomb Lattice Structure | https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&auto=format&fit=crop&q=80
-(A) Diamond
-(B) Fullerenes
-(C) Graphene
-(D) Carbon Nanotubes
+4. Consider the following pairs of Biosphere Reserves and their corresponding biogeographic zones:
+1. Cold Desert — Trans-Himalayas
+2. Similipal — Deccan Peninsula (Mahanadian)
+3. Agasthyamalai — Western Ghats
+Which of the pairs given above is/are correctly matched?
+(A) 1 and 2 only
+(B) 2 and 3 only
+(C) 1, 2 and 3
+(D) 1 and 3 only
 
 Answer Key
 1: A
 2: B
-3: C
-4: B
-5: C
+3: B
+4: C
 
 Detailed Explanations
 1. Correct Answer: (A)
-Explanation: Dry ice is solid CO₂. Under atmospheric conditions, it transitions directly from a solid state to a gaseous state without entering a liquid phase.
+Explanation: The Basic Structure Doctrine was established by a 13-judge constitutional bench in Kesavananda Bharati v. State of Kerala (1973), ruling that while Parliament has wide amendatory powers under Article 368, it cannot alter the fundamental framework of the Constitution.
 
 2. Correct Answer: (B)
-Explanation: The speed of light in vacuum is exactly 299,792,458 m/s, approximately 3 × 10⁸ m/s.
+Explanation: Outright purchase of government securities via Open Market Operations (OMO) injects permanent liquidity directly into commercial bank reserves, expanding Reserve Money (M0). SLR affects credit multiplier, not the monetary base.
 
-3. Correct Answer: (C)
-Explanation: Mitochondria generate chemical energy in the form of ATP via oxidative phosphorylation and the Krebs cycle.
+3. Correct Answer: (B)
+Explanation: The recommendations of the Finance Commission under Article 280 are advisory in nature according to Article 281, though established convention gives them high executive weight.
 
-4. Correct Answer: (B)
-Explanation: Pure water dissociates into equal concentrations of [H⁺] and [OH⁻] ions at 25°C, corresponding to pH 7.0.
-
-5. Correct Answer: (C)
-Explanation: Graphene is a single atom-thick planar sheet of carbon atoms in a hexagonal honeycomb crystal lattice.
+4. Correct Answer: (C)
+Explanation: All three pairs are correctly matched. Cold Desert (Himachal Pradesh) lies in the Trans-Himalayan zone, Similipal (Odisha) in the Mahanadian biogeographic province of Deccan Peninsula, and Agasthyamalai in the Southern Western Ghats.
 """.trimIndent()
 
     val SAMPLE_BIOLOGY_ADVANCED = """
@@ -317,109 +307,68 @@ Detailed Explanation
 """.trimIndent()
 
     val SAMPLE_SCIENCE_PAPER = """
-# National Science & Technology Olympiad
-Subject: General Science
-Exam: UPSC / SSC CGL / STATE PSC
+# UPSC CSE CSAT Paper II Diagnostic Assessment
+Subject: Quantitative Aptitude & Analytical Reasoning
+Exam: UPSC Civil Services Examination
+Series: Set A
+Time: 120 Minutes
+Max Marks: 200
 
-1. Which chemical compound is commonly known as dry ice and sublimes directly into gas at -78.5°C?
-(A) Solid Carbon Dioxide (CO₂)
-(B) Solid Nitrogen (N₂)
-(C) Solid Carbon Monoxide (CO)
-(D) Solid Methane (CH₄)
+1. A sum of money invested at compound interest amounts to ₹8,000 in 3 years and to ₹10,000 in 4 years. What is the rate of interest per annum?
+Formula: A = P(1 + r/100)^t \implies \frac{A_4}{A_3} = 1 + \frac{r}{100}
+(A) 20%
+(B) 25%
+(C) 15%
+(D) 12.5%
 
-2. What is the approximate velocity of light in a complete vacuum?
-(A) 3 × 10⁶ m/s
-(B) 3 × 10⁸ m/s
-(C) 3 × 10¹⁰ m/s
-(D) 1.5 × 10⁸ m/s
+2. In an examination, 70% of candidates passed in English, 80% passed in Mathematics, and 10% failed in both subjects. If 144 candidates passed in both, what is the total number of candidates?
+Formula: n(A \cup B) = n(A) + n(B) - n(A \cap B) = 100\% - 10\% = 90\%
+(A) 200
+(B) 240
+(C) 280
+(D) 300
 
-3. Which organelle in eukaryotic cells is primarily responsible for generating adenosine triphosphate (ATP)?
-(A) Endoplasmic Reticulum
-(B) Golgi Apparatus
-(C) Mitochondria
-(D) Lysosome
+3. Two trains of lengths 140 m and 160 m run at the speeds of 60 km/h and 40 km/h respectively in opposite directions on parallel tracks. What is the time (in seconds) they take to cross each other?
+Formula: t = \frac{L_1 + L_2}{(v_1 + v_2) \times \frac{5}{18}}
+(A) 9.6 seconds
+(B) 10.8 seconds
+(C) 12.0 seconds
+(D) 8.4 seconds
 
-4. What is the pH value of pure water at standard room temperature (25°C)?
-(A) 5.5
-(B) 7.0
-(C) 8.5
-(D) 0.0
+4. Five persons A, B, C, D, and E are sitting around a circular table facing the center. A is sitting second to the left of C, and B is an immediate neighbor of both C and E. Who is sitting immediately to the right of A?
+(A) D
+(B) E
+(C) B
+(D) C
 
-5. Which fundamental force governs the radioactive decay of atomic nuclei, such as beta decay?
-(A) Gravitational Force
-(B) Electromagnetic Force
-(C) Weak Nuclear Force
-(D) Strong Nuclear Force
-
-6. Which allotrope of carbon consists of a single planar sheet of sp²-hybridized carbon atoms arranged in a honeycomb lattice?
-(A) Diamond
-(B) Fullerenes
-(C) Graphene
-(D) Carbon Nanotubes
-
-7. The phenomenon of total internal reflection is the primary operating principle in which of the following technologies?
-(A) Photovoltaic Solar Panels
-(B) Optical Fiber Communications
-(C) Cathode Ray Tubes
-(D) Liquid Crystal Displays (LCD)
-
-8. Which vitamin is synthesized in the human skin through exposure to ultraviolet B (UVB) radiation from sunlight?
-(A) Vitamin A (Retinol)
-(B) Vitamin C (Ascorbic Acid)
-(C) Vitamin D (Cholecalciferol)
-(D) Vitamin K (Phylloquinone)
-
-9. What is the SI unit of electric capacitance?
-(A) Henry (H)
-(B) Farad (F)
-(C) Weber (Wb)
-(D) Tesla (T)
-
-10. Which gas constitutes approximately 78% of the volume of Earth's atmosphere?
-(A) Oxygen (O₂)
-(B) Carbon Dioxide (CO₂)
-(C) Nitrogen (N₂)
-(D) Argon (Ar)
+5. If in a code language, 'CRICKET' is written as 'ETKEMGV', how will 'TENNIS' be written in that same code language?
+(A) VGPPAU
+(B) VGPPKU
+(C) VHQPKU
+(D) UGPPKU
 
 Answer Key
 | Q | Ans | Q | Ans |
 |---|---|---|---|
-| 1 | A | 6 | C |
-| 2 | B | 7 | B |
-| 3 | C | 8 | C |
-| 4 | B | 9 | B |
-| 5 | C | 10 | C |
+| 1 | B | 4 | A |
+| 2 | B | 5 | B |
+| 3 | B |   |   |
 
 Detailed Explanations
-1. Correct Answer: (A)
-Explanation: Dry ice is the solid form of carbon dioxide (CO₂). It does not melt into a liquid under standard atmospheric pressure; instead, it sublimes directly into gas at 194.65 K (-78.5 °C).
+1. Correct Answer: (B)
+Explanation: Interest earned in the 4th year is ₹10,000 - ₹8,000 = ₹2,000 on the principal amount of ₹8,000. Rate r = (2000 / 8000) × 100% = 25% per annum.
 
 2. Correct Answer: (B)
-Explanation: The speed of light in vacuum, commonly denoted c, is an exact physical constant equal to 299,792,458 metres per second (approximately 3 × 10⁸ m/s).
+Explanation: Passed candidates n(E ∪ M) = 100% - 10% = 90%. n(E ∩ M) = 70% + 80% - 90% = 60%. Given 60% = 144 candidates, total candidates = 144 / 0.60 = 240.
 
-3. Correct Answer: (C)
-Explanation: Mitochondria are membrane-bound cell organelles that generate most of the chemical energy needed to power the cell's biochemical reactions, stored in adenosine triphosphate (ATP).
+3. Correct Answer: (B)
+Explanation: Relative speed = 60 + 40 = 100 km/h = 100 × (5/18) = 250/9 m/s. Total distance = 140 + 160 = 300 m. Time = 300 / (250/9) = 10.8 seconds.
 
-4. Correct Answer: (B)
-Explanation: Pure neutral water has equal concentrations of hydrogen ions [H⁺] and hydroxide ions [OH⁻] at 25°C, corresponding to a neutral pH of exactly 7.0.
+4. Correct Answer: (A)
+Explanation: Placing C at position 1: A is second to left at pos 4. B is neighbor to both C and E, placing B at pos 2 and E at pos 3. The remaining position 5 must be D. In clockwise order facing center, immediately to the right of A is D.
 
-5. Correct Answer: (C)
-Explanation: The weak interaction (weak nuclear force) is responsible for the radioactive decay of subatomic particles, notably mediating beta decay where a neutron turns into a proton.
-
-6. Correct Answer: (C)
-Explanation: Graphene is an allotrope of carbon consisting of a single layer of atoms arranged in a two-dimensional honeycomb lattice with exceptional electrical conductivity and tensile strength.
-
-7. Correct Answer: (B)
-Explanation: Optical fiber cables transmit data signals as light pulses that travel down the fiber core by continuously reflecting off the cladding interface through total internal reflection.
-
-8. Correct Answer: (C)
-Explanation: Vitamin D3 (cholecalciferol) is synthesized in the skin when 7-dehydrocholesterol reacts with UVB sunlight spectrum (wavelengths 290–315 nm).
-
-9. Correct Answer: (B)
-Explanation: The Farad (symbol: F) is the SI unit of electrical capacitance, named after the physicist Michael Faraday. One farad equals one coulomb per volt.
-
-10. Correct Answer: (C)
-Explanation: Nitrogen makes up roughly 78.08% of Earth's atmosphere, followed by oxygen at approximately 20.95%, argon at 0.93%, and carbon dioxide at 0.04%.
+5. Correct Answer: (B)
+Explanation: Each letter is shifted by +2 positions in the alphabetical order: T(+2)→V, E(+2)→G, N(+2)→P, N(+2)→P, I(+2)→K, S(+2)→U = VGPPKU.
 """.trimIndent()
 
     val SAMPLE_HINDI_PAPER = """
@@ -633,4 +582,310 @@ Explanation: Primary consolidation settlement for normally consolidated clay: S_
 - (C) Correct; S_c = 0.271 m based on Terzaghi 1D consolidation theory.
 - (D) Incorrect; corresponds to initial void ratio e₀ = 0.5.
 """.trimIndent()
+
+    val SAMPLE_UPSC_GS1_FULL_MOCK_1 = """
+# UPSC Civil Services Examination (Preliminary)
+Subject: General Studies Paper 1
+Series: Set 01 (Full Length Mock)
+Time: 120 Minutes
+Max Marks: 200
+
+1. Consider the following statements regarding the pardoning power of the Governor under Article 161 of the Constitution of India:
+1. The Governor cannot pardon a sentence of death under any circumstances.
+2. The Governor possesses the power to suspend, remit or commute a death sentence.
+3. The Governor's power under Article 161 does not extend to punishments granted by a Court Martial.
+
+Which of the statements given above are correct?
+(A) 1 and 2 only
+(B) 2 and 3 only
+(C) 1 and 3 only
+(D) 1, 2 and 3
+
+2. In the context of monetary policy in India, the term 'Sterilization' by the Reserve Bank of India (RBI) refers to:
+(A) Withdrawing counterfeit notes from commercial circulation
+(B) Conducting open market operations to neutralize the impact of net foreign exchange inflows or outflows on the domestic money supply
+(C) Imposing a blanket moratorium on non-performing assets of scheduled commercial banks
+(D) Sanitizing currency notes issued through automated teller machines
+
+3. Consider the following pairs of Protected Areas and Rivers flowing through them:
+1. Corbett National Park : Ramganga River
+2. Kaziranga National Park : Diphlu River
+3. Silent Valley National Park : Kunthipuzha River
+
+Which of the pairs given above is/are correctly matched?
+(A) 1 and 2 only
+(B) 3 only
+(C) 1, 2 and 3
+(D) 2 and 3 only
+
+4. With reference to the economic history of ancient India, which one of the following statements best describes the term 'Sreni'?
+(A) An administrative division under the Mauryan Empire
+(B) An autonomous corporation or guild of merchants, artisans, and craftspeople
+(C) A religious endowment created by the royal court
+(D) A system of forced unpaid labour extracted by village headmen
+
+5. Consider the following statements regarding CRISPR-Cas9 genome editing technology:
+1. Cas9 is an endonuclease enzyme that acts as molecular scissors to cut target DNA strands.
+2. The guide RNA (gRNA) directs the Cas9 protein to a specific complementary sequence in the target genome.
+3. It can only be utilized to knock out genes and cannot be engineered to insert novel genetic sequences.
+
+Which of the statements given above is/are correct?
+(A) 1 and 2 only
+(B) 2 and 3 only
+(C) 1 and 3 only
+(D) 1, 2 and 3
+
+Answer Key
+1: B
+2: B
+3: C
+4: B
+5: A
+
+Detailed Explanations
+1. Correct Answer: (B)
+Explanation: Statement 1 is incorrect: Following the Supreme Court ruling in Maru Ram (1980) and Kehar Singh (1989), as well as recent clarifications, the President and Governor both hold pardoning powers, but under statutory provisions (CrPC Section 433A) and constitutional jurisprudence, the Governor can remit or commute death sentences, while exclusive complete pardon of death sentence rests with the President under Article 72. Statements 2 and 3 are correct: The Governor can suspend, remit, or commute death sentences, and has no jurisdiction over Court Martial convictions.
+
+2. Correct Answer: (B)
+Explanation: Sterilization is an operation where the RBI insulates domestic liquidity and monetary base from the destabilizing effects of high capital inflows or outflows by selling or purchasing government securities via Open Market Operations (OMO) or Market Stabilization Scheme (MSS) bonds.
+
+3. Correct Answer: (C)
+Explanation: All three pairs are correctly matched. Ramganga flows through Corbett National Park in Uttarakhand; Diphlu River (a tributary of the Brahmaputra) bisects Kaziranga in Assam; and the Kunthipuzha River traverses the pristine Silent Valley National Park in the Nilgiri hills of Kerala.
+
+4. Correct Answer: (B)
+Explanation: In ancient India, 'Sreni' were self-governing guilds or associations of traders, artisans, bankers, and craftsmen that possessed their own executive bodies, courts (sreni-dharma), and minted their own tokens/coins.
+
+5. Correct Answer: (A)
+Explanation: Statements 1 and 2 are correct. Statement 3 is incorrect because CRISPR-Cas9 can be paired with donor DNA templates to facilitate Homology-Directed Repair (HDR), enabling the precise insertion, correction, or knock-in of novel gene sequences.
+""".trimIndent()
+
+    val SAMPLE_UPSC_GS1_PYQ_2024 = """
+# UPSC Civil Services Examination (Preliminary) 2024
+Subject: General Studies Paper 1
+Series: PYQ 2024 Official
+Time: 120 Minutes
+Max Marks: 200
+
+1. Which one of the following statements best reflects the chief purpose of a Constitution of a country?
+(A) It determines the objective for making necessary laws.
+(B) It enables the creation of political offices and a government.
+(C) It defines and limits the powers of the government.
+(D) It secures social justice, social equality and social security.
+
+2. With reference to the 73rd Constitutional Amendment Act, 1992, consider the following statements:
+1. It provides for a three-tier system of Panchayati Raj in every State.
+2. States having a population not exceeding twenty lakhs may not constitute Panchayats at the intermediate level.
+3. The Gram Sabha exercises such powers and performs such functions at the village level as the Legislature of a State may, by law, provide.
+
+Which of the statements given above are correct?
+(A) 1 and 2 only
+(B) 2 and 3 only
+(C) 1 and 3 only
+(D) 1, 2 and 3
+
+3. In India, which of the following are recognized as Ramsar Wetlands of International Importance located in high-altitude zones?
+1. Tso Kar Wetland Complex
+2. Chandertal Wetland
+3. Renuka Wetland
+4. Tsomoriri
+
+Select the correct answer using the code given below:
+(A) 1, 2 and 4 only
+(B) 2, 3 and 4 only
+(C) 1 and 4 only
+(D) 1, 2, 3 and 4
+
+4. In the context of renewable energy in India, what is the primary objective of the National Green Hydrogen Mission?
+(A) To replace all coal-fired thermal power plants with green hydrogen plants by 2030
+(B) To develop green hydrogen production capacity of at least 5 Million Metric Tonnes (MMT) per annum by 2030
+(C) To mandate 100% green hydrogen fuel for all private vehicles across metro cities
+(D) To eliminate the import of natural gas completely within five fiscal years
+
+5. Consider the following statements regarding the Delimitation Commission in India:
+1. The orders of the Delimitation Commission cannot be challenged in any court of law.
+2. The orders of the Delimitation Commission are laid before the Lok Sabha and the concerned State Legislative Assembly, and they cannot effect any modifications in the orders.
+
+Which of the statements given above is/are correct?
+(A) 1 only
+(B) 2 only
+(C) Both 1 and 2
+(D) Neither 1 nor 2
+
+Answer Key
+1: C
+2: D
+3: A
+4: B
+5: C
+
+Detailed Explanations
+1. Correct Answer: (C)
+Explanation: The primary and fundamental purpose of a written Constitution in constitutional democracy is Constitutionalism—the limitation of arbitrariness and defining the structural boundaries within which the government may exercise state authority.
+
+2. Correct Answer: (D)
+Explanation: All statements are correct under Part IX of the Constitution (Articles 243B & 243A). Article 243B(2) specifically grants exemption from establishing intermediate panchayats to states with a population below 20 lakhs.
+
+3. Correct Answer: (A)
+Explanation: Tso Kar (Ladakh), Chandertal (Himachal Pradesh), and Tsomoriri (Ladakh) are high-altitude alpine wetlands (> 4,000 meters above sea level). Renuka Wetland is a sub-tropical freshwater lake at approximately 672 m elevation in Sirmaur district of HP.
+
+4. Correct Answer: (B)
+Explanation: The National Green Hydrogen Mission approved by the Union Cabinet aims to achieve an annual green hydrogen production capacity of at least 5 MMT by 2030, alongside ~125 GW of associated renewable energy capacity additions.
+
+5. Correct Answer: (C)
+Explanation: Under Article 329(a) and the Delimitation Commission Act, orders issued by the Commission have the full force of law and cannot be questioned in any court. When laid before Parliament and assemblies, no amendments or modifications can be introduced.
+""".trimIndent()
+
+    val SAMPLE_UPSC_GS1_PYQ_2023 = """
+# UPSC Civil Services Examination (Preliminary) 2023
+Subject: General Studies Paper 1
+Series: PYQ 2023 Official
+Time: 120 Minutes
+Max Marks: 200
+
+1. In the context of finance, the term 'Beta' refers to:
+(A) The process of simultaneous buying and selling of an asset from different platforms
+(B) An investment strategy of a portfolio manager to balance risk versus reward
+(C) A numeric value that measures the fluctuations of a stock to changes in the overall stock market
+(D) A type of systemic risk that arises from currency exchange fluctuations
+
+2. Consider the following heavy industries:
+1. Fertilizer plants
+2. Oil refineries
+3. Steel plants
+
+Green hydrogen is expected to play a significant role in decarbonizing how many of the above industries?
+(A) Only one
+(B) Only two
+(C) All three
+(D) None
+
+3. With reference to Central Bank Digital Currencies (CBDC), consider the following statements:
+1. It is a sovereign digital currency issued by the central bank in accordance with its monetary policy.
+2. It appears as a liability on the central bank's balance sheet.
+3. It can be used as legal tender for payments without requiring an active bank account.
+
+Which of the statements given above are correct?
+(A) 1 and 2 only
+(B) 2 and 3 only
+(C) 1 and 3 only
+(D) 1, 2 and 3
+
+4. In India, which one of the following agencies/bodies is mandated by law to maintain price stability by controlling the Consumer Price Index (CPI) inflation within a target band?
+(A) Department of Economic Affairs, Ministry of Finance
+(B) Reserve Bank of India through the Monetary Policy Committee
+(C) NITI Aayog Macroeconomic Advisory Council
+(D) Commission for Agricultural Costs and Prices (CACP)
+
+5. Consider the following infrastructure sectors:
+1. Mass Rapid Transit Systems (Metro)
+2. Cold storage chains
+3. Affordable housing
+4. Telecommunication towers
+
+How many of the above are included in the Harmonized Master List of Infrastructure sub-sectors in India?
+(A) Only one
+(B) Only two
+(C) Only three
+(D) All four
+
+Answer Key
+1: C
+2: C
+3: D
+4: B
+5: D
+
+Detailed Explanations
+1. Correct Answer: (C)
+Explanation: In financial economics, Beta (β) measures the sensitivity or systemic risk of a stock/portfolio relative to the broader market index (e.g. NIFTY 50 or S&P 500). A beta of 1 indicates the stock moves in tandem with the market; beta > 1 signifies higher volatility.
+
+2. Correct Answer: (C)
+Explanation: All three sectors are major industrial emitters where high-temperature heat and chemical reduction cannot be directly electrified. Green hydrogen serves as a clean reducing agent in green steel, green ammonia feedstock in fertilizer synthesis, and hydro-treating agent in petroleum refineries.
+
+3. Correct Answer: (D)
+Explanation: Digital Rupee (e₹) is a direct claim on the Reserve Bank of India, functioning identically to physical cash as a central bank liability. Token-based CBDC can be held in offline digital wallets without maintaining an account at a commercial bank.
+
+4. Correct Answer: (B)
+Explanation: Under the amended RBI Act, 1934 (effective 2016), the Monetary Policy Committee (MPC) of the Reserve Bank of India is legally tasked with anchoring CPI inflation at 4% with a tolerance band of ±2% (2% to 6%).
+
+5. Correct Answer: (D)
+Explanation: All four sectors are notified sub-sectors in the Department of Economic Affairs' Harmonized Master List of Infrastructure: MRTS under Transport, Cold chains under Agriculture & Food, Affordable Housing under Social & Commercial, and Telecom Towers under Communication.
+""".trimIndent()
+
+    val SAMPLE_UPSC_GS1_SECTIONAL_POLITY = """
+# UPSC CSE GS 1 Sectional: Indian Polity & Governance
+Subject: Indian Polity
+Series: Sec 01 (Polity & Constitution)
+Time: 60 Minutes
+Max Marks: 100
+
+1. Consider the following statements regarding Money Bills and Financial Bills in the Parliament of India:
+1. Every Money Bill is a Financial Bill, but every Financial Bill is not a Money Bill.
+2. A Money Bill can only be introduced in the Lok Sabha on the prior recommendation of the President.
+3. The Rajya Sabha has no power to reject or amend a Money Bill, and must return it within 14 days.
+4. In case of disagreement between both Houses on a Money Bill, the President can summon a joint sitting.
+
+Which of the statements given above are correct?
+(A) 1, 2 and 3 only
+(B) 2 and 4 only
+(C) 1 and 3 only
+(D) 1, 2, 3 and 4
+
+2. In which of the following landmark judgements did the Supreme Court of India rule that the 'Basic Structure' of the Constitution cannot be abrogated or destroyed even by a constitutional amendment under Article 368?
+(A) Golaknath v. State of Punjab (1967)
+(B) Kesavananda Bharati v. State of Kerala (1973)
+(C) Minerva Mills v. Union of India (1980)
+(D) Shankari Prasad v. Union of India (1951)
+
+3. Consider the following statements regarding the Writ Jurisdiction under Article 32 and Article 226:
+1. The Supreme Court can issue writs only for the enforcement of Fundamental Rights, whereas High Courts can issue writs for Fundamental Rights as well as for any other ordinary legal right.
+2. The remedy under Article 32 is itself a Fundamental Right, whereas the remedy under Article 226 is discretionary.
+
+Which of the statements given above is/are correct?
+(A) 1 only
+(B) 2 only
+(C) Both 1 and 2
+(D) Neither 1 nor 2
+
+4. With reference to the Sixth Schedule of the Indian Constitution, the Autonomous District Councils (ADCs) can be established in which group of northeastern States?
+(A) Assam, Meghalaya, Tripura, and Mizoram
+(B) Assam, Nagaland, Manipur, and Arunachal Pradesh
+(C) Meghalaya, Manipur, Tripura, and Nagaland
+(D) Arunachal Pradesh, Mizoram, Sikkim, and Tripura
+
+5. Consider the following statements regarding the Model Code of Conduct (MCC) issued by the Election Commission of India:
+1. The MCC comes into operation immediately upon the announcement of the election schedule by the Election Commission.
+2. The MCC is a statutory document enacted through an Act of Parliament.
+3. It prohibits ministers and other authorities from announcing financial grants or promises thereof after elections are announced.
+
+Which of the statements given above are correct?
+(A) 1 and 2 only
+(B) 1 and 3 only
+(C) 2 and 3 only
+(D) 1, 2 and 3
+
+Answer Key
+1: A
+2: B
+3: C
+4: A
+5: B
+
+Detailed Explanations
+1. Correct Answer: (A)
+Explanation: Statement 4 is incorrect: Under Article 108 of the Constitution, a joint sitting of Parliament is specifically barred for Money Bills and Constitutional Amendment Bills. Statements 1, 2, and 3 are correct under Articles 109, 110, and 117.
+
+2. Correct Answer: (B)
+Explanation: On April 24, 1973, a historic 13-judge bench of the Supreme Court in Kesavananda Bharati v. State of Kerala held that Parliament's constituent power under Article 368 does not include the power to alter the 'basic structure' or framework of the Constitution.
+
+3. Correct Answer: (C)
+Explanation: Both statements are correct: Under Article 32(2), the Supreme Court's jurisdiction is restricted strictly to Part III (Fundamental Rights). High Courts under Article 226 possess a wider writ jurisdiction extending to legal rights ("and for any other purpose"). Article 32 is itself a fundamental right, making Supreme Court access guaranteed.
+
+4. Correct Answer: (A)
+Explanation: The Sixth Schedule under Article 244(2) and Article 275(1) applies exclusively to the tribal areas in the four states of Assam, Meghalaya, Tripura, and Mizoram (mnemonic: AMTM).
+
+5. Correct Answer: (B)
+Explanation: Statements 1 and 3 are correct. Statement 2 is incorrect because the Model Code of Conduct does not possess statutory backing; it evolved through consensus among political parties and is enforced by the ECI through its plenary powers under Article 324.
+""".trimIndent()
 }
+

@@ -992,7 +992,14 @@ fun HomeScreen(
         val scannerPaper = currentPaper
             ?: savedPapers.firstOrNull()?.toQuestionPaper()
             ?: viewModel.lastOpenedPaper.collectAsState().value?.toQuestionPaper()
-            ?: com.example.util.McqParser.parse(com.example.data.SampleData.SAMPLE_STARTER_PROMPT)
+            ?: com.example.model.QuestionPaper(
+                metadata = com.example.model.PaperMetadata(
+                    title = "Evaluation Assessment Sheet",
+                    subject = "Standard Evaluation",
+                    setNumber = "Set A"
+                ),
+                questions = emptyList()
+            )
 
         OmrScannerDialog(
             paper = scannerPaper,

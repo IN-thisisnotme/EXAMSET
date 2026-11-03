@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Science
@@ -706,16 +707,16 @@ fun InputBottomSheet(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
                         border = BorderStroke(1.dp, colors.border),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.testTag("sample_science_button")
+                        modifier = Modifier.testTag("sample_civil_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Science,
+                            imageVector = Icons.Default.Engineering,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint = colors.teal
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Science", fontSize = 12.sp, color = colors.inkBold, maxLines = 1)
+                        Text("Engineering", fontSize = 12.sp, color = colors.inkBold, maxLines = 1)
                     }
 
                     OutlinedButton(
