@@ -4055,7 +4055,52 @@ Population density = Total population / Total land area
     val formulaContent = parsed.pedagogicalSections[1].content
     assertTrue(com.example.ui.components.MathFormulaParser.has2DMath(formulaContent))
   }
+
+  @Test
+  fun testHundredQuestionPasteParsingWithAndWithoutIntroOutro() {
+    val file = listOf(
+      java.io.File("../public/assets/aistudio/Paste_November_03__2026_-_4_16PM_76ee2b44"),
+      java.io.File("public/assets/aistudio/Paste_November_03__2026_-_4_16PM_76ee2b44"),
+      java.io.File("/app/applet/public/assets/aistudio/Paste_November_03__2026_-_4_16PM_76ee2b44"),
+      java.io.File("/public/assets/aistudio/Paste_November_03__2026_-_4_16PM_76ee2b44")
+    ).firstOrNull { it.exists() } ?: return
+
+    val rawText = file.readText()
+
+    // Test 1: Full raw text as pasted (includes intro commentary and outro commentary)
+    val parsedFull = McqParser.parse(rawText)
+    assertEquals(100, parsedFull.questions.size)
+    assertEquals(100, parsedFull.quickAnswersCount)
+    assertEquals(100, parsedFull.explanationsCount)
+    assertEquals("B", parsedFull.questions[0].correctAnswer)
+    assertEquals("C", parsedFull.questions[99].correctAnswer)
+
+    val expQ1 = parsedFull.questions[0].explanation ?: ""
+    assertTrue("Q1 explanation should contain option breakdown", expQ1.contains("(A) Incorrect") && expQ1.contains("(B) Correct"))
+    assertFalse("Q1 explanation should not retain answer prefix line", expQ1.startsWith("Correct answer:"))
+
+    val expQ100 = parsedFull.questions[99].explanation ?: ""
+    assertTrue("Q100 explanation should contain option breakdown", expQ100.contains("(C) Correct"))
+    assertFalse("Q100 explanation should truncate outro commentary", expQ100.contains("### How to use this paper effectively"))
+    assertFalse("Q100 explanation should truncate outro commentary", expQ100.contains("Review incorrect answers by concept"))
+
+    // Test 2: Intro and outro cleared by user
+    val lines = rawText.lines()
+    val clearedIntroOutro = lines.subList(30, 2088).joinToString("\n")
+    val parsedCleared = McqParser.parse(clearedIntroOutro)
+    assertEquals(100, parsedCleared.questions.size)
+    assertEquals(100, parsedCleared.quickAnswersCount)
+    assertEquals(100, parsedCleared.explanationsCount)
+
+    // Test 3: Intro, outro, AND Phase headers cleared by user
+    val clearedAll = lines.subList(30, 2088).filterNot { it.contains("### Phase") }.joinToString("\n")
+    val parsedClearedAll = McqParser.parse(clearedAll)
+    assertEquals(100, parsedClearedAll.questions.size)
+    assertEquals(100, parsedClearedAll.quickAnswersCount)
+    assertEquals(100, parsedClearedAll.explanationsCount)
+  }
 }
+
 
 
 
