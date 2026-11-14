@@ -1285,8 +1285,16 @@ fun MasterViewTab(
             initialMetadata = paper.metadata,
             folders = folders,
             initialConfig = examConfig,
-            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
-                viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
+            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber, manualCategory ->
+                viewModel.updatePaperMetadata(
+                    title = title,
+                    subject = subject,
+                    topic = topic,
+                    setNumber = setNumber,
+                    rollNumber = rollNumber,
+                    bookletNumber = bookletNumber,
+                    manualCategory = manualCategory
+                )
             },
             onSaveConfig = { newConfig ->
                 viewModel.updateExamConfig(newConfig)

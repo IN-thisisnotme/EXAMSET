@@ -66,18 +66,24 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import com.example.model.ExamConfig
 import com.example.model.FolderItem
+import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
 import com.example.util.ExamCatalogueRegistry
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EditMetadataDialog(
     initialMetadata: PaperMetadata,
     folders: List<FolderItem> = emptyList(),
     initialConfig: ExamConfig = ExamConfig(),
-    onSave: (title: String, subject: String, topic: String, setNumber: String, rollNumber: String, bookletNumber: String) -> Unit,
+    onSave: (title: String, subject: String, topic: String, setNumber: String, rollNumber: String, bookletNumber: String, manualCategory: String) -> Unit,
     onSaveConfig: ((ExamConfig) -> Unit)? = null,
     onDismiss: () -> Unit,
     onEnterQuestionEditMode: (() -> Unit)? = null
@@ -87,6 +93,9 @@ fun EditMetadataDialog(
     var subject by remember { mutableStateOf(initialMetadata.subject) }
     var topic by remember { mutableStateOf(initialMetadata.topic) }
     var setNumber by remember { mutableStateOf(initialMetadata.setNumber) }
+    var selectedCategory by remember(initialMetadata.manualCategory) {
+        mutableStateOf(PaperCategory.fromCode(initialMetadata.manualCategory))
+    }
     var rollNumber by remember {
         mutableStateOf(
             if (initialMetadata.rollNumber.isNotBlank()) initialMetadata.rollNumber else com.example.util.ExamNumberGenerator.generateRollNumber()
@@ -526,6 +535,39 @@ fun EditMetadataDialog(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "Manual Test Classification",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.inkMuted
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(
+                        PaperCategory.AUTO,
+                        PaperCategory.MOCK_TEST,
+                        PaperCategory.PYQ,
+                        PaperCategory.SECTIONAL
+                    ).forEach { cat ->
+                        FilterChip(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            label = { Text(cat.label, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = colors.tealLight,
+                                selectedLabelColor = colors.tealDark
+                            ),
+                            modifier = Modifier.testTag("edit_category_${cat.code.lowercase()}")
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Examination Duration & Marking Parameters Section
@@ -731,7 +773,7 @@ fun EditMetadataDialog(
                             val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                             val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
 
-                            onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber)
+                            onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber, selectedCategory.code)
                             onSaveConfig?.invoke(
                                 initialConfig.copy(
                                     examTitle = title.ifBlank { initialConfig.examTitle },
@@ -801,7 +843,7 @@ fun EditMetadataDialog(
                                 val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                                 val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
 
-                                onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber)
+                                onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber, selectedCategory.code)
                                 onSaveConfig?.invoke(
                                     initialConfig.copy(
                                         examTitle = title.ifBlank { initialConfig.examTitle },

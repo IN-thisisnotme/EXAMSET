@@ -575,7 +575,22 @@ object QuestionAuditHelper {
             val existing = existingMap[q.num]
             val incoming = incomingMap[q.num]
 
-            if (incoming == null) {
+            if (q.isVerified || existing?.isVerified == true) {
+                // Strictly immutable when Sealed: do not attach destructive key overrides or replacements
+                AuditQuestionReport(
+                    qNum = q.num,
+                    status = AuditIssueType.CLEAN,
+                    currentKey = q.correctAnswer,
+                    suggestedKey = null,
+                    flawReason = null,
+                    recheckedExplanation = existing?.recheckedExplanation,
+                    replacementQuestion = null,
+                    originalQuestion = q,
+                    isResolved = true,
+                    isVerified = true,
+                    isNeutralized = q.isNeutralized || existing?.isNeutralized == true
+                )
+            } else if (incoming == null) {
                 existing ?: AuditQuestionReport(
                     qNum = q.num,
                     status = AuditIssueType.CLEAN,
@@ -766,18 +781,34 @@ object QuestionAuditHelper {
                     else -> if (isTrueKeyMismatch) AuditIssueType.WRONG_KEY else AuditIssueType.CLEAN
                 }
 
-                parsedReports[qNum] = AuditQuestionReport(
-                    qNum = qNum,
-                    status = status,
-                    currentKey = currentKey,
-                    suggestedKey = if (isTrueKeyMismatch) suggestedKey else (if (isKeyIdentical) currentKey else suggestedKey),
-                    flawReason = flawReason,
-                    recheckedExplanation = recheckedExplanation,
-                    replacementQuestion = replacementQ,
-                    originalQuestion = originalQ,
-                    isVerified = originalQ?.isVerified ?: false,
-                    isNeutralized = originalQ?.isNeutralized ?: false
-                )
+                if (originalQ?.isVerified == true) {
+                    parsedReports[qNum] = AuditQuestionReport(
+                        qNum = qNum,
+                        status = AuditIssueType.CLEAN,
+                        currentKey = currentKey,
+                        suggestedKey = null,
+                        flawReason = null,
+                        recheckedExplanation = null,
+                        replacementQuestion = null,
+                        originalQuestion = originalQ,
+                        isResolved = true,
+                        isVerified = true,
+                        isNeutralized = originalQ.isNeutralized
+                    )
+                } else {
+                    parsedReports[qNum] = AuditQuestionReport(
+                        qNum = qNum,
+                        status = status,
+                        currentKey = currentKey,
+                        suggestedKey = if (isTrueKeyMismatch) suggestedKey else (if (isKeyIdentical) currentKey else suggestedKey),
+                        flawReason = flawReason,
+                        recheckedExplanation = recheckedExplanation,
+                        replacementQuestion = replacementQ,
+                        originalQuestion = originalQ,
+                        isVerified = false,
+                        isNeutralized = originalQ?.isNeutralized ?: false
+                    )
+                }
             }
         }
 
@@ -869,6 +900,22 @@ object QuestionAuditHelper {
             val qNum = match.groupValues[1].toIntOrNull() ?: continue
             val remainder = match.groupValues[2].trim()
             val originalQ = qMap[qNum] ?: continue
+            if (originalQ.isVerified) {
+                parsedReports[qNum] = AuditQuestionReport(
+                    qNum = qNum,
+                    status = AuditIssueType.CLEAN,
+                    currentKey = originalQ.correctAnswer,
+                    suggestedKey = null,
+                    flawReason = null,
+                    recheckedExplanation = originalQ.explanation,
+                    replacementQuestion = null,
+                    originalQuestion = originalQ,
+                    isResolved = true,
+                    isVerified = true,
+                    isNeutralized = originalQ.isNeutralized
+                )
+                continue
+            }
 
             val keyRegex = Regex("""\b([A-E])\b.*?(?:->|to|should be|correct|instead of).*?\b([A-E])\b""", RegexOption.IGNORE_CASE)
             val keyMatch = keyRegex.find(remainder)

@@ -53,6 +53,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.example.model.ExamConfig
 import com.example.model.FolderItem
+import com.example.model.PaperCategory
 import com.example.util.ExamCatalogueRegistry
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -224,7 +225,8 @@ fun InputBottomSheet(
         setNumber: String,
         durationMinutes: Int,
         positiveMarks: Double,
-        negativeMarks: Double
+        negativeMarks: Double,
+        manualCategory: String
     ) -> Unit,
     onGenerateConfig: ((ExamConfig) -> Unit)? = null,
     onPickFile: () -> Unit,
@@ -273,6 +275,7 @@ fun InputBottomSheet(
     var customSubject by remember(initialSubject) { mutableStateOf(initialSubject) }
     var customTopic by remember { mutableStateOf("") }
     var customSetNumber by remember(initialSubject) { mutableStateOf(computeNextSetForSubject(initialSubject, savedPapers)) }
+    var selectedCategory by remember { mutableStateOf(PaperCategory.AUTO) }
     var customDurationMinutesStr by remember { mutableStateOf("60") }
     var customPositiveMarksStr by remember { mutableStateOf("4.0") }
     var customNegativeMarksStr by remember { mutableStateOf("1.0") }
@@ -1048,6 +1051,40 @@ fun InputBottomSheet(
                                         .testTag("import_set_number_field"),
                                     shape = RoundedCornerShape(6.dp)
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "Test Section Category",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkMuted
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                listOf(
+                                    PaperCategory.AUTO,
+                                    PaperCategory.MOCK_TEST,
+                                    PaperCategory.PYQ,
+                                    PaperCategory.SECTIONAL
+                                ).forEach { cat ->
+                                    val isSelected = selectedCategory == cat
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedCategory = cat },
+                                        label = { Text(cat.label, fontSize = 11.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = colors.tealLight,
+                                            selectedLabelColor = colors.tealDark
+                                        ),
+                                        modifier = Modifier.testTag("import_category_${cat.code.lowercase()}")
+                                    )
+                                }
                             }
 
                             if (customSubject.isNotBlank()) {
@@ -1904,7 +1941,8 @@ fun InputBottomSheet(
                                     customSetNumber,
                                     parsedDuration,
                                     parsedPosMarks,
-                                    parsedNegMarks
+                                    parsedNegMarks,
+                                    selectedCategory.code
                                 )
                                 onDismiss()
                             }

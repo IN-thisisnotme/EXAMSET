@@ -98,8 +98,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.PaperEntity
+import com.example.data.StudyNoteEntity
+import com.example.data.effectiveCategory
 import com.example.model.FolderItem
+import com.example.model.PaperCategory
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
 import com.example.util.ExamNumberGenerator
@@ -235,13 +245,15 @@ fun FolderManagerTab(
     viewModel: MainViewModel,
     onNavigateToMaster: () -> Unit,
     onNavigateToStudent: () -> Unit,
+    onNavigateToPrint: () -> Unit = {},
     onCreateNewQuestionSet: (folderId: String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
     val savedPapers by viewModel.savedPapers.collectAsState()
     val folders by viewModel.folders.collectAsState()
-    val allAttempts by viewModel.allAttempts.collectAsState()
+    val libraryIndex by viewModel.libraryIndex.collectAsState()
+    val studyNotes by viewModel.studyNotes.collectAsState()
     val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val currentPaper by viewModel.currentPaper.collectAsState()
@@ -252,17 +264,13 @@ fun FolderManagerTab(
 
     var selectedFolderTab by remember { mutableStateOf(FolderExamTab.MOCKS) }
     var selectedPaperFilter by remember { mutableStateOf("All Papers") }
-    var showPaperDropdown by remember { mutableStateOf(false) }
-
-    val currentMonthStart = remember {
-        val cal = java.util.Calendar.getInstance()
-        cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
-        cal.timeInMillis
-    }
+    var showAllFoldersExpanded by remember { mutableStateOf(false) }
+    var activeQuickFeatureFilter by remember { mutableStateOf<QuickFeatureAction?>(null) }
+    var showRootStudyNotesDialog by remember { mutableStateOf(false) }
+    var showStudyNoteEditor by remember { mutableStateOf(false) }
+    var editingStudyNote by remember { mutableStateOf<StudyNoteEntity?>(null) }
+    var activeReadingNoteId by remember { mutableStateOf<Long?>(null) }
+    var notesSearchQuery by remember { mutableStateOf("") }
 
     val navigateToFolder: (String) -> Unit = remember {
         { targetId ->
@@ -443,26 +451,6 @@ fun FolderManagerTab(
         folders.filter { it.parentId == null }
     }
 
-    val calculateFolderRecursiveSets: (String) -> Pair<Int, Int> = remember(folders, savedPapers, allAttempts) {
-        { folderId ->
-            val descIds = viewModel.getAllDescendantFolderIds(folderId) + folderId
-            val distinctPapers = savedPapers.filter { it.folderId in descIds }.distinctBy { it.id }
-            val total = distinctPapers.size
-            val completed = distinctPapers.count { paper ->
-                allAttempts.any { it.paperId == paper.id && it.isSubmitted }
-            }
-            Pair(total, completed)
-        }
-    }
-
-    val calculateFolderMonthlyActivity: (String, Long) -> Int = remember(folders, savedPapers, allAttempts) {
-        { folderId, monthStart ->
-            val descIds = viewModel.getAllDescendantFolderIds(folderId) + folderId
-            val paperIds = savedPapers.filter { it.folderId in descIds }.map { it.id }.toSet()
-            allAttempts.count { it.paperId in paperIds && (it.submittedAt ?: it.createdAt) >= monthStart }
-        }
-    }
-
     // Subfolder tab matching: in PYPs show previous year subfolders, in Mocks show mock subfolders, in Notes show notes.
     // If no subfolders match the tab keyword, show all immediate subfolders so user never loses access.
     val visibleSubfolders = remember(immediateSubfolders, selectedFolderTab, activeFolderId, searchQuery) {
@@ -523,11 +511,11 @@ fun FolderManagerTab(
             val matchesTab = if (activeFolderId == "all" || searchQuery.isNotBlank()) {
                 true
             } else {
-                val cat = detectPaperTestCategory(paper)
+                val eff = paper.effectiveCategory()
                 when (selectedFolderTab) {
-                    FolderExamTab.MOCKS -> cat != ExamTestCategory.PYQ && paper.questionCount > 0
-                    FolderExamTab.PYPS -> cat == ExamTestCategory.PYQ || "pyq" in paper.title.lowercase(Locale.getDefault()) || "previous" in paper.title.lowercase(Locale.getDefault())
-                    FolderExamTab.STUDY_NOTES -> paper.questionCount == 0 || "notes" in paper.title.lowercase(Locale.getDefault()) || "study" in paper.title.lowercase(Locale.getDefault())
+                    FolderExamTab.MOCKS -> eff == PaperCategory.MOCK_TEST || eff == PaperCategory.SECTIONAL || (eff == PaperCategory.AUTO && paper.questionCount > 0)
+                    FolderExamTab.PYPS -> eff == PaperCategory.PYQ
+                    FolderExamTab.STUDY_NOTES -> eff == PaperCategory.STUDY_NOTES
                 }
             }
 
@@ -547,6 +535,19 @@ fun FolderManagerTab(
                 }
             }.thenByDescending { it.updatedAt }
         )
+    }
+
+    val folderNotes = remember(studyNotes, activeFolderId) {
+        if (activeFolderId == "all") studyNotes
+        else studyNotes.filter { it.folderId == activeFolderId }
+    }
+
+    val suggestedFolderPaper = remember(sortedFilteredPapers, libraryIndex, activeFolderId, selectedFolderTab) {
+        if (activeFolderId == "all" || selectedFolderTab == FolderExamTab.STUDY_NOTES) null
+        else sortedFilteredPapers.firstOrNull { it.id in libraryIndex.inProgressPaperIds }
+            ?: sortedFilteredPapers.firstOrNull {
+                it.id !in libraryIndex.completedPaperIds && it.effectiveCategory() != PaperCategory.STUDY_NOTES
+            }
     }
 
     // Memoized Testbook-style test categorization for zero-lag horizontal and vertical views
@@ -623,8 +624,9 @@ fun FolderManagerTab(
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 21.sp
                                     )
                                     val rootCount = immediateSubfoldersRaw.size
                                     val totalUniquePapers = savedPapers.distinctBy { it.id }.size
@@ -632,7 +634,7 @@ fun FolderManagerTab(
                                         text = "$rootCount Examination Series • $totalUniquePapers Test Sets",
                                         fontSize = 11.5.sp,
                                         color = colors.inkMuted,
-                                        maxLines = 1,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
@@ -748,13 +750,14 @@ fun FolderManagerTab(
                                     .weight(1f)
                                     .heightIn(min = 38.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primaryButtonText)
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primaryButtonText)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "+ New Exam Folder",
+                                    text = "New Folder",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Center,
                                     color = colors.primaryButtonText
                                 )
                             }
@@ -762,16 +765,10 @@ fun FolderManagerTab(
                     }
                 }
             } else {
-                // Inside Examination Folder Header (Reference Screenshot Design)
-                val totalRecursiveSets = remember(activeFolderId, savedPapers, descendantIds) {
-                    val allFolderIds = descendantIds + activeFolderId
-                    savedPapers.filter { it.folderId in allFolderIds }.distinctBy { it.id }.size
-                }
-                val completedRecursiveSets = remember(activeFolderId, savedPapers, descendantIds, allAttempts) {
-                    val allFolderIds = descendantIds + activeFolderId
-                    val uniquePapers = savedPapers.filter { it.folderId in allFolderIds }.distinctBy { it.id }
-                    uniquePapers.count { p -> allAttempts.any { it.paperId == p.id && it.isSubmitted } }
-                }
+                // Inside Examination Folder Header (Reference Screenshot Design + O(1) indexed stats)
+                val totalRecursiveSets = libraryIndex.folderTotalCounts[activeFolderId] ?: 0
+                val completedRecursiveSets = libraryIndex.folderCompletedCounts[activeFolderId] ?: 0
+                val folderNotesCount = libraryIndex.folderNotesCounts[activeFolderId] ?: folderNotes.size
 
                 Card(
                     shape = RoundedCornerShape(14.dp),
@@ -798,7 +795,7 @@ fun FolderManagerTab(
                                         val parent = currentFolder?.parentId ?: "all"
                                         navigateToFolder(parent)
                                     },
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -808,7 +805,7 @@ fun FolderManagerTab(
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
@@ -823,7 +820,8 @@ fun FolderManagerTab(
 
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.horizontalScroll(rememberScrollState())
                                     ) {
                                         Surface(
                                             shape = RoundedCornerShape(5.dp),
@@ -846,12 +844,27 @@ fun FolderManagerTab(
                                                 color = Color(0xFF16A34A)
                                             )
                                         }
+
+                                        if (folderNotesCount > 0) {
+                                            Surface(
+                                                shape = RoundedCornerShape(5.dp),
+                                                color = colors.tealLight
+                                            ) {
+                                                Text(
+                                                    text = "$folderNotesCount Study Notes",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.tealDark,
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                                )
+                                            }
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.height(4.dp))
 
                                     Text(
-                                        text = "Available in English, Hindi",
+                                        text = "Offline Exam Studio • Adaptive Layout",
                                         fontSize = 11.5.sp,
                                         color = colors.inkMuted
                                     )
@@ -877,65 +890,38 @@ fun FolderManagerTab(
                             }
                         }
 
-                        // Dynamic Paper Selector (Paper 1 / Paper 2 dropdown)
+                        // Visible highlighted pill selector for Paper 1 / Paper 2
                         if (detectedPapersList.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = colors.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(0.8.dp, colors.border),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { showPaperDropdown = true }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = ": $selectedPaperFilter",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.inkBold
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                detectedPapersList.forEach { option ->
+                                    val isChosen = selectedPaperFilter == option
+                                    FilterChip(
+                                        selected = isChosen,
+                                        onClick = { selectedPaperFilter = option },
+                                        label = {
+                                            Text(
+                                                text = option,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = colors.navyBanner,
+                                            selectedLabelColor = colors.navyBannerText
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowDown,
-                                            contentDescription = "Select Paper",
-                                            tint = colors.inkBold,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-
-                                DropdownMenu(
-                                    expanded = showPaperDropdown,
-                                    onDismissRequest = { showPaperDropdown = false }
-                                ) {
-                                    detectedPapersList.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = option,
-                                                    fontWeight = if (selectedPaperFilter == option) FontWeight.Bold else FontWeight.Normal,
-                                                    color = if (selectedPaperFilter == option) Color(0xFF2563EB) else colors.inkBold
-                                                )
-                                            },
-                                            onClick = {
-                                                selectedPaperFilter = option
-                                                showPaperDropdown = false
-                                            }
-                                        )
-                                    }
+                                    )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         // Navigation Tabs: Mock Tests, PYPs, Study Notes
                         Row(
@@ -944,26 +930,34 @@ fun FolderManagerTab(
                         ) {
                             FolderExamTab.values().forEach { tab ->
                                 val isTabSelected = selectedFolderTab == tab
+                                val tabLabel = if (tab == FolderExamTab.STUDY_NOTES && folderNotes.isNotEmpty()) {
+                                    "${tab.title} (${folderNotes.size})"
+                                } else tab.title
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
                                         .weight(1f)
                                         .clickable { selectedFolderTab = tab }
-                                        .padding(vertical = 6.dp)
+                                        .padding(vertical = 8.dp)
                                 ) {
                                     Text(
-                                        text = tab.title,
-                                        fontSize = 14.sp,
+                                        text = tabLabel,
+                                        fontSize = 12.5.sp,
                                         fontWeight = if (isTabSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isTabSelected) colors.inkBold else colors.inkMuted
+                                        color = if (isTabSelected) colors.tealDark else colors.inkMuted,
+                                        maxLines = 2,
+                                        softWrap = true,
+                                        textAlign = TextAlign.Center,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 16.sp
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     if (isTabSelected) {
                                         Box(
                                             modifier = Modifier
-                                                .fillMaxWidth(0.55f)
+                                                .fillMaxWidth(0.6f)
                                                 .height(3.dp)
-                                                .background(colors.inkBold, RoundedCornerShape(2.dp))
+                                                .background(colors.teal, RoundedCornerShape(2.dp))
                                         )
                                     } else {
                                         Spacer(modifier = Modifier.height(3.dp))
@@ -998,7 +992,14 @@ fun FolderManagerTab(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.teal)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("+ Sub-Folder", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                                Text(
+                                    text = "Sub-Folder",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Center
+                                )
                             }
 
                             Button(
@@ -1011,11 +1012,18 @@ fun FolderManagerTab(
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 36.dp)
+                                    .heightIn(min = 38.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("+ New Test Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.primaryButtonText)
+                                Text(
+                                    text = "New Test Set",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.primaryButtonText,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Center
+                                )
                             }
 
                             // Folder More Actions
@@ -1102,6 +1110,24 @@ fun FolderManagerTab(
                 },
                 savedPapers = savedPapers,
                 rootFolders = rootFolders,
+                libraryIndex = libraryIndex,
+                totalNotesCount = studyNotes.size,
+                showAllFoldersExpanded = showAllFoldersExpanded,
+                onToggleShowAllFolders = { showAllFoldersExpanded = !showAllFoldersExpanded },
+                onQuickFeatureClick = { action ->
+                    when (action) {
+                        QuickFeatureAction.STUDY_NOTES -> showRootStudyNotesDialog = true
+                        QuickFeatureAction.PRINTABLE_PDFS -> {
+                            val targetPaper = savedPapers.firstOrNull { it.id == currentPaperEntityId } ?: savedPapers.firstOrNull()
+                            if (currentPaper == null && targetPaper != null) {
+                                viewModel.loadSavedPaper(targetPaper) { onNavigateToPrint() }
+                            } else {
+                                onNavigateToPrint()
+                            }
+                        }
+                        else -> activeQuickFeatureFilter = action
+                    }
+                },
                 folderSortOrder = folderSortOrder,
                 onSortOrderToggle = {
                     folderSortOrder = when (folderSortOrder) {
@@ -1110,9 +1136,6 @@ fun FolderManagerTab(
                         FolderSortOrder.MOST_SETS -> FolderSortOrder.DEFAULT
                     }
                 },
-                calculateFolderRecursiveSets = { calculateFolderRecursiveSets(it) },
-                calculateFolderMonthlyActivity = { fid, ms -> calculateFolderMonthlyActivity(fid, ms) },
-                currentMonthStart = currentMonthStart,
                 onOpenFolder = { navigateToFolder(it) },
                 onRenameFolder = { folder ->
                     folderToRename = folder
@@ -1146,6 +1169,9 @@ fun FolderManagerTab(
                 onAssignFolder = { paper ->
                     paperToAssignFolder = paper
                 },
+                onChangeCategory = { paper, cat ->
+                    viewModel.updatePaperCategory(paper.id, cat)
+                },
                 onExportPaper = { paper ->
                     val json = viewModel.exportSinglePaperAsJson(paper)
                     triggerShare(json, "${paper.title} - ${ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber)}")
@@ -1153,8 +1179,10 @@ fun FolderManagerTab(
                 onDeletePaper = { paper ->
                     viewModel.deleteSavedPaper(paper)
                 },
-                allAttempts = allAttempts,
                 currentPaperEntityId = currentPaperEntityId,
+                onBatchCategory = { cat ->
+                    viewModel.batchUpdatePaperCategory(selectedPaperIds, cat)
+                },
                 onBatchExport = {
                     val json = viewModel.exportSelectedPapersAsJson(selectedPaperIds)
                     if (!json.isNullOrBlank()) {
@@ -1178,10 +1206,10 @@ fun FolderManagerTab(
                     selectedPaperIds = if (pid in selectedPaperIds) selectedPaperIds - pid else selectedPaperIds + pid
                 },
                 visibleSubfolders = visibleSubfolders,
-                calculateFolderRecursiveSets = { calculateFolderRecursiveSets(it) },
+                libraryIndex = libraryIndex,
                 sortedFilteredPapers = sortedFilteredPapers,
+                suggestedFolderPaper = suggestedFolderPaper,
                 currentPaperEntityId = currentPaperEntityId,
-                allAttempts = allAttempts,
                 onOpenMaster = { paper ->
                     viewModel.loadSavedPaper(paper)
                     onNavigateToMaster()
@@ -1194,6 +1222,9 @@ fun FolderManagerTab(
                 },
                 onAssignFolder = { paper ->
                     paperToAssignFolder = paper
+                },
+                onChangeCategory = { paper, cat ->
+                    viewModel.updatePaperCategory(paper.id, cat)
                 },
                 onExportPaper = { paper ->
                     val json = viewModel.exportSinglePaperAsJson(paper)
@@ -1210,6 +1241,9 @@ fun FolderManagerTab(
                 onCreateNewTestSet = {
                     onCreateNewQuestionSet(activeFolderId)
                 },
+                onBatchCategory = { cat ->
+                    viewModel.batchUpdatePaperCategory(selectedPaperIds, cat)
+                },
                 onBatchExport = {
                     val json = viewModel.exportSelectedPapersAsJson(selectedPaperIds)
                     if (!json.isNullOrBlank()) {
@@ -1219,11 +1253,32 @@ fun FolderManagerTab(
                 onBatchMove = { showBatchMoveDialog = true },
                 onSelectAll = {
                     selectedPaperIds = if (selectedPaperIds.size == sortedFilteredPapers.size) emptySet() else sortedFilteredPapers.map { it.id }.toSet()
-                }
+                },
+                hideEmptyState = selectedFolderTab == FolderExamTab.STUDY_NOTES
             )
+
+            if (selectedFolderTab == FolderExamTab.STUDY_NOTES) {
+                item(key = "folder_study_notes_section") {
+                    StudyNotesSectionItems(
+                        notes = folderNotes,
+                        searchQuery = notesSearchQuery,
+                        onSearchQueryChange = { notesSearchQuery = it },
+                        onAddClick = {
+                            editingStudyNote = null
+                            showStudyNoteEditor = true
+                        },
+                        onOpenNote = { note -> activeReadingNoteId = note.id },
+                        onEditNote = { note ->
+                            editingStudyNote = note
+                            showStudyNoteEditor = true
+                        },
+                        onDeleteNote = { note -> viewModel.deleteStudyNote(note) }
+                    )
+                }
+            }
         }
 
-        item { Spacer(modifier = Modifier.height(24.dp)) }
+        item { Spacer(modifier = Modifier.height(72.dp)) }
     }
 
     // New Folder / Sub-Folder Dialog
@@ -1674,6 +1729,234 @@ fun FolderManagerTab(
             },
             onDismiss = { showQuickJumpDialog = false }
         )
+    }
+
+    // Quick Feature Filtered Papers Modal (Mock Tests, PYPs, Attempted, Weak Areas)
+    activeQuickFeatureFilter?.let { filterAction ->
+        val filteredList = when (filterAction) {
+            QuickFeatureAction.MOCK_TESTS -> libraryIndex.mockPapers
+            QuickFeatureAction.PYQS -> libraryIndex.pyqPapers
+            QuickFeatureAction.ATTEMPTED -> libraryIndex.attemptedPapers
+            QuickFeatureAction.WEAK_AREAS -> libraryIndex.weakAccuracyPapers
+            else -> emptyList()
+        }
+        Dialog(
+            onDismissRequest = { activeQuickFeatureFilter = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        ) {
+            BackHandler { activeQuickFeatureFilter = null }
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                color = colors.background
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Surface(color = colors.surface, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { activeQuickFeatureFilter = null },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = colors.inkBold)
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = filterAction.label,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "${filteredList.size} Question Sets",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkMuted
+                                )
+                            }
+                        }
+                    }
+
+                    if (filteredList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No ${filterAction.label.lowercase()} sets found yet.",
+                                fontSize = 14.sp,
+                                color = colors.inkMuted,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(filteredList, key = { "qf_${filterAction.name}_${it.id}" }) { paper ->
+                                PaperExamCard(
+                                    paper = paper,
+                                    isActive = paper.id == currentPaperEntityId,
+                                    isSelectionMode = false,
+                                    isSelected = false,
+                                    onToggleSelect = {},
+                                    isCompleted = paper.id in libraryIndex.completedPaperIds,
+                                    isInProgress = paper.id in libraryIndex.inProgressPaperIds,
+                                    attemptScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score,
+                                    onOpenMaster = {
+                                        activeQuickFeatureFilter = null
+                                        viewModel.loadSavedPaper(paper)
+                                        onNavigateToMaster()
+                                    },
+                                    onTakeTest = {
+                                        activeQuickFeatureFilter = null
+                                        viewModel.loadSavedPaper(paper) { viewModel.startExam() }
+                                        onNavigateToStudent()
+                                    },
+                                    onAssignFolder = {
+                                        activeQuickFeatureFilter = null
+                                        paperToAssignFolder = paper
+                                    },
+                                    onChangeCategory = { cat -> viewModel.updatePaperCategory(paper.id, cat) },
+                                    onExport = {
+                                        val json = viewModel.exportSinglePaperAsJson(paper)
+                                        triggerShare(json, paper.title)
+                                    },
+                                    onDelete = { viewModel.deleteSavedPaper(paper) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Root Study Notes Library Dialog
+    if (showRootStudyNotesDialog) {
+        Dialog(
+            onDismissRequest = { showRootStudyNotesDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        ) {
+            BackHandler { showRootStudyNotesDialog = false }
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                color = colors.background
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Surface(color = colors.surface, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { showRootStudyNotesDialog = false },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = colors.inkBold)
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Study Notes & One-Liners",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "${studyNotes.size} Saved Notes across all exam folders",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkMuted
+                                )
+                            }
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        item {
+                            StudyNotesSectionItems(
+                                notes = studyNotes,
+                                searchQuery = notesSearchQuery,
+                                onSearchQueryChange = { notesSearchQuery = it },
+                                onAddClick = {
+                                    editingStudyNote = null
+                                    showStudyNoteEditor = true
+                                },
+                                onOpenNote = { note -> activeReadingNoteId = note.id },
+                                onEditNote = { note ->
+                                    editingStudyNote = note
+                                    showStudyNoteEditor = true
+                                },
+                                onDeleteNote = { note -> viewModel.deleteStudyNote(note) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Add / Edit Study Note Studio Dialog
+    if (showStudyNoteEditor) {
+        AddEditStudyNoteDialog(
+            initialNote = editingStudyNote,
+            defaultFolderId = if (activeFolderId == "all") null else activeFolderId,
+            defaultSubject = currentFolder?.name ?: "",
+            folders = folders,
+            onSave = { id, title, subject, sourceAi, rawContent, folderId ->
+                viewModel.saveStudyNote(
+                    id = id,
+                    title = title,
+                    subject = subject,
+                    sourceAi = sourceAi,
+                    rawContent = rawContent,
+                    folderId = folderId
+                )
+            },
+            onDismiss = {
+                showStudyNoteEditor = false
+                editingStudyNote = null
+            }
+        )
+    }
+
+    // Live Reactive Study Note Reader Dialog (supports bookmark state updates + Active Recall + PDF Export)
+    activeReadingNoteId?.let { noteId ->
+        val liveNote = studyNotes.find { it.id == noteId }
+        if (liveNote != null) {
+            StudyNoteReaderDialog(
+                note = liveNote,
+                onToggleBookmark = { note, idx -> viewModel.toggleStudyNoteLineBookmark(note, idx) },
+                onEdit = {
+                    activeReadingNoteId = null
+                    editingStudyNote = liveNote
+                    showStudyNoteEditor = true
+                },
+                onDismiss = { activeReadingNoteId = null }
+            )
+        } else {
+            activeReadingNoteId = null
+        }
     }
 }
 

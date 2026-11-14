@@ -9,6 +9,9 @@ import com.example.data.AttemptEntity
 import com.example.data.DailyStudyAnalyticsEntity
 import com.example.data.ExamSetPreferences
 import com.example.data.PaperEntity
+import com.example.data.StudyNoteEntity
+import com.example.data.effectiveCategory
+import com.example.data.inferDefaultPaperCategory
 import com.example.data.toQuestionPaper
 import com.example.data.SampleData
 import com.example.data.ThemeMode
@@ -21,6 +24,7 @@ import com.example.model.BatchItemStatus
 import com.example.model.ExamConfig
 import com.example.model.FolderItem
 import com.example.model.McqQuestion
+import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.model.ParseResult
 import com.example.model.QuestionOptions
@@ -31,6 +35,7 @@ import com.example.util.ExamJsonHelper
 import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
 import com.example.util.PsychometricEngine
+import com.example.util.StudyNoteParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,7 +43,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,6 +53,23 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
+data class LibraryIndexState(
+    val attemptsByPaperId: Map<Long, List<AttemptEntity>> = emptyMap(),
+    val completedPaperIds: Set<Long> = emptySet(),
+    val inProgressPaperIds: Set<Long> = emptySet(),
+    val latestSubmittedAttemptByPaperId: Map<Long, AttemptEntity> = emptyMap(),
+    val folderDirectCounts: Map<String, Int> = emptyMap(),
+    val folderTotalCounts: Map<String, Int> = emptyMap(),
+    val folderCompletedCounts: Map<String, Int> = emptyMap(),
+    val folderMonthlyCounts: Map<String, Int> = emptyMap(),
+    val folderNotesCounts: Map<String, Int> = emptyMap(),
+    val suggestedNextPaper: PaperEntity? = null,
+    val attemptedPapers: List<PaperEntity> = emptyList(),
+    val weakAccuracyPapers: List<PaperEntity> = emptyList(),
+    val mockPapers: List<PaperEntity> = emptyList(),
+    val pyqPapers: List<PaperEntity> = emptyList()
+)
 
 enum class ExamTimerMode {
     COUNTDOWN,
@@ -56,6 +80,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
     private val paperDao = db.paperDao()
+    private val studyNoteDao = db.studyNoteDao()
     private val themePreferences = ThemePreferences(application)
     private val appPreferences = ExamSetPreferences(application)
 
@@ -71,6 +96,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val allAttempts: StateFlow<List<AttemptEntity>> = paperDao.getAllAttempts()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val studyNotes: StateFlow<List<StudyNoteEntity>> = studyNoteDao.getAllStudyNotes()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val allDailyAnalytics: StateFlow<List<DailyStudyAnalyticsEntity>> = paperDao.getAllDailyAnalytics()
@@ -112,6 +140,97 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Preserved active folder location
     private val _lastActiveFolderId = MutableStateFlow<String>(appPreferences.getLastActiveFolderId())
     val lastActiveFolderId: StateFlow<String> = _lastActiveFolderId.asStateFlow()
+
+    val libraryIndex: StateFlow<LibraryIndexState> = combine(
+        savedPapers,
+        allAttempts,
+        _folders,
+        studyNotes
+    ) { papers, attempts, folderList, notes ->
+        val attemptsByPaper = attempts.groupBy { it.paperId }
+        val completedIds = mutableSetOf<Long>()
+        val inProgressIds = mutableSetOf<Long>()
+        val latestSubmitted = mutableMapOf<Long, AttemptEntity>()
+
+        attemptsByPaper.forEach { (paperId, list) ->
+            val submitted = list.filter { it.isSubmitted }
+            if (submitted.isNotEmpty()) {
+                completedIds.add(paperId)
+                submitted.maxByOrNull { it.submittedAt ?: it.createdAt }?.let {
+                    latestSubmitted[paperId] = it
+                }
+            } else if (list.any { !it.isSubmitted }) {
+                inProgressIds.add(paperId)
+            }
+        }
+
+        val papersByFolder = papers.groupBy { it.folderId }
+        val notesByFolder = notes.groupBy { it.folderId }
+        val childrenByParent = folderList.groupBy { it.parentId }
+        val oneMonthAgo = System.currentTimeMillis() - (30L * 24L * 60L * 60L * 1000L)
+
+        val directCounts = mutableMapOf<String, Int>()
+        val totalCounts = mutableMapOf<String, Int>()
+        val completedCounts = mutableMapOf<String, Int>()
+        val monthlyCounts = mutableMapOf<String, Int>()
+        val notesCounts = mutableMapOf<String, Int>()
+
+        for (folder in folderList) {
+            val desc = mutableSetOf(folder.id)
+            val queue = ArrayDeque<String>()
+            queue.add(folder.id)
+            while (queue.isNotEmpty()) {
+                val cur = queue.removeFirst()
+                val children = childrenByParent[cur] ?: continue
+                for (child in children) {
+                    if (desc.add(child.id)) queue.add(child.id)
+                }
+            }
+            val direct = papersByFolder[folder.id].orEmpty()
+            val allInSubtree = desc.flatMap { dId -> papersByFolder[dId].orEmpty() }
+            val allNotesInSubtree = desc.sumOf { dId -> notesByFolder[dId]?.size ?: 0 } +
+                allInSubtree.count { it.effectiveCategory() == PaperCategory.STUDY_NOTES }
+
+            directCounts[folder.id] = direct.size
+            totalCounts[folder.id] = allInSubtree.size
+            completedCounts[folder.id] = allInSubtree.count { it.id in completedIds }
+            monthlyCounts[folder.id] = allInSubtree.count { it.updatedAt >= oneMonthAgo }
+            notesCounts[folder.id] = allNotesInSubtree
+        }
+
+        val suggested = papers.firstOrNull { it.id in inProgressIds }
+            ?: papers.firstOrNull { it.id !in completedIds && it.effectiveCategory() != PaperCategory.STUDY_NOTES }
+            ?: papers.firstOrNull()
+
+        val attempted = papers.filter { it.id in completedIds || it.id in inProgressIds }
+        val weakPapers = papers.filter { p ->
+            val att = latestSubmitted[p.id] ?: return@filter false
+            val totalQ = att.totalQuestions.coerceAtLeast(1)
+            (att.correctCount.toDouble() / totalQ) < 0.65 || att.incorrectCount >= 3
+        }
+        val mocks = papers.filter {
+            val cat = it.effectiveCategory()
+            cat == PaperCategory.MOCK_TEST || cat == PaperCategory.SECTIONAL
+        }
+        val pyqs = papers.filter { it.effectiveCategory() == PaperCategory.PYQ }
+
+        LibraryIndexState(
+            attemptsByPaperId = attemptsByPaper,
+            completedPaperIds = completedIds,
+            inProgressPaperIds = inProgressIds,
+            latestSubmittedAttemptByPaperId = latestSubmitted,
+            folderDirectCounts = directCounts,
+            folderTotalCounts = totalCounts,
+            folderCompletedCounts = completedCounts,
+            folderMonthlyCounts = monthlyCounts,
+            folderNotesCounts = notesCounts,
+            suggestedNextPaper = suggested,
+            attemptedPapers = attempted,
+            weakAccuracyPapers = weakPapers,
+            mockPapers = mocks,
+            pyqPapers = pyqs
+        )
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, LibraryIndexState())
 
     fun setLastActiveFolderId(folderId: String) {
         _lastActiveFolderId.value = folderId
@@ -440,6 +559,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId ?: existing.folderId,
+                        manualCategory = updatedPaper.metadata.manualCategory.ifBlank { existing.manualCategory },
                         durationMinutes = updatedPaper.metadata.durationMinutes,
                         positiveMarks = updatedPaper.metadata.positiveMarks,
                         negativeMarks = updatedPaper.metadata.negativeMarks,
@@ -459,6 +579,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId,
+                        manualCategory = updatedPaper.metadata.manualCategory,
                         rollNumber = updatedPaper.metadata.rollNumber,
                         bookletNumber = updatedPaper.metadata.bookletNumber,
                         durationMinutes = updatedPaper.metadata.durationMinutes,
@@ -487,6 +608,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId ?: match.folderId,
+                        manualCategory = updatedPaper.metadata.manualCategory.ifBlank { match.manualCategory },
                         rollNumber = if (match.rollNumber.isNotBlank()) match.rollNumber else updatedPaper.metadata.rollNumber,
                         bookletNumber = if (match.bookletNumber.isNotBlank()) match.bookletNumber else updatedPaper.metadata.bookletNumber,
                         durationMinutes = updatedPaper.metadata.durationMinutes,
@@ -508,6 +630,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         explanationCount = updatedPaper.questions.count { !it.explanation.isNullOrBlank() },
                         rawText = raw,
                         folderId = updatedPaper.metadata.folderId,
+                        manualCategory = updatedPaper.metadata.manualCategory,
                         rollNumber = updatedPaper.metadata.rollNumber,
                         bookletNumber = updatedPaper.metadata.bookletNumber,
                         durationMinutes = updatedPaper.metadata.durationMinutes,
@@ -900,7 +1023,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         bookletNumber: String? = null,
         durationMinutes: Int? = null,
         positiveMarks: Double? = null,
-        negativeMarks: Double? = null
+        negativeMarks: Double? = null,
+        manualCategory: String? = null
     ) {
         val active = _currentPaper.value ?: return
         val cleanTitle = title.trim().ifBlank { "MCQ Practice Set" }
@@ -925,6 +1049,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val finalDuration = durationMinutes ?: active.metadata.durationMinutes
         val finalPosMarks = positiveMarks ?: active.metadata.positiveMarks
         val finalNegMarks = negativeMarks ?: active.metadata.negativeMarks
+        val finalCategory = manualCategory?.trim() ?: active.metadata.manualCategory
 
         val newMetadata = active.metadata.copy(
             title = cleanTitle,
@@ -934,6 +1059,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             rollNumber = cleanRoll,
             bookletNumber = cleanBooklet,
             folderId = targetFolderId,
+            manualCategory = finalCategory,
             durationMinutes = finalDuration,
             positiveMarks = finalPosMarks,
             negativeMarks = finalNegMarks
@@ -975,7 +1101,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customFolderId: String? = null,
         customDurationMinutes: Int? = null,
         customPositiveMarks: Double? = null,
-        customNegativeMarks: Double? = null
+        customNegativeMarks: Double? = null,
+        customManualCategory: String? = null
     ) {
         // Immediately cancel any running or scheduled auto-save debounces and decouple active paper ID
         paperDebounceJob?.cancel()
@@ -1010,13 +1137,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val effectiveDuration = customDurationMinutes ?: _examConfig.value.durationMinutes.takeIf { it > 0 } ?: 60
             val effectivePositiveMarks = customPositiveMarks ?: _examConfig.value.positiveMarks.takeIf { it > 0.0 } ?: 4.0
             val effectiveNegativeMarks = customNegativeMarks ?: _examConfig.value.negativeMarks.takeIf { it >= 0.0 } ?: 1.0
+            val effectiveTitle = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title
+            val effectiveTopic = if (!customTopic.isNullOrBlank()) customTopic.trim() else parsed.metadata.topic
+            val resolvedCategory = when {
+                !customManualCategory.isNullOrBlank() && PaperCategory.fromCode(customManualCategory) != PaperCategory.AUTO ->
+                    PaperCategory.fromCode(customManualCategory).code
+                parsed.metadata.manualCategory.isNotBlank() -> parsed.metadata.manualCategory
+                else -> inferDefaultPaperCategory(
+                    title = effectiveTitle,
+                    subject = finalSubject,
+                    topic = effectiveTopic,
+                    setNumber = formattedSet,
+                    questionCount = parsed.questions.size
+                ).code
+            }
 
             val finalMetadata = parsed.metadata.copy(
-                title = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title,
+                title = effectiveTitle,
                 subject = finalSubject,
-                topic = if (!customTopic.isNullOrBlank()) customTopic.trim() else parsed.metadata.topic,
+                topic = effectiveTopic,
                 setNumber = formattedSet.ifBlank { "01" },
                 folderId = effectiveFolderId,
+                manualCategory = resolvedCategory,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
                 durationMinutes = effectiveDuration,
@@ -1046,6 +1188,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     answerKeyCount = finalPaper.quickAnswersCount,
                     explanationCount = finalPaper.explanationsCount,
                     folderId = finalMetadata.folderId ?: existing.folderId,
+                    manualCategory = if (!customManualCategory.isNullOrBlank()) resolvedCategory else existing.manualCategory.ifBlank { resolvedCategory },
                     rollNumber = if (!customRollNumber.isNullOrBlank()) customRollNumber.trim() else (if (existing.rollNumber.isNotBlank()) existing.rollNumber else finalMetadata.rollNumber),
                     bookletNumber = if (!customBookletNumber.isNullOrBlank()) customBookletNumber.trim() else (if (existing.bookletNumber.isNotBlank()) existing.bookletNumber else finalMetadata.bookletNumber),
                     durationMinutes = effectiveDuration,
@@ -1067,6 +1210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     explanationCount = finalPaper.explanationsCount,
                     rawText = text.trim(),
                     folderId = finalMetadata.folderId,
+                    manualCategory = resolvedCategory,
                     rollNumber = finalMetadata.rollNumber,
                     bookletNumber = finalMetadata.bookletNumber,
                     durationMinutes = effectiveDuration,
@@ -1169,6 +1313,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 setNumber = freshEntity.setNumber.ifBlank { "Set 1" },
                 exam = freshEntity.exam,
                 folderId = freshEntity.folderId,
+                manualCategory = freshEntity.manualCategory,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
                 durationMinutes = savedDuration,
@@ -2404,6 +2549,129 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // --- Manual Paper Category Classification ---
+
+    fun updatePaperCategory(paperId: Long, category: PaperCategory) {
+        viewModelScope.launch(Dispatchers.IO) {
+            paperDao.updatePaperCategory(paperId, category.code, System.currentTimeMillis())
+            if (_currentPaperEntityId.value == paperId) {
+                val active = _currentPaper.value
+                if (active != null) {
+                    val updatedMeta = active.metadata.copy(manualCategory = category.code)
+                    withContext(Dispatchers.Main) {
+                        _currentPaper.value = active.copy(metadata = updatedMeta)
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Assigned category: ${category.label}"
+            }
+        }
+    }
+
+    fun batchUpdatePaperCategory(paperIds: Set<Long>, category: PaperCategory) {
+        if (paperIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            paperIds.forEach { id ->
+                paperDao.updatePaperCategory(id, category.code, now)
+            }
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Updated ${paperIds.size} sets to ${category.label}"
+            }
+        }
+    }
+
+    // --- Study Notes Studio CRUD (Gemini / Claude / ChatGPT / One-Liners) ---
+
+    fun saveStudyNote(
+        id: Long = 0L,
+        title: String,
+        subject: String,
+        sourceAi: String,
+        rawContent: String,
+        folderId: String?,
+        onSaved: (Long) -> Unit = {}
+    ) {
+        val cleanContent = rawContent.trim()
+        if (cleanContent.isBlank()) {
+            _statusMessage.value = "Study notes content cannot be empty"
+            return
+        }
+        val cleanTitle = title.trim().ifBlank {
+            cleanContent.lineSequence().firstOrNull { it.isNotBlank() }
+                ?.replace(Regex("""^[#>*\-\d.\s]+"""), "")
+                ?.take(48)
+                ?.ifBlank { "Revision Sheet" }
+                ?: "Revision Sheet"
+        }
+        val cleanSource = sourceAi.trim().ifBlank { StudyNoteParser.detectSourceHint(cleanContent) }
+        val cleanSubject = subject.trim().ifBlank {
+            if (!folderId.isNullOrBlank()) getFullFolderPath(folderId) else "General Revision"
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = if (id > 0L) studyNoteDao.getStudyNoteById(id) else null
+            val now = System.currentTimeMillis()
+            val savedId = if (existing != null) {
+                studyNoteDao.updateStudyNote(
+                    existing.copy(
+                        title = cleanTitle,
+                        subject = cleanSubject,
+                        sourceAi = cleanSource,
+                        rawContent = cleanContent,
+                        folderId = folderId,
+                        updatedAt = now
+                    )
+                )
+                existing.id
+            } else {
+                studyNoteDao.insertStudyNote(
+                    StudyNoteEntity(
+                        folderId = folderId,
+                        title = cleanTitle,
+                        subject = cleanSubject,
+                        sourceAi = cleanSource,
+                        rawContent = cleanContent,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
+            }
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = if (existing != null) "Updated Study Notes: $cleanTitle" else "Saved Study Notes: $cleanTitle"
+                onSaved(savedId)
+            }
+        }
+    }
+
+    fun toggleStudyNoteLineBookmark(note: StudyNoteEntity, blockIndex: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val fresh = studyNoteDao.getStudyNoteById(note.id) ?: note
+            val current = fresh.getBookmarkedIndices().toMutableSet()
+            if (blockIndex in current) current.remove(blockIndex) else current.add(blockIndex)
+            studyNoteDao.updateStudyNote(fresh.withBookmarkedIndices(current))
+        }
+    }
+
+    fun deleteStudyNote(note: StudyNoteEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            studyNoteDao.deleteStudyNote(note)
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Deleted Study Note: ${note.title}"
+            }
+        }
+    }
+
+    fun assignStudyNoteToFolder(noteId: Long, folderId: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            studyNoteDao.assignNoteToFolder(noteId, folderId)
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Moved study notes"
+            }
+        }
+    }
+
     /**
      * Dynamically parses a slash-separated or arrow-separated folder path
      * (e.g. "UPSC CSE / Prelims / GS Paper 1" or "SSC / CGL / Tier 1" or "State PSC / Bihar (BPSC) / CCE Prelims"),
@@ -2635,7 +2903,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val attemptId = _currentAttemptId.value
         val paper = _currentPaper.value ?: return
         val currentTime = _timeSpentSeconds.value
-        val answers = _studentAnswers.value
+        val answers = _studentAnswers.value.toMap()
         val isSubmitted = _isExamSubmitted.value
 
         // If attempt was already submitted, do not overwrite the official one-time score from review changes
@@ -2643,9 +2911,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val stats = calculateTestStats(paper, answers)
-
         viewModelScope.launch(Dispatchers.IO) {
+            val stats = calculateTestStats(paper, answers)
             val answersJson = AttemptEntity.buildAnswersJson(answers)
             if (attemptId == null) {
                 val newAttempt = AttemptEntity(

@@ -4,46 +4,50 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import com.example.data.toQuestionPaper
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -52,6 +56,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -65,28 +70,29 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.toQuestionPaper
 import com.example.model.QuestionPaper
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
 import com.example.util.PsychometricEngine
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /**
- * Standardized Psychometric & Classical Test Theory (CTT) Evaluation Dialog.
+ * Standardized Psychometric & Classical Test Theory (CTT) Evaluation Page.
  *
- * Dedicated tool for Course Chief Question Paper Setters and Psychometricians to:
- * - Evaluate item difficulty (p-value) and point-biserial discrimination (r_pb).
- * - Detect defective questions, key discrepancies, and non-functioning distractors.
- * - Review student candidate rankings, roll numbers, booklet numbers, and scorecards.
- * - Export standardized CSV analysis reports for exam boards.
+ * Designed as an adaptive, font-scale-resilient workbench for:
+ * - Item difficulty (p-value), discrimination (D & point-biserial r_pb), and distractor frequency analysis
+ * - Detecting defective questions, negative point-biserial flags, or non-functioning distractors
+ * - Inspecting candidate rankings, roll/booklet numbers, and individual report cards
+ * - Exporting board-ready CSV reports and candidate scorecards
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PsychometricAnalysisDialog(
     paper: QuestionPaper?,
@@ -108,7 +114,6 @@ fun PsychometricAnalysisDialog(
     }
     var showPaperPickerDropdown by remember { mutableStateOf(false) }
 
-    // Resolve active paper
     val effectivePaper: QuestionPaper? = remember(paper, selectedPaperEntityId, savedPapers) {
         if (paper != null && (selectedPaperEntityId == null || selectedPaperEntityId == viewModel.currentPaperEntityId.value)) {
             paper
@@ -125,7 +130,6 @@ fun PsychometricAnalysisDialog(
     var copiedReport by remember { mutableStateOf(false) }
     var selectedCandidateForReportCard by remember { mutableStateOf<PsychometricEngine.CandidateScorecard?>(null) }
 
-    // Generate psychometric report (switches dynamically between scanned data and simulated cohort)
     val report = remember(effectivePaper, useSimulationMode, selectedPaperEntityId) {
         if (effectivePaper == null || effectivePaper.questions.isEmpty()) {
             null
@@ -143,470 +147,678 @@ fun PsychometricAnalysisDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
             dismissOnBackPress = true,
-            dismissOnClickOutside = true
+            dismissOnClickOutside = false
         )
     ) {
         Surface(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(14.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = colors.surface,
-            border = BorderStroke(1.2.dp, colors.border)
+            modifier = modifier.fillMaxSize(),
+            color = colors.background
         ) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(18.dp)
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                contentAlignment = Alignment.TopCenter
             ) {
-                // Top Header: Title, Paper Selector / Name, and Close Action
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = 920.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    // 1. Crisp Adaptive Top App Header (Never truncates or wraps badge awkwardly)
+                    Surface(
+                        color = colors.surface,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF0284C7).copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.3f))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Assessment,
-                                contentDescription = null,
-                                tint = Color(0xFF0284C7),
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Psychometric & Item Analysis",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
                                 Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color(0xFFF0FDF4),
-                                    border = BorderStroke(0.6.dp, Color(0xFF16A34A))
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFF0284C7).copy(alpha = 0.14f),
+                                    border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.35f)),
+                                    modifier = Modifier.size(40.dp)
                                 ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Assessment,
+                                            contentDescription = null,
+                                            tint = Color(0xFF0284C7),
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "CTT ENGINE",
-                                        fontSize = 9.sp,
+                                        text = "Psychometric & Item Analysis",
+                                        fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF16A34A),
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        color = colors.inkBold,
+                                        maxLines = 2,
+                                        softWrap = true,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 21.sp
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .testTag("psychometrics_close_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close",
+                                        tint = colors.inkBold
                                     )
                                 }
                             }
 
-                            // Interactive Paper Selector or Display
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Box {
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Engine Badge + Interactive Exam Set Selector in adaptive FlowRow
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
                                 Surface(
-                                    onClick = { if (savedPapers.isNotEmpty()) showPaperPickerDropdown = true },
                                     shape = RoundedCornerShape(6.dp),
-                                    color = colors.surfaceVariant,
-                                    border = BorderStroke(0.8.dp, colors.border)
+                                    color = Color(0xFF16A34A).copy(alpha = 0.13f),
+                                    border = BorderStroke(0.7.dp, Color(0xFF16A34A).copy(alpha = 0.5f))
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Text(
+                                        text = "CTT ENGINE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (colors.isDark) Color(0xFF4ADE80) else Color(0xFF15803D),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    )
+                                }
+
+                                Box {
+                                    Surface(
+                                        onClick = { if (savedPapers.isNotEmpty()) showPaperPickerDropdown = true },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.surfaceVariant,
+                                        border = BorderStroke(0.8.dp, colors.border),
+                                        modifier = Modifier.testTag("psychometrics_paper_picker")
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.FolderOpen,
-                                            contentDescription = null,
-                                            tint = colors.teal,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(5.dp))
-                                        Text(
-                                            text = effectivePaper?.metadata?.title?.ifBlank { "Choose Exam Set" } ?: "Choose Exam Set",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.inkBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (savedPapers.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.width(3.dp))
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Icon(
-                                                imageVector = Icons.Default.ArrowDropDown,
-                                                contentDescription = "Switch Exam Set",
-                                                tint = colors.muted,
-                                                modifier = Modifier.size(16.dp)
+                                                imageVector = Icons.Default.FolderOpen,
+                                                contentDescription = null,
+                                                tint = colors.teal,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = effectivePaper?.metadata?.title?.ifBlank { "Choose Exam Set" } ?: "Choose Exam Set",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.inkBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.widthIn(max = 220.dp)
+                                            )
+                                            if (savedPapers.isNotEmpty()) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.ArrowDropDown,
+                                                    contentDescription = "Switch Exam Set",
+                                                    tint = colors.muted,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = showPaperPickerDropdown,
+                                        onDismissRequest = { showPaperPickerDropdown = false },
+                                        modifier = Modifier.heightIn(max = 380.dp)
+                                    ) {
+                                        savedPapers.forEach { entity ->
+                                            val isCurrentSelection = entity.id == selectedPaperEntityId ||
+                                                (selectedPaperEntityId == null && effectivePaper?.metadata?.title == entity.title)
+                                            DropdownMenuItem(
+                                                leadingIcon = {
+                                                    if (isCurrentSelection) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = "Selected",
+                                                            tint = colors.teal,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Default.FolderOpen,
+                                                            contentDescription = null,
+                                                            tint = colors.muted,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                },
+                                                text = {
+                                                    Column {
+                                                        Text(
+                                                            text = entity.title,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isCurrentSelection) colors.teal else colors.inkBold,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = "${entity.setNumber.ifBlank { "01" }} • ${entity.subject} (${entity.questionCount} Qs)",
+                                                            fontSize = 11.sp,
+                                                            color = colors.muted,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                },
+                                                onClick = {
+                                                    selectedPaperEntityId = entity.id
+                                                    showPaperPickerDropdown = false
+                                                }
                                             )
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
 
-                                DropdownMenu(
-                                    expanded = showPaperPickerDropdown,
-                                    onDismissRequest = { showPaperPickerDropdown = false }
+                    HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+
+                    // 2. Main Body
+                    if (effectivePaper == null || effectivePaper.questions.isEmpty() || report == null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = colors.surfaceVariant,
+                                    modifier = Modifier.size(60.dp)
                                 ) {
-                                    savedPapers.forEach { entity ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Column {
-                                                    Text(
-                                                        text = entity.title,
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = colors.inkBold
-                                                    )
-                                                    Text(
-                                                        text = "${entity.setNumber} • ${entity.subject} (${entity.questionCount} Questions)",
-                                                        fontSize = 11.sp,
-                                                        color = colors.muted
-                                                    )
-                                                }
-                                            },
-                                            onClick = {
-                                                selectedPaperEntityId = entity.id
-                                                showPaperPickerDropdown = false
-                                            }
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Assessment,
+                                            contentDescription = null,
+                                            tint = colors.muted,
+                                            modifier = Modifier.size(30.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "No Questions Available to Analyze",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "Select a saved question set above or load the Science Sample to inspect Classical Test Theory item difficulty, discrimination, and candidate scorecards.",
+                                    fontSize = 12.5.sp,
+                                    color = colors.muted,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 18.sp
+                                )
+                                Button(
+                                    onClick = { viewModel.loadStarterSample("science") },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                    modifier = Modifier.heightIn(min = 44.dp)
+                                ) {
+                                    Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Analyze Science Sample", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        val isSimulatedCohort = report.candidates.any { it.rollNumber.startsWith("202610") }
+
+                        // Pinned Segmented Mode Tabs + Full-Label Cohort Switcher (Never truncates to "S")
+                        Surface(
+                            color = colors.surface,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TabButton(
+                                        label = "Item Analysis (${report.questionCount})",
+                                        isSelected = activeTab == "ITEMS",
+                                        onClick = { activeTab = "ITEMS" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    TabButton(
+                                        label = "Student Roster (${report.candidateCount})",
+                                        isSelected = activeTab == "STUDENTS",
+                                        onClick = { activeTab = "STUDENTS" },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                Surface(
+                                    onClick = { useSimulationMode = !useSimulationMode },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, colors.border),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("psychometrics_cohort_toggle")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = null,
+                                                tint = colors.teal,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isSimulatedCohort) {
+                                                    "Cohort: Simulated Calibration (${report.candidateCount})"
+                                                } else {
+                                                    "Cohort: Real Scanned / Attempts (${report.candidateCount})"
+                                                },
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.inkBold,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = if (useSimulationMode) "Use Real" else "Simulate 40",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.teal,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
                             }
                         }
-                    }
 
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.testTag("psychometrics_close_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = colors.inkBold
-                        )
-                    }
-                }
+                        HorizontalDivider(color = colors.border, thickness = 0.6.dp)
 
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = colors.border, thickness = 0.8.dp)
-                Spacer(modifier = Modifier.height(10.dp))
-
-                if (effectivePaper == null || effectivePaper.questions.isEmpty() || report == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.padding(24.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = colors.surfaceVariant,
-                                modifier = Modifier.size(56.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Assessment,
-                                        contentDescription = null,
-                                        tint = colors.muted,
-                                        modifier = Modifier.size(28.dp)
-                                    )
+                        // Scrollable Analytical Body (Metrics Grid + Filters + Item / Student Cards)
+                        // Putting the 2x2 KPI Grid inside LazyColumn ensures items ALWAYS stay reachable & never vanish at 125%-135% font scale!
+                        val filteredItems = remember(report.items, itemFilter) {
+                            report.items.filter { item ->
+                                when (itemFilter) {
+                                    "FLAGGED" -> item.isFlagged
+                                    "HARD" -> item.difficultyP <= 0.35f
+                                    "EASY" -> item.difficultyP >= 0.75f
+                                    "DISCRIMINATING" -> item.pointBiserialR >= 0.30f || item.discriminationD >= 0.30f
+                                    else -> true
                                 }
                             }
-                            Text(
-                                text = "No Questions Available to Analyze",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold
-                            )
-                            Text(
-                                text = "Select an existing question set from your saved library, or load a sample assessment to inspect Classical Test Theory item metrics and student scorecards.",
-                                fontSize = 12.5.sp,
-                                color = colors.muted,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                lineHeight = 17.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = {
-                                        viewModel.loadStarterSample("science")
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Executive Metrics 2x2 Grid
+                            item(key = "kpi_grid") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Analyze Science Sample", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ExecutiveMetricCard(
+                                            label = "Candidates",
+                                            value = "${report.candidateCount}",
+                                            subtext = if (isSimulatedCohort) "Calibrated Cohort" else "Scanned Cohort",
+                                            color = Color(0xFF0284C7),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        ExecutiveMetricCard(
+                                            label = "Mean Score",
+                                            value = String.format(Locale.US, "%.1f", report.meanScore),
+                                            subtext = "±${String.format(Locale.US, "%.1f", report.standardDeviation)} SD",
+                                            color = colors.teal,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ExecutiveMetricCard(
+                                            label = "Reliability (α)",
+                                            value = String.format(Locale.US, "%.2f", report.cronbachAlpha),
+                                            subtext = if (report.cronbachAlpha >= 0.8f) "High Consistency" else "Moderate",
+                                            color = if (report.cronbachAlpha >= 0.8f) Color(0xFF10B981) else Color(0xFFF59E0B),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        ExecutiveMetricCard(
+                                            label = "Flagged Items",
+                                            value = "${report.flaggedItemCount}",
+                                            subtext = if (report.flaggedItemCount > 0) "Requires Review" else "Clean Instrument",
+                                            color = if (report.flaggedItemCount > 0) Color(0xFFEF4444) else Color(0xFF10B981),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (activeTab == "ITEMS") {
+                                // Horizontally scrollable single-line Filter Chips (never wrap mid-chip!)
+                                item(key = "item_filters_row") {
+                                    val filters = listOf(
+                                        "ALL" to "All (${report.items.size})",
+                                        "FLAGGED" to "Flagged (${report.flaggedItemCount})",
+                                        "HARD" to "Hard (p ≤ 0.35)",
+                                        "EASY" to "Easy (p ≥ 0.75)",
+                                        "DISCRIMINATING" to "High Disc. (r ≥ 0.30)"
+                                    )
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(filters, key = { it.first }) { (key, label) ->
+                                            val selected = itemFilter == key
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (selected) Color(0xFF0284C7).copy(alpha = 0.16f) else colors.surface,
+                                                border = BorderStroke(
+                                                    width = if (selected) 1.2.dp else 0.8.dp,
+                                                    color = if (selected) Color(0xFF0284C7) else colors.border
+                                                ),
+                                                modifier = Modifier.clickable { itemFilter = key }
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (selected) Color(0xFF38BDF8).takeIf { colors.isDark } ?: Color(0xFF0284C7) else colors.inkBold,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (filteredItems.isEmpty()) {
+                                    item(key = "empty_filter") {
+                                        Card(
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                                            border = BorderStroke(0.8.dp, colors.border),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(20.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "No items match this filter",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.inkBold
+                                                )
+                                                TextButton(onClick = { itemFilter = "ALL" }) {
+                                                    Text("Show All ${report.items.size} Items", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    items(filteredItems, key = { "item_${it.questionNum}" }) { item ->
+                                        val qModel = effectivePaper.questions.getOrNull(item.questionNum - 1)
+                                        PsychometricItemCard(item = item, qModel = qModel)
+                                    }
+                                }
+                            } else {
+                                if (report.candidates.isEmpty()) {
+                                    item(key = "empty_students") {
+                                        Card(
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                                            border = BorderStroke(0.8.dp, colors.border),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(20.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = "No student scorecards yet",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.inkBold
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    items(report.candidates, key = { "${it.rank}_${it.rollNumber}_${it.bookletNumber}" }) { c ->
+                                        StudentScorecardRowCard(
+                                            candidate = c,
+                                            onSelectCandidate = { selectedCandidateForReportCard = c }
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                } else {
-                    // Executive Metrics Cards 2x2 Grid
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+                        // 3. Slim Responsive Export Bar (Always readable at any font scale)
+                        Surface(
+                            color = colors.surface,
+                            shadowElevation = 6.dp,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            ExecutiveMetricCard(
-                                label = "Candidates",
-                                value = "${report.candidateCount}",
-                                subtext = if (report.candidates.any { it.rollNumber.startsWith("202610") }) "Calibrated Cohort" else "Scanned Students",
-                                color = Color(0xFF0284C7),
-                                modifier = Modifier.weight(1f)
-                            )
-                            ExecutiveMetricCard(
-                                label = "Mean Score",
-                                value = String.format(Locale.US, "%.1f", report.meanScore),
-                                subtext = "±${String.format(Locale.US, "%.1f", report.standardDeviation)} SD",
-                                color = colors.teal,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ExecutiveMetricCard(
-                                label = "Reliability (α)",
-                                value = String.format(Locale.US, "%.2f", report.cronbachAlpha),
-                                subtext = if (report.cronbachAlpha >= 0.8f) "High Consistency" else "Moderate",
-                                color = if (report.cronbachAlpha >= 0.8f) Color(0xFF059669) else Color(0xFFD97706),
-                                modifier = Modifier.weight(1f)
-                            )
-                            ExecutiveMetricCard(
-                                label = "Flagged Items",
-                                value = "${report.flaggedItemCount}",
-                                subtext = if (report.flaggedItemCount > 0) "Requires Review" else "Clean Instrument",
-                                color = if (report.flaggedItemCount > 0) Color(0xFFDC2626) else Color(0xFF059669),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Mode Toggle & Tab Navigation Bar
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // View Switcher (Item Analysis vs Student Scorecards)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TabButton(
-                                label = "Item Analysis (${report.questionCount})",
-                                isSelected = activeTab == "ITEMS",
-                                onClick = { activeTab = "ITEMS" }
-                            )
-                            TabButton(
-                                label = "Student Roster (${report.candidateCount})",
-                                isSelected = activeTab == "STUDENTS",
-                                onClick = { activeTab = "STUDENTS" }
-                            )
-                        }
-
-                        // Simulation / Real Data Toggle
-                        OutlinedButton(
-                            onClick = { useSimulationMode = !useSimulationMode },
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(0.8.dp, colors.border),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (useSimulationMode) "Using Simulated Cohort" else "Simulate 40 Students",
-                                fontSize = 11.sp,
-                                color = colors.inkBold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Tab Body
-                    when (activeTab) {
-                        "ITEMS" -> {
-                            ItemAnalysisTabContent(
-                                report = report,
-                                paper = effectivePaper,
-                                itemFilter = itemFilter,
-                                onSelectFilter = { itemFilter = it },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        "STUDENTS" -> {
-                            StudentScorecardsTabContent(
-                                report = report,
-                                onSelectCandidate = { selectedCandidateForReportCard = it },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Footer Action Bar: 2x2 Grid of full-width paired export actions
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Button(
-                                onClick = {
-                                    val csv = viewModel.exportPsychometricReportCsv(
-                                        paperOverride = effectivePaper,
-                                        forceSimulation = useSimulationMode,
-                                        allowSimulationFallback = true
-                                    )
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("Psychometric Report CSV", csv)
-                                    clipboard.setPrimaryClip(clip)
-                                    copiedReport = true
-                                    Toast.makeText(context, "Copied Item Analysis CSV to clipboard!", Toast.LENGTH_SHORT).show()
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (copiedReport) Color(0xFF059669) else Color(0xFF0284C7)
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                            ) {
-                                Icon(
-                                    if (copiedReport) Icons.Default.Check else Icons.Default.ContentCopy,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (copiedReport) "Copied!" else "Item CSV",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    val csv = viewModel.exportCandidateScorecardsCsv(
-                                        paperOverride = effectivePaper,
-                                        forceSimulation = useSimulationMode,
-                                        allowSimulationFallback = true
-                                    )
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("Student Scorecards CSV", csv)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Copied Student Scorecards CSV to clipboard!", Toast.LENGTH_SHORT).show()
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                            ) {
-                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Roster CSV",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Button(
-                                onClick = {
-                                    val cardsText = viewModel.exportAllStudentReportCardsText(
-                                        paperOverride = effectivePaper,
-                                        forceSimulation = useSimulationMode,
-                                        allowSimulationFallback = true
-                                    )
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("All Student Report Cards", cardsText)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Copied all student report cards to clipboard!", Toast.LENGTH_SHORT).show()
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE185D)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                            ) {
-                                Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "All Cards",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    val csv = viewModel.exportPsychometricReportCsv(
-                                        paperOverride = effectivePaper,
-                                        forceSimulation = useSimulationMode,
-                                        allowSimulationFallback = true
-                                    )
-                                    val sendIntent = android.content.Intent().apply {
-                                        action = android.content.Intent.ACTION_SEND
-                                        putExtra(android.content.Intent.EXTRA_TEXT, csv)
-                                        type = "text/plain"
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                                FlowRow(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    maxItemsInEachRow = 2
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val csv = viewModel.exportPsychometricReportCsv(
+                                                paperOverride = effectivePaper,
+                                                forceSimulation = useSimulationMode,
+                                                allowSimulationFallback = true
+                                            )
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Psychometric Report CSV", csv))
+                                            copiedReport = true
+                                            Toast.makeText(context, "Copied Item Analysis CSV!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(9.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (copiedReport) Color(0xFF059669) else Color(0xFF0284C7),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
+                                    ) {
+                                        Icon(
+                                            if (copiedReport) Icons.Default.Check else Icons.Default.ContentCopy,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (copiedReport) "Copied CSV" else "Item CSV",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            softWrap = true,
+                                            textAlign = TextAlign.Center
+                                        )
                                     }
-                                    val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Psychometric Report CSV")
-                                    context.startActivity(shareIntent)
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                            ) {
-                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Share",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+
+                                    Button(
+                                        onClick = {
+                                            val csv = viewModel.exportCandidateScorecardsCsv(
+                                                paperOverride = effectivePaper,
+                                                forceSimulation = useSimulationMode,
+                                                allowSimulationFallback = true
+                                            )
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Student Scorecards CSV", csv))
+                                            Toast.makeText(context, "Copied Student Roster CSV!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(9.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF059669),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
+                                    ) {
+                                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Roster CSV",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            softWrap = true,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val cardsText = viewModel.exportAllStudentReportCardsText(
+                                                paperOverride = effectivePaper,
+                                                forceSimulation = useSimulationMode,
+                                                allowSimulationFallback = true
+                                            )
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("All Student Report Cards", cardsText))
+                                            Toast.makeText(context, "Copied all report cards!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(9.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFBE185D),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
+                                    ) {
+                                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "All Cards",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            softWrap = true,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            val csv = viewModel.exportPsychometricReportCsv(
+                                                paperOverride = effectivePaper,
+                                                forceSimulation = useSimulationMode,
+                                                allowSimulationFallback = true
+                                            )
+                                            val sendIntent = android.content.Intent().apply {
+                                                action = android.content.Intent.ACTION_SEND
+                                                putExtra(android.content.Intent.EXTRA_TEXT, csv)
+                                                type = "text/plain"
+                                            }
+                                            context.startActivity(
+                                                android.content.Intent.createChooser(sendIntent, "Share Psychometric Report CSV")
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(9.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Share",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 2,
+                                            softWrap = true,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -614,7 +826,6 @@ fun PsychometricAnalysisDialog(
             }
         }
 
-        // Student Report Card Modal (Individual Candidate View)
         if (selectedCandidateForReportCard != null && effectivePaper != null) {
             val candidate = selectedCandidateForReportCard!!
             val reportCardText = viewModel.exportSingleStudentReportCard(
@@ -643,28 +854,41 @@ private fun ExecutiveMetricCard(
     val colors = ExamTheme.colors
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = colors.surfaceVariant,
+        color = colors.surface,
         border = BorderStroke(0.8.dp, colors.border),
-        modifier = modifier.heightIn(min = 64.dp)
+        modifier = modifier.heightIn(min = 66.dp)
     ) {
         Column(
             modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-                .wrapContentHeight(),
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = colors.muted)
+            Text(
+                text = label,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Spacer(modifier = Modifier.height(2.dp))
-            Text(value, fontSize = 16.5.sp, fontWeight = FontWeight.Black, color = color, fontFamily = FontFamily.Monospace)
+            Text(
+                text = value,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Black,
+                color = color,
+                fontFamily = FontFamily.Monospace
+            )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = subtext,
-                fontSize = 9.5.sp,
+                fontSize = 10.sp,
                 color = colors.muted,
                 maxLines = 2,
                 softWrap = true,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -675,416 +899,379 @@ private fun ExecutiveMetricCard(
 private fun TabButton(
     label: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(9.dp),
         color = if (isSelected) Color(0xFF0284C7) else colors.surfaceVariant,
         border = BorderStroke(0.8.dp, if (isSelected) Color(0xFF0284C7) else colors.border),
-        modifier = Modifier
-            .heightIn(min = 40.dp)
+        modifier = modifier
+            .heightIn(min = 42.dp)
             .clickable { onClick() }
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+        ) {
             Text(
                 text = label,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = if (isSelected) Color.White else colors.inkBold,
-                maxLines = 1
+                maxLines = 2,
+                softWrap = true,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ItemAnalysisTabContent(
-    report: PsychometricEngine.CohortPsychometricReport,
-    paper: QuestionPaper,
-    itemFilter: String,
-    onSelectFilter: (String) -> Unit,
-    modifier: Modifier = Modifier
+private fun PsychometricItemCard(
+    item: PsychometricEngine.ItemEvaluation,
+    qModel: com.example.model.McqQuestion?
 ) {
     val colors = ExamTheme.colors
+    val officialKey = qModel?.correctAnswer?.uppercase()?.firstOrNull()?.toString() ?: ""
 
-    val filteredItems = report.items.filter { item ->
-        when (itemFilter) {
-            "FLAGGED" -> item.isFlagged
-            "HARD" -> item.difficultyP <= 0.35f
-            "EASY" -> item.difficultyP >= 0.75f
-            "DISCRIMINATING" -> item.pointBiserialR >= 0.30f || item.discriminationD >= 0.30f
-            else -> true
-        }
-    }
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Filter Chips Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+    Card(
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (item.isFlagged) {
+                if (colors.isDark) Color(0xFF3F1D24) else Color(0xFFFEF2F2)
+            } else {
+                colors.surface
+            }
+        ),
+        border = BorderStroke(
+            width = if (item.isFlagged) 1.dp else 0.8.dp,
+            color = if (item.isFlagged) Color(0xFFEF4444).copy(alpha = 0.7f) else colors.border
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val filters = listOf(
-                "ALL" to "All (${report.items.size})",
-                "FLAGGED" to "Flagged (${report.flaggedItemCount})",
-                "HARD" to "Hard (p≤0.35)",
-                "EASY" to "Easy (p≥0.75)",
-                "DISCRIMINATING" to "High Disc."
-            )
-            filters.forEach { (key, label) ->
-                val selected = itemFilter == key
+            // Header Badges (FlowRow prevents squeezing at 125%-135% font sizes)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(5.dp),
+                    color = if (item.isFlagged) Color(0xFFDC2626) else Color(0xFF0284C7)
+                ) {
+                    Text(
+                        text = String.format(Locale.US, "Q%03d", item.questionNum),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+
+                if (officialKey.isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(5.dp),
+                        color = colors.surfaceVariant,
+                        border = BorderStroke(0.6.dp, colors.border)
+                    ) {
+                        Text(
+                            text = "Key: $officialKey",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkBold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(5.dp),
+                    color = colors.surfaceVariant
+                ) {
+                    Text(
+                        text = item.difficultyLabel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+
+                if (item.isFlagged) {
+                    Surface(
+                        shape = RoundedCornerShape(5.dp),
+                        color = Color(0xFFDC2626).copy(alpha = 0.14f),
+                        border = BorderStroke(0.6.dp, Color(0xFFEF4444))
+                    ) {
+                        Text(
+                            text = "Flagged",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (colors.isDark) Color(0xFFFCA5A5) else Color(0xFFDC2626),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            if (qModel != null && qModel.question.isNotBlank()) {
+                Text(
+                    text = qModel.question,
+                    fontSize = 12.5.sp,
+                    color = colors.inkBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 17.sp
+                )
+            }
+
+            // Metrics Pair (Difficulty & Discrimination)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(7.dp),
+                    color = colors.surfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Text(
+                            text = "Difficulty (p)",
+                            fontSize = 10.sp,
+                            color = colors.muted,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "p = ${String.format(Locale.US, "%.2f", item.difficultyP)}",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = when {
+                                item.difficultyP >= 0.75f -> Color(0xFF10B981)
+                                item.difficultyP <= 0.30f -> Color(0xFFEF4444)
+                                else -> colors.inkBold
+                            }
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(7.dp),
+                    color = colors.surfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Text(
+                            text = "Discrimination",
+                            fontSize = 10.sp,
+                            color = colors.muted,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "r_pb ${String.format(Locale.US, "%.2f", item.pointBiserialR)} • D ${String.format(Locale.US, "%.2f", item.discriminationD)}",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = when {
+                                item.pointBiserialR >= 0.35f -> Color(0xFF10B981)
+                                item.pointBiserialR < 0.0f -> Color(0xFFEF4444)
+                                else -> colors.inkBold
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Distractor Frequencies in FlowRow (handles A-D and 5-option A-E gracefully)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Distractors:",
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.muted,
+                    modifier = Modifier.align(Alignment.CenterVertically)
+                )
+                item.optionFrequencies.keys.sorted().forEach { opt ->
+                    val count = item.optionFrequencies[opt] ?: 0
+                    val isCorrect = opt.toString().equals(officialKey, ignoreCase = true)
+                    Surface(
+                        shape = RoundedCornerShape(5.dp),
+                        color = if (isCorrect) Color(0xFF10B981).copy(alpha = 0.16f) else colors.surfaceVariant,
+                        border = if (isCorrect) BorderStroke(0.7.dp, Color(0xFF10B981).copy(alpha = 0.6f)) else null
+                    ) {
+                        Text(
+                            text = if (isCorrect) "$opt:$count ✓" else "$opt:$count",
+                            fontSize = 10.5.sp,
+                            fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isCorrect) {
+                                if (colors.isDark) Color(0xFF6EE7B7) else Color(0xFF047857)
+                            } else {
+                                colors.inkMuted
+                            },
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            // Flagged Quality Reason
+            if (item.isFlagged && !item.flagReason.isNullOrBlank()) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = if (selected) Color(0xFF0284C7).copy(alpha = 0.15f) else Color.Transparent,
-                    border = BorderStroke(0.8.dp, if (selected) Color(0xFF0284C7) else colors.border),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onSelectFilter(key) }
+                    color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                    border = BorderStroke(0.6.dp, Color(0xFFEF4444).copy(alpha = 0.55f))
                 ) {
-                    Box(modifier = Modifier.padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = label,
-                            fontSize = 10.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color(0xFF0284C7) else colors.inkMuted
+                            text = item.flagReason,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (colors.isDark) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
+                            softWrap = true
                         )
                     }
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Table Header
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = colors.surfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Q# & QUESTION STEM", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(2.2f))
-                Text("DIFFICULTY (p)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.1f))
-                Text("DISCRIM. (D / r_pb)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.3f))
-                Text("DISTRACTORS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.2f))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Item List
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            items(filteredItems) { item ->
-                val qModel = paper.questions.getOrNull(item.questionNum - 1)
-                val officialKey = qModel?.correctAnswer?.uppercase()?.firstOrNull()?.toString() ?: ""
-
-                Card(
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (item.isFlagged) Color(0xFFFEF2F2) else colors.surface
-                    ),
-                    border = BorderStroke(
-                        0.8.dp,
-                        if (item.isFlagged) Color(0xFFEF4444) else colors.border
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Question Number and Stem
-                            Column(modifier = Modifier.weight(2.2f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = String.format(Locale.US, "Q%03d", item.questionNum),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = if (item.isFlagged) Color(0xFFDC2626) else colors.inkBold
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(3.dp),
-                                        color = Color(0xFFF3F4F6)
-                                    ) {
-                                        Text(
-                                            text = "Key: $officialKey",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.inkBold,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                }
-                                if (qModel != null) {
-                                    Text(
-                                        text = qModel.question,
-                                        fontSize = 11.sp,
-                                        color = colors.inkMuted,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            // Difficulty (p-value)
-                            Column(modifier = Modifier.weight(1.1f)) {
-                                Text(
-                                    text = "p = ${String.format(Locale.US, "%.2f", item.difficultyP)}",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when {
-                                        item.difficultyP >= 0.75f -> Color(0xFF059669)
-                                        item.difficultyP <= 0.30f -> Color(0xFFDC2626)
-                                        else -> colors.inkBold
-                                    }
-                                )
-                                Text(item.difficultyLabel, fontSize = 9.5.sp, color = colors.muted)
-                            }
-
-                            // Discrimination (D and r_pb)
-                            Column(modifier = Modifier.weight(1.3f)) {
-                                Text(
-                                    text = "r_pb: ${String.format(Locale.US, "%.2f", item.pointBiserialR)}",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when {
-                                        item.pointBiserialR >= 0.35f -> Color(0xFF059669)
-                                        item.pointBiserialR < 0.0f -> Color(0xFFDC2626)
-                                        else -> colors.inkBold
-                                    }
-                                )
-                                Text(
-                                    text = "D = ${String.format(Locale.US, "%.2f", item.discriminationD)}",
-                                    fontSize = 10.sp,
-                                    color = colors.muted
-                                )
-                            }
-
-                            // Distractor Frequencies
-                            Column(modifier = Modifier.weight(1.2f)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    item.optionFrequencies.keys.sorted().forEach { opt ->
-                                        val count = item.optionFrequencies[opt] ?: 0
-                                        val isCorrect = opt.toString().equals(officialKey, ignoreCase = true)
-                                        Surface(
-                                            shape = RoundedCornerShape(3.dp),
-                                            color = if (isCorrect) Color(0xFFDCFCE7) else Color(0xFFF3F4F6)
-                                        ) {
-                                            Text(
-                                                text = "$opt:$count",
-                                                fontSize = 9.sp,
-                                                fontWeight = if (isCorrect) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isCorrect) Color(0xFF15803D) else colors.inkMuted,
-                                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Flagged Item Quality Alert
-                        if (item.isFlagged && item.flagReason != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(0xFFFEF2F2),
-                                border = BorderStroke(0.6.dp, Color(0xFFF87171))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 6.dp, vertical = 3.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = item.flagReason,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color(0xFFB91C1C)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StudentScorecardsTabContent(
-    report: PsychometricEngine.CohortPsychometricReport,
-    onSelectCandidate: (PsychometricEngine.CandidateScorecard) -> Unit,
-    modifier: Modifier = Modifier
+private fun StudentScorecardRowCard(
+    candidate: PsychometricEngine.CandidateScorecard,
+    onSelectCandidate: () -> Unit
 ) {
     val colors = ExamTheme.colors
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Table Header
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = colors.surfaceVariant,
-            modifier = Modifier.fillMaxWidth()
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = colors.surface,
+        border = BorderStroke(0.8.dp, colors.border),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelectCandidate() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("RANK & ROLL NUMBER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.8f))
-                Text("BOOKLET NO. & SET", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.4f))
-                Text("SCORE / MAX", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.1f))
-                Text("ACCURACY & REPORT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.muted, modifier = Modifier.weight(1.7f))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Student List
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items(report.candidates) { c ->
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = colors.surface,
-                    border = BorderStroke(0.6.dp, colors.border),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelectCandidate(c) }
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        shape = CircleShape,
+                        color = if (candidate.rank <= 3) Color(0xFFF59E0B).copy(alpha = 0.18f) else colors.surfaceVariant,
+                        modifier = Modifier.size(28.dp)
                     ) {
-                        // Rank and Roll Number
-                        Row(
-                            modifier = Modifier.weight(1.8f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = if (c.rank <= 3) Color(0xFFFEF3C7) else Color(0xFFF3F4F6),
-                                modifier = Modifier.size(22.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = "${c.rank}",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (c.rank <= 3) Color(0xFFB45309) else colors.inkBold
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
+                        Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = c.rollNumber,
-                                fontSize = 12.sp,
+                                text = "#${candidate.rank}",
+                                fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color(0xFF0284C7)
+                                color = if (candidate.rank <= 3) Color(0xFFD97706) else colors.inkBold
                             )
-                        }
-
-                        // Booklet Number & Set Code
-                        Row(
-                            modifier = Modifier.weight(1.4f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = c.bookletNumber,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFBE185D)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(3.dp),
-                                color = Color(0xFFFDF2F8)
-                            ) {
-                                Text(
-                                    text = "Set ${c.bookletCode}",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFBE185D),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-
-                        // Score
-                        Column(modifier = Modifier.weight(1.1f)) {
-                            Text(
-                                text = "${c.totalScore.toInt()}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Black,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (c.totalScore > 0) colors.teal else colors.inkBold
-                            )
-                        }
-
-                        // Accuracy & Report Card Action Badge
-                        Row(
-                            modifier = Modifier.weight(1.7f),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "${c.accuracyPercent}%",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (c.accuracyPercent >= 70) Color(0xFF059669) else colors.inkBold
-                                )
-                                Text(
-                                    text = "+${c.correctCount} -${c.incorrectCount}",
-                                    fontSize = 9.sp,
-                                    color = colors.muted
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(0xFF0284C7).copy(alpha = 0.1f),
-                                border = BorderStroke(0.6.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
-                                modifier = Modifier.clickable { onSelectCandidate(c) }
-                            ) {
-                                Text(
-                                    text = "Card →",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0284C7),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                )
-                            }
                         }
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = candidate.rollNumber,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Booklet ${candidate.bookletNumber} • Set ${candidate.bookletCode}",
+                            fontSize = 11.sp,
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF0284C7).copy(alpha = 0.14f),
+                    border = BorderStroke(0.7.dp, Color(0xFF0284C7).copy(alpha = 0.45f)),
+                    modifier = Modifier.clickable { onSelectCandidate() }
+                ) {
+                    Text(
+                        text = "Card →",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Score: ${String.format(Locale.US, "%.1f", candidate.totalScore)}",
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                    color = colors.teal
+                )
+                Text(
+                    text = "Accuracy: ${candidate.accuracyPercent}%",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (candidate.accuracyPercent >= 70) Color(0xFF10B981) else colors.inkBold
+                )
+                Text(
+                    text = "+${candidate.correctCount} / -${candidate.incorrectCount}",
+                    fontSize = 11.5.sp,
+                    color = colors.muted
+                )
             }
         }
     }
@@ -1105,12 +1292,17 @@ private fun StudentReportCardModal(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(12.dp),
             shape = RoundedCornerShape(16.dp),
             color = colors.surface,
             border = BorderStroke(1.2.dp, colors.border)
@@ -1120,23 +1312,26 @@ private fun StudentReportCardModal(
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                // Header Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Student Examination Report Card",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = colors.inkBold
+                            color = colors.inkBold,
+                            maxLines = 2,
+                            softWrap = true
                         )
                         Text(
                             text = "Roll: ${candidate.rollNumber} • Booklet: ${candidate.bookletNumber} (Set ${candidate.bookletCode})",
                             fontSize = 11.5.sp,
-                            color = colors.muted
+                            color = colors.muted,
+                            maxLines = 2,
+                            softWrap = true
                         )
                     }
                     IconButton(onClick = onDismiss) {
@@ -1148,7 +1343,6 @@ private fun StudentReportCardModal(
                 HorizontalDivider(color = colors.border, thickness = 0.8.dp)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Scrollable Monospace Report Card Text
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = colors.surfaceVariant,
@@ -1175,7 +1369,6 @@ private fun StudentReportCardModal(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1183,20 +1376,28 @@ private fun StudentReportCardModal(
                     Button(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("Student Report Card", reportCardText)
-                            clipboard.setPrimaryClip(clip)
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Student Report Card", reportCardText))
                             copied = true
                             Toast.makeText(context, "Copied Report Card to clipboard!", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (copied) Color(0xFF059669) else Color(0xFF0284C7)
+                            containerColor = if (copied) Color(0xFF059669) else Color(0xFF0284C7),
+                            contentColor = Color.White
                         ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
                     ) {
                         Icon(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (copied) "Copied!" else "Copy Report Card", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (copied) "Copied!" else "Copy Card",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center
+                        )
                     }
 
                     OutlinedButton(
@@ -1206,15 +1407,23 @@ private fun StudentReportCardModal(
                                 putExtra(android.content.Intent.EXTRA_TEXT, reportCardText)
                                 type = "text/plain"
                             }
-                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Share Student Report Card")
-                            context.startActivity(shareIntent)
+                            context.startActivity(
+                                android.content.Intent.createChooser(sendIntent, "Share Student Report Card")
+                            )
                         },
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "Share",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
                     }
                 }
             }

@@ -71,6 +71,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
@@ -472,8 +473,9 @@ fun PromptGeneratorTab(
                                 if (copied) "Copied!" else "Copy Prompt",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false
+                                maxLines = 2,
+                                softWrap = true,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -1468,8 +1470,9 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                 text = if (copied) "Prompt Copied!" else "Copy AI Prompt",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                softWrap = false
+                                maxLines = 2,
+                                softWrap = true,
+                                textAlign = TextAlign.Center
                             )
                         }
 
@@ -1479,7 +1482,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 44.dp),
+                                .heightIn(min = 48.dp),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = colors.tealDark,
                                 containerColor = colors.surface
@@ -1497,8 +1500,9 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                 text = "Paste Response",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                softWrap = false
+                                maxLines = 2,
+                                softWrap = true,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }

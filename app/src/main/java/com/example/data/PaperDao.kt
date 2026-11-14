@@ -41,6 +41,9 @@ interface PaperDao {
     @Query("UPDATE question_papers SET title = :title, subject = :subject, topic = :topic, setNumber = :setNumber, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateMetadata(id: Long, title: String, subject: String, topic: String, setNumber: String, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE question_papers SET manualCategory = :category, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updatePaperCategory(id: Long, category: String, updatedAt: Long = System.currentTimeMillis())
+
     @Delete
     suspend fun deletePaper(paper: PaperEntity)
 

@@ -249,20 +249,24 @@ fun AuditResolutionHubDialog(
 
     fun autoSynthesizeReplacements() {
         val flawed = reports.filter {
-            it.status == AuditIssueType.FLAWED_QUESTION ||
-                    it.status == AuditIssueType.VAGUE_OPTIONS ||
-                    it.status == AuditIssueType.MISSING_OPTIONS ||
-                    it.flawReason?.isNotBlank() == true
+            !it.isVerified && !it.isNeutralized && (
+                it.status == AuditIssueType.FLAWED_QUESTION ||
+                        it.status == AuditIssueType.VAGUE_OPTIONS ||
+                        it.status == AuditIssueType.MISSING_OPTIONS ||
+                        it.flawReason?.isNotBlank() == true
+            )
         }
         if (flawed.isEmpty()) {
-            Toast.makeText(context, "No flawed questions detected in current audit.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "No unsealed flawed questions detected in current audit.", Toast.LENGTH_SHORT).show()
             return
         }
         reports = reports.map { rep ->
-            val isFlawed = rep.status == AuditIssueType.FLAWED_QUESTION ||
-                    rep.status == AuditIssueType.VAGUE_OPTIONS ||
-                    rep.status == AuditIssueType.MISSING_OPTIONS ||
-                    rep.flawReason?.isNotBlank() == true
+            val isFlawed = !rep.isVerified && !rep.isNeutralized && (
+                rep.status == AuditIssueType.FLAWED_QUESTION ||
+                        rep.status == AuditIssueType.VAGUE_OPTIONS ||
+                        rep.status == AuditIssueType.MISSING_OPTIONS ||
+                        rep.flawReason?.isNotBlank() == true
+            )
             if (isFlawed) {
                 val orig = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
                 if (orig != null) {
@@ -306,6 +310,7 @@ fun AuditResolutionHubDialog(
     fun autoGenerateExplanations() {
         var count = 0
         reports = reports.map { rep ->
+            if (rep.isVerified || rep.isNeutralized) return@map rep
             val orig = rep.originalQuestion ?: paper.questions.find { it.num == rep.qNum }
             if (orig != null && (rep.recheckedExplanation.isNullOrBlank() || rep.recheckedExplanation == orig.explanation && orig.explanation.isBlank())) {
                 count++
@@ -313,7 +318,7 @@ fun AuditResolutionHubDialog(
                 rep.copy(recheckedExplanation = newExp)
             } else rep
         }
-        Toast.makeText(context, "Generated step-by-step explanations for $count questions. Tap 'Apply All' to attach.", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "Generated step-by-step explanations for $count unsealed questions. Tap 'Apply All' to attach.", Toast.LENGTH_LONG).show()
     }
 
     fun autoGenerateSingleExplanation(report: AuditQuestionReport) {
@@ -2117,7 +2122,41 @@ private fun AuditReportItemCard(
 
             // Action Buttons
             Spacer(modifier = Modifier.height(8.dp))
-            if (report.isResolved) {
+            if (report.isVerified) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Verified, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Sealed & Protected — AI overwrites blocked. Tap 'Sealed' above to unseal.",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.teal
+                        )
+                    }
+
+                    if (canReverse) {
+                        OutlinedButton(
+                            onClick = onReverseFix,
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.red),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp),
+                            modifier = Modifier.testTag("reverse_fix_q_${report.qNum}")
+                        ) {
+                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Reverse", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else if (report.isResolved) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

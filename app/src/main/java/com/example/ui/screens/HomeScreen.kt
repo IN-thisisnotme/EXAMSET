@@ -71,9 +71,19 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -83,6 +93,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -92,6 +104,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -150,14 +163,21 @@ fun HomeScreen(
     val studentAnswers by viewModel.studentAnswers.collectAsState()
     val isExamSubmitted by viewModel.isExamSubmitted.collectAsState()
     val examConfig by viewModel.examConfig.collectAsState()
+    val isExamStarted by viewModel.isExamStarted.collectAsState()
     val savedPapers by viewModel.savedPapers.collectAsState()
     val allAttempts by viewModel.allAttempts.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isCardBoxed by viewModel.isCardBoxed.collectAsState()
     val folders by viewModel.folders.collectAsState()
+    val lastActiveFolderId by viewModel.lastActiveFolderId.collectAsState()
+    val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
+    val fontScaleMode by viewModel.fontScaleMode.collectAsState()
+
+    val isFullScreenTestActive = selectedTab == 2 && isExamStarted && !isExamSubmitted && currentPaper != null
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val masterListState = rememberLazyListState()
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -184,6 +204,9 @@ fun HomeScreen(
     // Accidental Back Navigation Prevention
     BackHandler {
         when {
+            drawerState.isOpen -> {
+                coroutineScope.launch { drawerState.close() }
+            }
             showPsychometricDialog -> {
                 showPsychometricDialog = false
             }
@@ -215,7 +238,10 @@ fun HomeScreen(
             showEditDialog -> {
                 showEditDialog = false
             }
-            currentPaper != null -> {
+            selectedTab in 3..6 -> {
+                viewModel.selectTab(0)
+            }
+            currentPaper != null && !isFullScreenTestActive -> {
                 showConfirmExitDialog = true
             }
             else -> {
@@ -246,45 +272,31 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = colors.background,
-        snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState) { snackbarData ->
-                Snackbar(
-                    snackbarData = snackbarData,
-                    containerColor = if (colors.isDark) colors.surfaceElevated else colors.navyBanner,
-                    contentColor = if (colors.isDark) colors.inkBold else colors.navyBannerText,
-                    actionColor = colors.teal,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
-        },
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    if (currentPaper != null) {
-                        IconButton(
-                            onClick = { showConfirmExitDialog = true },
-                            modifier = Modifier.testTag("exit_paper_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Return to Subject Overview",
-                                tint = colors.inkBold
-                            )
-                        }
-                    }
-                },
-                title = {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = !isFullScreenTestActive,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = colors.surface,
+                drawerContentColor = colors.inkBold,
+                modifier = Modifier.widthIn(max = 310.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 12.dp)
+                ) {
+                    // Drawer Branded Header
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(end = 4.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
-                            modifier = Modifier.size(32.dp),
-                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.size(40.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = colors.teal
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -292,494 +304,662 @@ fun HomeScreen(
                                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "ExamSet",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            currentPaper?.let { paper ->
-                                Text(
-                                    text = "${ExamNumberGenerator.formatSetDisplayLabel(paper.metadata.setNumber)} • ${paper.metadata.subject}",
-                                    fontSize = 10.5.sp,
-                                    color = colors.tealDark,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            } ?: Text(
-                                text = "MCQ Paper Studio",
-                                fontSize = 10.5.sp,
-                                color = colors.muted,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    // Today's Test Study Timer & Historical Analytics Trigger
-                    val topTodaySecs = viewModel.todayTestSeconds.collectAsState().value
-                    val isExamRunning = viewModel.isExamStarted.collectAsState().value && !isExamSubmitted
-                    Surface(
-                        onClick = { showHistoricalAnalyticsDialog = true },
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isExamRunning) colors.tealLight else colors.surfaceVariant,
-                        border = BorderStroke(0.8.dp, if (isExamRunning) colors.teal else colors.border),
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .testTag("topbar_today_analytics_chip")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Timer,
-                                contentDescription = "Today Study Timer & Historical Analysis",
-                                tint = if (isExamRunning) colors.teal else colors.inkBold,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            val tH = topTodaySecs / 3600
-                            val tM = (topTodaySecs % 3600) / 60
-                            val tS = topTodaySecs % 60
-                            val formattedTime = if (tH > 0) {
-                                String.format(java.util.Locale.US, "%02d:%02d:%02d", tH, tM, tS)
-                            } else {
-                                String.format(java.util.Locale.US, "%02d:%02d", tM, tS)
-                            }
-                            Text(
-                                text = formattedTime,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isExamRunning) colors.tealDark else colors.inkBold
-                            )
-                        }
-                    }
-
-                    // Dark / Eye-Safety Mode Toggle
-                    IconButton(
-                        onClick = { viewModel.toggleThemeMode() },
-                        modifier = Modifier.testTag("dark_mode_toggle")
-                    ) {
-                        Icon(
-                            imageVector = if (colors.isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            contentDescription = if (colors.isDark) "Switch to Light Mode" else "Switch to Eye-Safe Dark Mode",
-                            tint = if (colors.isDark) colors.teal else colors.inkBold
-                        )
-                    }
-
-                    // Typography & Scaling Selector (Standard 100% Fixed, Compact, Large, Extra Large, Follow System)
-                    val fontScaleMode by viewModel.fontScaleMode.collectAsState()
-                    IconButton(
-                        onClick = { showFontSizeDialog = true },
-                        modifier = Modifier.testTag("font_size_scale_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FormatSize,
-                            contentDescription = "Typography Scale",
-                            tint = if (fontScaleMode == AppFontScaleMode.STANDARD_FIXED) colors.inkBold else colors.teal
-                        )
-                    }
-
-                    // Overflow Menu for Paper Operations (Edit Details, Psychometrics, Share)
-                    Box {
-                        IconButton(
-                            onClick = { showTopBarOverflowMenu = true },
-                            modifier = Modifier.testTag("topbar_overflow_menu_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More options",
-                                tint = colors.inkBold
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showTopBarOverflowMenu,
-                            onDismissRequest = { showTopBarOverflowMenu = false }
-                        ) {
-                            if (currentPaper != null) {
-                                DropdownMenuItem(
-                                    text = { Text("Edit Paper Details", fontSize = 13.sp) },
-                                    onClick = {
-                                        showTopBarOverflowMenu = false
-                                        showEditDialog = true
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Edit, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
-                                    }
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Psychometric Analysis", fontSize = 13.sp) },
-                                onClick = {
-                                    showTopBarOverflowMenu = false
-                                    showPsychometricDialog = true
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Assessment, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Typography & Scaling", fontSize = 13.sp) },
-                                onClick = {
-                                    showTopBarOverflowMenu = false
-                                    showFontSizeDialog = true
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.FormatSize, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
-                                }
-                            )
-                            val activePaper = currentPaper
-                            if (activePaper != null) {
-                                DropdownMenuItem(
-                                    text = { Text("Share Question Set", fontSize = 13.sp) },
-                                    onClick = {
-                                        showTopBarOverflowMenu = false
-                                        val sendIntent = Intent().apply {
-                                            action = Intent.ACTION_SEND
-                                            putExtra(Intent.EXTRA_TITLE, activePaper.metadata.title)
-                                            putExtra(Intent.EXTRA_TEXT, activePaper.rawText)
-                                            type = "text/plain"
-                                        }
-                                        context.startActivity(Intent.createChooser(sendIntent, "Share Question Set"))
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Share, contentDescription = null, tint = colors.inkBold, modifier = Modifier.size(18.dp))
-                                    }
-                                )
-                            }
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = colors.surface
-                )
-            )
-        },
-        floatingActionButton = {
-            // Only show the '+' creation overlay on the Folders library tab (tab 0).
-            // Hidden on Master (tab 1), Tests (tab 2), Print (tab 3), and Tools (tabs 4-6).
-            if (selectedTab == 0) {
-                FloatingActionButton(
-                    onClick = { showInputSheet = true },
-                    containerColor = colors.navyBanner,
-                    contentColor = colors.navyBannerText,
-                    shape = CircleShape,
-                    modifier = Modifier.testTag("add_paste_fab")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add or Paste MCQ",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = colors.surface,
-                contentColor = colors.inkBold,
-                tonalElevation = 8.dp
-            ) {
-                val navItems = listOf(
-                    Triple(0, "Folders", Icons.Default.FolderOpen),
-                    Triple(1, "Master", Icons.AutoMirrored.Filled.Assignment),
-                    Triple(2, "Tests", Icons.Default.School),
-                    Triple(3, "Print", Icons.Default.Print),
-                    Triple(4, "Tools", Icons.Default.Tune)
-                )
-
-                navItems.forEach { (index, label, icon) ->
-                    val isSelected = selectedTab == index || (index == 4 && (selectedTab == 5 || selectedTab == 6))
-                    NavigationBarItem(
-                        selected = isSelected,
-                        onClick = {
-                            if (selectedTab == index && index == 1) {
-                                coroutineScope.launch {
-                                    masterListState.animateScrollToItem(0)
-                                }
-                            } else {
-                                viewModel.selectTab(index)
-                            }
-                        },
-                        alwaysShowLabel = true,
-                        icon = {
-                            BadgedBox(
-                                badge = {
-                                    if (index == 1 && currentPaper != null && currentPaper!!.questions.isNotEmpty()) {
-                                        Badge(containerColor = colors.teal) {
-                                            Text("${currentPaper!!.questions.size}")
-                                        }
-                                    } else if (index == 0 && savedPapers.isNotEmpty()) {
-                                        Badge(containerColor = colors.surfaceVariant) {
-                                            Text("${savedPapers.size}", color = colors.inkBold)
-                                        }
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = label,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                        },
-                        label = {
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = label,
-                                fontSize = 10.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1,
-                                softWrap = false,
-                                textAlign = TextAlign.Center,
-                                overflow = TextOverflow.Ellipsis
+                                text = "ExamSet Studio",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = "${savedPapers.size} Sets • ${folders.size} Folders",
+                                fontSize = 11.5.sp,
+                                color = colors.inkMuted
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = colors.border)
+
+                    Text(
+                        text = "PREFERENCES & SCAN",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Eye-Safe Dark Mode", fontWeight = FontWeight.Medium) },
+                        icon = {
+                            Icon(
+                                imageVector = if (colors.isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                contentDescription = null,
+                                tint = if (colors.isDark) colors.teal else colors.inkBold
                             )
                         },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = colors.teal,
-                            selectedTextColor = colors.teal,
-                            unselectedIconColor = colors.muted,
-                            unselectedTextColor = colors.muted,
-                            indicatorColor = colors.tealLight
-                        )
+                        badge = {
+                            Switch(
+                                checked = colors.isDark,
+                                onCheckedChange = { viewModel.toggleThemeMode() },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colors.teal)
+                            )
+                        },
+                        selected = false,
+                        onClick = { viewModel.toggleThemeMode() },
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_dark_mode")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Typography & Font Scale", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.FormatSize, contentDescription = null, tint = colors.teal) },
+                        badge = {
+                            Text(
+                                text = fontScaleMode.title.substringBefore(" "),
+                                fontSize = 11.sp,
+                                color = colors.inkMuted
+                            )
+                        },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showFontSizeDialog = true
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_font_scale")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Scan Physical OMR", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.DocumentScanner, contentDescription = null, tint = Color(0xFFBE185D)) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showOmrScannerDialog = true
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_omr_scanner")
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = colors.border)
+
+                    Text(
+                        text = "STUDIO & TOOLS",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("AI Prompt Studio", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = colors.teal) },
+                        selected = selectedTab == 5,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.selectTab(5)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_ai_prompt")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Exam Creator Tools", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Tune, contentDescription = null, tint = colors.inkBold) },
+                        selected = selectedTab == 4,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.selectTab(4)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_creator_tools")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Print / PDF / Offline Web", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Print, contentDescription = null, tint = colors.inkBold) },
+                        selected = selectedTab == 3,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.selectTab(3)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_print_pdf")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Share & Backup", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Share, contentDescription = null, tint = colors.inkBold) },
+                        selected = selectedTab == 6,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.selectTab(6)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_share_backup")
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = colors.border)
+
+                    Text(
+                        text = "ANALYTICS",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Today Study Tracker & History", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Timer, contentDescription = null, tint = colors.teal) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showHistoricalAnalyticsDialog = true
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_study_tracker")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Psychometric CTT", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Assessment, contentDescription = null, tint = Color(0xFF0284C7)) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showPsychometricDialog = true
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_psychometrics")
                     )
                 }
             }
         }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Creator Tools Sub-Navigation Pills (when in Creator / AI Prompt / Share)
-            if (selectedTab in 4..6) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.surface)
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val creatorSubTabs = listOf(
-                        Triple(4, "Exam Tools", Icons.Default.Tune),
-                        Triple(5, "AI Prompt", Icons.Default.AutoAwesome),
-                        Triple(6, "Share & Export", Icons.Default.Share)
+    ) {
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            containerColor = colors.background,
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState) { snackbarData ->
+                    Snackbar(
+                        snackbarData = snackbarData,
+                        containerColor = if (colors.isDark) colors.surfaceElevated else colors.navyBanner,
+                        contentColor = if (colors.isDark) colors.inkBold else colors.navyBannerText,
+                        actionColor = colors.teal,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.padding(12.dp)
                     )
-                    creatorSubTabs.forEach { (tabIdx, label, icon) ->
-                        val isSubSelected = selectedTab == tabIdx
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
-                                .clickable { viewModel.selectTab(tabIdx) },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSubSelected) colors.tealLight else colors.surfaceVariant,
-                            border = BorderStroke(1.dp, if (isSubSelected) colors.teal else colors.border)
-                        ) {
+                }
+            },
+            topBar = {
+                if (!isFullScreenTestActive) {
+                    Surface(
+                        color = colors.surface,
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .statusBarsPadding()
+                                    .heightIn(min = 56.dp)
+                                    .padding(horizontal = 4.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = if (isSubSelected) colors.teal else colors.muted,
-                                    modifier = Modifier.size(14.dp)
+                                IconButton(
+                                    onClick = { coroutineScope.launch { drawerState.open() } },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("drawer_menu_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Menu,
+                                        contentDescription = "Open Studio Menu",
+                                        tint = colors.inkBold
+                                    )
+                                }
+                                if (currentPaper != null) {
+                                    IconButton(
+                                        onClick = { showConfirmExitDialog = true },
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .testTag("exit_paper_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Return to Subject Overview",
+                                            tint = colors.inkBold
+                                        )
+                                    }
+                                }
+
+                                val activeFolderName = remember(lastActiveFolderId, folders) {
+                                    if (lastActiveFolderId == "all") null
+                                    else folders.find { it.id == lastActiveFolderId }?.name
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "ExamSet",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.inkBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 20.sp
+                                    )
+                                    val subtitle = when {
+                                        currentPaper != null -> "${ExamNumberGenerator.formatSetDisplayLabel(currentPaper!!.metadata.setNumber)} • ${currentPaper!!.metadata.subject}"
+                                        !activeFolderName.isNullOrBlank() -> activeFolderName
+                                        else -> "Exam Studio"
+                                    }
+                                    Text(
+                                        text = subtitle,
+                                        fontSize = 11.5.sp,
+                                        color = if (currentPaper != null || !activeFolderName.isNullOrBlank()) colors.tealDark else colors.muted,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 2,
+                                        softWrap = true,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 14.sp
+                                    )
+                                }
+
+                                // Today's Test Study Timer & Historical Analytics Trigger
+                                val isExamRunning = isExamStarted && !isExamSubmitted
+                                Surface(
+                                    onClick = { showHistoricalAnalyticsDialog = true },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isExamRunning) colors.tealLight else colors.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, if (isExamRunning) colors.teal else colors.border),
+                                    modifier = Modifier
+                                        .padding(end = 2.dp)
+                                        .testTag("topbar_today_analytics_chip")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Timer,
+                                            contentDescription = "Today Study Timer & Historical Analysis",
+                                            tint = if (isExamRunning) colors.teal else colors.inkBold,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        val tH = todayTestSeconds / 3600
+                                        val tM = (todayTestSeconds % 3600) / 60
+                                        val tS = todayTestSeconds % 60
+                                        val formattedTime = if (tH > 0) {
+                                            String.format(java.util.Locale.US, "%02d:%02d:%02d", tH, tM, tS)
+                                        } else {
+                                            String.format(java.util.Locale.US, "%02d:%02d", tM, tS)
+                                        }
+                                        Text(
+                                            text = formattedTime,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isExamRunning) colors.tealDark else colors.inkBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+
+                                // Quick Search / Saved Papers Modal Trigger
+                                IconButton(
+                                    onClick = { showSavedDialog = true },
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .testTag("topbar_search_papers_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search & Open Saved Question Sets",
+                                        tint = colors.inkBold
+                                    )
+                                }
+
+                                if (currentPaper != null) {
+                                    Box {
+                                        IconButton(
+                                            onClick = { showTopBarOverflowMenu = true },
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .testTag("topbar_overflow_menu_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Paper options",
+                                                tint = colors.inkBold
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = showTopBarOverflowMenu,
+                                            onDismissRequest = { showTopBarOverflowMenu = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Edit Paper Details", fontSize = 13.sp) },
+                                                onClick = {
+                                                    showTopBarOverflowMenu = false
+                                                    showEditDialog = true
+                                                },
+                                                leadingIcon = {
+                                                    Icon(Icons.Default.Edit, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
+                                                }
+                                            )
+                                            val activePaper = currentPaper
+                                            if (activePaper != null) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Share Question Set", fontSize = 13.sp) },
+                                                    onClick = {
+                                                        showTopBarOverflowMenu = false
+                                                        val sendIntent = Intent().apply {
+                                                            action = Intent.ACTION_SEND
+                                                            putExtra(Intent.EXTRA_TITLE, activePaper.metadata.title)
+                                                            putExtra(Intent.EXTRA_TEXT, activePaper.rawText)
+                                                            type = "text/plain"
+                                                        }
+                                                        context.startActivity(Intent.createChooser(sendIntent, "Share Question Set"))
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.Share, contentDescription = null, tint = colors.inkBold, modifier = Modifier.size(18.dp))
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider(color = colors.border.copy(alpha = 0.5f), thickness = 0.6.dp)
+                        }
+                    }
+                }
+            },
+            floatingActionButton = {
+                if (!isFullScreenTestActive && selectedTab == 0) {
+                    FloatingActionButton(
+                        onClick = { showInputSheet = true },
+                        containerColor = colors.navyBanner,
+                        contentColor = colors.navyBannerText,
+                        shape = CircleShape,
+                        modifier = Modifier.testTag("add_paste_fab")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add or Paste MCQ",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            },
+            bottomBar = {
+                if (!isFullScreenTestActive) {
+                    NavigationBar(
+                        containerColor = colors.surface,
+                        contentColor = colors.inkBold,
+                        tonalElevation = 8.dp
+                    ) {
+                        val navItems = listOf(
+                            Triple(0, "Exams", Icons.Default.FolderOpen),
+                            Triple(1, "Master", Icons.AutoMirrored.Filled.Assignment),
+                            Triple(2, "Test", Icons.Default.School)
+                        )
+
+                        navItems.forEach { (index, label, icon) ->
+                            val isSelected = selectedTab == index
+                            NavigationBarItem(
+                                selected = isSelected,
+                                onClick = {
+                                    if (selectedTab == index && index == 1) {
+                                        coroutineScope.launch {
+                                            masterListState.animateScrollToItem(0)
+                                        }
+                                    } else {
+                                        viewModel.selectTab(index)
+                                    }
+                                },
+                                alwaysShowLabel = true,
+                                icon = {
+                                    BadgedBox(
+                                        badge = {
+                                            if (index == 1 && currentPaper != null && currentPaper!!.questions.isNotEmpty()) {
+                                                Badge(containerColor = colors.teal) {
+                                                    Text("${currentPaper!!.questions.size}")
+                                                }
+                                            } else if (index == 0 && savedPapers.isNotEmpty()) {
+                                                Badge(containerColor = colors.surfaceVariant) {
+                                                    Text("${savedPapers.size}", color = colors.inkBold)
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = label,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        textAlign = TextAlign.Center,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = colors.teal,
+                                    selectedTextColor = colors.teal,
+                                    unselectedIconColor = colors.muted,
+                                    unselectedTextColor = colors.muted,
+                                    indicatorColor = colors.tealLight
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = label,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSubSelected) colors.teal else colors.inkBold,
-                                    maxLines = 2,
-                                    softWrap = true,
-                                    textAlign = TextAlign.Center,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                            )
+                        }
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // Creator Tools Sub-Navigation Pills (when opened via Drawer)
+                if (!isFullScreenTestActive && selectedTab in 4..6) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.surface)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val creatorSubTabs = listOf(
+                            Triple(4, "Exam Tools", Icons.Default.Tune),
+                            Triple(5, "AI Prompt", Icons.Default.AutoAwesome),
+                            Triple(6, "Share & Export", Icons.Default.Share)
+                        )
+                        creatorSubTabs.forEach { (tabIdx, label, icon) ->
+                            val isSubSelected = selectedTab == tabIdx
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 44.dp)
+                                    .clickable { viewModel.selectTab(tabIdx) },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSubSelected) colors.tealLight else colors.surfaceVariant,
+                                border = BorderStroke(1.dp, if (isSubSelected) colors.teal else colors.border)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (isSubSelected) colors.teal else colors.muted,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSubSelected) colors.teal else colors.inkBold,
+                                        maxLines = 2,
+                                        softWrap = true,
+                                        textAlign = TextAlign.Center,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // Quick Stats & Chips Row
-            currentPaper?.let { paper ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.surface)
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Set Number Chip
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = colors.navyBanner
-                    ) {
-                        Text(
-                            text = paper.metadata.setNumber.ifBlank { "SET A" }.uppercase(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.navyBannerText,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    // Question count chip
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = colors.tealLight,
-                        border = BorderStroke(0.6.dp, colors.border)
-                    ) {
-                        Text(
-                            text = "${paper.questions.size} Questions",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.inkBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    // Answer key chip
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (paper.quickAnswersCount > 0) colors.greenLight else colors.amberLight,
-                        border = BorderStroke(0.6.dp, colors.border)
-                    ) {
-                        Text(
-                            text = "${paper.quickAnswersCount} Answer Keys",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (paper.quickAnswersCount > 0) colors.green else colors.amber,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            maxLines = 1
-                        )
-                    }
-
-                    // Explanations count chip
-                    val expCount = paper.questions.count { !it.explanation.isNullOrBlank() }
-                    if (expCount > 0) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = colors.tealLight.copy(alpha = 0.5f),
-                            border = BorderStroke(0.6.dp, colors.border)
+                // Quick Stats & Chips Row (hidden in true full-screen test mode)
+                if (!isFullScreenTestActive) {
+                    currentPaper?.let { paper ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(colors.surface)
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "$expCount Explanations",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.tealDark,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                maxLines = 1
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = colors.navyBanner
+                            ) {
+                                Text(
+                                    text = paper.metadata.setNumber.ifBlank { "SET A" }.uppercase(),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.navyBannerText,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = colors.tealLight,
+                                border = BorderStroke(0.6.dp, colors.border)
+                            ) {
+                                Text(
+                                    text = "${paper.questions.size} Questions",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (paper.quickAnswersCount > 0) colors.greenLight else colors.amberLight,
+                                border = BorderStroke(0.6.dp, colors.border)
+                            ) {
+                                Text(
+                                    text = "${paper.quickAnswersCount} Answer Keys",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (paper.quickAnswersCount > 0) colors.green else colors.amber,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    maxLines = 1
+                                )
+                            }
+
+                            val expCount = paper.questions.count { !it.explanation.isNullOrBlank() }
+                            if (expCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = colors.tealLight.copy(alpha = 0.5f),
+                                    border = BorderStroke(0.6.dp, colors.border)
+                                ) {
+                                    Text(
+                                        text = "$expCount Explanations",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.tealDark,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     }
-
-                    // Edit Details Chip (Commented out per user preference so it does not persist across all tabs)
-                    // Surface(
-                    //     onClick = { showEditDialog = true },
-                    //     shape = RoundedCornerShape(16.dp),
-                    //     color = colors.surfaceVariant,
-                    //     border = BorderStroke(0.6.dp, colors.border),
-                    //     modifier = Modifier.testTag("chip_edit_details")
-                    // ) {
-                    //     Row(
-                    //         modifier = Modifier
-                    //             .padding(horizontal = 10.dp, vertical = 4.dp),
-                    //         verticalAlignment = Alignment.CenterVertically
-                    //     ) {
-                    //         Icon(
-                    //             imageVector = Icons.Default.Edit,
-                    //             contentDescription = null,
-                    //             tint = colors.teal,
-                    //             modifier = Modifier.size(13.dp)
-                    //         )
-                    //         Spacer(modifier = Modifier.width(4.dp))
-                    //         Text(
-                    //             text = "Edit Details",
-                    //             fontSize = 11.sp,
-                    //             fontWeight = FontWeight.SemiBold,
-                    //             color = colors.tealDark
-                    //         )
-                    //     }
-                    // }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
-            }
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Main Tab Body
-            val paper = currentPaper
-            when (selectedTab) {
-                0 -> FolderManagerTab(
-                    viewModel = viewModel,
-                    onNavigateToMaster = { viewModel.selectTab(1) },
-                    onNavigateToStudent = { viewModel.selectTab(2) },
-                    onCreateNewQuestionSet = { folderId ->
-                        creationTargetFolderId = folderId
-                        showInputSheet = true
-                    }
-                )
-                1 -> MasterViewTab(
-                    viewModel = viewModel,
-                    listState = masterListState
-                )
-                2 -> if (paper != null && paper.questions.isNotEmpty()) {
-                    StudentTestTab(
-                        paper = paper,
-                        answers = studentAnswers,
-                        config = examConfig,
-                        submittedStats = viewModel.submittedStats.collectAsState().value,
-                        submittedAnswers = viewModel.submittedAnswers.collectAsState().value,
-                        incorrectQuestionLog = viewModel.incorrectQuestionLog.collectAsState().value,
-                        unattendedQuestionLog = viewModel.unattendedQuestionLog.collectAsState().value,
-                        isExamStarted = viewModel.isExamStarted.collectAsState().value,
-                        isSubmitted = isExamSubmitted,
-                        retryQuestionNumbers = viewModel.retryQuestionNumbers.collectAsState().value,
-                        timeSpentSeconds = viewModel.timeSpentSeconds.collectAsState().value,
-                        timeRemainingSeconds = viewModel.timeRemainingSeconds.collectAsState().value,
-                        timerMode = viewModel.timerMode.collectAsState().value,
-                        customTimeLimitMinutes = viewModel.customTimeLimitMinutes.collectAsState().value,
-                        attempts = viewModel.attempts.collectAsState().value,
-                        todayTestSeconds = viewModel.todayTestSeconds.collectAsState().value,
-                        todayAnalytics = viewModel.todayStudyAnalytics.collectAsState().value,
-                        historicalRecords = viewModel.allDailyAnalytics.collectAsState().value,
-                        dailyGoalMinutes = viewModel.dailyGoalMinutes.collectAsState().value,
-                        onSetDailyGoalMinutes = { viewModel.setDailyGoalMinutes(it) },
-                        onSetTimerMode = { viewModel.setTimerMode(it) },
-                        onSetCustomTimeLimit = { viewModel.setCustomTimeLimitMinutes(it) },
-                        onStartExam = { qNums, mins -> viewModel.startExam(qNums, mins) },
-                        onResumeExam = { viewModel.resumeExam() },
-                        onExitToOverview = { viewModel.exitToExamOverview() },
-                        onSelectAnswer = { qNum, opt -> viewModel.selectAnswer(qNum, opt) },
-                        onSubmitExam = { viewModel.submitExam() },
-                        onResetExam = { viewModel.resetStudentExam() },
-                        onLoadAttempt = { viewModel.loadOldAttempt(it) },
-                        shuffleOptions = viewModel.shuffleOptions.collectAsState().value,
-                        sessionSeed = viewModel.examSessionSeed.collectAsState().value,
-                        onToggleShuffleOptions = { viewModel.setShuffleOptions(it) },
-                        onScanOmr = { showOmrScannerDialog = true },
-                        onOpenPsychometrics = { showPsychometricDialog = true }
+                // Main Tab Body
+                val paper = currentPaper
+                when (selectedTab) {
+                    0 -> FolderManagerTab(
+                        viewModel = viewModel,
+                        onNavigateToMaster = { viewModel.selectTab(1) },
+                        onNavigateToStudent = { viewModel.selectTab(2) },
+                        onNavigateToPrint = { viewModel.selectTab(3) },
+                        onCreateNewQuestionSet = { folderId ->
+                            creationTargetFolderId = folderId
+                            showInputSheet = true
+                        }
                     )
+                    1 -> MasterViewTab(
+                        viewModel = viewModel,
+                        listState = masterListState
+                    )
+                    2 -> if (paper != null && paper.questions.isNotEmpty()) {
+                        StudentTestTab(
+                            paper = paper,
+                            answers = studentAnswers,
+                            config = examConfig,
+                            submittedStats = viewModel.submittedStats.collectAsState().value,
+                            submittedAnswers = viewModel.submittedAnswers.collectAsState().value,
+                            incorrectQuestionLog = viewModel.incorrectQuestionLog.collectAsState().value,
+                            unattendedQuestionLog = viewModel.unattendedQuestionLog.collectAsState().value,
+                            isExamStarted = isExamStarted,
+                            isSubmitted = isExamSubmitted,
+                            retryQuestionNumbers = viewModel.retryQuestionNumbers.collectAsState().value,
+                            timeSpentSeconds = viewModel.timeSpentSeconds.collectAsState().value,
+                            timeRemainingSeconds = viewModel.timeRemainingSeconds.collectAsState().value,
+                            timerMode = viewModel.timerMode.collectAsState().value,
+                            customTimeLimitMinutes = viewModel.customTimeLimitMinutes.collectAsState().value,
+                            attempts = viewModel.attempts.collectAsState().value,
+                            todayTestSeconds = todayTestSeconds,
+                            todayAnalytics = viewModel.todayStudyAnalytics.collectAsState().value,
+                            historicalRecords = viewModel.allDailyAnalytics.collectAsState().value,
+                            dailyGoalMinutes = viewModel.dailyGoalMinutes.collectAsState().value,
+                            onSetDailyGoalMinutes = { viewModel.setDailyGoalMinutes(it) },
+                            onSetTimerMode = { viewModel.setTimerMode(it) },
+                            onSetCustomTimeLimit = { viewModel.setCustomTimeLimitMinutes(it) },
+                            onStartExam = { qNums, mins -> viewModel.startExam(qNums, mins) },
+                            onResumeExam = { viewModel.resumeExam() },
+                            onExitToOverview = { viewModel.exitToExamOverview() },
+                            onSelectAnswer = { qNum, opt -> viewModel.selectAnswer(qNum, opt) },
+                            onSubmitExam = { viewModel.submitExam() },
+                            onResetExam = { viewModel.resetStudentExam() },
+                            onLoadAttempt = { viewModel.loadOldAttempt(it) },
+                            shuffleOptions = viewModel.shuffleOptions.collectAsState().value,
+                            sessionSeed = viewModel.examSessionSeed.collectAsState().value,
+                            onToggleShuffleOptions = { viewModel.setShuffleOptions(it) },
+                            onScanOmr = { showOmrScannerDialog = true },
+                            onOpenPsychometrics = { showPsychometricDialog = true }
+                        )
                 } else {
                     val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
                     NoPaperPlaceholder(
@@ -825,6 +1005,7 @@ fun HomeScreen(
                 )
             }
         }
+    }
     }
 
     // Subject Folder Dialog (opens when user taps any subject folder on dashboard)
@@ -928,7 +1109,7 @@ fun HomeScreen(
                 showInputSheet = false
                 creationTargetFolderId = null
             },
-            onGenerate = { text, title, subject, topic, setNumber, duration, posMarks, negMarks ->
+            onGenerate = { text, title, subject, topic, setNumber, duration, posMarks, negMarks, manualCategory ->
                 val targetFolder = creationTargetFolderId
                 creationTargetFolderId = null
                 viewModel.parseAndSetPaper(
@@ -940,7 +1121,8 @@ fun HomeScreen(
                     customFolderId = targetFolder,
                     customDurationMinutes = duration,
                     customPositiveMarks = posMarks,
-                    customNegativeMarks = negMarks
+                    customNegativeMarks = negMarks,
+                    customManualCategory = manualCategory
                 )
             },
             onPickFile = {
@@ -967,8 +1149,16 @@ fun HomeScreen(
             initialMetadata = currentPaper!!.metadata,
             folders = folders,
             initialConfig = examConfig,
-            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber ->
-                viewModel.updatePaperMetadata(title, subject, topic, setNumber, rollNumber, bookletNumber)
+            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber, manualCategory ->
+                viewModel.updatePaperMetadata(
+                    title = title,
+                    subject = subject,
+                    topic = topic,
+                    setNumber = setNumber,
+                    rollNumber = rollNumber,
+                    bookletNumber = bookletNumber,
+                    manualCategory = manualCategory
+                )
             },
             onSaveConfig = { newConfig ->
                 viewModel.updateExamConfig(newConfig)
@@ -1592,12 +1782,12 @@ fun NoPaperPlaceholder(
                                 onClick = { onOpenLastPaper(lastOpenedPaper) },
                                 shape = RoundedCornerShape(6.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.height(34.dp)
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.heightIn(min = 38.dp)
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("Open Previous Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                Text("Open Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                     }

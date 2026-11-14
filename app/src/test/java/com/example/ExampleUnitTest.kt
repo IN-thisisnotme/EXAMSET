@@ -1,6 +1,18 @@
 package com.example
 
+import com.example.data.PaperEntity
+import com.example.data.effectiveCategory
+import com.example.model.AuditIssueType
+import com.example.model.AuditQuestionReport
+import com.example.model.McqQuestion
+import com.example.model.PaperCategory
+import com.example.model.PaperMetadata
+import com.example.model.QuestionOptions
+import com.example.model.QuestionPaper
 import com.example.util.McqParser
+import com.example.util.QuestionAuditHelper
+import com.example.util.StudyNoteBlock
+import com.example.util.StudyNoteParser
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -4098,6 +4110,164 @@ Population density = Total population / Total land area
     assertEquals(100, parsedClearedAll.questions.size)
     assertEquals(100, parsedClearedAll.quickAnswersCount)
     assertEquals(100, parsedClearedAll.explanationsCount)
+  }
+
+  @Test
+  fun testStudyNoteParserBlocksAndRecall() {
+    val raw = """
+      # Indian Polity Quick Revision
+      ## Fundamental Rights
+      | Article | Provision |
+      |---|---|
+      | Art 14 | Equality before law |
+      | Art 21 | Protection of life & liberty |
+
+      > Exam Tip: Basic Structure Doctrine was propounded in Kesavananda Bharati (1973).
+
+      1. Art 17 -> Abolition of Untouchability
+      2. **Art 32**: Constitutional Remedies (Heart and Soul)
+      - Writ of Habeas Corpus — Produce the body before the court
+    """.trimIndent()
+
+    val blocks = StudyNoteParser.parseBlocks(raw)
+    val headings = blocks.filterIsInstance<StudyNoteBlock.Heading>()
+    val tables = blocks.filterIsInstance<StudyNoteBlock.Table>()
+    val callouts = blocks.filterIsInstance<StudyNoteBlock.Callout>()
+    val oneLiners = blocks.filterIsInstance<StudyNoteBlock.OneLiner>()
+
+    assertEquals(2, headings.size)
+    assertEquals("Indian Polity Quick Revision", headings[0].text)
+    assertEquals(1, headings[0].level)
+    assertEquals(2, headings[1].level)
+
+    assertEquals(1, tables.size)
+    assertEquals(listOf("Article", "Provision"), tables[0].headers)
+    assertEquals(2, tables[0].rows.size)
+
+    assertEquals(1, callouts.size)
+    assertEquals("Exam Tip", callouts[0].label)
+
+    assertEquals(3, oneLiners.size)
+    assertTrue(oneLiners.all { it.hasRecallTarget })
+    assertEquals("Art 17", oneLiners[0].leadTerm)
+    assertEquals("Abolition of Untouchability", oneLiners[0].detail)
+    assertEquals("Art 32", oneLiners[1].leadTerm)
+    assertEquals("Writ of Habeas Corpus", oneLiners[2].leadTerm)
+    assertEquals(3, StudyNoteParser.countOneLiners(raw))
+  }
+
+  @Test
+  fun testPaperEffectiveCategoryManualAndAutoFallback() {
+    val mockTitleButManualPyq = PaperEntity(
+      id = 1L,
+      title = "Full Length Mock Test 01",
+      subject = "Polity",
+      questionCount = 100,
+      answerKeyCount = 100,
+      explanationCount = 100,
+      rawText = "",
+      manualCategory = PaperCategory.PYQ.code
+    )
+    assertEquals(PaperCategory.PYQ, mockTitleButManualPyq.effectiveCategory())
+
+    val manualStudyNotesOverride = mockTitleButManualPyq.copy(
+      title = "RRB JE PYQ 2024",
+      manualCategory = PaperCategory.STUDY_NOTES.code
+    )
+    assertEquals(PaperCategory.STUDY_NOTES, manualStudyNotesOverride.effectiveCategory())
+
+    val autoPyq = PaperEntity(
+      id = 2L,
+      title = "SSC JE 2023 Official Paper",
+      subject = "Civil Engineering",
+      questionCount = 100,
+      answerKeyCount = 100,
+      explanationCount = 100,
+      rawText = "",
+      manualCategory = PaperCategory.AUTO.code
+    )
+    assertEquals(PaperCategory.PYQ, autoPyq.effectiveCategory())
+
+    val autoSectional = PaperEntity(
+      id = 3L,
+      title = "Thermodynamics Speed Drill",
+      subject = "Mechanical",
+      topic = "Sectional",
+      questionCount = 25,
+      answerKeyCount = 25,
+      explanationCount = 25,
+      rawText = "",
+      manualCategory = ""
+    )
+    assertEquals(PaperCategory.SECTIONAL, autoSectional.effectiveCategory())
+  }
+
+  @Test
+  fun testQuestionAuditHelperSealImmutability() {
+    val sealedQ = McqQuestion(
+      num = 1,
+      question = "A", // Intentionally short stem to prove isVerified bypasses flaw heuristics
+      options = QuestionOptions(a = "Alpha", b = "Beta", c = "Gamma", d = "Delta"),
+      correctAnswer = "B",
+      explanation = "Verified key B",
+      isVerified = true
+    )
+    val unsealedQ = McqQuestion(
+      num = 2,
+      question = "What is the SI unit of capacitance?",
+      options = QuestionOptions(a = "Farad", b = "Henry", c = "Weber", d = "Tesla"),
+      correctAnswer = "C",
+      explanation = "Original note",
+      isVerified = false
+    )
+    val paper = QuestionPaper(
+      id = 10L,
+      metadata = PaperMetadata(title = "Audit Test Set", subject = "Physics"),
+      questions = listOf(sealedQ, unsealedQ)
+    )
+
+    val preAudit = QuestionAuditHelper.runHeuristicPreAudit(paper)
+    assertEquals(AuditIssueType.CLEAN, preAudit[0].status)
+    assertTrue(preAudit[0].isVerified)
+    assertTrue(preAudit[0].isResolved)
+
+    // Simulated LLM text audit attempting to override sealed Q1 with WRONG_KEY while fixing unsealed Q2
+    val incomingTextAudit = """
+      Q1: B -> D (Attempted key override on sealed question)
+      Q2: C -> A (Capacitor unit is Farad)
+    """.trimIndent()
+
+    val parsed = QuestionAuditHelper.parseAuditReport(incomingTextAudit, paper)
+    val q1Report = parsed.first { it.qNum == 1 }
+    val q2Report = parsed.first { it.qNum == 2 }
+
+    assertEquals(AuditIssueType.CLEAN, q1Report.status)
+    assertNull(q1Report.suggestedKey)
+    assertNull(q1Report.replacementQuestion)
+    assertTrue(q1Report.isVerified)
+    assertTrue(q1Report.isResolved)
+
+    assertEquals(AuditIssueType.WRONG_KEY, q2Report.status)
+    assertEquals("A", q2Report.suggestedKey)
+
+    // Also verify mergeAuditReports preserves seal immutability even against an incoming FLAWED report
+    val merged = QuestionAuditHelper.mergeAuditReports(
+      paper = paper,
+      existingReports = listOf(q1Report),
+      incomingReports = listOf(
+        AuditQuestionReport(
+          qNum = 1,
+          status = AuditIssueType.FLAWED_QUESTION,
+          currentKey = "B",
+          suggestedKey = "C",
+          replacementQuestion = unsealedQ.copy(num = 1)
+        )
+      )
+    )
+    assertEquals(AuditIssueType.CLEAN, merged[0].status)
+    assertNull(merged[0].suggestedKey)
+    assertNull(merged[0].replacementQuestion)
+    assertTrue(merged[0].isVerified)
   }
 }
 

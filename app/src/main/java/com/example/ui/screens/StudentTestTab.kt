@@ -1302,8 +1302,9 @@ private fun ExamStartOverviewView(
                             text = "Scan Filled OMR Sheet",
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center,
                             color = Color(0xFFBE185D)
                         )
                     }
@@ -1395,6 +1396,19 @@ private fun ActiveExamView(
 
     var isSavingNext by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
+    val isFreshExamStart = remember(paper.id, retryQuestionNumbers) {
+        timeSpentSeconds <= 2L && answers.isEmpty()
+    }
+    var readinessCountdown by remember(paper.id, retryQuestionNumbers) {
+        mutableIntStateOf(if (isFreshExamStart) 3 else 0)
+    }
+
+    LaunchedEffect(readinessCountdown) {
+        if (readinessCountdown > 0) {
+            delay(1000L)
+            readinessCountdown = (readinessCountdown - 1).coerceAtLeast(0)
+        }
+    }
 
     var showSubmitConfirmDialog by remember { mutableStateOf(false) }
     var showExitConfirmDialog by remember { mutableStateOf(false) }
@@ -1539,8 +1553,9 @@ private fun ActiveExamView(
         )
     }
 
+    Box(modifier = modifier.fillMaxSize()) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(colors.background)
     ) {
@@ -2010,14 +2025,15 @@ private fun ActiveExamView(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 40.dp)
+                                .heightIn(min = 44.dp)
                         ) {
                             Text(
                                 "Review & Next",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false,
+                                maxLines = 2,
+                                softWrap = true,
+                                textAlign = TextAlign.Center,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -2035,14 +2051,15 @@ private fun ActiveExamView(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(0.9f)
-                                .heightIn(min = 40.dp)
+                                .heightIn(min = 44.dp)
                         ) {
                             Text(
                                 "Clear",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false
+                                maxLines = 2,
+                                softWrap = true,
+                                textAlign = TextAlign.Center
                             )
                         }
 
@@ -2072,7 +2089,7 @@ private fun ActiveExamView(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .weight(1.2f)
-                                .heightIn(min = 40.dp)
+                                .heightIn(min = 44.dp)
                         ) {
                             if (isSavingNext) {
                                 CircularProgressIndicator(
@@ -2086,15 +2103,16 @@ private fun ActiveExamView(
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
-                                    softWrap = false
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             } else {
                                 Text(
                                     text = if (currentIndex == activeQuestions.size - 1) "Save & Submit" else "Save & Next",
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    softWrap = false,
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    textAlign = TextAlign.Center,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -2120,14 +2138,14 @@ private fun ActiveExamView(
                             enabled = currentIndex > 0,
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.heightIn(min = 38.dp)
+                            modifier = Modifier.heightIn(min = 42.dp)
                         ) {
                             Text(
                                 "← Previous",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                softWrap = false
+                                maxLines = 2,
+                                softWrap = true
                             )
                         }
 
@@ -2136,14 +2154,14 @@ private fun ActiveExamView(
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.heightIn(min = 38.dp)
+                            modifier = Modifier.heightIn(min = 42.dp)
                         ) {
                             Text(
                                 "Submit Test ($answeredCount/$totalQuestions)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false,
+                                maxLines = 2,
+                                softWrap = true,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -2450,6 +2468,92 @@ private fun ActiveExamView(
             }
         }
     )
+
+    // Non-blocking 3-2-1 Readiness Countdown Overlay (instant Start Now bypass)
+    if (readinessCountdown > 0) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xDC0F172A))
+                .clickable(enabled = false) {},
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                border = BorderStroke(1.2.dp, Color(0xFF14B8A6).copy(alpha = 0.6f)),
+                modifier = Modifier
+                    .fillMaxWidth(0.84f)
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = paper.metadata.title.ifBlank { "Practice Examination" },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "${activeQuestions.size} Questions Ready",
+                        fontSize = 12.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                    Spacer(modifier = Modifier.height(22.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF0D9488).copy(alpha = 0.2f),
+                        border = BorderStroke(3.dp, Color(0xFF14B8A6)),
+                        modifier = Modifier.size(92.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "$readinessCountdown",
+                                fontSize = 40.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF5EEAD4)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "Starting in ${readinessCountdown}s...",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFE2E8F0)
+                    )
+                    Spacer(modifier = Modifier.height(22.dp))
+                    Button(
+                        onClick = { readinessCountdown = 0 },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0D9488),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("countdown_start_now_button")
+                    ) {
+                        Text(
+                            text = "Start Now →",
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+    }
 }
 
 @Composable

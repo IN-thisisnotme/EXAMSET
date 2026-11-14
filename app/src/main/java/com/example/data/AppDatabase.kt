@@ -242,13 +242,49 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val cursorInfo = db.query("PRAGMA table_info(`question_papers`)")
+        val existingColumns = mutableSetOf<String>()
+        try {
+            val nameColIdx = cursorInfo.getColumnIndex("name")
+            while (cursorInfo.moveToNext()) {
+                if (nameColIdx >= 0) {
+                    existingColumns.add(cursorInfo.getString(nameColIdx))
+                }
+            }
+        } finally {
+            cursorInfo.close()
+        }
+
+        if (!existingColumns.contains("manualCategory")) {
+            db.execSQL("ALTER TABLE `question_papers` ADD COLUMN `manualCategory` TEXT NOT NULL DEFAULT ''")
+        }
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `study_notes` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`folderId` TEXT DEFAULT NULL, " +
+                "`title` TEXT NOT NULL, " +
+                "`subject` TEXT NOT NULL, " +
+                "`sourceAi` TEXT NOT NULL, " +
+                "`rawContent` TEXT NOT NULL, " +
+                "`bookmarkedLinesJson` TEXT NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL" +
+            ")"
+        )
+    }
+}
+
 @Database(
-    entities = [PaperEntity::class, AttemptEntity::class, DailyStudyAnalyticsEntity::class],
-    version = 7,
+    entities = [PaperEntity::class, AttemptEntity::class, DailyStudyAnalyticsEntity::class, StudyNoteEntity::class],
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun paperDao(): PaperDao
+    abstract fun studyNoteDao(): StudyNoteDao
 
     companion object {
         @Volatile
@@ -261,7 +297,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "examset_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance

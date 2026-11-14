@@ -64,6 +64,24 @@ data class McqQuestion(
 }
 
 /**
+ * Explicit user-assignable or inferred classification for a question paper or study asset.
+ */
+enum class PaperCategory(val code: String, val label: String) {
+    AUTO("AUTO", "Auto Detect"),
+    MOCK_TEST("MOCK_TEST", "Mock Test"),
+    PYQ("PYQ", "Previous Year (PYQ)"),
+    SECTIONAL("SECTIONAL", "Sectional / Drill"),
+    STUDY_NOTES("STUDY_NOTES", "Study Notes");
+
+    companion object {
+        fun fromCode(code: String?): PaperCategory {
+            val normalized = code?.trim()?.uppercase() ?: return AUTO
+            return entries.firstOrNull { it.code == normalized } ?: AUTO
+        }
+    }
+}
+
+/**
  * Extracted header metadata.
  */
 data class PaperMetadata(
@@ -74,6 +92,7 @@ data class PaperMetadata(
     val setNumber: String = "01",
     val exam: String = "",
     val folderId: String? = null,
+    val manualCategory: String = "",
     val rollNumber: String = ExamNumberGenerator.generateRollNumber(),
     val bookletNumber: String = ExamNumberGenerator.generateBookletNumber(),
     val durationMinutes: Int = 60,

@@ -7,6 +7,9 @@ import com.example.model.QuestionPaper
 import com.example.util.ExamNumberGenerator
 import com.example.util.McqParser
 
+import com.example.model.PaperCategory
+import java.util.Locale
+
 @Entity(tableName = "question_papers")
 data class PaperEntity(
     @PrimaryKey(autoGenerate = true)
@@ -27,8 +30,34 @@ data class PaperEntity(
     val bookletNumber: String = "",
     val durationMinutes: Int = 60,
     val positiveMarks: Double = 4.0,
-    val negativeMarks: Double = 1.0
+    val negativeMarks: Double = 1.0,
+    val manualCategory: String = ""
 )
+
+fun inferDefaultPaperCategory(
+    title: String,
+    subject: String,
+    topic: String,
+    setNumber: String,
+    questionCount: Int
+): PaperCategory {
+    val text = "$title $subject $topic $setNumber".lowercase(Locale.getDefault())
+    return when {
+        "pyq" in text || "pyp" in text || "previous year" in text || "official" in text ||
+            Regex("""\b20(1\d|2\d)\b""").containsMatchIn(text) -> PaperCategory.PYQ
+        questionCount == 0 || "notes" in text || "study note" in text || "one-liner" in text -> PaperCategory.STUDY_NOTES
+        "mock" in text || "flt" in text || "full length" in text || "model" in text || "all india" in text -> PaperCategory.MOCK_TEST
+        "sectional" in text || "drill" in text || "speed" in text || "chapter" in text || "topic" in text -> PaperCategory.SECTIONAL
+        questionCount >= 40 -> PaperCategory.MOCK_TEST
+        else -> PaperCategory.MOCK_TEST
+    }
+}
+
+fun PaperEntity.effectiveCategory(): PaperCategory {
+    val explicit = PaperCategory.fromCode(manualCategory)
+    if (explicit != PaperCategory.AUTO) return explicit
+    return inferDefaultPaperCategory(title, subject, topic, setNumber, questionCount)
+}
 
 fun PaperEntity.toQuestionPaper(): QuestionPaper {
     val result = McqParser.parseWithResult(rawText)
@@ -44,6 +73,7 @@ fun PaperEntity.toQuestionPaper(): QuestionPaper {
             setNumber = setNumber.ifBlank { "01" },
             exam = exam,
             folderId = folderId,
+            manualCategory = manualCategory,
             rollNumber = finalRoll,
             bookletNumber = finalBooklet,
             durationMinutes = if (durationMinutes > 0) durationMinutes else 60,
