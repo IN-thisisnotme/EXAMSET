@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleOAuthIntent(intent)
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
             val isSystemDark = isSystemInDarkTheme()
@@ -52,6 +54,19 @@ class MainActivity : ComponentActivity() {
                     HomeScreen(viewModel = viewModel)
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOAuthIntent(intent)
+    }
+
+    private fun handleOAuthIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "com.aistudio.examset.tbqpeh" && data.path == "/oauth2redirect") {
+            viewModel.handleOAuthRedirectUri(data)
         }
     }
 }

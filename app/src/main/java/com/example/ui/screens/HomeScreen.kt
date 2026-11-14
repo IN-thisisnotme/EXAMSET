@@ -12,9 +12,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -84,7 +86,11 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
@@ -172,6 +178,9 @@ fun HomeScreen(
     val lastActiveFolderId by viewModel.lastActiveFolderId.collectAsState()
     val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
     val fontScaleMode by viewModel.fontScaleMode.collectAsState()
+    val studyNotes by viewModel.studyNotes.collectAsState()
+    val knowledgeEditorDraft by viewModel.knowledgeEditorDraft.collectAsState()
+    val activeKnowledgeReaderNoteId by viewModel.activeKnowledgeReaderNoteId.collectAsState()
 
     val isFullScreenTestActive = selectedTab == 2 && isExamStarted && !isExamSubmitted && currentPaper != null
 
@@ -272,9 +281,10 @@ fun HomeScreen(
         }
     }
 
+    Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -335,6 +345,14 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
                     )
 
+                    val drawerItemColors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = colors.tealLight,
+                        selectedTextColor = colors.inkBold,
+                        unselectedTextColor = colors.inkBold,
+                        selectedIconColor = colors.teal,
+                        unselectedIconColor = colors.inkBold
+                    )
+
                     NavigationDrawerItem(
                         label = { Text("Eye-Safe Dark Mode", fontWeight = FontWeight.Medium) },
                         icon = {
@@ -353,6 +371,7 @@ fun HomeScreen(
                         },
                         selected = false,
                         onClick = { viewModel.toggleThemeMode() },
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_dark_mode")
                     )
 
@@ -371,17 +390,25 @@ fun HomeScreen(
                             coroutineScope.launch { drawerState.close() }
                             showFontSizeDialog = true
                         },
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_font_scale")
                     )
 
                     NavigationDrawerItem(
                         label = { Text("Scan Physical OMR", fontWeight = FontWeight.Medium) },
-                        icon = { Icon(Icons.Default.DocumentScanner, contentDescription = null, tint = Color(0xFFBE185D)) },
+                        icon = {
+                            Icon(
+                                Icons.Default.DocumentScanner,
+                                contentDescription = null,
+                                tint = if (colors.isDark) Color(0xFFF472B6) else Color(0xFFBE185D)
+                            )
+                        },
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
                             showOmrScannerDialog = true
                         },
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_omr_scanner")
                     )
 
@@ -404,7 +431,7 @@ fun HomeScreen(
                             coroutineScope.launch { drawerState.close() }
                             viewModel.selectTab(5)
                         },
-                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_ai_prompt")
                     )
 
@@ -416,7 +443,7 @@ fun HomeScreen(
                             coroutineScope.launch { drawerState.close() }
                             viewModel.selectTab(4)
                         },
-                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_creator_tools")
                     )
 
@@ -428,7 +455,7 @@ fun HomeScreen(
                             coroutineScope.launch { drawerState.close() }
                             viewModel.selectTab(3)
                         },
-                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_print_pdf")
                     )
 
@@ -440,7 +467,7 @@ fun HomeScreen(
                             coroutineScope.launch { drawerState.close() }
                             viewModel.selectTab(6)
                         },
-                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = colors.tealLight),
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_share_backup")
                     )
 
@@ -463,25 +490,35 @@ fun HomeScreen(
                             coroutineScope.launch { drawerState.close() }
                             showHistoricalAnalyticsDialog = true
                         },
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_study_tracker")
                     )
 
                     NavigationDrawerItem(
                         label = { Text("Psychometric CTT", fontWeight = FontWeight.Medium) },
-                        icon = { Icon(Icons.Default.Assessment, contentDescription = null, tint = Color(0xFF0284C7)) },
+                        icon = {
+                            Icon(
+                                Icons.Default.Assessment,
+                                contentDescription = null,
+                                tint = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+                            )
+                        },
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
                             showPsychometricDialog = true
                         },
+                        colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_psychometrics")
                     )
                 }
             }
         }
     ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isWideLandscape = maxWidth >= 600.dp && maxWidth > maxHeight
         Scaffold(
-            modifier = modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             containerColor = colors.background,
             snackbarHost = {
                 SnackbarHost(hostState = snackbarHostState) { snackbarData ->
@@ -507,8 +544,8 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .statusBarsPadding()
-                                    .heightIn(min = 56.dp)
-                                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    .heightIn(min = if (isWideLandscape) 48.dp else 56.dp)
+                                    .padding(horizontal = 4.dp, vertical = if (isWideLandscape) 2.dp else 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 IconButton(
@@ -662,13 +699,17 @@ fun HomeScreen(
                                                     text = { Text("Share Question Set", fontSize = 13.sp) },
                                                     onClick = {
                                                         showTopBarOverflowMenu = false
-                                                        val sendIntent = Intent().apply {
-                                                            action = Intent.ACTION_SEND
-                                                            putExtra(Intent.EXTRA_TITLE, activePaper.metadata.title)
-                                                            putExtra(Intent.EXTRA_TEXT, activePaper.rawText)
-                                                            type = "text/plain"
-                                                        }
-                                                        context.startActivity(Intent.createChooser(sendIntent, "Share Question Set"))
+                                                        val safeName = activePaper.metadata.title
+                                                            .replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                                                            .take(36)
+                                                            .ifBlank { "examset" }
+                                                        viewModel.shareTextAsFile(
+                                                            context = context,
+                                                            content = activePaper.rawText,
+                                                            fileName = "${safeName}.txt",
+                                                            title = activePaper.metadata.title,
+                                                            mimeType = "text/plain"
+                                                        )
                                                     },
                                                     leadingIcon = {
                                                         Icon(Icons.Default.Share, contentDescription = null, tint = colors.inkBold, modifier = Modifier.size(18.dp))
@@ -702,7 +743,7 @@ fun HomeScreen(
                 }
             },
             bottomBar = {
-                if (!isFullScreenTestActive) {
+                if (!isFullScreenTestActive && !isWideLandscape) {
                     NavigationBar(
                         containerColor = colors.surface,
                         contentColor = colors.inkBold,
@@ -772,10 +813,14 @@ fun HomeScreen(
                 }
             }
         ) { innerPadding ->
+            val railNavItems = listOf(
+                Triple(0, "Exams", Icons.Default.FolderOpen),
+                Triple(1, "Master", Icons.AutoMirrored.Filled.Assignment),
+                Triple(2, "Test", Icons.Default.School)
+            )
+            val mainTabColumn: @Composable (Modifier) -> Unit = { columnModifier ->
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
+                modifier = columnModifier
             ) {
                 // Creator Tools Sub-Navigation Pills (when opened via Drawer)
                 if (!isFullScreenTestActive && selectedTab in 4..6) {
@@ -958,7 +1003,10 @@ fun HomeScreen(
                             sessionSeed = viewModel.examSessionSeed.collectAsState().value,
                             onToggleShuffleOptions = { viewModel.setShuffleOptions(it) },
                             onScanOmr = { showOmrScannerDialog = true },
-                            onOpenPsychometrics = { showPsychometricDialog = true }
+                            onOpenPsychometrics = { showPsychometricDialog = true },
+                            onSaveWeakAreasToKnowledgeSet = { p, inc, unatt, ans ->
+                                viewModel.createWeakAreaKnowledgeSetFromTest(p, inc, unatt, ans)
+                            }
                         )
                 } else {
                     val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
@@ -1004,8 +1052,88 @@ fun HomeScreen(
                     onOpenPsychometrics = { showPsychometricDialog = true }
                 )
             }
+            }
+            }
+            if (!isFullScreenTestActive && isWideLandscape) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    NavigationRail(
+                        containerColor = colors.surface,
+                        contentColor = colors.inkBold
+                    ) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        railNavItems.forEach { (index, label, icon) ->
+                            val isSelected = selectedTab == index
+                            NavigationRailItem(
+                                selected = isSelected,
+                                onClick = {
+                                    if (selectedTab == index && index == 1) {
+                                        coroutineScope.launch {
+                                            masterListState.animateScrollToItem(0)
+                                        }
+                                    } else {
+                                        viewModel.selectTab(index)
+                                    }
+                                },
+                                icon = {
+                                    BadgedBox(
+                                        badge = {
+                                            if (index == 1 && currentPaper != null && currentPaper!!.questions.isNotEmpty()) {
+                                                Badge(containerColor = colors.teal) {
+                                                    Text("${currentPaper!!.questions.size}")
+                                                }
+                                            } else if (index == 0 && savedPapers.isNotEmpty()) {
+                                                Badge(containerColor = colors.surfaceVariant) {
+                                                    Text("${savedPapers.size}", color = colors.inkBold)
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = label,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                colors = NavigationRailItemDefaults.colors(
+                                    selectedIconColor = colors.teal,
+                                    selectedTextColor = colors.teal,
+                                    unselectedIconColor = colors.muted,
+                                    unselectedTextColor = colors.muted,
+                                    indicatorColor = colors.tealLight
+                                )
+                            )
+                        }
+                    }
+                    VerticalDivider(color = colors.border, thickness = 0.8.dp)
+                    mainTabColumn(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+                }
+            } else {
+                mainTabColumn(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                )
+            }
         }
-    }
+        }
     }
 
     // Subject Folder Dialog (opens when user taps any subject folder on dashboard)
@@ -1243,6 +1371,62 @@ fun HomeScreen(
             onModeSelected = { mode -> viewModel.setFontScaleMode(mode) },
             onDismissRequest = { showFontSizeDialog = false }
         )
+    }
+
+    // Full-screen edge-to-edge Knowledge Sets Studio Reader Overlay (no Dialog clipping)
+    activeKnowledgeReaderNoteId?.let { noteId ->
+        val liveNote = studyNotes.find { it.id == noteId }
+        if (liveNote != null) {
+            val linkedPaper = liveNote.linkedPaperId?.let { pid -> savedPapers.find { it.id == pid } }
+            KnowledgeStudioReaderScreen(
+                note = liveNote,
+                linkedPaperTitle = linkedPaper?.title,
+                onToggleBookmark = { note, idx -> viewModel.toggleStudyNoteLineBookmark(note, idx) },
+                onToggleMastered = { note, idx -> viewModel.toggleStudyNoteBlockMastered(note, idx) },
+                onEdit = {
+                    viewModel.openKnowledgeEditor(
+                        note = liveNote,
+                        defaultFolderId = liveNote.folderId,
+                        defaultSubject = liveNote.subject,
+                        defaultLinkedPaperId = liveNote.linkedPaperId
+                    )
+                },
+                onOpenLinkedPaper = { pid ->
+                    savedPapers.find { it.id == pid }?.let { target ->
+                        viewModel.closeKnowledgeReader()
+                        viewModel.loadSavedPaper(target)
+                        viewModel.selectTab(1)
+                    }
+                },
+                onGenerateMcqDraft = { note -> viewModel.openMcqDraftFromKnowledgeSet(note) },
+                onDismiss = { viewModel.closeKnowledgeReader() }
+            )
+        }
+    }
+
+    // Full-screen edge-to-edge Knowledge Sets Studio Editor Overlay (no Dialog/IME clipping)
+    knowledgeEditorDraft?.let { draft ->
+        KnowledgeStudioEditorScreen(
+            draft = draft,
+            folders = folders,
+            savedPapers = savedPapers,
+            onSave = { id, title, subject, sourceAi, rawContent, folderId, collectionType, customLabel, linkedPaperId, formatRule ->
+                viewModel.saveStudyNote(
+                    id = id,
+                    title = title,
+                    subject = subject,
+                    sourceAi = sourceAi,
+                    rawContent = rawContent,
+                    folderId = folderId,
+                    collectionType = collectionType,
+                    customLabel = customLabel,
+                    linkedPaperId = linkedPaperId,
+                    formatRule = formatRule
+                )
+            },
+            onDismiss = { viewModel.closeKnowledgeEditor() }
+        )
+    }
     }
 }
 

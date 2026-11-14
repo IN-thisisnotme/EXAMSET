@@ -1,11 +1,15 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.AttemptEntity
+import com.example.data.BackupSnapshotEntity
+import com.example.data.CloudAuthStore
 import com.example.data.DailyStudyAnalyticsEntity
 import com.example.data.ExamSetPreferences
 import com.example.data.PaperEntity
@@ -17,18 +21,28 @@ import com.example.data.SampleData
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
 import com.example.data.AppFontScaleMode
+import com.example.model.AutoBackupSchedule
 import com.example.model.AutoSaveStatus
+import com.example.model.BackupOperationState
 import com.example.model.BatchImportItem
 import com.example.model.BatchImportResult
 import com.example.model.BatchItemStatus
+import com.example.model.CloudAccountStatus
+import com.example.model.CloudProviderType
 import com.example.model.ExamConfig
 import com.example.model.FolderItem
+import com.example.model.KnowledgeCollectionType
+import com.example.model.KnowledgeFormatRule
 import com.example.model.McqQuestion
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.model.ParseResult
 import com.example.model.QuestionOptions
 import com.example.model.QuestionPaper
+import com.example.model.RemoteCloudBackupFile
+import com.example.model.RestoreMode
+import com.example.model.RestorePreview
+import com.example.util.CloudBackupClients
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
 import com.example.util.ExamJsonHelper
@@ -36,6 +50,8 @@ import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
 import com.example.util.PsychometricEngine
 import com.example.util.StudyNoteParser
+import com.example.util.VaultArchiveEngine
+import com.example.util.VaultAutoBackupWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -49,10 +65,24 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
+data class KnowledgeEditorDraft(
+    val note: StudyNoteEntity? = null,
+    val defaultFolderId: String? = null,
+    val defaultSubject: String = "",
+    val defaultLinkedPaperId: Long? = null,
+    val prefillTitle: String = "",
+    val prefillContent: String = "",
+    val defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS
+)
 
 data class LibraryIndexState(
     val attemptsByPaperId: Map<Long, List<AttemptEntity>> = emptyMap(),
@@ -81,8 +111,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
     private val paperDao = db.paperDao()
     private val studyNoteDao = db.studyNoteDao()
+    private val backupSnapshotDao = db.backupSnapshotDao()
     private val themePreferences = ThemePreferences(application)
     private val appPreferences = ExamSetPreferences(application)
+    private val cloudAuthStore = CloudAuthStore(application)
 
     // Dark Mode preference
     private val _themeMode = MutableStateFlow(themePreferences.getThemeMode())
@@ -103,6 +135,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val allDailyAnalytics: StateFlow<List<DailyStudyAnalyticsEntity>> = paperDao.getAllDailyAnalytics()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val backupSnapshots: StateFlow<List<BackupSnapshotEntity>> = backupSnapshotDao.getAllSnapshots()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _backupOpState = MutableStateFlow<BackupOperationState>(BackupOperationState.Idle)
+    val backupOpState: StateFlow<BackupOperationState> = _backupOpState.asStateFlow()
+
+    private val _restorePreview = MutableStateFlow<RestorePreview?>(null)
+    val restorePreview: StateFlow<RestorePreview?> = _restorePreview.asStateFlow()
+
+    private val _driveStatus = MutableStateFlow(cloudAuthStore.buildAccountStatus(CloudProviderType.GOOGLE_DRIVE))
+    val driveStatus: StateFlow<CloudAccountStatus> = _driveStatus.asStateFlow()
+
+    private val _oneDriveStatus = MutableStateFlow(cloudAuthStore.buildAccountStatus(CloudProviderType.ONEDRIVE))
+    val oneDriveStatus: StateFlow<CloudAccountStatus> = _oneDriveStatus.asStateFlow()
+
+    private val _remoteCloudBackups = MutableStateFlow<List<RemoteCloudBackupFile>>(emptyList())
+    val remoteCloudBackups: StateFlow<List<RemoteCloudBackupFile>> = _remoteCloudBackups.asStateFlow()
+
+    private val _autoBackupSchedule = MutableStateFlow(cloudAuthStore.getAutoBackupSchedule())
+    val autoBackupSchedule: StateFlow<AutoBackupSchedule> = _autoBackupSchedule.asStateFlow()
+
+    // Full-screen Knowledge Sets Studio navigation states (rendered outside Dialog windows so IME/insets never clip)
+    private val _knowledgeEditorDraft = MutableStateFlow<KnowledgeEditorDraft?>(null)
+    val knowledgeEditorDraft: StateFlow<KnowledgeEditorDraft?> = _knowledgeEditorDraft.asStateFlow()
+
+    private val _activeKnowledgeReaderNoteId = MutableStateFlow<Long?>(null)
+    val activeKnowledgeReaderNoteId: StateFlow<Long?> = _activeKnowledgeReaderNoteId.asStateFlow()
 
     private val _todayStudyAnalytics = MutableStateFlow<DailyStudyAnalyticsEntity?>(null)
     val todayStudyAnalytics: StateFlow<DailyStudyAnalyticsEntity?> = _todayStudyAnalytics.asStateFlow()
@@ -2582,7 +2642,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Study Notes Studio CRUD (Gemini / Claude / ChatGPT / One-Liners) ---
+    // --- Knowledge Sets Studio CRUD & Synergy ---
+
+    fun openKnowledgeEditor(
+        note: StudyNoteEntity? = null,
+        defaultFolderId: String? = null,
+        defaultSubject: String = "",
+        defaultLinkedPaperId: Long? = null,
+        prefillTitle: String = "",
+        prefillContent: String = "",
+        defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS
+    ) {
+        _knowledgeEditorDraft.value = KnowledgeEditorDraft(
+            note = note,
+            defaultFolderId = defaultFolderId,
+            defaultSubject = defaultSubject,
+            defaultLinkedPaperId = defaultLinkedPaperId,
+            prefillTitle = prefillTitle,
+            prefillContent = prefillContent,
+            defaultCollectionType = defaultCollectionType
+        )
+    }
+
+    fun closeKnowledgeEditor() {
+        _knowledgeEditorDraft.value = null
+    }
+
+    fun openKnowledgeReader(noteId: Long) {
+        _activeKnowledgeReaderNoteId.value = noteId
+    }
+
+    fun closeKnowledgeReader() {
+        _activeKnowledgeReaderNoteId.value = null
+    }
 
     fun saveStudyNote(
         id: Long = 0L,
@@ -2591,24 +2683,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sourceAi: String,
         rawContent: String,
         folderId: String?,
+        collectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS,
+        customLabel: String = "",
+        linkedPaperId: Long? = null,
+        formatRule: KnowledgeFormatRule = KnowledgeFormatRule(collectionType = collectionType),
         onSaved: (Long) -> Unit = {}
     ) {
         val cleanContent = rawContent.trim()
         if (cleanContent.isBlank()) {
-            _statusMessage.value = "Study notes content cannot be empty"
+            _statusMessage.value = "Knowledge set content cannot be empty"
             return
         }
         val cleanTitle = title.trim().ifBlank {
             cleanContent.lineSequence().firstOrNull { it.isNotBlank() }
                 ?.replace(Regex("""^[#>*\-\d.\s]+"""), "")
                 ?.take(48)
-                ?.ifBlank { "Revision Sheet" }
-                ?: "Revision Sheet"
+                ?.ifBlank { "Knowledge Set" }
+                ?: "Knowledge Set"
         }
         val cleanSource = sourceAi.trim().ifBlank { StudyNoteParser.detectSourceHint(cleanContent) }
         val cleanSubject = subject.trim().ifBlank {
             if (!folderId.isNullOrBlank()) getFullFolderPath(folderId) else "General Revision"
         }
+        val effectiveRule = formatRule.copy(
+            collectionType = collectionType,
+            customCollectionLabel = customLabel.trim()
+        )
 
         viewModelScope.launch(Dispatchers.IO) {
             val existing = if (id > 0L) studyNoteDao.getStudyNoteById(id) else null
@@ -2621,6 +2721,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         sourceAi = cleanSource,
                         rawContent = cleanContent,
                         folderId = folderId,
+                        collectionType = collectionType.code,
+                        customLabel = customLabel.trim(),
+                        linkedPaperId = linkedPaperId,
+                        formatRuleJson = effectiveRule.toJson(),
                         updatedAt = now
                     )
                 )
@@ -2633,13 +2737,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         subject = cleanSubject,
                         sourceAi = cleanSource,
                         rawContent = cleanContent,
+                        collectionType = collectionType.code,
+                        customLabel = customLabel.trim(),
+                        linkedPaperId = linkedPaperId,
+                        formatRuleJson = effectiveRule.toJson(),
                         createdAt = now,
                         updatedAt = now
                     )
                 )
             }
             withContext(Dispatchers.Main) {
-                _statusMessage.value = if (existing != null) "Updated Study Notes: $cleanTitle" else "Saved Study Notes: $cleanTitle"
+                _statusMessage.value = if (existing != null) "Updated Knowledge Set: $cleanTitle" else "Saved Knowledge Set: $cleanTitle"
                 onSaved(savedId)
             }
         }
@@ -2654,11 +2762,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleStudyNoteBlockMastered(note: StudyNoteEntity, blockIndex: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val fresh = studyNoteDao.getStudyNoteById(note.id) ?: note
+            val current = fresh.getMasteredIndices().toMutableSet()
+            if (blockIndex in current) current.remove(blockIndex) else current.add(blockIndex)
+            studyNoteDao.updateStudyNote(fresh.withMasteredIndices(current))
+        }
+    }
+
     fun deleteStudyNote(note: StudyNoteEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             studyNoteDao.deleteStudyNote(note)
             withContext(Dispatchers.Main) {
-                _statusMessage.value = "Deleted Study Note: ${note.title}"
+                if (_activeKnowledgeReaderNoteId.value == note.id) {
+                    _activeKnowledgeReaderNoteId.value = null
+                }
+                _statusMessage.value = "Deleted Knowledge Set: ${note.title}"
             }
         }
     }
@@ -2667,7 +2787,386 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             studyNoteDao.assignNoteToFolder(noteId, folderId)
             withContext(Dispatchers.Main) {
-                _statusMessage.value = "Moved study notes"
+                _statusMessage.value = "Moved Knowledge Set"
+            }
+        }
+    }
+
+    fun createWeakAreaKnowledgeSetFromTest(
+        paper: QuestionPaper,
+        incorrectNums: Set<Int>,
+        unattendedNums: Set<Int>,
+        answers: Map<Int, String>
+    ) {
+        val content = StudyNoteParser.buildWeakAreaNoteContent(
+            paper = paper,
+            incorrectNums = incorrectNums,
+            unattendedNums = unattendedNums,
+            answers = answers
+        )
+        val linkedId = if (paper.id > 0L) paper.id else _currentPaperEntityId.value
+        val noteTitle = "Weak Areas: ${paper.metadata.title}".take(64)
+        saveStudyNote(
+            title = noteTitle,
+            subject = paper.metadata.subject,
+            sourceAi = "Test Review",
+            rawContent = content,
+            folderId = paper.metadata.folderId,
+            collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
+            customLabel = "Weak Areas",
+            linkedPaperId = linkedId,
+            formatRule = KnowledgeFormatRule(
+                collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
+                customCollectionLabel = "Weak Areas",
+                preserveNestedBullets = true
+            ),
+            onSaved = { newId ->
+                openKnowledgeReader(newId)
+            }
+        )
+    }
+
+    fun openMcqDraftFromKnowledgeSet(note: StudyNoteEntity) {
+        val draft = StudyNoteParser.convertNoteBlocksToMcqDraft(note)
+        if (draft.isBlank()) {
+            _statusMessage.value = "Add structured key-value lines or Multi-Liner cards first to generate MCQs."
+            return
+        }
+        _activeKnowledgeReaderNoteId.value = null
+        _knowledgeEditorDraft.value = null
+        _rawInputText.value = draft
+        _parseResult.value = McqParser.parseWithResult(draft)
+        appPreferences.setDraftRawText(draft)
+        selectTab(4)
+        _statusMessage.value = "Generated MCQ draft from \"${note.title}\" in Exam Tools"
+    }
+
+    // --- Backup Vault & Cloud Sync (Google Drive / OneDrive / Streaming .examset.zip) ---
+
+    private fun refreshCloudAccountStatuses() {
+        _driveStatus.value = cloudAuthStore.buildAccountStatus(CloudProviderType.GOOGLE_DRIVE)
+        _oneDriveStatus.value = cloudAuthStore.buildAccountStatus(CloudProviderType.ONEDRIVE)
+    }
+
+    fun getCloudClientId(provider: CloudProviderType): String = cloudAuthStore.getClientId(provider)
+
+    fun configureCloudClientId(provider: CloudProviderType, clientId: String) {
+        cloudAuthStore.setClientId(provider, clientId)
+        refreshCloudAccountStatuses()
+        _statusMessage.value = "${provider.displayName} Client ID updated"
+    }
+
+    fun startCloudOAuth(context: Context, provider: CloudProviderType) {
+        val intentRes = CloudBackupClients.buildAuthorizeIntent(provider, cloudAuthStore)
+        intentRes.onSuccess { authIntent ->
+            runCatching { context.startActivity(authIntent) }
+                .onFailure { err ->
+                    _backupOpState.value = BackupOperationState.Error("Unable to open browser: ${err.localizedMessage}")
+                }
+        }.onFailure { err ->
+            _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "OAuth setup required")
+        }
+    }
+
+    fun handleOAuthRedirectUri(uri: Uri) {
+        viewModelScope.launch {
+            _backupOpState.value = BackupOperationState.Running("Completing cloud sign-in…", 0.5f)
+            val res = CloudBackupClients.handleOAuthRedirect(uri, cloudAuthStore)
+            refreshCloudAccountStatuses()
+            res.onSuccess { provider ->
+                _backupOpState.value = BackupOperationState.Success("Connected to ${provider.displayName}!")
+                _statusMessage.value = "Connected to ${provider.displayName}"
+                loadRemoteBackups(provider)
+            }.onFailure { err ->
+                _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "Cloud sign-in failed")
+            }
+        }
+    }
+
+    fun disconnectCloud(provider: CloudProviderType) {
+        cloudAuthStore.clearTokenBundle(provider)
+        _remoteCloudBackups.value = _remoteCloudBackups.value.filter { it.provider != provider }
+        refreshCloudAccountStatuses()
+        _statusMessage.value = "Disconnected ${provider.displayName}"
+    }
+
+    fun setAutoBackupSchedule(schedule: AutoBackupSchedule) {
+        _autoBackupSchedule.value = schedule
+        cloudAuthStore.setAutoBackupSchedule(schedule)
+        VaultAutoBackupWorker.scheduleAutoBackup(getApplication(), schedule)
+        _statusMessage.value = "Auto backup: ${schedule.label}"
+    }
+
+    fun clearBackupOpState() {
+        _backupOpState.value = BackupOperationState.Idle
+    }
+
+    fun createLocalVaultSnapshot() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Creating verified vault snapshot…", 0.3f)
+            try {
+                val (snapshot, _) = VaultArchiveEngine.createLocalRollingSnapshot(
+                    context = getApplication(),
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences,
+                    providerTag = "LOCAL_VAULT",
+                    prefix = "vault"
+                )
+                cloudAuthStore.setLastLocalSnapshotAt(snapshot.createdAt)
+                _backupOpState.value = BackupOperationState.Success("Snapshot saved: ${snapshot.fileName} (${snapshot.papersCount} sets, ${snapshot.notesCount} knowledge sets)")
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Snapshot failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun deleteLocalBackupSnapshot(snapshot: BackupSnapshotEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (snapshot.localPath.isNotBlank()) {
+                runCatching { File(snapshot.localPath).delete() }
+            }
+            backupSnapshotDao.deleteSnapshotById(snapshot.id)
+        }
+    }
+
+    fun exportVaultToUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Streaming vault archive…", 0.2f)
+            try {
+                val tempFile = File(VaultArchiveEngine.getExportCacheDir(getApplication()), VaultArchiveEngine.defaultVaultFileName("export"))
+                val manifest = VaultArchiveEngine.createVaultArchive(
+                    context = getApplication(),
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences,
+                    destinationFile = tempFile
+                ) { phase, prog ->
+                    _backupOpState.value = BackupOperationState.Running(phase, prog)
+                }
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    FileInputStream(tempFile).use { input ->
+                        input.copyTo(out, bufferSize = 16 * 1024)
+                    }
+                } ?: throw IllegalStateException("Unable to write to chosen destination.")
+
+                backupSnapshotDao.insertSnapshot(
+                    BackupSnapshotEntity(
+                        provider = "SAF_EXPORT",
+                        fileName = uri.lastPathSegment?.substringAfterLast('/') ?: tempFile.name,
+                        localPath = "",
+                        checksumSha256 = VaultArchiveEngine.computeFileSha256(tempFile),
+                        papersCount = manifest.counts.papersCount,
+                        notesCount = manifest.counts.notesCount,
+                        foldersCount = manifest.counts.foldersCount,
+                        attemptsCount = manifest.counts.attemptsCount,
+                        sizeBytes = tempFile.length(),
+                        status = "VERIFIED",
+                        details = "Saved via System / Cloud Storage Picker"
+                    )
+                )
+                runCatching { tempFile.delete() }
+                _backupOpState.value = BackupOperationState.Success("Vault exported cleanly (${manifest.counts.papersCount} sets, ${manifest.counts.notesCount} knowledge sets)")
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Export failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun shareVaultArchive(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Preparing shareable .examset.zip…", 0.3f)
+            try {
+                val file = File(VaultArchiveEngine.getExportCacheDir(context), VaultArchiveEngine.defaultVaultFileName("share"))
+                val manifest = VaultArchiveEngine.createVaultArchive(
+                    context = context,
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences,
+                    destinationFile = file
+                )
+                val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "ExamSet Vault Backup (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Knowledge Sets)")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                withContext(Dispatchers.Main) {
+                    _backupOpState.value = BackupOperationState.Idle
+                    context.startActivity(Intent.createChooser(shareIntent, "Share ExamSet Vault"))
+                }
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Share failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    /**
+     * Crash-proof file-backed sharing for Question Sets / JSON / Text so Binder limits (~1 MB TransactionTooLargeException)
+     * never crash large backups.
+     */
+    fun shareTextAsFile(context: Context, content: String, fileName: String, title: String, mimeType: String = "application/json") {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                val file = File(VaultArchiveEngine.getExportCacheDir(context), safeName)
+                BufferedOutputStream(FileOutputStream(file)).use { out ->
+                    out.write(content.toByteArray(Charsets.UTF_8))
+                }
+                val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = mimeType
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, title)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                withContext(Dispatchers.Main) {
+                    context.startActivity(Intent.createChooser(sendIntent, title))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Unable to share file: ${e.localizedMessage}"
+                }
+            }
+        }
+    }
+
+    fun inspectBackupUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Verifying backup manifest & checksums…", 0.4f)
+            try {
+                val preview = VaultArchiveEngine.inspectVaultUri(getApplication(), uri)
+                _restorePreview.value = preview
+                _backupOpState.value = BackupOperationState.Idle
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Unable to inspect backup: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun inspectLocalBackupSnapshot(snapshot: BackupSnapshotEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(snapshot.localPath)
+                if (!file.exists()) {
+                    _backupOpState.value = BackupOperationState.Error("Local snapshot file no longer exists on disk.")
+                    return@launch
+                }
+                val preview = VaultArchiveEngine.inspectLocalFile(file, snapshot.fileName)
+                _restorePreview.value = preview
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Unable to read snapshot: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun dismissRestorePreview() {
+        _restorePreview.value = null
+    }
+
+    fun confirmRestore(mode: RestoreMode) {
+        val preview = _restorePreview.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Restoring library (${mode.label})…", 0.5f)
+            try {
+                val restored = VaultArchiveEngine.restoreFromPreview(
+                    context = getApplication(),
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences,
+                    preview = preview,
+                    mode = mode
+                )
+                val refreshedFolders = appPreferences.getCustomFolders()
+                withContext(Dispatchers.Main) {
+                    _folders.value = refreshedFolders
+                    _themeMode.value = themePreferences.getThemeMode()
+                    _fontScaleMode.value = appPreferences.getFontScaleMode()
+                    _fontSizeScale.value = appPreferences.getFontSizeScale()
+                    _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
+                    _restorePreview.value = null
+                    _backupOpState.value = BackupOperationState.Success(
+                        "Restored ${restored.papersCount} question sets & ${restored.notesCount} knowledge sets!"
+                    )
+                    _statusMessage.value = "Vault restore complete!"
+                }
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Restore failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun syncVaultToCloud(provider: CloudProviderType) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Packing & uploading to ${provider.displayName}…", 0.35f)
+            try {
+                val (snapshot, file) = VaultArchiveEngine.createLocalRollingSnapshot(
+                    context = getApplication(),
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences,
+                    providerTag = "LOCAL_VAULT",
+                    prefix = "sync"
+                )
+                _backupOpState.value = BackupOperationState.Running("Uploading to ${provider.displayName}…", 0.7f)
+                val uploadRes = CloudBackupClients.uploadBackupFile(provider, cloudAuthStore, file)
+                refreshCloudAccountStatuses()
+                uploadRes.onSuccess { remote ->
+                    backupSnapshotDao.insertSnapshot(
+                        BackupSnapshotEntity(
+                            provider = provider.code,
+                            fileName = remote.name,
+                            localPath = file.absolutePath,
+                            remoteFileId = remote.remoteId,
+                            checksumSha256 = snapshot.checksumSha256,
+                            papersCount = snapshot.papersCount,
+                            notesCount = snapshot.notesCount,
+                            foldersCount = snapshot.foldersCount,
+                            attemptsCount = snapshot.attemptsCount,
+                            sizeBytes = remote.sizeBytes,
+                            status = "UPLOADED",
+                            details = "Synced to ${provider.displayName}"
+                        )
+                    )
+                    _backupOpState.value = BackupOperationState.Success("Uploaded to ${provider.displayName}: ${remote.name}")
+                    loadRemoteBackups(provider)
+                }.onFailure { err ->
+                    _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "Upload failed")
+                }
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Cloud sync error: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun loadRemoteBackups(provider: CloudProviderType) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val res = CloudBackupClients.listRemoteBackups(provider, cloudAuthStore)
+            refreshCloudAccountStatuses()
+            res.onSuccess { files ->
+                val others = _remoteCloudBackups.value.filter { it.provider != provider }
+                _remoteCloudBackups.value = (others + files).sortedByDescending { it.modifiedAt }
+            }.onFailure { err ->
+                _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "Failed to list backups")
+            }
+        }
+    }
+
+    fun restoreFromRemoteBackup(remoteFile: RemoteCloudBackupFile) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Downloading ${remoteFile.name}…", 0.4f)
+            val dlRes = CloudBackupClients.downloadRemoteBackup(getApplication(), remoteFile, cloudAuthStore)
+            dlRes.onSuccess { localFile ->
+                try {
+                    val preview = VaultArchiveEngine.inspectLocalFile(localFile, "${remoteFile.provider.displayName}: ${remoteFile.name}")
+                    _restorePreview.value = preview
+                    _backupOpState.value = BackupOperationState.Idle
+                } catch (e: Exception) {
+                    _backupOpState.value = BackupOperationState.Error("Downloaded file invalid: ${e.localizedMessage}")
+                }
+            }.onFailure { err ->
+                _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "Cloud download failed")
             }
         }
     }

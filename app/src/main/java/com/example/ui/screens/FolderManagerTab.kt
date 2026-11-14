@@ -237,7 +237,7 @@ enum class FolderSortOrder(val label: String) {
 enum class FolderExamTab(val title: String) {
     MOCKS("Mock Tests"),
     PYPS("PYPs"),
-    STUDY_NOTES("Study Notes")
+    STUDY_NOTES("Knowledge Sets")
 }
 
 @Composable
@@ -267,9 +267,6 @@ fun FolderManagerTab(
     var showAllFoldersExpanded by remember { mutableStateOf(false) }
     var activeQuickFeatureFilter by remember { mutableStateOf<QuickFeatureAction?>(null) }
     var showRootStudyNotesDialog by remember { mutableStateOf(false) }
-    var showStudyNoteEditor by remember { mutableStateOf(false) }
-    var editingStudyNote by remember { mutableStateOf<StudyNoteEntity?>(null) }
-    var activeReadingNoteId by remember { mutableStateOf<Long?>(null) }
     var notesSearchQuery by remember { mutableStateOf("") }
 
     val navigateToFolder: (String) -> Unit = remember {
@@ -319,13 +316,17 @@ fun FolderManagerTab(
     val context = LocalContext.current
     val triggerShare: (String, String) -> Unit = remember(context) {
         { data, title ->
-            val sendIntent = Intent().apply {
-                action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_TEXT, data)
-                putExtra(Intent.EXTRA_SUBJECT, title)
-                type = "text/plain"
-            }
-            context.startActivity(Intent.createChooser(sendIntent, title))
+            val isJson = data.trimStart().let { it.startsWith("{") || it.startsWith("[") }
+            val ext = if (isJson) "json" else "txt"
+            val mime = if (isJson) "application/json" else "text/plain"
+            val safeBase = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(36).ifBlank { "examset_share" }
+            viewModel.shareTextAsFile(
+                context = context,
+                content = data,
+                fileName = "${safeBase}.$ext",
+                title = title,
+                mimeType = mime
+            )
         }
     }
 
@@ -1259,20 +1260,28 @@ fun FolderManagerTab(
 
             if (selectedFolderTab == FolderExamTab.STUDY_NOTES) {
                 item(key = "folder_study_notes_section") {
+                    val linkedPaperTitles = remember(savedPapers) { savedPapers.associate { it.id to it.title } }
                     StudyNotesSectionItems(
                         notes = folderNotes,
                         searchQuery = notesSearchQuery,
                         onSearchQueryChange = { notesSearchQuery = it },
                         onAddClick = {
-                            editingStudyNote = null
-                            showStudyNoteEditor = true
+                            viewModel.openKnowledgeEditor(
+                                note = null,
+                                defaultFolderId = if (activeFolderId == "all") null else activeFolderId,
+                                defaultSubject = currentFolder?.name ?: ""
+                            )
                         },
-                        onOpenNote = { note -> activeReadingNoteId = note.id },
+                        onOpenNote = { note -> viewModel.openKnowledgeReader(note.id) },
                         onEditNote = { note ->
-                            editingStudyNote = note
-                            showStudyNoteEditor = true
+                            viewModel.openKnowledgeEditor(
+                                note = note,
+                                defaultFolderId = note.folderId,
+                                defaultSubject = note.subject
+                            )
                         },
-                        onDeleteNote = { note -> viewModel.deleteStudyNote(note) }
+                        onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
+                        linkedPaperTitles = linkedPaperTitles
                     )
                 }
             }
@@ -1580,7 +1589,10 @@ fun FolderManagerTab(
                             folderToRename = null
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.navyBanner,
+                        contentColor = colors.navyBannerText
+                    )
                 ) {
                     Text("Rename", fontWeight = FontWeight.Bold)
                 }
@@ -1668,7 +1680,10 @@ fun FolderManagerTab(
                         viewModel.recolorFolder(target.id, recolorFolderHex)
                         folderToRecolor = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.navyBanner,
+                        contentColor = colors.navyBannerText
+                    )
                 ) {
                     Text("Apply Color", fontWeight = FontWeight.Bold)
                 }
@@ -1843,7 +1858,7 @@ fun FolderManagerTab(
         }
     }
 
-    // Root Study Notes Library Dialog
+    // Root Knowledge Sets Library Dialog
     if (showRootStudyNotesDialog) {
         Dialog(
             onDismissRequest = { showRootStudyNotesDialog = false },
@@ -1873,13 +1888,13 @@ fun FolderManagerTab(
                             }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Study Notes & One-Liners",
+                                    text = "Knowledge Sets & Collections",
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.inkBold
                                 )
                                 Text(
-                                    text = "${studyNotes.size} Saved Notes across all exam folders",
+                                    text = "${studyNotes.size} Knowledge Sets across all exam folders",
                                     fontSize = 11.5.sp,
                                     color = colors.inkMuted
                                 )
@@ -1887,6 +1902,7 @@ fun FolderManagerTab(
                         }
                     }
 
+                    val linkedPaperTitles = remember(savedPapers) { savedPapers.associate { it.id to it.title } }
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1899,63 +1915,32 @@ fun FolderManagerTab(
                                 searchQuery = notesSearchQuery,
                                 onSearchQueryChange = { notesSearchQuery = it },
                                 onAddClick = {
-                                    editingStudyNote = null
-                                    showStudyNoteEditor = true
+                                    showRootStudyNotesDialog = false
+                                    viewModel.openKnowledgeEditor(
+                                        note = null,
+                                        defaultFolderId = if (activeFolderId == "all") null else activeFolderId,
+                                        defaultSubject = currentFolder?.name ?: ""
+                                    )
                                 },
-                                onOpenNote = { note -> activeReadingNoteId = note.id },
+                                onOpenNote = { note ->
+                                    showRootStudyNotesDialog = false
+                                    viewModel.openKnowledgeReader(note.id)
+                                },
                                 onEditNote = { note ->
-                                    editingStudyNote = note
-                                    showStudyNoteEditor = true
+                                    showRootStudyNotesDialog = false
+                                    viewModel.openKnowledgeEditor(
+                                        note = note,
+                                        defaultFolderId = note.folderId,
+                                        defaultSubject = note.subject
+                                    )
                                 },
-                                onDeleteNote = { note -> viewModel.deleteStudyNote(note) }
+                                onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
+                                linkedPaperTitles = linkedPaperTitles
                             )
                         }
                     }
                 }
             }
-        }
-    }
-
-    // Add / Edit Study Note Studio Dialog
-    if (showStudyNoteEditor) {
-        AddEditStudyNoteDialog(
-            initialNote = editingStudyNote,
-            defaultFolderId = if (activeFolderId == "all") null else activeFolderId,
-            defaultSubject = currentFolder?.name ?: "",
-            folders = folders,
-            onSave = { id, title, subject, sourceAi, rawContent, folderId ->
-                viewModel.saveStudyNote(
-                    id = id,
-                    title = title,
-                    subject = subject,
-                    sourceAi = sourceAi,
-                    rawContent = rawContent,
-                    folderId = folderId
-                )
-            },
-            onDismiss = {
-                showStudyNoteEditor = false
-                editingStudyNote = null
-            }
-        )
-    }
-
-    // Live Reactive Study Note Reader Dialog (supports bookmark state updates + Active Recall + PDF Export)
-    activeReadingNoteId?.let { noteId ->
-        val liveNote = studyNotes.find { it.id == noteId }
-        if (liveNote != null) {
-            StudyNoteReaderDialog(
-                note = liveNote,
-                onToggleBookmark = { note, idx -> viewModel.toggleStudyNoteLineBookmark(note, idx) },
-                onEdit = {
-                    activeReadingNoteId = null
-                    editingStudyNote = liveNote
-                    showStudyNoteEditor = true
-                },
-                onDismiss = { activeReadingNoteId = null }
-            )
-        } else {
-            activeReadingNoteId = null
         }
     }
 }
@@ -2355,7 +2340,10 @@ private fun ReparentFolderDialog(
         confirmButton = {
             Button(
                 onClick = { onReparent(selectedParentId) },
-                colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.navyBanner,
+                    contentColor = colors.navyBannerText
+                )
             ) {
                 Text("Move Here", fontWeight = FontWeight.Bold)
             }
@@ -2472,7 +2460,10 @@ private fun DuplicateFolderDialog(
                     }
                 },
                 enabled = newName.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.navyBanner,
+                    contentColor = colors.navyBannerText
+                )
             ) {
                 Text("Duplicate", fontWeight = FontWeight.Bold)
             }

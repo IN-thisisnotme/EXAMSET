@@ -96,7 +96,7 @@ import com.example.util.ExamNumberGenerator
 import java.util.Locale
 
 enum class QuickFeatureAction(val label: String) {
-    STUDY_NOTES("Study Notes"),
+    STUDY_NOTES("Knowledge Sets"),
     MOCK_TESTS("Mock Tests"),
     PYQS("PYPs"),
     ATTEMPTED("Attempted"),

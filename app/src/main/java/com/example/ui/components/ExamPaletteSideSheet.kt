@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -183,16 +184,18 @@ fun ExamPaletteSideSheet(
             shadowElevation = 16.dp,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .widthIn(min = 300.dp, max = 360.dp)
+                .widthIn(min = 300.dp, max = 380.dp)
                 .fillMaxWidth(0.86f)
                 .fillMaxHeight()
                 .testTag("exam_palette_side_sheet_panel")
         ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isCompactHeight = maxHeight < 480.dp
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .navigationBarsPadding()
-                    .padding(vertical = 12.dp)
+                    .padding(vertical = if (isCompactHeight) 6.dp else 12.dp)
             ) {
                 // Top Header Row
                 Row(
@@ -251,12 +254,13 @@ fun ExamPaletteSideSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(if (isCompactHeight) 4.dp else 8.dp))
                 HorizontalDivider(color = colors.border, thickness = 0.6.dp)
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(if (isCompactHeight) 6.dp else 10.dp))
 
                 // Mode-specific Overview / Legend Section
                 if (isCbtMode) {
+                    if (!isCompactHeight) {
                     // Candidate Identity Details (TCS iON Standard)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -317,6 +321,7 @@ fun ExamPaletteSideSheet(
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
+                    }
 
                     // CBT Exam Legend & Real-Time Counters (TCS iON Standard 5 States)
                     Column(
@@ -396,8 +401,8 @@ fun ExamPaletteSideSheet(
                                 onClick = { masterFilter = MasterFilterMode.MISSING_KEY },
                                 label = { Text("No Key ($missingKeyCount)", fontSize = 11.sp) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFFFEE2E2),
-                                    selectedLabelColor = Color(0xFFDC2626)
+                                    selectedContainerColor = colors.badgeDangerBg,
+                                    selectedLabelColor = colors.badgeDangerText
                                 )
                             )
                         }
@@ -407,8 +412,8 @@ fun ExamPaletteSideSheet(
                                 onClick = { masterFilter = MasterFilterMode.MISSING_EXP },
                                 label = { Text("No Exp ($missingExpCount)", fontSize = 11.sp) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = Color(0xFFFEF3C7),
-                                    selectedLabelColor = Color(0xFFD97706)
+                                    selectedContainerColor = colors.badgeWarningBg,
+                                    selectedLabelColor = colors.badgeWarningText
                                 )
                             )
                         }
@@ -515,9 +520,9 @@ fun ExamPaletteSideSheet(
                                     Color.White
                                 )
                                 else -> Triple(
-                                    Color(0xFFE2E8F0),
-                                    Color(0xFFCBD5E1),
-                                    Color(0xFF334155)
+                                    if (colors.isDark) colors.surfaceVariant else Color(0xFFE2E8F0),
+                                    if (colors.isDark) colors.border else Color(0xFFCBD5E1),
+                                    if (colors.isDark) colors.inkBold else Color(0xFF334155)
                                 )
                             }
                         } else {
@@ -567,7 +572,7 @@ fun ExamPaletteSideSheet(
                             color = bubbleBg,
                             border = BorderStroke(
                                 width = if (isCurrent) 2.5.dp else 1.dp,
-                                color = if (isCurrent) Color(0xFF0F172A) else bubbleBorder
+                                color = if (isCurrent) (if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0F172A)) else bubbleBorder
                             ),
                             shadowElevation = if (isCurrent) 4.dp else 0.dp,
                             modifier = Modifier
@@ -638,6 +643,7 @@ fun ExamPaletteSideSheet(
                         }
                     }
                 }
+            }
             }
         }
     }

@@ -121,13 +121,17 @@ fun ShareSystemTab(
     }
 
     fun triggerShare(data: String, title: String) {
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, data)
-            putExtra(Intent.EXTRA_SUBJECT, title)
-            type = "text/plain"
-        }
-        context.startActivity(Intent.createChooser(sendIntent, "Share Question Sets"))
+        val isJson = data.trimStart().let { it.startsWith("{") || it.startsWith("[") }
+        val ext = if (isJson) "json" else if (title.contains("CSV", ignoreCase = true)) "csv" else "txt"
+        val mime = if (isJson) "application/json" else if (ext == "csv") "text/csv" else "text/plain"
+        val safeBase = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(36).ifBlank { "examset_export" }
+        viewModel.shareTextAsFile(
+            context = context,
+            content = data,
+            fileName = "${safeBase}.$ext",
+            title = title,
+            mimeType = mime
+        )
     }
 
     LazyColumn(
@@ -138,6 +142,10 @@ fun ShareSystemTab(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Spacer(modifier = Modifier.height(4.dp)) }
+
+        item(key = "backup_vault_center") {
+            BackupVaultCenterSection(viewModel = viewModel)
+        }
 
         // Top Action Header
         item {
@@ -243,7 +251,10 @@ fun ShareSystemTab(
                                         }
                                     },
                                     shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF2563EB),
+                                        contentColor = Color.White
+                                    ),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -260,7 +271,10 @@ fun ShareSystemTab(
                                         }
                                     },
                                     shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.navyBanner,
+                                        contentColor = colors.navyBannerText
+                                    ),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -364,29 +378,33 @@ fun ShareSystemTab(
                                     )
                                 }
                             }
+                            val rollBg = if (colors.isDark) Color(0xFF172554) else Color(0xFFEFF6FF)
+                            val rollFg = if (colors.isDark) Color(0xFF93C5FD) else Color(0xFF1D4ED8)
+                            val bookletBg = if (colors.isDark) Color(0xFF500724) else Color(0xFFFDF2F8)
+                            val bookletFg = if (colors.isDark) Color(0xFFF472B6) else Color(0xFFBE185D)
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = Color(0xFFEFF6FF),
-                                border = BorderStroke(0.6.dp, Color(0xFF3B82F6).copy(alpha = 0.4f))
+                                color = rollBg,
+                                border = BorderStroke(0.6.dp, rollFg.copy(alpha = 0.4f))
                             ) {
                                 Text(
                                     text = "Roll: ${paper.metadata.rollNumber}",
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1D4ED8),
+                                    color = rollFg,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = Color(0xFFFDF2F8),
-                                border = BorderStroke(0.6.dp, Color(0xFFEC4899).copy(alpha = 0.4f))
+                                color = bookletBg,
+                                border = BorderStroke(0.6.dp, bookletFg.copy(alpha = 0.4f))
                             ) {
                                 Text(
                                     text = "Booklet: ${paper.metadata.bookletNumber}",
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFBE185D),
+                                    color = bookletFg,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -411,7 +429,8 @@ fun ShareSystemTab(
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (copiedJson) Color(0xFF059669) else Color(0xFF2563EB)
+                                    containerColor = if (copiedJson) Color(0xFF059669) else Color(0xFF2563EB),
+                                    contentColor = Color.White
                                 ),
                                 modifier = Modifier.weight(1f)
                             ) {
@@ -434,7 +453,10 @@ fun ShareSystemTab(
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.primaryButtonBg,
+                                    contentColor = colors.primaryButtonText
+                                ),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -551,7 +573,10 @@ fun ShareSystemTab(
                         },
                         enabled = pastedJson.isNotBlank(),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF059669),
+                            contentColor = Color.White
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -574,7 +599,7 @@ fun ShareSystemTab(
                         text = "OMR EVALUATION MANIFEST (CSV)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0284C7),
+                        color = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
                         letterSpacing = 0.5.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
@@ -601,7 +626,8 @@ fun ShareSystemTab(
                             },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copiedManifest) Color(0xFF059669) else Color(0xFF0284C7)
+                                containerColor = if (copiedManifest) Color(0xFF059669) else Color(0xFF0284C7),
+                                contentColor = Color.White
                             ),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -620,7 +646,10 @@ fun ShareSystemTab(
                                 triggerExportToFile(csv, "omr_candidate_manifest.csv", "text/csv")
                             },
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF059669),
+                                contentColor = Color.White
+                            ),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -662,19 +691,19 @@ fun ShareSystemTab(
                             text = "PSYCHOMETRIC & ITEM ANALYSIS (CTT)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0284C7),
+                            color = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
                             letterSpacing = 0.5.sp
                         )
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFF0FDF4)
+                            color = colors.badgeSuccessBg
                         ) {
                             Text(
                                 text = "CALIBRATION READY",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF16A34A),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                color = colors.badgeSuccessText,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -691,7 +720,10 @@ fun ShareSystemTab(
                     Button(
                         onClick = onOpenPsychometrics,
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0284C7),
+                            contentColor = Color.White
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))

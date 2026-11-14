@@ -14,6 +14,9 @@ interface PaperDao {
     @Query("SELECT * FROM question_papers ORDER BY updatedAt DESC, createdAt DESC")
     fun getAllPapers(): Flow<List<PaperEntity>>
 
+    @Query("SELECT * FROM question_papers ORDER BY updatedAt DESC, createdAt DESC")
+    suspend fun getAllPapersOnce(): List<PaperEntity>
+
     @Query("SELECT * FROM question_papers WHERE id = :id")
     suspend fun getPaperById(id: Long): PaperEntity?
 
@@ -50,6 +53,9 @@ interface PaperDao {
     @Query("DELETE FROM question_papers WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM question_papers")
+    suspend fun deleteAllPapers()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttempt(attempt: AttemptEntity): Long
 
@@ -58,6 +64,9 @@ interface PaperDao {
 
     @Query("SELECT * FROM test_attempts ORDER BY createdAt DESC")
     fun getAllAttempts(): Flow<List<AttemptEntity>>
+
+    @Query("SELECT * FROM test_attempts ORDER BY createdAt DESC")
+    suspend fun getAllAttemptsOnce(): List<AttemptEntity>
 
     @Query("SELECT * FROM test_attempts WHERE paperId = :paperId ORDER BY createdAt DESC")
     fun getAttemptsForPaper(paperId: Long): Flow<List<AttemptEntity>>
@@ -68,6 +77,9 @@ interface PaperDao {
     @Query("SELECT * FROM test_attempts WHERE paperId = :paperId AND isSubmitted = 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestUnsubmittedAttempt(paperId: Long): AttemptEntity?
 
+    @Query("DELETE FROM test_attempts")
+    suspend fun deleteAllAttempts()
+
     @Query("SELECT * FROM daily_study_analytics WHERE dateString = :dateString LIMIT 1")
     fun getDailyAnalyticsFlow(dateString: String): Flow<DailyStudyAnalyticsEntity?>
 
@@ -77,11 +89,17 @@ interface PaperDao {
     @Query("SELECT * FROM daily_study_analytics ORDER BY dateString DESC")
     fun getAllDailyAnalytics(): Flow<List<DailyStudyAnalyticsEntity>>
 
+    @Query("SELECT * FROM daily_study_analytics ORDER BY dateString DESC")
+    suspend fun getAllDailyAnalyticsOnce(): List<DailyStudyAnalyticsEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDailyAnalytics(analytics: DailyStudyAnalyticsEntity)
 
     @Query("DELETE FROM daily_study_analytics WHERE dateString = :dateString")
     suspend fun deleteDailyAnalytics(dateString: String)
+
+    @Query("DELETE FROM daily_study_analytics")
+    suspend fun deleteAllDailyAnalytics()
 
     // --- Atomic Helper Queries for Daily Analytics ---
 

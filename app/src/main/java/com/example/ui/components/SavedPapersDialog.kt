@@ -132,13 +132,27 @@ fun SavedPapersDialog(
     }
 
     fun triggerShare(data: String, title: String) {
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, data)
-            putExtra(Intent.EXTRA_SUBJECT, title)
-            type = "text/plain"
+        if (viewModel != null) {
+            val isJson = data.trimStart().let { it.startsWith("{") || it.startsWith("[") }
+            val ext = if (isJson) "json" else "txt"
+            val mime = if (isJson) "application/json" else "text/plain"
+            val safeBase = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(36).ifBlank { "examset_papers" }
+            viewModel.shareTextAsFile(
+                context = context,
+                content = data,
+                fileName = "${safeBase}.$ext",
+                title = title,
+                mimeType = mime
+            )
+        } else {
+            val sendIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_TEXT, data)
+                putExtra(Intent.EXTRA_SUBJECT, title)
+                type = "text/plain"
+            }
+            context.startActivity(Intent.createChooser(sendIntent, "Share Question Sets"))
         }
-        context.startActivity(Intent.createChooser(sendIntent, "Share Question Sets"))
     }
 
     // Extract categories (subjects)
@@ -511,7 +525,10 @@ fun SavedPapersDialog(
                             if (isSelectionMode && selectedIds.isNotEmpty()) {
                                 Button(
                                     onClick = { showExportMenu = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.primaryButtonBg,
+                                        contentColor = colors.primaryButtonText
+                                    ),
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
@@ -522,7 +539,10 @@ fun SavedPapersDialog(
                             } else {
                                 Button(
                                     onClick = { showExportMenu = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.navyBanner,
+                                        contentColor = colors.navyBannerText
+                                    ),
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {

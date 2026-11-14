@@ -277,14 +277,76 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val cursorInfo = db.query("PRAGMA table_info(`study_notes`)")
+        val existingColumns = mutableSetOf<String>()
+        try {
+            val nameColIdx = cursorInfo.getColumnIndex("name")
+            while (cursorInfo.moveToNext()) {
+                if (nameColIdx >= 0) {
+                    existingColumns.add(cursorInfo.getString(nameColIdx))
+                }
+            }
+        } finally {
+            cursorInfo.close()
+        }
+
+        if (!existingColumns.contains("collectionType")) {
+            db.execSQL("ALTER TABLE `study_notes` ADD COLUMN `collectionType` TEXT NOT NULL DEFAULT 'ONE_LINERS'")
+        }
+        if (!existingColumns.contains("customLabel")) {
+            db.execSQL("ALTER TABLE `study_notes` ADD COLUMN `customLabel` TEXT NOT NULL DEFAULT ''")
+        }
+        if (!existingColumns.contains("linkedPaperId")) {
+            db.execSQL("ALTER TABLE `study_notes` ADD COLUMN `linkedPaperId` INTEGER DEFAULT NULL")
+        }
+        if (!existingColumns.contains("formatRuleJson")) {
+            db.execSQL("ALTER TABLE `study_notes` ADD COLUMN `formatRuleJson` TEXT NOT NULL DEFAULT '{}'")
+        }
+        if (!existingColumns.contains("masteredBlocksJson")) {
+            db.execSQL("ALTER TABLE `study_notes` ADD COLUMN `masteredBlocksJson` TEXT NOT NULL DEFAULT '[]'")
+        }
+        if (!existingColumns.contains("syncUid")) {
+            db.execSQL("ALTER TABLE `study_notes` ADD COLUMN `syncUid` TEXT NOT NULL DEFAULT ''")
+        }
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `backup_snapshots` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`provider` TEXT NOT NULL, " +
+                "`fileName` TEXT NOT NULL, " +
+                "`localPath` TEXT NOT NULL, " +
+                "`remoteFileId` TEXT NOT NULL, " +
+                "`checksumSha256` TEXT NOT NULL, " +
+                "`papersCount` INTEGER NOT NULL, " +
+                "`notesCount` INTEGER NOT NULL, " +
+                "`foldersCount` INTEGER NOT NULL, " +
+                "`attemptsCount` INTEGER NOT NULL, " +
+                "`sizeBytes` INTEGER NOT NULL, " +
+                "`status` TEXT NOT NULL, " +
+                "`details` TEXT NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL" +
+            ")"
+        )
+    }
+}
+
 @Database(
-    entities = [PaperEntity::class, AttemptEntity::class, DailyStudyAnalyticsEntity::class, StudyNoteEntity::class],
-    version = 8,
+    entities = [
+        PaperEntity::class,
+        AttemptEntity::class,
+        DailyStudyAnalyticsEntity::class,
+        StudyNoteEntity::class,
+        BackupSnapshotEntity::class
+    ],
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun paperDao(): PaperDao
     abstract fun studyNoteDao(): StudyNoteDao
+    abstract fun backupSnapshotDao(): BackupSnapshotDao
 
     companion object {
         @Volatile
@@ -297,7 +359,16 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "examset_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
+                        MIGRATION_7_8,
+                        MIGRATION_8_9
+                    )
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
                 INSTANCE = instance

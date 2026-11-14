@@ -2,4 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="camera_photos" path="." />
     <external-cache-path name="external_camera_photos" path="." />
+    <files-path name="vault_backups" path="vault_backups/" />
+    <cache-path name="vault_exports" path="vault_exports/" />
 </paths>

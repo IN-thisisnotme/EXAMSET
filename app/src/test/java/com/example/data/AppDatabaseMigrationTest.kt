@@ -96,7 +96,7 @@ class AppDatabaseMigrationTest {
             )
         }
 
-        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->8
+        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->8, 8->9
         MIGRATION_1_2.migrate(rawDb)
         MIGRATION_2_3.migrate(rawDb)
         MIGRATION_3_4.migrate(rawDb)
@@ -104,11 +104,21 @@ class AppDatabaseMigrationTest {
         MIGRATION_5_6.migrate(rawDb)
         MIGRATION_6_7.migrate(rawDb)
         MIGRATION_7_8.migrate(rawDb)
+        MIGRATION_8_9.migrate(rawDb)
         rawDb.close()
 
-        // Step 3: Open migrated database with Room at Version 8 (triggers RoomOpenDelegate.onValidateSchema)
+        // Step 3: Open migrated database with Room at Version 9 (triggers RoomOpenDelegate.onValidateSchema)
         val roomDb = Room.databaseBuilder(context, AppDatabase::class.java, testDbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(
+                MIGRATION_1_2,
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+                MIGRATION_5_6,
+                MIGRATION_6_7,
+                MIGRATION_7_8,
+                MIGRATION_8_9
+            )
             .build()
 
         runBlocking {
@@ -140,19 +150,52 @@ class AppDatabaseMigrationTest {
             val analytics = dao.getDailyAnalytics("2026-10-11")
             assertNull("Analytics row should not exist initially", analytics)
 
-            // Verify study_notes table accepts inserts & queries
+            // Verify study_notes table accepts v9 Knowledge Sets fields
             val noteDao = roomDb.studyNoteDao()
             val insertedNoteId = noteDao.insertStudyNote(
                 StudyNoteEntity(
                     folderId = null,
                     title = "Polity One-Liners",
                     sourceAi = "Gemini",
-                    rawContent = "1. **Article 356** - President's Rule"
+                    rawContent = "1. **Article 356** -> President's Rule",
+                    collectionType = "MULTI_LINER",
+                    customLabel = "Constitutional Codex",
+                    linkedPaperId = 101L,
+                    formatRuleJson = "{\"collectionType\":\"MULTI_LINER\"}",
+                    masteredBlocksJson = "[0,1]",
+                    syncUid = "sync-polity-1"
                 )
             )
             val savedNote = noteDao.getStudyNoteById(insertedNoteId)
             assertNotNull("StudyNoteEntity must be queryable after migration", savedNote)
             assertEquals("Polity One-Liners", savedNote?.title)
+            assertEquals("MULTI_LINER", savedNote?.collectionType)
+            assertEquals("Constitutional Codex", savedNote?.customLabel)
+            assertEquals(101L, savedNote?.linkedPaperId)
+            assertEquals("sync-polity-1", savedNote?.syncUid)
+            assertEquals(setOf(0, 1), savedNote?.getMasteredIndices())
+
+            // Verify backup_snapshots table created in v9 accepts inserts & queries
+            val snapshotDao = roomDb.backupSnapshotDao()
+            val snapId = snapshotDao.insertSnapshot(
+                BackupSnapshotEntity(
+                    provider = "LOCAL_VAULT",
+                    fileName = "examset_test.examset.zip",
+                    localPath = "/tmp/examset_test.examset.zip",
+                    checksumSha256 = "abc123",
+                    papersCount = 2,
+                    notesCount = 1,
+                    foldersCount = 0,
+                    attemptsCount = 0,
+                    sizeBytes = 2048L,
+                    status = "VERIFIED",
+                    details = "Verified snapshot"
+                )
+            )
+            val latest = snapshotDao.getLatestSnapshot()
+            assertNotNull("BackupSnapshotEntity must be queryable after migration", latest)
+            assertEquals(snapId, latest?.id)
+            assertEquals("examset_test.examset.zip", latest?.fileName)
         }
 
         roomDb.close()
