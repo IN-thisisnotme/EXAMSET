@@ -74,7 +74,8 @@ class VaultArchiveEngineTest {
                 explanationCount = 2,
                 rawText = "1. Speed unit?\n(A) m/s\n(B) kg\n(C) N\n(D) J\nAnswer Key:\n1: A",
                 folderId = folder.id,
-                bookletNumber = "BK-9001"
+                bookletNumber = "BK-9001",
+                unattendedMarks = 0.25
             )
         )
 
@@ -163,6 +164,7 @@ class VaultArchiveEngineTest {
 
         assertEquals(1, restoredPapers.size)
         assertEquals("Mechanics Mock 1", restoredPapers.first().title)
+        assertEquals(0.25, restoredPapers.first().unattendedMarks, 0.001)
         assertEquals(1, restoredNotes.size)
         assertEquals("Formula Codex", restoredNotes.first().customLabel)
         assertEquals(restoredPapers.first().id, restoredNotes.first().linkedPaperId)

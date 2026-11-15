@@ -174,6 +174,9 @@ fun StudentTestTab(
     val negativeMarks = remember(config.negativeMarks, paper.metadata.negativeMarks) {
         if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else config.negativeMarks
     }
+    val unattendedMarks = remember(config.unattendedMarks, paper.metadata.unattendedMarks) {
+        if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else config.unattendedMarks
+    }
     val durationMinutes = remember(config.durationMinutes, paper.metadata.durationMinutes) {
         if (paper.metadata.durationMinutes > 0) paper.metadata.durationMinutes else config.durationMinutes
     }
@@ -225,6 +228,7 @@ fun StudentTestTab(
                 unattendedQuestionLog = unattendedQuestionLog,
                 positiveMarks = positiveMarks,
                 negativeMarks = negativeMarks,
+                unattendedMarks = unattendedMarks,
                 timeSpentSeconds = timeSpentSeconds,
                 todayTestSeconds = todayTestSeconds,
                 onRetakeFull = onResetExam,
@@ -270,6 +274,7 @@ fun StudentTestTab(
                 customTimeLimitMinutes = customTimeLimitMinutes,
                 positiveMarks = positiveMarks,
                 negativeMarks = negativeMarks,
+                unattendedMarks = unattendedMarks,
                 attempts = attempts,
                 todayTestSeconds = todayTestSeconds,
                 dailyGoalMinutes = dailyGoalMinutes,
@@ -305,6 +310,7 @@ private fun ExamStartOverviewView(
     customTimeLimitMinutes: Int,
     positiveMarks: Double = 4.0,
     negativeMarks: Double = 1.0,
+    unattendedMarks: Double = 0.0,
     attempts: List<AttemptEntity>,
     todayTestSeconds: Long,
     dailyGoalMinutes: Int,
@@ -523,7 +529,7 @@ private fun ExamStartOverviewView(
         // 4 Key Exam Metrics
         item {
             val maxMarksVal = totalQuestions * positiveMarks
-            val formattedMaxMarks = if (maxMarksVal % 1.0 == 0.0) maxMarksVal.toInt().toString() else String.format(java.util.Locale.US, "%.1f", maxMarksVal)
+            val formattedMaxMarks = String.format(java.util.Locale.US, "%.2f", maxMarksVal)
             val formattedPenalty = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
 
             Row(
@@ -565,6 +571,12 @@ private fun ExamStartOverviewView(
         item {
             val formattedPenalty = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
             val formattedPos = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
+            val formattedUnk = if (unattendedMarks > 0.0) {
+                if (unattendedMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", unattendedMarks)
+                else String.format(java.util.Locale.US, "-%.2f", unattendedMarks)
+            } else {
+                "0.00"
+            }
 
             Surface(
                 shape = RoundedCornerShape(10.dp),
@@ -589,7 +601,7 @@ private fun ExamStartOverviewView(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "$formattedPos Correct  •  $formattedPenalty Incorrect  •  0.00 Unattended",
+                            text = "$formattedPos Correct  •  $formattedPenalty Incorrect  •  $formattedUnk Unattended",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.inkBold
@@ -601,7 +613,7 @@ private fun ExamStartOverviewView(
                         color = colors.tealLight.copy(alpha = 0.5f)
                     ) {
                         Text(
-                            text = "Min: 0.00",
+                            text = "Net Scoring",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.tealDark,
@@ -1127,10 +1139,16 @@ private fun ExamStartOverviewView(
                     )
                     val bulletPos = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
                     val bulletNeg = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
+                    val bulletUnk = if (unattendedMarks > 0.0) {
+                        if (unattendedMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", unattendedMarks)
+                        else String.format(java.util.Locale.US, "-%.2f", unattendedMarks)
+                    } else {
+                        "0.00"
+                    }
                     InstructionBullet(
                         number = "3",
-                        title = "Penalty Scoring Scheme",
-                        description = "Correct: $bulletPos mark. Incorrect penalty: $bulletNeg mark. Minimum total score is 0.00 regardless of penalty accumulation."
+                        title = "Net Scoring & Penalty Scheme",
+                        description = "Correct: $bulletPos mark(s). Incorrect: $bulletNeg mark(s). Unattended: $bulletUnk mark(s). Final score reflects exact net marks earned."
                     )
                     InstructionBullet(
                         number = "4",
@@ -1151,7 +1169,7 @@ private fun ExamStartOverviewView(
             val latest = attempts.first()
             val maxPossibleScore = latest.totalQuestions * positiveMarks
             val pct = if (maxPossibleScore > 0) ((latest.score / maxPossibleScore) * 100).toInt().coerceIn(0, 100) else 0
-            val formattedMaxScore = if (maxPossibleScore % 1.0 == 0.0) maxPossibleScore.toInt().toString() else String.format(java.util.Locale.US, "%.1f", maxPossibleScore)
+            val formattedMaxScore = String.format(java.util.Locale.US, "%.2f", maxPossibleScore)
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -2475,8 +2493,10 @@ private fun ActiveExamView(
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
+                                        val scrollPosStr = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
+                                        val scrollNegStr = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
                                         Text(
-                                            text = "+${String.format(java.util.Locale.US, "%.0f", positiveMarks)} / -${String.format(java.util.Locale.US, "%.0f", negativeMarks)}",
+                                            text = "$scrollPosStr / $scrollNegStr",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.muted
@@ -2862,6 +2882,7 @@ private fun ExamResultAndReviewView(
     unattendedQuestionLog: Set<Int>,
     positiveMarks: Double = 4.0,
     negativeMarks: Double = 1.0,
+    unattendedMarks: Double = 0.0,
     timeSpentSeconds: Long,
     todayTestSeconds: Long = 0L,
     onRetakeFull: () -> Unit,
@@ -2880,7 +2901,7 @@ private fun ExamResultAndReviewView(
 
     // Official one-time evaluation
     val officialAnswers = if (submittedAnswers.isNotEmpty()) submittedAnswers else answers
-    val stats = submittedStats ?: com.example.ui.MainViewModel.calculateTestStats(paper, officialAnswers, positiveMarks, negativeMarks)
+    val stats = submittedStats ?: com.example.ui.MainViewModel.calculateTestStats(paper, officialAnswers, positiveMarks, negativeMarks, unattendedMarks)
     val total = stats.total
     val correctCount = stats.correct
     val wrongCount = stats.incorrect
@@ -3025,7 +3046,7 @@ private fun ExamResultAndReviewView(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     val maxMarksVal = total * positiveMarks
-                    val formattedMaxMarks = if (maxMarksVal % 1.0 == 0.0) maxMarksVal.toInt().toString() else String.format(java.util.Locale.US, "%.1f", maxMarksVal)
+                    val formattedMaxMarks = String.format(java.util.Locale.US, "%.2f", maxMarksVal)
                     val formattedPos = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
                     val formattedPenalty = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
                     val pointsCorrect = correctCount * positiveMarks
@@ -3063,7 +3084,7 @@ private fun ExamResultAndReviewView(
                             "0.00"
                         }
                         val unattendedSubtitle = if (stats.penaltyUnattended > 0.0) {
-                            val rate = if (stats.unanswered > 0) stats.penaltyUnattended / stats.unanswered else 0.10
+                            val rate = if (stats.unanswered > 0) stats.penaltyUnattended / stats.unanswered else unattendedMarks
                             if (rate % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f penalty", rate)
                             else String.format(java.util.Locale.US, "-%.2f penalty", rate)
                         } else {
@@ -3107,7 +3128,7 @@ private fun ExamResultAndReviewView(
                             Icon(Icons.Default.Info, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "One-Time Scoring: Official score is fixed (Min: 0). Correcting answers in review mode is for study practice and does not alter this score. Retake the full test to re-evaluate.",
+                                text = "One-Time Scoring: Official score is locked upon submission. Correcting answers in review mode is for study practice and does not alter this score. Retake the full test to re-evaluate.",
                                 fontSize = 11.sp,
                                 color = colors.inkBold,
                                 lineHeight = 14.5.sp
@@ -3474,8 +3495,13 @@ private fun ExamResultAndReviewView(
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
+                                val unkBannerText = if (unattendedMarks > 0.0) {
+                                    "Logged for Review: Unattended in test (Penalty: -${String.format(java.util.Locale.US, "%.2f", unattendedMarks)} pts)"
+                                } else {
+                                    "Logged for Review: Unattended in test (Penalty: 0.00 pts)"
+                                }
                                 Text(
-                                    text = "Logged for Review: Unattended in test (Penalty: -0.10 pts)",
+                                    text = unkBannerText,
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = colors.muted
@@ -3488,7 +3514,10 @@ private fun ExamResultAndReviewView(
                         question = q,
                         selectedAnswer = officialAnswers[q.num],
                         onSelectAnswer = { },
-                        showResult = true
+                        showResult = true,
+                        positiveMarks = stats.positiveMarks,
+                        negativeMarks = stats.negativeMarks,
+                        unattendedMarks = stats.unattendedMarks
                     )
                 }
             }

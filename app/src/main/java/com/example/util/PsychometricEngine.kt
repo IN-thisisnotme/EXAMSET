@@ -105,7 +105,7 @@ object PsychometricEngine {
                 bookletNumber = String.format(java.util.Locale.US, "7%06d", 100001 + idx),
                 bookletCode = "A",
                 answers = answers,
-                submittedAt = System.currentTimeMillis()
+                submittedAt = TrustedTimeManager.getTrustedTimeMillis()
             )
         }
         return evaluateCohortWithCandidates(submissions, paper)
@@ -410,7 +410,7 @@ object PsychometricEngine {
                 bookletNumber = String.format(java.util.Locale.US, "710%04d", i),
                 bookletCode = sets[i % sets.size],
                 answers = answersMap,
-                submittedAt = System.currentTimeMillis() - ((candidateCount - i) * 60000L)
+                submittedAt = TrustedTimeManager.getTrustedTimeMillis() - ((candidateCount - i) * 60000L)
             )
         }
     }
@@ -477,12 +477,12 @@ object PsychometricEngine {
         val sb = StringBuilder()
         sb.append("# Student Candidate Examination Scorecards & Ranking\n")
         sb.append("# Exam: \"${examTitle.replace("\"", "\"\"")}\"\n")
-        sb.append("# Total Evaluated: ${report.candidates.size} | Date Generated: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date())}\n\n")
+        sb.append("# Total Evaluated: ${report.candidates.size} | Date Generated: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(TrustedTimeManager.getTrustedTimeMillis()))}\n\n")
         sb.append("Rank,Roll_Number,Booklet_Number,Booklet_Code,Total_Score,Correct_Count,Incorrect_Count,Unanswered_Count,Accuracy_Percent,Submission_Timestamp\n")
 
         report.candidates.forEach { c ->
             val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(c.submittedAt))
-            val formattedScore = if (c.totalScore % 1.0 == 0.0) c.totalScore.toInt().toString() else String.format(java.util.Locale.US, "%.2f", c.totalScore)
+            val formattedScore = String.format(java.util.Locale.US, "%.2f", c.totalScore)
             sb.append("${c.rank},")
             sb.append("${c.rollNumber},")
             sb.append("${c.bookletNumber},")
@@ -508,9 +508,13 @@ object PsychometricEngine {
         answers: Map<Int, Char?>? = null,
         totalCohortSize: Int = 1
     ): String {
-        val totalMarks = paper.questions.size * 1.0
-        val formattedScore = if (candidate.totalScore % 1.0 == 0.0) candidate.totalScore.toInt().toString() else String.format(java.util.Locale.US, "%.2f", candidate.totalScore)
-        val formattedTotal = if (totalMarks % 1.0 == 0.0) totalMarks.toInt().toString() else String.format(java.util.Locale.US, "%.1f", totalMarks)
+        val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 1.0
+        val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 0.0
+        val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
+
+        val totalMarks = paper.questions.size * posMarks
+        val formattedScore = String.format(java.util.Locale.US, "%.2f", candidate.totalScore)
+        val formattedTotal = String.format(java.util.Locale.US, "%.2f", totalMarks)
 
         val percentile = if (totalCohortSize > 1) {
             val p = ((totalCohortSize - candidate.rank + 1).toDouble() / totalCohortSize.toDouble()) * 100.0
@@ -551,10 +555,6 @@ object PsychometricEngine {
         sb.append("  Cohort Percentile : $percentile\n")
         sb.append("  Accuracy Rate     : ${candidate.accuracyPercent}%\n")
         sb.append("  Performance Band  : $performanceBand\n\n")
-
-        val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 1.0
-        val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 0.0
-        val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
 
         val earnedCorrect = Math.round(candidate.correctCount * posMarks * 100.0) / 100.0
         val penaltyIncorrect = Math.round(candidate.incorrectCount * negMarks * 100.0) / 100.0

@@ -239,7 +239,8 @@ class ExampleRobolectricTest {
             metadata = com.example.model.PaperMetadata(
                 title = "Mock Exam",
                 positiveMarks = 1.0,
-                negativeMarks = 0.33
+                negativeMarks = 0.33,
+                unattendedMarks = 0.10
             ),
             questions = questions
         )
@@ -263,19 +264,19 @@ class ExampleRobolectricTest {
         assertEquals(2.31, initialStats.penaltyIncorrect, 0.001)
         assertEquals(0.50, initialStats.penaltyUnattended, 0.001)
 
-        // Test minimum max score bound of 0 regardless of how much incorrect/unattended
+        // Exact net negative scoring (no zero-floor clamp)
         val allWrongAnswers = mutableMapOf<Int, String>()
         for (i in 1..20) allWrongAnswers[i] = "B" // all 20 wrong
         val allWrongStats = com.example.ui.MainViewModel.calculateTestStats(paper, allWrongAnswers)
         assertEquals(0, allWrongStats.correct)
         assertEquals(20, allWrongStats.incorrect)
-        assertEquals(0.0, allWrongStats.score, 0.001)
+        assertEquals(-6.60, allWrongStats.score, 0.001)
 
         val allUnattendedAnswers = emptyMap<Int, String>()
         val allUnattendedStats = com.example.ui.MainViewModel.calculateTestStats(paper, allUnattendedAnswers)
         assertEquals(0, allUnattendedStats.correct)
         assertEquals(20, allUnattendedStats.unanswered)
-        assertEquals(0.0, allUnattendedStats.score, 0.001)
+        assertEquals(-2.00, allUnattendedStats.score, 0.001)
 
         // Review phase:
         // Of the 7 incorrect questions (Q9..Q15):

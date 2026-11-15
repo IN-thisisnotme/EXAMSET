@@ -1149,7 +1149,18 @@ fun HomeScreen(
                 selectedSubjectFolder = null
             },
             onStartTest = { paper ->
-                viewModel.loadSavedPaper(paper)
+                val paperAttempts = allAttempts.filter { it.paperId == paper.id }
+                val isCompleted = paperAttempts.any { it.isSubmitted }
+                val isInProgress = !isCompleted && paperAttempts.any { !it.isSubmitted }
+                when {
+                    isCompleted -> viewModel.reviewCompletedPaperAttempt(paper)
+                    isInProgress -> viewModel.loadSavedPaper(paper) {
+                        viewModel.resumeExam()
+                    }
+                    else -> viewModel.loadSavedPaper(paper) {
+                        viewModel.startExam()
+                    }
+                }
                 viewModel.selectTab(2) // Student Test tab directly
                 selectedSubjectFolder = null
             },

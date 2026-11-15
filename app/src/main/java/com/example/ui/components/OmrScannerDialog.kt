@@ -748,7 +748,11 @@ private fun ScannedResultReviewView(
                                 text = score.toString(),
                                 fontSize = 30.sp,
                                 fontWeight = FontWeight.Black,
-                                color = if (score > 0) colors.teal else colors.inkBold,
+                                color = when {
+                                    score > 0 -> colors.teal
+                                    score < 0 -> colors.red
+                                    else -> colors.inkBold
+                                },
                                 fontFamily = FontFamily.Monospace
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1273,7 +1277,7 @@ private fun ScannedResultReviewView(
                         paperTitle = paper.metadata.title,
                         paperId = paper.id,
                         totalQuestions = result.totalQuestions,
-                        score = result.totalScore.toDouble().coerceAtLeast(0.0),
+                        score = result.totalScore.toDouble(),
                         correctCount = result.correctCount,
                         incorrectCount = result.incorrectCount + result.multipleMarkedCount,
                         unattemptedCount = result.unattemptedCount,

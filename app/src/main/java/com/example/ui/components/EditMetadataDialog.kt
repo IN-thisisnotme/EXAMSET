@@ -112,10 +112,18 @@ fun EditMetadataDialog(
         mutableStateOf(initialMins.toString())
     }
     var positiveMarksStr by remember {
-        mutableStateOf(String.format(java.util.Locale.US, "%.1f", initialConfig.positiveMarks))
+        val pos = initialConfig.positiveMarks
+        mutableStateOf(
+            if (pos % 1.0 == 0.0) String.format(java.util.Locale.US, "%.1f", pos)
+            else String.format(java.util.Locale.US, "%.2f", pos)
+        )
     }
     var negativeMarksStr by remember {
         mutableStateOf(String.format(java.util.Locale.US, "%.2f", initialConfig.negativeMarks))
+    }
+    var unattendedMarksStr by remember {
+        val initialUnk = if (initialMetadata.unattendedMarks > 0.0) initialMetadata.unattendedMarks else initialConfig.unattendedMarks
+        mutableStateOf(String.format(java.util.Locale.US, "%.2f", initialUnk))
     }
 
     Dialog(
@@ -607,10 +615,10 @@ fun EditMetadataDialog(
                             lineHeight = 13.sp
                         )
 
-                        // Duration, Positive Marks & Negative Penalty in 3 responsive fields
+                        // Duration, Positive Marks, Negative Penalty & Unattended Penalty in responsive 2x2 grid
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedTextField(
@@ -622,7 +630,9 @@ fun EditMetadataDialog(
                                 placeholder = { Text("60", fontSize = 10.5.sp) },
                                 singleLine = true,
                                 colors = textFieldColors,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 52.dp),
                                 shape = RoundedCornerShape(8.dp)
                             )
                             OutlinedTextField(
@@ -636,9 +646,18 @@ fun EditMetadataDialog(
                                 placeholder = { Text("4.0", fontSize = 10.5.sp) },
                                 singleLine = true,
                                 colors = textFieldColors,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 52.dp),
                                 shape = RoundedCornerShape(8.dp)
                             )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             OutlinedTextField(
                                 value = negativeMarksStr,
                                 onValueChange = { input ->
@@ -650,7 +669,26 @@ fun EditMetadataDialog(
                                 placeholder = { Text("1.0", fontSize = 10.5.sp) },
                                 singleLine = true,
                                 colors = textFieldColors,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 52.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            OutlinedTextField(
+                                value = unattendedMarksStr,
+                                onValueChange = { input ->
+                                    if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
+                                        unattendedMarksStr = input
+                                    }
+                                },
+                                label = { Text("Unattended (-)", fontSize = 10.5.sp) },
+                                placeholder = { Text("0.00", fontSize = 10.5.sp) },
+                                singleLine = true,
+                                colors = textFieldColors,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 52.dp)
+                                    .testTag("edit_unattended_marks_field"),
                                 shape = RoundedCornerShape(8.dp)
                             )
                         }
@@ -772,6 +810,7 @@ fun EditMetadataDialog(
                             val parsedDuration = durationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
                             val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                             val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+                            val parsedUnkMarks = unattendedMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
 
                             onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber, selectedCategory.code)
                             onSaveConfig?.invoke(
@@ -784,6 +823,7 @@ fun EditMetadataDialog(
                                     timeAllowed = "$parsedDuration Minutes",
                                     positiveMarks = parsedPosMarks,
                                     negativeMarks = parsedNegMarks,
+                                    unattendedMarks = parsedUnkMarks,
                                     negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
                                 )
                             )
@@ -842,6 +882,7 @@ fun EditMetadataDialog(
                                 val parsedDuration = durationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
                                 val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                                 val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+                                val parsedUnkMarks = unattendedMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
 
                                 onSave(title, cleanSubject, topic, normalizedSet, rollNumber, bookletNumber, selectedCategory.code)
                                 onSaveConfig?.invoke(
@@ -854,6 +895,7 @@ fun EditMetadataDialog(
                                         timeAllowed = "$parsedDuration Minutes",
                                         positiveMarks = parsedPosMarks,
                                         negativeMarks = parsedNegMarks,
+                                        unattendedMarks = parsedUnkMarks,
                                         negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
                                     )
                                 )

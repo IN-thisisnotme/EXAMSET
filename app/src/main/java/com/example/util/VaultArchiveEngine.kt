@@ -315,6 +315,7 @@ object VaultArchiveEngine {
                         durationMinutes = paper.metadata.durationMinutes,
                         positiveMarks = paper.metadata.positiveMarks,
                         negativeMarks = paper.metadata.negativeMarks,
+                        unattendedMarks = paper.metadata.unattendedMarks,
                         manualCategory = paper.metadata.manualCategory
                     )
                     paperDao.insertPaper(entity)
@@ -633,6 +634,7 @@ object VaultArchiveEngine {
             put("durationMinutes", p.durationMinutes)
             put("positiveMarks", p.positiveMarks)
             put("negativeMarks", p.negativeMarks)
+            put("unattendedMarks", p.unattendedMarks)
             put("manualCategory", p.manualCategory)
         }
     }
@@ -657,6 +659,7 @@ object VaultArchiveEngine {
             durationMinutes = o.optInt("durationMinutes", 60),
             positiveMarks = o.optDouble("positiveMarks", 4.0),
             negativeMarks = o.optDouble("negativeMarks", 1.0),
+            unattendedMarks = o.optDouble("unattendedMarks", 0.0),
             manualCategory = o.optString("manualCategory", "")
         )
     }

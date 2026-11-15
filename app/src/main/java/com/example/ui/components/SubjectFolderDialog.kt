@@ -362,7 +362,10 @@ private fun SubjectPaperItem(
     onDismiss: () -> Unit
 ) {
     val colors = ExamTheme.colors
-    val attemptsForPaper = allAttempts.count { it.paperId == paper.id }
+    val paperAttempts = remember(allAttempts, paper.id) { allAttempts.filter { it.paperId == paper.id } }
+    val attemptsForPaper = paperAttempts.size
+    val isCompleted = paperAttempts.any { it.isSubmitted }
+    val isInProgress = !isCompleted && paperAttempts.any { !it.isSubmitted }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant),
@@ -486,13 +489,29 @@ private fun SubjectPaperItem(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primaryButtonBg,
-                        contentColor = colors.primaryButtonText
+                        containerColor = when {
+                            isCompleted -> Color(0xFF16A34A)
+                            isInProgress -> Color(0xFFD97706)
+                            else -> colors.primaryButtonBg
+                        },
+                        contentColor = if (isCompleted || isInProgress) Color.White else colors.primaryButtonText
                     )
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
+                    val btnFg = if (isCompleted || isInProgress) Color.White else colors.primaryButtonText
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp), tint = btnFg)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Start Test", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = true, color = colors.primaryButtonText)
+                    Text(
+                        text = when {
+                            isCompleted -> "Review Analysis"
+                            isInProgress -> "Resume Test"
+                            else -> "Start Test"
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = true,
+                        color = btnFg
+                    )
                 }
             }
         }

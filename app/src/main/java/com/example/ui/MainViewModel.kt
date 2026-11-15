@@ -393,6 +393,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         restoreAutosavedState()
         initTodayStudyAnalytics()
         backfillLegacyPaperNumbers()
+        com.example.util.TrustedTimeManager.registerNetworkObserver(application)
         com.example.util.TrustedTimeManager.syncWithNetworkAsync(viewModelScope)
     }
 
@@ -745,6 +746,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (stats.score != attempt.score ||
                     stats.correct != attempt.correctCount ||
                     stats.incorrect != attempt.incorrectCount ||
+                    stats.unanswered != attempt.unansweredCount ||
                     stats.total != attempt.totalQuestions
                 ) {
                     val updatedAttempt = attempt.copy(
@@ -1266,6 +1268,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     durationMinutes = effectiveDuration,
                     positiveMarks = effectivePositiveMarks,
                     negativeMarks = effectiveNegativeMarks,
+                    unattendedMarks = effectiveUnattendedMarks,
                     updatedAt = System.currentTimeMillis()
                 )
                 paperDao.updatePaper(updated)
@@ -1287,7 +1290,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     bookletNumber = finalMetadata.bookletNumber,
                     durationMinutes = effectiveDuration,
                     positiveMarks = effectivePositiveMarks,
-                    negativeMarks = effectiveNegativeMarks
+                    negativeMarks = effectiveNegativeMarks,
+                    unattendedMarks = effectiveUnattendedMarks
                 )
                 paperDao.insertPaper(newEntity)
             } else {
@@ -1324,7 +1328,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     timeAllowed = "$effectiveDuration Minutes",
                     positiveMarks = effectivePositiveMarks,
                     negativeMarks = effectiveNegativeMarks,
-                    maxMarks = "${(effectivePositiveMarks * finalPaper.questions.size).toInt()}",
+                    unattendedMarks = effectiveUnattendedMarks,
+                    maxMarks = String.format(java.util.Locale.US, "%.2f", effectivePositiveMarks * finalPaper.questions.size),
                     rollNumber = finalMetadata.rollNumber,
                     bookletNumber = finalMetadata.bookletNumber
                 )
@@ -1374,6 +1379,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val savedDuration = if (freshEntity.durationMinutes > 0) freshEntity.durationMinutes else 60
         val savedPositive = if (freshEntity.positiveMarks > 0.0) freshEntity.positiveMarks else 4.0
         val savedNegative = if (freshEntity.negativeMarks >= 0.0) freshEntity.negativeMarks else 1.0
+        val savedUnattended = if (freshEntity.unattendedMarks >= 0.0) freshEntity.unattendedMarks else 0.0
 
         val parsed = result.paper.copy(
             id = freshEntity.id,
@@ -1391,6 +1397,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 durationMinutes = savedDuration,
                 positiveMarks = savedPositive,
                 negativeMarks = savedNegative,
+                unattendedMarks = savedUnattended,
                 createdAt = freshEntity.createdAt
             )
         )
@@ -1440,10 +1447,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 durationMinutes = savedDuration,
                 positiveMarks = savedPositive,
                 negativeMarks = savedNegative,
+                unattendedMarks = savedUnattended,
                 timeAllowed = "$savedDuration Minutes",
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
-                maxMarks = "${(savedPositive * parsed.questions.size).toInt()}"
+                maxMarks = String.format(java.util.Locale.US, "%.2f", savedPositive * parsed.questions.size)
             )
             _autoSaveStatus.value = AutoSaveStatus.SAVED
             val savedTimestamp = if (freshEntity.updatedAt > 0) freshEntity.updatedAt else freshEntity.createdAt
@@ -1677,7 +1685,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             paperTitle = paper.metadata.title,
             paperId = paper.id,
             totalQuestions = result.totalQuestions,
-            score = result.totalScore.toDouble().coerceAtLeast(0.0),
+            score = result.totalScore.toDouble(),
             correctCount = result.correctCount,
             incorrectCount = result.incorrectCount + result.multipleMarkedCount,
             unattemptedCount = result.unattemptedCount,
@@ -3436,7 +3444,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     incorrectCount = stats.incorrect,
                     unansweredCount = stats.unanswered,
                     timeSpentSeconds = currentTime,
-                    submittedAt = if (isSubmitted) System.currentTimeMillis() else null
+                    submittedAt = if (isSubmitted) com.example.util.TrustedTimeManager.getTrustedTimeMillis() else null
                 )
                 val newId = paperDao.insertAttempt(newAttempt)
                 withContext(Dispatchers.Main) {
@@ -3455,7 +3463,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         correctCount = stats.correct,
                         incorrectCount = stats.incorrect,
                         unansweredCount = stats.unanswered,
-                        submittedAt = if (isSubmitted) (existing.submittedAt ?: System.currentTimeMillis()) else null
+                        submittedAt = if (isSubmitted) (existing.submittedAt ?: com.example.util.TrustedTimeManager.getTrustedTimeMillis()) else null
                     )
                     paperDao.updateAttempt(updated)
                     loadAttemptHistory(paperId)
@@ -3583,12 +3591,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _studentAnswers.value = answersSnapshot
         _submittedAnswers.value = answersSnapshot
 
+        val pos = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 4.0
+        val neg = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 1.0
+        val unk = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
+        val incorrectAll = result.incorrectCount + result.multipleMarkedCount
+        val penaltyIncorrect = Math.round(incorrectAll * neg * 100.0) / 100.0
+        val penaltyUnattended = Math.round(result.unattemptedCount * unk * 100.0) / 100.0
+        val omrScore = Math.round(((result.correctCount * pos) - penaltyIncorrect - penaltyUnattended) * 100.0) / 100.0
         val stats = Companion.TestStats(
             total = result.totalQuestions,
             correct = result.correctCount,
-            incorrect = result.incorrectCount + result.multipleMarkedCount,
+            incorrect = incorrectAll,
             unanswered = result.unattemptedCount,
-            score = result.totalScore.toDouble().coerceAtLeast(0.0)
+            score = omrScore,
+            rawScore = omrScore,
+            penaltyIncorrect = penaltyIncorrect,
+            penaltyUnattended = penaltyUnattended,
+            maxPossibleMarks = result.totalQuestions * pos,
+            positiveMarks = pos,
+            negativeMarks = neg,
+            unattendedMarks = unk
         )
         _submittedStats.value = stats
 
@@ -3608,6 +3630,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _unattendedQuestionLog.value = unattendedSet
 
         viewModelScope.launch(Dispatchers.IO) {
+            val trustedTime = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val answersJson = AttemptEntity.buildAnswersJson(
                 map = answersSnapshot,
                 rollNumber = finalRoll,
@@ -3624,14 +3647,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 unansweredCount = stats.unanswered,
                 score = stats.score,
                 timeSpentSeconds = _timeSpentSeconds.value.coerceAtLeast(60L),
-                submittedAt = System.currentTimeMillis()
+                submittedAt = trustedTime
             )
 
             val newId = paperDao.insertAttempt(scannedAttempt)
             withContext(Dispatchers.Main) {
                 _currentAttemptId.value = newId
                 val rollSnippet = if (finalRoll.isNotBlank()) " | Roll: $finalRoll" else ""
-                _statusMessage.value = "OMR sheet evaluated$rollSnippet: Score ${stats.score.toInt()} / ${result.maxPossibleScore}"
+                val maxStr = String.format(java.util.Locale.US, "%.2f", stats.maxPossibleMarks)
+                _statusMessage.value = "OMR sheet evaluated$rollSnippet: Score ${stats.formattedScore} / $maxStr"
             }
             loadAttemptHistory(paperId)
 
@@ -3666,6 +3690,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resumeExam() {
+        val limitSecs = _customTimeLimitMinutes.value * 60L
+        if (_timerMode.value == ExamTimerMode.COUNTDOWN && limitSecs > 0L) {
+            _timeRemainingSeconds.value = (limitSecs - _timeSpentSeconds.value).coerceAtLeast(1L)
+        }
         _isExamStarted.value = true
         _isExamSubmitted.value = false
         startTimerTicker()
@@ -3732,19 +3760,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _unattendedQuestionLog.value = paper.questions.filter { q ->
                 answersMap[q.num].isNullOrBlank()
             }.map { it.num }.toSet()
+        } else {
+            val limitSecs = _customTimeLimitMinutes.value * 60L
+            if (_timerMode.value == ExamTimerMode.COUNTDOWN && limitSecs > 0L) {
+                _timeRemainingSeconds.value = (limitSecs - attempt.timeSpentSeconds).coerceAtLeast(1L)
+            }
+            startTimerTicker()
         }
 
         _selectedTab.value = 2 // Switch to student test tab
     }
 
     fun reviewCompletedPaperAttempt(paper: PaperEntity) {
-        val latest = allAttempts.value.filter { it.paperId == paper.id && it.isSubmitted }
-            .maxByOrNull { it.submittedAt ?: it.createdAt }
         loadSavedPaper(paper) {
-            if (latest != null) {
-                loadOldAttempt(latest)
-            } else {
-                startExam()
+            viewModelScope.launch(Dispatchers.IO) {
+                val latest = allAttempts.value
+                    .filter { it.paperId == paper.id && it.isSubmitted }
+                    .maxByOrNull { it.submittedAt ?: it.createdAt }
+                    ?: paperDao.getAttemptsForPaper(paper.id).first()
+                        .filter { it.isSubmitted }
+                        .maxByOrNull { it.submittedAt ?: it.createdAt }
+                withContext(Dispatchers.Main) {
+                    if (latest != null) {
+                        loadOldAttempt(latest)
+                    } else {
+                        _isExamStarted.value = false
+                        _isExamSubmitted.value = false
+                        _selectedTab.value = 2
+                    }
+                }
             }
         }
     }
@@ -3756,7 +3800,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updatedMeta = active.metadata.copy(
                 durationMinutes = config.durationMinutes,
                 positiveMarks = config.positiveMarks,
-                negativeMarks = config.negativeMarks
+                negativeMarks = config.negativeMarks,
+                unattendedMarks = config.unattendedMarks
             )
             val updatedPaper = active.copy(metadata = updatedMeta)
             _currentPaper.value = updatedPaper
@@ -3854,19 +3899,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentSecs = _todayTestSeconds.value
         val goalMins = _dailyGoalMinutes.value
         viewModelScope.launch(Dispatchers.IO) {
+            val trustedNow = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val existing = paperDao.getDailyAnalytics(todayStr)
             val updated = if (existing != null) {
                 existing.copy(
                     totalTestTimeSeconds = currentSecs,
                     dailyGoalSeconds = goalMins * 60L,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
+                    lastUpdatedTimestamp = trustedNow
                 )
             } else {
                 DailyStudyAnalyticsEntity(
                     dateString = todayStr,
                     totalTestTimeSeconds = currentSecs,
                     dailyGoalSeconds = goalMins * 60L,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
+                    lastUpdatedTimestamp = trustedNow
                 )
             }
             paperDao.upsertDailyAnalytics(updated)
@@ -3884,6 +3930,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentSecs = _todayTestSeconds.value
         val goalMins = _dailyGoalMinutes.value
         viewModelScope.launch(Dispatchers.IO) {
+            val trustedNow = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val existing = paperDao.getDailyAnalytics(todayStr)
             val updated = if (existing != null) {
                 existing.copy(
@@ -3892,7 +3939,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     questionsAttemptedCount = existing.questionsAttemptedCount + questionsAttempted,
                     correctAnswersCount = existing.correctAnswersCount + correctCount,
                     dailyGoalSeconds = goalMins * 60L,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
+                    lastUpdatedTimestamp = trustedNow
                 )
             } else {
                 DailyStudyAnalyticsEntity(
@@ -3903,7 +3950,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     questionsAttemptedCount = questionsAttempted,
                     correctAnswersCount = correctCount,
                     dailyGoalSeconds = goalMins * 60L,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
+                    lastUpdatedTimestamp = trustedNow
                 )
             }
             paperDao.upsertDailyAnalytics(updated)
@@ -3918,13 +3965,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentSecs = _todayTestSeconds.value
         val goalMins = _dailyGoalMinutes.value
         viewModelScope.launch(Dispatchers.IO) {
+            val trustedNow = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val existing = paperDao.getDailyAnalytics(todayStr)
             val updated = if (existing != null) {
                 existing.copy(
                     totalTestTimeSeconds = currentSecs,
                     testsStartedCount = existing.testsStartedCount + 1,
                     dailyGoalSeconds = goalMins * 60L,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
+                    lastUpdatedTimestamp = trustedNow
                 )
             } else {
                 DailyStudyAnalyticsEntity(
@@ -3932,7 +3980,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     totalTestTimeSeconds = currentSecs,
                     testsStartedCount = 1,
                     dailyGoalSeconds = goalMins * 60L,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
+                    lastUpdatedTimestamp = trustedNow
                 )
             }
             paperDao.upsertDailyAnalytics(updated)

@@ -170,7 +170,7 @@ fun PsychometricAnalysisDialog(
                 targetPaperId = selectedPaperEntityId,
                 paperOverride = effectivePaper,
                 forceSimulation = useSimulationMode,
-                allowSimulationFallback = true
+                allowSimulationFallback = false
             )
         }
     }
@@ -194,7 +194,7 @@ fun PsychometricAnalysisDialog(
             val csv = viewModel.exportPsychometricReportCsv(
                 paperOverride = effectivePaper,
                 forceSimulation = useSimulationMode,
-                allowSimulationFallback = true
+                allowSimulationFallback = false
             )
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("Psychometric Report CSV", csv))
@@ -208,7 +208,7 @@ fun PsychometricAnalysisDialog(
             val csv = viewModel.exportCandidateScorecardsCsv(
                 paperOverride = effectivePaper,
                 forceSimulation = useSimulationMode,
-                allowSimulationFallback = true
+                allowSimulationFallback = false
             )
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("Student Scorecards CSV", csv))
@@ -221,7 +221,7 @@ fun PsychometricAnalysisDialog(
             val cardsText = viewModel.exportAllStudentReportCardsText(
                 paperOverride = effectivePaper,
                 forceSimulation = useSimulationMode,
-                allowSimulationFallback = true
+                allowSimulationFallback = false
             )
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText("All Student Report Cards", cardsText))
@@ -234,7 +234,7 @@ fun PsychometricAnalysisDialog(
             val csv = viewModel.exportPsychometricReportCsv(
                 paperOverride = effectivePaper,
                 forceSimulation = useSimulationMode,
-                allowSimulationFallback = true
+                allowSimulationFallback = false
             )
             val sendIntent = android.content.Intent().apply {
                 action = android.content.Intent.ACTION_SEND
@@ -843,7 +843,7 @@ fun PsychometricAnalysisDialog(
                     candidate = candidate,
                     paperOverride = effectivePaper,
                     forceSimulation = useSimulationMode,
-                    allowSimulationFallback = true
+                    allowSimulationFallback = false
                 )
                 StudentReportCardOverlay(
                     candidate = candidate,
@@ -1050,11 +1050,13 @@ private fun CohortSwitcherStrip(
 ) {
     val colors = ExamTheme.colors
     val healthMessage = when {
+        report.candidateCount == 0 -> "Live Mode • Awaiting Submissions"
         report.cronbachAlpha >= 0.80f -> "Strong Reliability • Well-Calibrated Set"
         report.cronbachAlpha >= 0.65f -> "Balanced Calibration • Ready for Review"
         else -> "Active Calibration Insights (${report.candidateCount} Cohort)"
     }
     val statusTint = when {
+        report.candidateCount == 0 -> if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
         report.cronbachAlpha >= 0.80f -> if (colors.isDark) Color(0xFF34D399) else Color(0xFF059669)
         report.cronbachAlpha >= 0.65f -> colors.teal
         else -> if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
@@ -1160,19 +1162,26 @@ private fun ExecutiveKpiGrid(
     accentAmber: Color,
     accentRose: Color
 ) {
+    val hasCohort = report.candidateCount > 0
     val alphaHealthy = report.cronbachAlpha >= 0.70f
     val alphaColor = when {
+        !hasCohort -> accentBlue
         report.cronbachAlpha >= 0.80f -> accentEmerald
         alphaHealthy -> accentTeal
         else -> accentAmber
     }
     val alphaSub = when {
+        !hasCohort -> "Awaiting Cohort"
         report.cronbachAlpha >= 0.80f -> "High Consistency"
         alphaHealthy -> "Good Balance"
         else -> "Moderate Variance"
     }
     val flagClear = report.flaggedItemCount == 0
-    val flagColor = if (flagClear) accentEmerald else accentRose
+    val flagColor = when {
+        !hasCohort -> accentBlue
+        flagClear -> accentEmerald
+        else -> accentRose
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1185,7 +1194,7 @@ private fun ExecutiveKpiGrid(
             ExecutiveMetricCard(
                 label = "Candidates",
                 value = "${report.candidateCount}",
-                subtext = if (isSimulatedCohort) "Calibrated Cohort" else "Active Cohort",
+                subtext = if (!hasCohort) "Live Submissions" else if (isSimulatedCohort) "Calibrated Cohort" else "Active Cohort",
                 icon = Icons.Default.Groups,
                 color = accentBlue,
                 modifier = Modifier.weight(1f)
@@ -1214,7 +1223,7 @@ private fun ExecutiveKpiGrid(
             ExecutiveMetricCard(
                 label = if (flagClear) "Item Quality" else "Review Items",
                 value = if (flagClear) "100%" else "${report.flaggedItemCount}",
-                subtext = if (flagClear) "All Items Healthy" else "Needs Attention",
+                subtext = if (!hasCohort) "Items Ready" else if (flagClear) "All Items Healthy" else "Needs Attention",
                 icon = if (flagClear) Icons.Default.CheckCircle else Icons.Default.Warning,
                 color = flagColor,
                 modifier = Modifier.weight(1f)
@@ -1230,7 +1239,7 @@ private fun ScoreDistributionStrip(
 ) {
     val colors = ExamTheme.colors
     val ceiling = maxPossibleMarks.toDouble().coerceAtLeast(report.highestScore).coerceAtLeast(1.0)
-    val medianRatio = (report.medianScore / ceiling).toFloat().coerceIn(0.08f, 1f)
+    val medianRatio = if (report.candidateCount == 0) 0f else (report.medianScore / ceiling).toFloat().coerceIn(0.08f, 1f)
 
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -1598,35 +1607,38 @@ private fun PsychometricItemCard(
                         }
                     }
 
+                    val neutralBlue = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = colors.surfaceVariant
+                        color = if (candidateCount == 0) neutralBlue.copy(alpha = 0.13f) else colors.surfaceVariant
                     ) {
                         Text(
-                            text = item.difficultyLabel,
+                            text = if (candidateCount == 0) "Awaiting Data" else item.difficultyLabel,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold,
+                            color = if (candidateCount == 0) neutralBlue else colors.inkBold,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
                     }
 
-                    val discColor = when {
-                        item.discriminationD < 0f -> colors.red
-                        item.discriminationD >= 0.30f -> colors.green
-                        else -> colors.teal
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = discColor.copy(alpha = 0.13f)
-                    ) {
-                        Text(
-                            text = item.discriminationLabel,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = discColor,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
+                    if (candidateCount > 0) {
+                        val discColor = when {
+                            item.discriminationD < 0f -> colors.red
+                            item.discriminationD >= 0.30f -> colors.green
+                            else -> colors.teal
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = discColor.copy(alpha = 0.13f)
+                        ) {
+                            Text(
+                                text = item.discriminationLabel,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = discColor,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
                     }
 
                     if (item.isFlagged) {
@@ -1670,17 +1682,21 @@ private fun PsychometricItemCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                val neutralBlue = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
                 val pColor = when {
+                    candidateCount == 0 -> neutralBlue
                     item.difficultyP >= 0.75f -> Color(0xFF10B981)
                     item.difficultyP <= 0.30f -> Color(0xFFEF4444)
-                    else -> if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+                    else -> neutralBlue
                 }
                 val rColor = when {
+                    candidateCount == 0 -> neutralBlue
                     item.pointBiserialR >= 0.35f -> Color(0xFF10B981)
                     item.pointBiserialR < 0.0f -> Color(0xFFEF4444)
                     else -> colors.teal
                 }
                 val dColor = when {
+                    candidateCount == 0 -> neutralBlue
                     item.discriminationD >= 0.30f -> Color(0xFF10B981)
                     item.discriminationD < 0.0f -> Color(0xFFEF4444)
                     else -> colors.teal
@@ -1707,7 +1723,11 @@ private fun PsychometricItemCard(
             }
 
             Text(
-                text = "Correct: ${item.correctCount}/$candidateCount • Skip: ${item.unattemptedCount} • ${item.pointBiserialLabel}",
+                text = if (candidateCount == 0) {
+                    "Awaiting Live Submissions (0/0 attempts)"
+                } else {
+                    "Correct: ${item.correctCount}/$candidateCount • Skip: ${item.unattemptedCount} • ${item.pointBiserialLabel}"
+                },
                 fontSize = 11.sp,
                 color = colors.muted,
                 maxLines = 2,
@@ -1982,7 +2002,7 @@ private fun StudentScorecardRowCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "Score: ${String.format(Locale.US, "%.1f", candidate.totalScore)}",
+                    text = "Score: ${String.format(Locale.US, "%.2f", candidate.totalScore)}",
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,

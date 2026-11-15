@@ -32,7 +32,7 @@ data class AttemptEntity(
     val submittedAt: Long? = null
 ) {
     fun getFormattedScore(): String {
-        return if (score % 1.0 == 0.0) score.toInt().toString() else String.format(java.util.Locale.US, "%.2f", score)
+        return String.format(java.util.Locale.US, "%.2f", score)
     }
 
     fun getAnswersMap(): Map<Int, String> {

@@ -76,7 +76,10 @@ fun StudentPracticeCard(
     showResult: Boolean,
     modifier: Modifier = Modifier,
     shuffleOptions: Boolean = false,
-    sessionSeed: Long = 0L
+    sessionSeed: Long = 0L,
+    positiveMarks: Double = 4.0,
+    negativeMarks: Double = 1.0,
+    unattendedMarks: Double = 0.0
 ) {
     val colors = ExamTheme.colors
     val haptic = LocalHapticFeedback.current
@@ -161,11 +164,18 @@ fun StudentPracticeCard(
                     val isNeutralized = question.isNeutralized
                     val isCorrect = selectedAnswer != null && selectedAnswer.equals(question.correctAnswer, ignoreCase = true)
                     val isAnswered = selectedAnswer != null
+                    val posStr = String.format(java.util.Locale.US, "%.2f", positiveMarks)
+                    val negStr = String.format(java.util.Locale.US, "%.2f", negativeMarks)
+                    val unkBadgeLabel = if (unattendedMarks > 0.0) {
+                        "— Unattended (-${String.format(java.util.Locale.US, "%.2f", unattendedMarks)})"
+                    } else {
+                        "— Unattended (0.00)"
+                    }
                     val (badgeText, badgeBg, badgeTextCol) = when {
-                        isNeutralized -> Triple("★ Bonus Marks", colors.teal.copy(alpha = 0.15f), colors.teal)
-                        isCorrect -> Triple("✓ Correct (+1.00)", colors.greenLight, colors.green)
-                        isAnswered -> Triple("✗ Incorrect (-0.33)", colors.redLight, colors.red)
-                        else -> Triple("— Unattended (-0.10)", colors.borderLight, colors.muted)
+                        isNeutralized -> Triple("★ Bonus Marks (+$posStr)", colors.teal.copy(alpha = 0.15f), colors.teal)
+                        isCorrect -> Triple("✓ Correct (+$posStr)", colors.greenLight, colors.green)
+                        isAnswered -> Triple("✗ Incorrect (-$negStr)", colors.redLight, colors.red)
+                        else -> Triple(unkBadgeLabel, colors.borderLight, colors.muted)
                     }
                     Surface(
                         shape = RoundedCornerShape(12.dp),

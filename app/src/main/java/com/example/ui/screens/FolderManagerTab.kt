@@ -1163,10 +1163,13 @@ fun FolderManagerTab(
                 },
                 onTakeTest = { paper ->
                     val isCompleted = paper.id in libraryIndex.completedPaperIds
-                    if (isCompleted) {
-                        viewModel.reviewCompletedPaperAttempt(paper)
-                    } else {
-                        viewModel.loadSavedPaper(paper) {
+                    val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                    when {
+                        isCompleted -> viewModel.reviewCompletedPaperAttempt(paper)
+                        isInProgress -> viewModel.loadSavedPaper(paper) {
+                            viewModel.resumeExam()
+                        }
+                        else -> viewModel.loadSavedPaper(paper) {
                             viewModel.startExam()
                         }
                     }
@@ -1222,10 +1225,13 @@ fun FolderManagerTab(
                 },
                 onTakeTest = { paper ->
                     val isCompleted = paper.id in libraryIndex.completedPaperIds
-                    if (isCompleted) {
-                        viewModel.reviewCompletedPaperAttempt(paper)
-                    } else {
-                        viewModel.loadSavedPaper(paper) {
+                    val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                    when {
+                        isCompleted -> viewModel.reviewCompletedPaperAttempt(paper)
+                        isInProgress -> viewModel.loadSavedPaper(paper) {
+                            viewModel.resumeExam()
+                        }
+                        else -> viewModel.loadSavedPaper(paper) {
                             viewModel.startExam()
                         }
                     }
@@ -1847,10 +1853,11 @@ fun FolderManagerTab(
                                     onTakeTest = {
                                         activeQuickFeatureFilter = null
                                         val isCompleted = paper.id in libraryIndex.completedPaperIds
-                                        if (isCompleted) {
-                                            viewModel.reviewCompletedPaperAttempt(paper)
-                                        } else {
-                                            viewModel.loadSavedPaper(paper) { viewModel.startExam() }
+                                        val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                                        when {
+                                            isCompleted -> viewModel.reviewCompletedPaperAttempt(paper)
+                                            isInProgress -> viewModel.loadSavedPaper(paper) { viewModel.resumeExam() }
+                                            else -> viewModel.loadSavedPaper(paper) { viewModel.startExam() }
                                         }
                                         onNavigateToStudent()
                                     },

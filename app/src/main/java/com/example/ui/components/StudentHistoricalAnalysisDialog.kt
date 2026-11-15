@@ -31,9 +31,13 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -56,6 +60,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -74,6 +79,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.DailyStudyAnalyticsEntity
 import com.example.ui.theme.ExamTheme
+import com.example.util.TrustedTimeManager
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -105,9 +112,12 @@ fun StudentHistoricalAnalysisDialog(
         label = "pulse_alpha"
     )
 
-    // Merge today's live ticking seconds with today's entity
-    val activeTodayEntity = remember(todayTestSeconds, todayAnalytics, dailyGoalMinutes) {
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    // Anchor "today" to TrustedTimeManager so device clock drifts never misalign daily activity
+    val trustedNowMillis = remember(todayTestSeconds, todayAnalytics) {
+        TrustedTimeManager.getTrustedTimeMillis()
+    }
+    val activeTodayEntity = remember(todayTestSeconds, todayAnalytics, dailyGoalMinutes, trustedNowMillis) {
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(trustedNowMillis))
         val base = todayAnalytics ?: DailyStudyAnalyticsEntity(dateString = todayStr)
         base.copy(
             totalTestTimeSeconds = todayTestSeconds,
@@ -235,11 +245,12 @@ fun StudentHistoricalAnalysisDialog(
                         )
                     }
 
-                    // --- SECTION 2: LAST 7 DAYS PERFORMANCE CHART ---
+                    // --- SECTION 2: MULTI-WEEK HORIZONTAL SWIPE ACTIVITY TRACKER ---
                     item {
-                        Last7DaysPerformanceCard(
+                        WeeklyActivityPagerCard(
                             historyList = fullHistoryList,
-                            dailyGoalMinutes = dailyGoalMinutes
+                            dailyGoalMinutes = dailyGoalMinutes,
+                            trustedNowMillis = trustedNowMillis
                         )
                     }
 
@@ -582,51 +593,77 @@ private fun TodayLiveTimerCard(
 }
 
 /**
- * Visual 7-Day Performance Bar Chart
+ * Multi-Week Horizontal Swipeable Activity Tracker
+ * Swipe backward across past weeks and forward up to the current 7-day window anchored on TrustedTimeManager.
  */
 @Composable
-private fun Last7DaysPerformanceCard(
+private fun WeeklyActivityPagerCard(
     historyList: List<DailyStudyAnalyticsEntity>,
-    dailyGoalMinutes: Int
+    dailyGoalMinutes: Int,
+    trustedNowMillis: Long
 ) {
     val colors = ExamTheme.colors
     val goalSeconds = dailyGoalMinutes * 60L
+    val coroutineScope = rememberCoroutineScope()
 
-    // Build the last 7 calendar days
-    val last7Days = remember(historyList) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val dayLabelFormat = SimpleDateFormat("EEE", Locale.getDefault())
-        val cal = Calendar.getInstance()
-        val list = mutableListOf<DayChartItem>()
-
-        for (i in 6 downTo 0) {
-            val dateCal = Calendar.getInstance()
-            dateCal.add(Calendar.DAY_OF_YEAR, -i)
-            val dateStr = sdf.format(dateCal.time)
-            val dayLabel = if (i == 0) "Today" else dayLabelFormat.format(dateCal.time)
-
-            val matchedRecord = historyList.find { it.dateString == dateStr }
-            val seconds = matchedRecord?.totalTestTimeSeconds ?: 0L
-
-            list.add(
-                DayChartItem(
-                    dateString = dateStr,
-                    dayLabel = dayLabel,
-                    seconds = seconds,
-                    isToday = i == 0
-                )
-            )
-        }
-        list
+    val historyByDate = remember(historyList) {
+        historyList.associateBy { it.dateString }
     }
 
-    val maxSecondsInWeek = remember(last7Days, goalSeconds) {
-        val peak = last7Days.maxOfOrNull { it.seconds } ?: 0L
-        maxOf(peak, goalSeconds, 1800L) // at least 30m scale
+    val totalWeeks = remember(historyList, trustedNowMillis) {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val todayCal = Calendar.getInstance().apply {
+            timeInMillis = trustedNowMillis
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val oldestDateMillis = historyList.mapNotNull { rec ->
+            try {
+                sdf.parse(rec.dateString)?.time
+            } catch (_: Exception) {
+                null
+            }
+        }.minOrNull()
+        val oldestWeekOffset = if (oldestDateMillis != null && oldestDateMillis < todayCal.timeInMillis) {
+            val diffDays = ((todayCal.timeInMillis - oldestDateMillis) / (24L * 60L * 60L * 1000L)).toInt()
+            (diffDays / 7).coerceAtLeast(0)
+        } else {
+            0
+        }
+        maxOf(52, oldestWeekOffset + 2)
+    }
+
+    val currentWeekPage = totalWeeks - 1
+    val pagerState = rememberPagerState(
+        initialPage = currentWeekPage,
+        pageCount = { totalWeeks }
+    )
+    val currentWeekOffset = (currentWeekPage - pagerState.currentPage).coerceAtLeast(0)
+
+    val weekRangeLabel = remember(currentWeekOffset, trustedNowMillis) {
+        val rangeFormat = SimpleDateFormat("MMM dd", Locale.getDefault())
+        val startCal = Calendar.getInstance().apply {
+            timeInMillis = trustedNowMillis
+            add(Calendar.DAY_OF_YEAR, -(currentWeekOffset * 7 + 6))
+        }
+        val endCal = Calendar.getInstance().apply {
+            timeInMillis = trustedNowMillis
+            add(Calendar.DAY_OF_YEAR, -(currentWeekOffset * 7))
+        }
+        val dateRange = "${rangeFormat.format(startCal.time)} – ${rangeFormat.format(endCal.time)}"
+        when (currentWeekOffset) {
+            0 -> "$dateRange • Current Week"
+            1 -> "$dateRange • Last Week"
+            else -> "$dateRange • ${currentWeekOffset}w Ago"
+        }
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("weekly_activity_pager_card"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
         border = BorderStroke(1.dp, colors.border)
@@ -637,78 +674,241 @@ private fun Last7DaysPerformanceCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Weekly Activity (Last 7 Days)",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.inkBold
-                )
-                Text(
-                    text = "Goal: ${dailyGoalMinutes}m/day",
-                    fontSize = 11.5.sp,
-                    color = colors.muted
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Weekly Activity Tracker",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = weekRangeLabel,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.teal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (currentWeekOffset > 0) {
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(currentWeekPage)
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.tealLight,
+                            border = BorderStroke(0.8.dp, colors.teal),
+                            modifier = Modifier.testTag("jump_current_week_chip")
+                        ) {
+                            Text(
+                                text = "Current Week",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "Goal: ${dailyGoalMinutes}m/day",
+                            fontSize = 11.sp,
+                            color = colors.muted,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (pagerState.currentPage > 0) {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                                }
+                            }
+                        },
+                        enabled = pagerState.currentPage > 0,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("previous_week_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = "Previous Week",
+                            tint = if (pagerState.currentPage > 0) colors.inkBold else colors.muted.copy(alpha = 0.35f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (pagerState.currentPage < currentWeekPage) {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                }
+                            }
+                        },
+                        enabled = pagerState.currentPage < currentWeekPage,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("next_week_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Next Week",
+                            tint = if (pagerState.currentPage < currentWeekPage) colors.inkBold else colors.muted.copy(alpha = 0.35f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Bars Row
-            Row(
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                last7Days.forEach { dayItem ->
-                    val barFraction = if (maxSecondsInWeek > 0) {
-                        (dayItem.seconds.toFloat() / maxSecondsInWeek).coerceIn(0.06f, 1f)
-                    } else 0.06f
+                    .testTag("weekly_activity_horizontal_pager")
+            ) { pageIndex ->
+                val pageWeekOffset = (currentWeekPage - pageIndex).coerceAtLeast(0)
+                val weekDays = remember(pageWeekOffset, historyByDate, trustedNowMillis) {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val dayLabelFormat = SimpleDateFormat("EEE", Locale.getDefault())
+                    val list = mutableListOf<DayChartItem>()
 
-                    val isMetGoal = dayItem.seconds >= goalSeconds && goalSeconds > 0
+                    for (i in 6 downTo 0) {
+                        val daysAgo = pageWeekOffset * 7 + i
+                        val dateCal = Calendar.getInstance().apply {
+                            timeInMillis = trustedNowMillis
+                            add(Calendar.DAY_OF_YEAR, -daysAgo)
+                        }
+                        val dateStr = sdf.format(dateCal.time)
+                        val isToday = pageWeekOffset == 0 && i == 0
+                        val dayLabel = if (isToday) "Today" else dayLabelFormat.format(dateCal.time)
+                        val seconds = historyByDate[dateStr]?.totalTestTimeSeconds ?: 0L
 
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
+                        list.add(
+                            DayChartItem(
+                                dateString = dateStr,
+                                dayLabel = dayLabel,
+                                seconds = seconds,
+                                isToday = isToday
+                            )
+                        )
+                    }
+                    list
+                }
+
+                val maxSecondsInWeek = remember(weekDays, goalSeconds) {
+                    val peak = weekDays.maxOfOrNull { it.seconds } ?: 0L
+                    maxOf(peak, goalSeconds, 1800L) // at least 30m scale
+                }
+                val weekTotalSeconds = remember(weekDays) { weekDays.sumOf { it.seconds } }
+                val activeDaysInWeek = remember(weekDays) { weekDays.count { it.seconds > 0L } }
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Fixed-height 7-day bars container prevents layout jumping on empty weeks
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
                     ) {
-                        // Time label above bar
-                        val mins = dayItem.seconds / 60
-                        Text(
-                            text = if (mins > 0) "${mins}m" else "0m",
-                            fontSize = 9.5.sp,
-                            fontWeight = if (dayItem.isToday) FontWeight.Bold else FontWeight.Normal,
-                            color = if (dayItem.isToday) colors.teal else colors.muted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        weekDays.forEach { dayItem ->
+                            val barFraction = if (maxSecondsInWeek > 0) {
+                                (dayItem.seconds.toFloat() / maxSecondsInWeek).coerceIn(0.06f, 1f)
+                            } else 0.06f
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                            val isMetGoal = dayItem.seconds >= goalSeconds && goalSeconds > 0
 
-                        // Bar Column
-                        Box(
-                            modifier = Modifier
-                                .width(22.dp)
-                                .height((80 * barFraction).dp)
-                                .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                                .background(
-                                    when {
-                                        dayItem.isToday -> colors.teal
-                                        isMetGoal -> colors.green
-                                        dayItem.seconds > 0 -> colors.teal.copy(alpha = 0.5f)
-                                        else -> colors.border.copy(alpha = 0.6f)
-                                    }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                val mins = dayItem.seconds / 60
+                                Text(
+                                    text = if (mins > 0) "${mins}m" else "0m",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = if (dayItem.isToday) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (dayItem.isToday) colors.teal else colors.muted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                        )
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
-                        // Day label below bar
-                        Text(
-                            text = dayItem.dayLabel,
-                            fontSize = 11.sp,
-                            fontWeight = if (dayItem.isToday) FontWeight.Bold else FontWeight.Medium,
-                            color = if (dayItem.isToday) colors.teal else colors.inkBold
-                        )
+                                Box(
+                                    modifier = Modifier
+                                        .width(22.dp)
+                                        .height((80 * barFraction).dp)
+                                        .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                                        .background(
+                                            when {
+                                                dayItem.isToday -> colors.teal
+                                                isMetGoal -> colors.green
+                                                dayItem.seconds > 0 -> colors.teal.copy(alpha = 0.5f)
+                                                else -> colors.border.copy(alpha = 0.6f)
+                                            }
+                                        )
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Text(
+                                    text = dayItem.dayLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (dayItem.isToday) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (dayItem.isToday) colors.teal else colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Fixed-height footer guarantees identical card height across empty and active weeks
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(20.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (weekTotalSeconds == 0L) {
+                            Text(
+                                text = "No study activity logged for this week",
+                                fontSize = 11.sp,
+                                color = colors.muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else {
+                            val wHours = weekTotalSeconds / 3600
+                            val wMins = (weekTotalSeconds % 3600) / 60
+                            val wFormatted = if (wHours > 0) "${wHours}h ${wMins}m" else "${wMins}m"
+                            Text(
+                                text = "Week total: $wFormatted • $activeDaysInWeek active day(s) • Swipe for history",
+                                fontSize = 11.sp,
+                                color = colors.muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
