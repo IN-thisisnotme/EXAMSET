@@ -115,9 +115,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -197,13 +195,6 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val masterListState = rememberLazyListState()
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { targetValue ->
-            // Allow expanding, but prevent swiping/dragging down to dismiss so scrolling never closes the sheet
-            targetValue != SheetValue.Hidden
-        }
-    )
 
     var showInputSheet by remember { mutableStateOf(false) }
     var creationTargetFolderId by remember { mutableStateOf<String?>(null) }
@@ -295,7 +286,7 @@ fun HomeScreen(
     Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -1248,8 +1239,12 @@ fun HomeScreen(
         )
     }
 
-    // Input Bottom Sheet
-    if (showInputSheet) {
+    // Full-screen Activity-hosted Create Question Set Sheet (native status, nav & IME insets)
+    AnimatedVisibility(
+        visible = showInputSheet,
+        enter = slideInVertically(animationSpec = tween(240), initialOffsetY = { it / 8 }) + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(animationSpec = tween(200), targetOffsetY = { it / 8 }) + fadeOut(animationSpec = tween(160))
+    ) {
         InputBottomSheet(
             initialText = "",
             initialSubject = creationTargetFolderId?.let { viewModel.getFullFolderPath(it) } ?: "",
@@ -1285,7 +1280,6 @@ fun HomeScreen(
                 creationTargetFolderId = null
                 viewModel.loadSample(sampleIdx)
             },
-            sheetState = sheetState,
             onOpenPromptBuilder = {
                 showInputSheet = false
                 creationTargetFolderId = null

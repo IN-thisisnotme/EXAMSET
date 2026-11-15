@@ -3,29 +3,53 @@ package com.example.ui.components
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -33,66 +57,46 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.window.PopupProperties
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import com.example.model.ExamConfig
-import com.example.model.FolderItem
-import com.example.model.PaperCategory
-import com.example.util.ExamCatalogueRegistry
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SheetState
-import androidx.compose.material3.Surface
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import android.view.WindowManager
-import androidx.core.view.WindowCompat
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
@@ -100,60 +104,48 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import android.widget.Toast
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloseFullscreen
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.OpenInFull
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
+import android.widget.Toast
+import com.example.model.ExamConfig
+import com.example.model.FolderItem
+import com.example.model.PaperCategory
+import com.example.util.ExamCatalogueRegistry
 import com.example.data.PaperEntity
 import com.example.model.QuestionPaper
 import com.example.ui.components.QuestionCard
@@ -232,7 +224,6 @@ fun InputBottomSheet(
     onGenerateConfig: ((ExamConfig) -> Unit)? = null,
     onPickFile: () -> Unit,
     onLoadSample: (Int) -> Unit,
-    sheetState: SheetState,
     onOpenPromptBuilder: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -281,7 +272,7 @@ fun InputBottomSheet(
     var customPositiveMarksStr by remember { mutableStateOf("4.0") }
     var customNegativeMarksStr by remember { mutableStateOf("1.0") }
     var customUnattendedMarksStr by remember { mutableStateOf("0.0") }
-    var showCategorizationSection by remember { mutableStateOf(true) }
+    var showCategorizationSection by remember { mutableStateOf(false) }
     var isSubjectDropdownOpen by remember { mutableStateOf(false) }
     var activeSheetTab by remember { mutableStateOf(0) } // 0: Input/Paste, 1: Prompt Generator
 
@@ -354,8 +345,9 @@ fun InputBottomSheet(
     }
 
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val columnScrollState = rememberScrollState()
-    // Measured height of the visible scroll area (screen minus keyboard, nav bar and header)
+    // Measured height of the visible scroll area between TopBar and BottomBar
     var scrollViewportPx by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
@@ -394,50 +386,8 @@ fun InputBottomSheet(
         }
     }
 
-    // Intercept residual downward drag/fling so ModalBottomSheet NEVER interprets content scrolling as drag-to-dismiss
-    val blockSheetDismissNestedScroll = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                // If scrolling down while already at the top, consume it immediately so sheet drag is never triggered
-                return if (available.y > 0f && columnScrollState.value == 0) {
-                    Offset(0f, available.y)
-                } else {
-                    Offset.Zero
-                }
-            }
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                // If scrolling down (available.y > 0), consume it so ModalBottomSheet never treats downward drag as dismiss!
-                return if (available.y > 0f) {
-                    Offset(0f, available.y)
-                } else {
-                    Offset.Zero
-                }
-            }
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                return if (available.y > 0f && columnScrollState.value == 0) {
-                    Velocity(0f, available.y)
-                } else {
-                    Velocity.Zero
-                }
-            }
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                return if (available.y > 0f) {
-                    Velocity(0f, available.y)
-                } else {
-                    Velocity.Zero
-                }
-            }
-        }
-    }
-
     // Dedicated nested scroll connection on the text field:
-    // Scrolling inside the text area scrolls the text smoothly. When the text reaches its
-    // top or bottom edge, extra drag chains to the parent page so the user can easily scroll
-    // down to the Generate button even if swiping over the text area.
+    // Scrolling inside the text area scrolls the text smoothly and exposes the floating scrollbar indicator.
     val textFieldNestedScroll = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -474,120 +424,531 @@ fun InputBottomSheet(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        val view = LocalView.current
-        DisposableEffect(view, colors.isDark) {
-            var parent = view.parent
-            while (parent != null && parent !is DialogWindowProvider) {
-                parent = parent.parent
-            }
-            (parent as? DialogWindowProvider)?.window?.let { window ->
-                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-                val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = !colors.isDark
-                insetsController.isAppearanceLightNavigationBars = !colors.isDark
-            }
-            onDispose {}
+    val isSetDuplicate = remember(savedPapers, customSubject, customSetNumber) {
+        savedPapers.any {
+            it.subject.trim().equals(customSubject.trim(), ignoreCase = true) &&
+                it.setNumber.trim().equals(customSetNumber.trim(), ignoreCase = true)
         }
+    }
+    val canGenerate = textInput.isNotBlank() && !isSetDuplicate
 
-        Surface(
+    val parsedCount = promptMcqCount.trim().toIntOrNull() ?: 20
+    val fullPrompt = remember(
+        parsedCount,
+        promptExam,
+        promptSubject,
+        promptTopic,
+        promptQuestionLanguage,
+        promptExplanationChoice,
+        effectivePromptExplanationLanguage,
+        promptDifficulty,
+        promptQuestionType,
+        promptExplainAllFourOptions,
+        promptIncludeFormulasAndDiagrams,
+        promptEnableQuantityCorrectionRule
+    ) {
+        val countVal = parsedCount
+        val topicDisplay = buildString {
+            if (promptSubject.isNotBlank()) {
+                append(promptSubject.trim())
+                if (promptTopic.isNotBlank()) {
+                    append(" - ")
+                    append(promptTopic.trim())
+                }
+            } else if (promptTopic.isNotBlank()) {
+                append(promptTopic.trim())
+            } else {
+                append("Comprehensive Subject Curriculum")
+            }
+        }
+        val qLangVal = promptQuestionLanguage.trim().ifBlank { "English" }
+        val expLangVal = effectivePromptExplanationLanguage
+        val examVal = promptExam.trim().ifBlank { "Competitive Examination" }
+
+        buildString {
+            append("Act as a senior psychometrician and chief examination paper setter for $examVal.\n\n")
+            append("Generate exactly $countVal multiple-choice questions (MCQs) for $topicDisplay at $promptDifficulty difficulty (Question Pattern: $promptQuestionType) in $qLangVal.\n\n")
+
+            append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
+            if (expLangVal == qLangVal || promptExplanationChoice == "Same as Question") {
+                append("- Language: Write the question stems, options, and explanations entirely in $qLangVal using natural, academically rigorous terminology.\n")
+            } else {
+                append("- Language: Write question stems and options in $qLangVal, and explanations in $expLangVal, using natural, academically rigorous terminology.\n")
+            }
+            append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as \"(A)\", \"(B)\", \"(C)\", \"(D)\" for universal OMR and parser compatibility.\n\n")
+
+            append("### 2. PSYCHOMETRIC & DISTRACTOR RULES\n")
+            when (promptDifficulty) {
+                "Easy" -> append("1. COGNITIVE LEVEL (Easy / Foundational): Direct conceptual recall, core standard definitions, basic formulas, and straightforward identification with unambiguous distractors.\n")
+                "Moderate" -> append("1. COGNITIVE LEVEL (Moderate / Standard): Standard examination caliber requiring multi-step comprehension, application of principles, and analytical deduction.\n")
+                "Hard" -> append("1. COGNITIVE LEVEL (Hard / Advanced): Advanced analytical rigor, intricate edge cases, multi-layered calculations, and trap options diagnosing common misconceptions.\n")
+                "Extreme" -> append("1. COGNITIVE LEVEL (Extreme Olympiad / Rank-Decider): Deep synthesis, Olympiad-level multi-concept integration, subtle distractor nuances, and demanding problem-solving.\n")
+                else -> append("1. COGNITIVE LEVEL (Mixed Difficulty): Balanced distribution spanning ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging questions.\n")
+            }
+            when (promptQuestionType) {
+                "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
+                "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
+                "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items including 'Assertion (A) & Reason (R)', 'Statement I & Statement II', and 'Which of the statements given above is/are correct?'.\n")
+                "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
+                else -> append("2. QUESTION FORMAT FOCUS: Dynamic mix of direct conceptual items, multi-statement questions, numerical application, and scenario analysis.\n")
+            }
+            append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
+            append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default. Maintain a tight word-count ratio across all 4 options (no option exceeding 1.25x the length of the shortest).\n")
+            append("5. ORDERING: If options contain numerical values, dates, or quantitative ranges, order them strictly from lowest to highest.\n")
+            append("6. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
+            append("7. NEGATIVE STEMS: Avoid negative questions where possible. If unavoidable, highlight the negative operator in uppercase bold (e.g., **NOT**, **EXCEPT**, **LEAST**).\n")
+            if (promptIncludeFormulasAndDiagrams) {
+                append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
+                append("9. DIAGRAMS: If a question references a diagram, chart, or figure, include: Diagram: [Figure title or description | Optional URL].\n")
+            } else {
+                append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
+            }
+            append("\n")
+
+            append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
+            append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~25% each across A, B, C, D). Never allow more than two consecutive identical answer keys (e.g., A, A is allowed; A, A, A is strictly prohibited).\n")
+            append("2. PHASE SYNC: The option declared in Phase 2 MUST match the option identified as \"Correct\" in Phase 3 without exception.\n")
+            append("3. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks, disclaimers, or closing text.\n")
+            append("4. NO DIVIDER LINES: Do NOT use markdown horizontal divider lines (---) anywhere in the questions or explanations.\n\n")
+
+            append("### EXACT OUTPUT FORMAT TEMPLATE:\n\n")
+            append("Phase 1: Questions\n")
+            append("Q1. [Clear, unambiguous question stem or scenario]\n")
+            append("(A) [Option A]\n")
+            append("(B) [Option B]\n")
+            append("(C) [Option C]\n")
+            append("(D) [Option D]\n\n")
+            append("[Repeat through Q$countVal]\n\n")
+
+            append("Phase 2: Answer Key\n")
+            append("Q1: (A)\n")
+            append("Q2: (C)\n")
+            append("[Repeat through Q$countVal]\n\n")
+
+            append("Phase 3: Explanations & Solution\n")
+            if (promptExplainAllFourOptions) {
+                append("Q1.\n")
+                append("• Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
+                append("• Option Breakdown:\n")
+                append("  - (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                append("  - (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                append("  - (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                append("  - (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
+                append("• Key Takeaway / Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+            } else {
+                append("Q1.\n")
+                append("• Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
+                append("• Why Correct: [Direct explanation with underlying reason for the correct option]\n")
+                append("• Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
+                append("• Key Takeaway / Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
+            }
+            append("[Repeat through Q$countVal without any horizontal divider lines (---)]\n\n")
+
+            if (promptEnableQuantityCorrectionRule) {
+                append("Phase 4: Format & Quantity Enforcement (Truncation Guard Active)\n")
+                append("1. Strict Quantity Check: Generate exactly all $countVal questions from 1 to $countVal without stopping early or omitting questions.\n")
+                append("2. High-Density Token Budget: To fit all $countVal questions and explanations completely without token limit cutoffs, keep each option's explanation to 2 to 3 concise, high-impact sentences (30–45 words).\n")
+                append("3. Depth Uniformity: Maintain identical pedagogical depth from Question 1 through Question $countVal. Do not rush or shorten later questions.\n\n")
+            }
+
+            append("Execute the instructions now, starting directly with Phase 1: Questions.")
+        }
+    }
+
+    val headerGradient = remember(colors.isDark) {
+        Brush.horizontalGradient(
+            colors = listOf(colors.teal, colors.navyBanner)
+        )
+    }
+
+    BackHandler {
+        keyboardController?.hide()
+        onDismiss()
+    }
+
+    // Activity-hosted full-screen Material 3 Sheet (NO Dialog window) so status, nav & IME insets never clip
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+    ) {
+        Scaffold(
             modifier = Modifier.fillMaxSize(),
-            color = colors.background
-        ) {
+            containerColor = colors.background,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                Surface(
+                    color = colors.surfaceVariant,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(headerGradient)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    keyboardController?.hide()
+                                    onDismiss()
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("close_sheet_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = colors.inkBold
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Create Question Set",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Paste text, import file (.txt/.md), or build AI prompt",
+                                    fontSize = 11.5.sp,
+                                    color = colors.muted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                    if (clipText.isNotBlank()) {
+                                        activeSheetTab = 0
+                                        textInput = clipText
+                                        Toast.makeText(context, "Pasted text from clipboard", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("paste_clipboard_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentPaste,
+                                    contentDescription = "Paste from clipboard",
+                                    tint = colors.teal
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                    }
+                }
+            },
+            bottomBar = {
+                Surface(
+                    color = colors.surfaceVariant,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(
+                                WindowInsets.navigationBars
+                                    .union(WindowInsets.ime)
+                                    .union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                            ),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = 760.dp)
+                                .fillMaxWidth()
+                        ) {
+                            if (activeSheetTab == 0) {
+                                if (isSetDuplicate) {
+                                    Surface(
+                                        color = colors.red.copy(alpha = 0.12f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Warning,
+                                                    contentDescription = null,
+                                                    tint = colors.red,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Set $customSetNumber already exists in ${customSubject.trim().ifBlank { "this folder" }}",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colors.red,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Edit Set #",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.tealDark,
+                                                modifier = Modifier.clickable {
+                                                    showCategorizationSection = true
+                                                    coroutineScope.launch {
+                                                        columnScrollState.animateScrollTo(0)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            keyboardController?.hide()
+                                            focusManager.clearFocus(force = true)
+                                            onDismiss()
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                                        border = BorderStroke(1.dp, colors.border),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .weight(0.75f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("cancel_sheet_button")
+                                    ) {
+                                        Text(
+                                            text = "Cancel",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { textInput = "" },
+                                        enabled = textInput.isNotBlank(),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                                        border = BorderStroke(1.dp, colors.border),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .weight(0.75f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("clear_text_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "Clear",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            if (canGenerate) {
+                                                keyboardController?.hide()
+                                                focusManager.clearFocus(force = true)
+                                                val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(customSubject)
+                                                val parsedDuration = customDurationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
+                                                val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
+                                                val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+                                                val parsedUnkMarks = customUnattendedMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
+
+                                                onGenerate(
+                                                    textInput,
+                                                    customTitle,
+                                                    cleanSubject,
+                                                    customTopic,
+                                                    customSetNumber,
+                                                    parsedDuration,
+                                                    parsedPosMarks,
+                                                    parsedNegMarks,
+                                                    parsedUnkMarks,
+                                                    selectedCategory.code
+                                                )
+                                                onDismiss()
+                                            }
+                                        },
+                                        enabled = canGenerate,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.navyBanner,
+                                            contentColor = colors.navyBannerText,
+                                            disabledContainerColor = colors.surface,
+                                            disabledContentColor = colors.muted
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .weight(1.5f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("generate_paper_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = if (isSetDuplicate) {
+                                                "Duplicate Set"
+                                            } else if (parsedPreview != null && parsedPreview!!.questions.isNotEmpty()) {
+                                                "Generate (${parsedPreview!!.questions.size})"
+                                            } else {
+                                                "Generate & Save"
+                                            },
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                            val clip = android.content.ClipData.newPlainText("ExamSet Prompt", fullPrompt)
+                                            clipboard?.setPrimaryClip(clip)
+                                            Toast.makeText(context, "Prompt copied! Paste it into your AI assistant.", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.navyBanner,
+                                            contentColor = colors.navyBannerText
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("copy_prompt_button")
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Copy Prompt",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { activeSheetTab = 0 },
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = colors.tealDark,
+                                            containerColor = colors.surface
+                                        ),
+                                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("switch_to_input_tab_button")
+                                    ) {
+                                        Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.teal)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Paste Response",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ) { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(innerPadding)
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                 contentAlignment = Alignment.TopCenter
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
                         .widthIn(max = 760.dp)
-                        .fillMaxWidth()
+                        .fillMaxSize()
+                        .onSizeChanged { scrollViewportPx = it.height }
+                        .padding(horizontal = 16.dp)
+                        .verticalScroll(columnScrollState)
                 ) {
-                    // Top App Bar / Sheet Header
-                    Surface(
-                        color = colors.surfaceVariant,
-                        tonalElevation = 2.dp,
-                        border = BorderStroke(0.5.dp, colors.border),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Create Question Set",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-                                Text(
-                                    text = "Paste text, import file (.txt/.md), or load sample",
-                                    fontSize = 12.sp,
-                                    color = colors.muted
-                                )
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                // Paste from clipboard button
-                                IconButton(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                                        if (clipText.isNotBlank()) {
-                                            textInput = clipText
-                                        }
-                                    },
-                                    modifier = Modifier.testTag("paste_clipboard_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentPaste,
-                                        contentDescription = "Paste from clipboard",
-                                        tint = colors.teal
-                                    )
-                                }
-
-                                // Close sheet button
-                                IconButton(
-                                    onClick = onDismiss,
-                                    modifier = Modifier.testTag("close_sheet_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Close",
-                                        tint = colors.muted
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Scrollable Content Area
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-                            .onSizeChanged { scrollViewportPx = it.height }
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                            .verticalScroll(columnScrollState)
-                    ) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -833,41 +1194,77 @@ fun InputBottomSheet(
                 unfocusedLabelColor = colors.muted
             )
 
-            // Categorization & Set No Section (Collapsible)
+            // Categorization, Set No & Exam Parameters Section (Collapsible Summary Bar)
+            val summarySubject = customSubject.trim().ifBlank { "Auto Subject" }
+            val summarySet = customSetNumber.trim().ifBlank { "01" }
+            val summaryDuration = customDurationMinutesStr.ifBlank { "60" }
+            val summaryPos = customPositiveMarksStr.ifBlank { "4.0" }
+            val summaryNeg = customNegativeMarksStr.ifBlank { "1.0" }
+
             Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = colors.surfaceVariant,
-                border = BorderStroke(0.8.dp, colors.border),
+                border = BorderStroke(0.9.dp, if (isSetDuplicate) colors.red else colors.border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .clickable { showCategorizationSection = !showCategorizationSection },
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Tag,
+                                imageVector = if (isSetDuplicate) Icons.Default.Warning else Icons.Default.Tag,
                                 contentDescription = null,
-                                tint = colors.teal,
+                                tint = if (isSetDuplicate) colors.red else colors.teal,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Set Details & Marking",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (isSetDuplicate) {
+                                        "Duplicate: $summarySubject • Set $summarySet (Tap to change)"
+                                    } else {
+                                        "$summarySubject • Set $summarySet • ${summaryDuration}m (+$summaryPos / -$summaryNeg)"
+                                    },
+                                    fontSize = 11.sp,
+                                    color = if (isSetDuplicate) colors.red else colors.muted,
+                                    fontWeight = if (isSetDuplicate) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Subject, Topic & Set Number",
-                                fontSize = 13.sp,
+                                text = if (showCategorizationSection) "Hide" else "Edit",
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = colors.inkBold
+                                color = colors.tealDark
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = if (showCategorizationSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (showCategorizationSection) "Collapse setup" else "Expand setup",
+                                tint = colors.muted
                             )
                         }
-                        Icon(
-                            imageVector = if (showCategorizationSection) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = colors.muted
-                        )
                     }
 
                     AnimatedVisibility(visible = showCategorizationSection) {
@@ -1430,8 +1827,12 @@ fun InputBottomSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Text Area Input Header with Format Mode Selection & Stable Height Status Pill
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Text Area Input Header + Toolbar + Editor grouped for clean bring-into-view above keyboard
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(bringIntoViewRequester)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1464,265 +1865,242 @@ fun InputBottomSheet(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(6.dp))
 
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Dedicated Responsive Quick Action Toolbar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Paste Button (Replaces content)
-                OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                        if (clipText.isNotBlank()) {
-                            textInput = clipText
-                            Toast.makeText(context, "Pasted text from clipboard", Toast.LENGTH_SHORT).show()
-                            coroutineScope.launch {
-                                bringIntoViewRequester.bringIntoView()
-                            }
-                        } else {
-                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
-                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(8.dp),
+                // Dedicated Responsive Quick Action Toolbar
+                Row(
                     modifier = Modifier
-                        .heightIn(min = 36.dp)
-                        .testTag("toolbar_paste_button")
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentPaste,
-                        contentDescription = "Paste from clipboard",
-                        modifier = Modifier.size(15.dp),
-                        tint = colors.teal
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                // Append Button (Appends clipboard content without replacing existing text)
-                OutlinedButton(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                        if (clipText.isNotBlank()) {
-                            textInput = if (textInput.isBlank()) {
-                                clipText
-                            } else {
-                                "${textInput.trimEnd()}\n\n$clipText"
-                            }
-                            Toast.makeText(context, "Appended text from clipboard", Toast.LENGTH_SHORT).show()
-                            coroutineScope.launch {
-                                bringIntoViewRequester.bringIntoView()
-                            }
-                        } else {
-                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
-                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .heightIn(min = 36.dp)
-                        .testTag("toolbar_append_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Append from clipboard",
-                        modifier = Modifier.size(15.dp),
-                        tint = colors.teal
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Append", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                if (textInput.isNotBlank()) {
-                    // Clear Button
-                    OutlinedButton(
-                        onClick = { textInput = "" },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.muted),
-                        border = BorderStroke(1.dp, colors.border),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .heightIn(min = 36.dp)
-                            .testTag("toolbar_clear_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = "Clear text",
-                            modifier = Modifier.size(14.dp),
-                            tint = colors.muted
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Clear", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    // Top Button
+                    // Paste Button (Replaces content)
                     OutlinedButton(
                         onClick = {
-                            coroutineScope.launch {
-                                columnScrollState.animateScrollTo(0)
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                            if (clipText.isNotBlank()) {
+                                textInput = clipText
+                                Toast.makeText(context, "Pasted text from clipboard", Toast.LENGTH_SHORT).show()
+                                coroutineScope.launch {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            } else {
+                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
                             }
                         },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
-                        border = BorderStroke(1.dp, colors.border),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
+                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
-                            .heightIn(min = 36.dp)
-                            .testTag("toolbar_top_button")
+                            .heightIn(min = 38.dp)
+                            .testTag("toolbar_paste_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = "Scroll to top",
+                            imageVector = Icons.Default.ContentPaste,
+                            contentDescription = "Paste from clipboard",
                             modifier = Modifier.size(15.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Top", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
-                }
 
-                Spacer(modifier = Modifier.weight(1f, fill = false))
-
-                // Full View / Shrink Button with accessible touch target
-                OutlinedButton(
-                    onClick = { isTextAreaExpanded = !isTextAreaExpanded },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
-                    border = BorderStroke(1.dp, colors.border),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .heightIn(min = 36.dp)
-                        .testTag("toolbar_expand_button")
-                ) {
-                    Icon(
-                        imageVector = if (isTextAreaExpanded) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
-                        contentDescription = if (isTextAreaExpanded) "Collapse text area" else "Expand text area",
-                        tint = colors.tealDark,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isTextAreaExpanded) "Shrink" else "Full View",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Height is constrained to the actual available viewport above the on-screen keyboard
-            val fieldDensity = LocalDensity.current
-            val imeOpen = WindowInsets.ime.getBottom(fieldDensity) > 0
-            val viewportDp = with(fieldDensity) { scrollViewportPx.toDp() }
-            val normalFieldHeight = if (isTextAreaExpanded) 380.dp else 200.dp
-            val maxAvailableFieldHeight = if (viewportDp > 0.dp) {
-                // Ensure room remains for header, toolbar, and bottom controls
-                (viewportDp - 70.dp).coerceAtLeast(80.dp)
-            } else {
-                normalFieldHeight
-            }
-            val targetFieldHeight = if (imeOpen) {
-                val ratio = if (isTextAreaExpanded) 0.50f else 0.42f
-                (viewportDp * ratio).coerceIn(80.dp, maxAvailableFieldHeight)
-            } else {
-                normalFieldHeight
-            }
-            val fieldHeight = if (scrollViewportPx == 0) {
-                normalFieldHeight
-            } else {
-                minOf(normalFieldHeight, targetFieldHeight, maxAvailableFieldHeight)
-            }
-            var mcqFocused by remember { mutableStateOf(false) }
-
-            // Reliable BringIntoView triggered without arbitrary delays when field gains focus or keyboard/viewport changes
-            LaunchedEffect(imeOpen, scrollViewportPx, mcqFocused) {
-                if (mcqFocused && scrollViewportPx > 0) {
-                    withFrameNanos { }
-                    bringIntoViewRequester.bringIntoView()
-                }
-            }
-
-            // Dynamic Scrollable Text Area Input with Isolated Nested Scrolling, IME bring-into-view and Floating Scroll Indicator
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(fieldHeight)
-            ) {
-                OutlinedTextField(
-                    value = textInput,
-                    onValueChange = { textInput = it },
-                    label = {
-                        val lbl = when (inputContentFormat) {
-                            "JSON Format" -> if (isTextAreaExpanded) "JSON Array / Paper Object (Expanded)" else "JSON Format Input"
-                            "Markdown Table / CSV" -> if (isTextAreaExpanded) "Table / CSV Content (Expanded)" else "Table / CSV Format Input"
-                            else -> if (isTextAreaExpanded) "MCQ Practice Text (Expanded View)" else "MCQ Practice Text"
-                        }
-                        Text(lbl)
-                    },
-                    placeholder = {
-                        val ph = when (inputContentFormat) {
-                            "JSON Format" -> "[\n  {\n    \"num\": 1,\n    \"question\": \"Question stem here...\",\n    \"options\": {\n      \"a\": \"Option A\",\n      \"b\": \"Option B\",\n      \"c\": \"Option C\",\n      \"d\": \"Option D\"\n    },\n    \"correctAnswer\": \"A\",\n    \"explanation\": \"Detailed explanation here...\"\n  }\n]"
-                            "Markdown Table / CSV" -> "| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n| 1 | Question stem... | Opt A | Opt B | Opt C | Opt D | A | Detailed explanation... |"
-                            else -> "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\n\nAnswer Key\n1: A\n\nDetailed Explanations\n1. (A) Reason..."
-                        }
-                        Text(
-                            ph,
-                            color = colors.muted.copy(alpha = 0.6f),
-                            fontSize = 11.5.sp
+                    // Append Button (Appends clipboard content without replacing existing text)
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                            if (clipText.isNotBlank()) {
+                                textInput = if (textInput.isBlank()) {
+                                    clipText
+                                } else {
+                                    "${textInput.trimEnd()}\n\n$clipText"
+                                }
+                                Toast.makeText(context, "Appended text from clipboard", Toast.LENGTH_SHORT).show()
+                                coroutineScope.launch {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            } else {
+                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
+                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .heightIn(min = 38.dp)
+                            .testTag("toolbar_append_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Append from clipboard",
+                            modifier = Modifier.size(15.dp),
+                            tint = colors.teal
                         )
-                    },
-                    colors = fieldColors,
-                    minLines = 1,
-                    maxLines = Int.MAX_VALUE,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .nestedScroll(textFieldNestedScroll)
-                        .bringIntoViewRequester(bringIntoViewRequester)
-                        .onFocusEvent { focusState ->
-                            mcqFocused = focusState.isFocused
-                            if (focusState.isFocused) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Append", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    if (textInput.isNotBlank()) {
+                        // Top Button
+                        OutlinedButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    columnScrollState.animateScrollTo(0)
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                            border = BorderStroke(1.dp, colors.border),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .testTag("toolbar_top_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Scroll to top",
+                                modifier = Modifier.size(15.dp),
+                                tint = colors.teal
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Top", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f, fill = false))
+
+                    // Full View / Shrink Button with accessible touch target
+                    OutlinedButton(
+                        onClick = {
+                            val expanding = !isTextAreaExpanded
+                            isTextAreaExpanded = expanding
+                            if (expanding) {
+                                showCategorizationSection = false
                                 coroutineScope.launch {
                                     withFrameNanos { }
                                     bringIntoViewRequester.bringIntoView()
                                 }
                             }
-                        }
-                        .testTag("mcq_input_field"),
-                    shape = RoundedCornerShape(10.dp)
-                )
-
-                // Floating scrollbar for text box: visible only while scrolling, auto-hides after a few moments
-                val scrollAlpha by animateFloatAsState(
-                    targetValue = if (isTextBoxScrolling) 1f else 0f,
-                    animationSpec = tween(durationMillis = if (isTextBoxScrolling) 150 else 500),
-                    label = "textBoxScrollbarAlpha"
-                )
-                if (scrollAlpha > 0.01f) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = colors.teal.copy(alpha = 0.85f * scrollAlpha),
-                        shadowElevation = (3 * scrollAlpha).dp,
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                        border = BorderStroke(1.dp, colors.border),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 8.dp, top = 12.dp, bottom = 12.dp)
-                            .width(5.dp)
-                            .fillMaxHeight(0.55f)
-                    ) {}
+                            .heightIn(min = 38.dp)
+                            .testTag("toolbar_expand_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isTextAreaExpanded) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
+                            contentDescription = if (isTextAreaExpanded) "Collapse text area" else "Expand text area",
+                            tint = colors.tealDark,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isTextAreaExpanded) "Shrink" else "Full View",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Maintain generous height when typing; scale up nicely in Full View without squishing to 80dp
+                val fieldDensity = LocalDensity.current
+                val imeOpen = WindowInsets.ime.getBottom(fieldDensity) > 0
+                val viewportDp = with(fieldDensity) { scrollViewportPx.toDp() }
+                val desiredFieldHeight = if (isTextAreaExpanded) {
+                    if (viewportDp > 0.dp) maxOf(320.dp, (viewportDp - 72.dp).coerceAtLeast(220.dp)) else 360.dp
+                } else {
+                    210.dp
+                }
+                val fieldHeight = if (scrollViewportPx == 0) {
+                    desiredFieldHeight
+                } else {
+                    desiredFieldHeight.coerceAtMost((viewportDp - 64.dp).coerceAtLeast(150.dp))
+                }
+                var mcqFocused by remember { mutableStateOf(false) }
+
+                LaunchedEffect(imeOpen, scrollViewportPx, mcqFocused) {
+                    if (mcqFocused && scrollViewportPx > 0) {
+                        withFrameNanos { }
+                        bringIntoViewRequester.bringIntoView()
+                    }
+                }
+
+                // Dynamic Scrollable Text Area Input with Isolated Nested Scrolling, IME bring-into-view and Floating Scroll Indicator
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(fieldHeight)
+                ) {
+                    OutlinedTextField(
+                        value = textInput,
+                        onValueChange = { textInput = it },
+                        label = {
+                            val lbl = when (inputContentFormat) {
+                                "JSON Format" -> if (isTextAreaExpanded) "JSON Array / Paper Object (Expanded)" else "JSON Format Input"
+                                "Markdown Table / CSV" -> if (isTextAreaExpanded) "Table / CSV Content (Expanded)" else "Table / CSV Format Input"
+                                else -> if (isTextAreaExpanded) "MCQ Practice Text (Expanded View)" else "MCQ Practice Text"
+                            }
+                            Text(lbl)
+                        },
+                        placeholder = {
+                            val ph = when (inputContentFormat) {
+                                "JSON Format" -> "[\n  {\n    \"num\": 1,\n    \"question\": \"Question stem here...\",\n    \"options\": {\n      \"a\": \"Option A\",\n      \"b\": \"Option B\",\n      \"c\": \"Option C\",\n      \"d\": \"Option D\"\n    },\n    \"correctAnswer\": \"A\",\n    \"explanation\": \"Detailed explanation here...\"\n  }\n]"
+                                "Markdown Table / CSV" -> "| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n| 1 | Question stem... | Opt A | Opt B | Opt C | Opt D | A | Detailed explanation... |"
+                                else -> "1. Question text here...\n(A) Option 1\n(B) Option 2\n(C) Option 3\n(D) Option 4\n\nAnswer Key\n1: A\n\nDetailed Explanations\n1. (A) Reason..."
+                            }
+                            Text(
+                                ph,
+                                color = colors.muted.copy(alpha = 0.6f),
+                                fontSize = 11.5.sp
+                            )
+                        },
+                        colors = fieldColors,
+                        minLines = 1,
+                        maxLines = Int.MAX_VALUE,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(textFieldNestedScroll)
+                            .onFocusEvent { focusState ->
+                                mcqFocused = focusState.isFocused
+                                if (focusState.isFocused) {
+                                    coroutineScope.launch {
+                                        withFrameNanos { }
+                                        bringIntoViewRequester.bringIntoView()
+                                    }
+                                }
+                            }
+                            .testTag("mcq_input_field"),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    // Floating scrollbar for text box: visible only while scrolling, auto-hides after a few moments
+                    val scrollAlpha by animateFloatAsState(
+                        targetValue = if (isTextBoxScrolling) 1f else 0f,
+                        animationSpec = tween(durationMillis = if (isTextBoxScrolling) 150 else 500),
+                        label = "textBoxScrollbarAlpha"
+                    )
+                    if (scrollAlpha > 0.01f) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.teal.copy(alpha = 0.85f * scrollAlpha),
+                            shadowElevation = (3 * scrollAlpha).dp,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 8.dp, top = 12.dp, bottom = 12.dp)
+                                .width(5.dp)
+                                .fillMaxHeight(0.55f)
+                        ) {}
+                    }
                 }
             }
 
@@ -1893,128 +2271,9 @@ fun InputBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Scrollable Action Row for Tab 0: Cancel, Clear, and Generate & Save
-            val isSetDuplicate = savedPapers.any {
-                it.subject.trim().equals(customSubject.trim(), ignoreCase = true) &&
-                it.setNumber.trim().equals(customSetNumber.trim(), ignoreCase = true)
-            }
-            val canGenerate = textInput.isNotBlank() && !isSetDuplicate
-
-            Surface(
-                color = colors.surface,
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(0.8.dp, colors.border),
-                tonalElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
-                        border = BorderStroke(1.dp, colors.border),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                        modifier = Modifier
-                            .weight(0.7f)
-                            .heightIn(min = 44.dp)
-                            .testTag("cancel_sheet_button")
-                    ) {
-                        Text("Cancel", fontSize = 12.sp, maxLines = 1)
-                    }
-
-                    OutlinedButton(
-                        onClick = { textInput = "" },
-                        enabled = textInput.isNotBlank(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
-                        border = BorderStroke(1.dp, colors.border),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                        modifier = Modifier
-                            .weight(0.7f)
-                            .heightIn(min = 44.dp)
-                            .testTag("clear_text_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Clear", fontSize = 12.sp, maxLines = 1)
-                    }
-
-                    Button(
-                        onClick = {
-                            if (canGenerate) {
-                                val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(customSubject)
-                                val parsedDuration = customDurationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
-                                val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
-                                val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
-                                val parsedUnkMarks = customUnattendedMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
-
-                                onGenerate(
-                                    textInput,
-                                    customTitle,
-                                    cleanSubject,
-                                    customTopic,
-                                    customSetNumber,
-                                    parsedDuration,
-                                    parsedPosMarks,
-                                    parsedNegMarks,
-                                    parsedUnkMarks,
-                                    selectedCategory.code
-                                )
-                                onDismiss()
-                            }
-                        },
-                        enabled = canGenerate,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.navyBanner,
-                            contentColor = colors.navyBannerText,
-                            disabledContainerColor = colors.surfaceVariant,
-                            disabledContentColor = colors.muted
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                        modifier = Modifier
-                            .weight(1.6f)
-                            .heightIn(min = 44.dp)
-                            .testTag("generate_paper_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = if (isSetDuplicate) {
-                                "Duplicate Set"
-                            } else if (parsedPreview != null && parsedPreview!!.questions.isNotEmpty()) {
-                                "Generate (${parsedPreview!!.questions.size})"
-                            } else {
-                                "Generate & Save"
-                            },
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-
-            // While the keyboard is open, add scroll room below so the field can actually be lifted above it
-            Spacer(modifier = Modifier.height(if (imeOpen) maxOf(viewportDp * 0.8f, 260.dp) else 80.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         } else {
             // AI Prompt Generator Tab Content
-            val parsedCount = promptMcqCount.trim().toIntOrNull() ?: 20
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2666,114 +2925,6 @@ fun InputBottomSheet(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Generated Dynamic Prompt Construction (Senior Psychometrician Standard)
-                val countVal = parsedCount
-                val topicDisplay = buildString {
-                    if (promptSubject.isNotBlank()) {
-                        append(promptSubject.trim())
-                        if (promptTopic.isNotBlank()) {
-                            append(" - ")
-                            append(promptTopic.trim())
-                        }
-                    } else if (promptTopic.isNotBlank()) {
-                        append(promptTopic.trim())
-                    } else {
-                        append("Comprehensive Subject Curriculum")
-                    }
-                }
-                val qLangVal = promptQuestionLanguage.trim().ifBlank { "English" }
-                val expLangVal = effectivePromptExplanationLanguage
-                val examVal = promptExam.trim().ifBlank { "Competitive Examination" }
-
-                val fullPrompt = buildString {
-                    append("Act as a senior psychometrician and chief examination paper setter for $examVal.\n\n")
-                    append("Generate exactly $countVal multiple-choice questions (MCQs) for $topicDisplay at $promptDifficulty difficulty (Question Pattern: $promptQuestionType) in $qLangVal.\n\n")
-
-                    append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
-                    if (expLangVal == qLangVal || promptExplanationChoice == "Same as Question") {
-                        append("- Language: Write the question stems, options, and explanations entirely in $qLangVal using natural, academically rigorous terminology.\n")
-                    } else {
-                        append("- Language: Write question stems and options in $qLangVal, and explanations in $expLangVal, using natural, academically rigorous terminology.\n")
-                    }
-                    append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as \"(A)\", \"(B)\", \"(C)\", \"(D)\" for universal OMR and parser compatibility.\n\n")
-
-                    append("### 2. PSYCHOMETRIC & DISTRACTOR RULES\n")
-                    when (promptDifficulty) {
-                        "Easy" -> append("1. COGNITIVE LEVEL (Easy / Foundational): Direct conceptual recall, core standard definitions, basic formulas, and straightforward identification with unambiguous distractors.\n")
-                        "Moderate" -> append("1. COGNITIVE LEVEL (Moderate / Standard): Standard examination caliber requiring multi-step comprehension, application of principles, and analytical deduction.\n")
-                        "Hard" -> append("1. COGNITIVE LEVEL (Hard / Advanced): Advanced analytical rigor, intricate edge cases, multi-layered calculations, and trap options diagnosing common misconceptions.\n")
-                        "Extreme" -> append("1. COGNITIVE LEVEL (Extreme Olympiad / Rank-Decider): Deep synthesis, Olympiad-level multi-concept integration, subtle distractor nuances, and demanding problem-solving.\n")
-                        else -> append("1. COGNITIVE LEVEL (Mixed Difficulty): Balanced distribution spanning ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging questions.\n")
-                    }
-                    when (promptQuestionType) {
-                        "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
-                        "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
-                        "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items including 'Assertion (A) & Reason (R)', 'Statement I & Statement II', and 'Which of the statements given above is/are correct?'.\n")
-                        "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
-                        else -> append("2. QUESTION FORMAT FOCUS: Dynamic mix of direct conceptual items, multi-statement questions, numerical application, and scenario analysis.\n")
-                    }
-                    append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
-                    append("4. LENGTH CONTROL: The correct option must NOT be the longest option by default. Maintain a tight word-count ratio across all 4 options (no option exceeding 1.25x the length of the shortest).\n")
-                    append("5. ORDERING: If options contain numerical values, dates, or quantitative ranges, order them strictly from lowest to highest.\n")
-                    append("6. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
-                    append("7. NEGATIVE STEMS: Avoid negative questions where possible. If unavoidable, highlight the negative operator in uppercase bold (e.g., **NOT**, **EXCEPT**, **LEAST**).\n")
-                    if (promptIncludeFormulasAndDiagrams) {
-                        append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
-                        append("9. DIAGRAMS: If a question references a diagram, chart, or figure, include: Diagram: [Figure title or description | Optional URL].\n")
-                    } else {
-                        append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions, chemical equations, units, and formulas in standard LaTeX using single dollar signs (e.g., \$E = mc^2\$, \$H_2SO_4\$, \$9.8\\text{ m/s}^2\$).\n")
-                    }
-                    append("\n")
-
-                    append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
-                    append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~25% each across A, B, C, D). Never allow more than two consecutive identical answer keys (e.g., A, A is allowed; A, A, A is strictly prohibited).\n")
-                    append("2. PHASE SYNC: The option declared in Phase 2 MUST match the option identified as \"Correct\" in Phase 3 without exception.\n")
-                    append("3. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks, disclaimers, or closing text.\n")
-                    append("4. NO DIVIDER LINES: Do NOT use markdown horizontal divider lines (---) anywhere in the questions or explanations.\n\n")
-
-                    append("### EXACT OUTPUT FORMAT TEMPLATE:\n\n")
-                    append("Phase 1: Questions\n")
-                    append("Q1. [Clear, unambiguous question stem or scenario]\n")
-                    append("(A) [Option A]\n")
-                    append("(B) [Option B]\n")
-                    append("(C) [Option C]\n")
-                    append("(D) [Option D]\n\n")
-                    append("[Repeat through Q$countVal]\n\n")
-
-                    append("Phase 2: Answer Key\n")
-                    append("Q1: (A)\n")
-                    append("Q2: (C)\n")
-                    append("[Repeat through Q$countVal]\n\n")
-
-                    append("Phase 3: Explanations & Solution\n")
-                    if (promptExplainAllFourOptions) {
-                        append("Q1.\n")
-                        append("• Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                        append("• Option Breakdown:\n")
-                        append("  - (A) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("  - (B) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("  - (C) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("  - (D) [Correct/Incorrect]: [Direct explanation with underlying reason]\n")
-                        append("• Key Takeaway / Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
-                    } else {
-                        append("Q1.\n")
-                        append("• Core Concept & Reasoning: [1-2 concise sentences stating the governing principle, theorem, or calculation path]\n")
-                        append("• Why Correct: [Direct explanation with underlying reason for the correct option]\n")
-                        append("• Distractor Breakdown: [Key distinctions explaining why incorrect options fail]\n")
-                        append("• Key Takeaway / Memory Anchor: [Single memorable takeaway, key formula, or mental model]\n\n")
-                    }
-                    append("[Repeat through Q$countVal without any horizontal divider lines (---)]\n\n")
-
-                    if (promptEnableQuantityCorrectionRule) {
-                        append("Phase 4: Format & Quantity Enforcement (Truncation Guard Active)\n")
-                        append("1. Strict Quantity Check: Generate exactly all $countVal questions from 1 to $countVal without stopping early or omitting questions.\n")
-                        append("2. High-Density Token Budget: To fit all $countVal questions and explanations completely without token limit cutoffs, keep each option's explanation to 2 to 3 concise, high-impact sentences (30–45 words).\n")
-                        append("3. Depth Uniformity: Maintain identical pedagogical depth from Question 1 through Question $countVal. Do not rush or shorten later questions.\n\n")
-                    }
-
-                    append("Execute the instructions now, starting directly with Phase 1: Questions.")
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2820,75 +2971,11 @@ fun InputBottomSheet(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // Buttons Row: Copy Prompt & Switch to Input Tab
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            val clip = android.content.ClipData.newPlainText("ExamSet Prompt", fullPrompt)
-                            clipboard?.setPrimaryClip(clip)
-                            Toast.makeText(context, "Prompt copied! Paste it into your AI assistant.", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.navyBanner,
-                            contentColor = colors.navyBannerText
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp)
-                            .testTag("copy_prompt_button")
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Copy Prompt",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = { activeSheetTab = 0 },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.tealDark,
-                            containerColor = colors.surface
-                        ),
-                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp)
-                            .testTag("switch_to_input_tab_button")
-                    ) {
-                        Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.teal)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Paste Response",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+            }
+        }
+                Spacer(modifier = Modifier.height(8.dp))
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
-}
-}
-}
-}
 }
