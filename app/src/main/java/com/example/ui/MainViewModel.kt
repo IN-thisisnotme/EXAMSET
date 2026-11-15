@@ -164,6 +164,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeKnowledgeReaderNoteId = MutableStateFlow<Long?>(null)
     val activeKnowledgeReaderNoteId: StateFlow<Long?> = _activeKnowledgeReaderNoteId.asStateFlow()
 
+    // Full-screen Edit Metadata & Add Question overlay states (rendered outside Dialog windows so IME/nav insets never clip)
+    private val _isEditMetadataOverlayOpen = MutableStateFlow(false)
+    val isEditMetadataOverlayOpen: StateFlow<Boolean> = _isEditMetadataOverlayOpen.asStateFlow()
+
+    private val _editMetadataEnterQuestionEditAction = MutableStateFlow<(() -> Unit)?>(null)
+    val editMetadataEnterQuestionEditAction: StateFlow<(() -> Unit)?> = _editMetadataEnterQuestionEditAction.asStateFlow()
+
+    private val _isAddQuestionOverlayOpen = MutableStateFlow(false)
+    val isAddQuestionOverlayOpen: StateFlow<Boolean> = _isAddQuestionOverlayOpen.asStateFlow()
+
     private val _todayStudyAnalytics = MutableStateFlow<DailyStudyAnalyticsEntity?>(null)
     val todayStudyAnalytics: StateFlow<DailyStudyAnalyticsEntity?> = _todayStudyAnalytics.asStateFlow()
 
@@ -2694,6 +2704,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeKnowledgeReader() {
         _activeKnowledgeReaderNoteId.value = null
+    }
+
+    fun openEditMetadataOverlay(onEnterQuestionEditMode: (() -> Unit)? = null) {
+        _editMetadataEnterQuestionEditAction.value = onEnterQuestionEditMode
+        _isEditMetadataOverlayOpen.value = true
+    }
+
+    fun closeEditMetadataOverlay() {
+        _isEditMetadataOverlayOpen.value = false
+        _editMetadataEnterQuestionEditAction.value = null
+    }
+
+    fun openAddQuestionOverlay() {
+        _isAddQuestionOverlayOpen.value = true
+    }
+
+    fun closeAddQuestionOverlay() {
+        _isAddQuestionOverlayOpen.value = false
     }
 
     fun saveStudyNote(

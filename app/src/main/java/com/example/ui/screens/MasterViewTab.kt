@@ -83,11 +83,19 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.derivedStateOf
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Scaffold
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.testTag
@@ -155,12 +163,10 @@ fun MasterViewTab(
 
     var searchQuery by remember { mutableStateOf("") }
     var filterMode by remember { mutableStateOf("all") } // "all", "missing_key", "missing_exp"
-    var showEditMetadataDialog by remember { mutableStateOf(false) }
     var isEditMode by remember { mutableStateOf(false) }
     var originalQuestionsSnapshot by remember { mutableStateOf<List<McqQuestion>?>(null) }
     var showReviewDialog by remember { mutableStateOf(false) }
     var showDiscardConfirmDialog by remember { mutableStateOf(false) }
-    var showAddQuestionDialog by remember { mutableStateOf(false) }
     var showBulkMergeAnswersDialog by remember { mutableStateOf(false) }
     var showPaletteOverlay by remember { mutableStateOf(false) }
     var showBulkAuditDialog by remember { mutableStateOf(false) }
@@ -332,7 +338,7 @@ fun MasterViewTab(
                 HeaderBanner(
                     metadata = paper.metadata,
                     totalQuestions = paper.questions.size,
-                    onEditClick = { showEditMetadataDialog = true },
+                    onEditClick = { viewModel.openEditMetadataOverlay(enterEditMode) },
                     onEditQuestionsClick = null,
                     isEditingQuestions = isEditMode
                 )
@@ -564,7 +570,7 @@ fun MasterViewTab(
                                 Button(
                                     onClick = {
                                         if (!isEditMode) enterEditMode()
-                                        showAddQuestionDialog = true
+                                        viewModel.openAddQuestionOverlay()
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(
@@ -802,7 +808,7 @@ fun MasterViewTab(
             Card(
                 onClick = {
                     if (!isEditMode) enterEditMode()
-                    showAddQuestionDialog = true
+                    viewModel.openAddQuestionOverlay()
                 },
                 shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
@@ -1259,14 +1265,6 @@ fun MasterViewTab(
         )
     }
 
-    // Add Question Dialog (Form & Paste Append with Duplicate Prevention)
-    if (showAddQuestionDialog) {
-        AddQuestionDialog(
-            viewModel = viewModel,
-            onDismiss = { showAddQuestionDialog = false }
-        )
-    }
-
     // Bulk Merge Answers & Explanations Dialog
     if (showBulkMergeAnswersDialog && currentPaper != null) {
         BulkMergeAnswersDialog(
@@ -1276,31 +1274,6 @@ fun MasterViewTab(
                 showBulkMergeAnswersDialog = false
             },
             onDismiss = { showBulkMergeAnswersDialog = false }
-        )
-    }
-
-    // Edit Metadata Dialog with direct access to Question Editing Mode, Duration & Marks
-    if (showEditMetadataDialog) {
-        EditMetadataDialog(
-            initialMetadata = paper.metadata,
-            folders = folders,
-            initialConfig = examConfig,
-            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber, manualCategory ->
-                viewModel.updatePaperMetadata(
-                    title = title,
-                    subject = subject,
-                    topic = topic,
-                    setNumber = setNumber,
-                    rollNumber = rollNumber,
-                    bookletNumber = bookletNumber,
-                    manualCategory = manualCategory
-                )
-            },
-            onSaveConfig = { newConfig ->
-                viewModel.updateExamConfig(newConfig)
-            },
-            onDismiss = { showEditMetadataDialog = false },
-            onEnterQuestionEditMode = enterEditMode
         )
     }
 
@@ -1761,7 +1734,7 @@ private fun MasterQuestionCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AddQuestionDialog(
+fun AddQuestionDialog(
     viewModel: MainViewModel,
     onDismiss: () -> Unit
 ) {
@@ -1831,115 +1804,211 @@ private fun AddQuestionDialog(
     val nextStartNumber = totalExistingQuestions + 1
     val nextEndNumber = totalExistingQuestions + newQuestionsCount
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = colors.surface
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding()
-                    .navigationBarsPadding()
-            ) {
-                // Header Bar
-                Surface(
-                    color = colors.surfaceVariant,
-                    tonalElevation = 2.dp,
-                    border = BorderStroke(0.5.dp, colors.border),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Add Questions to Paper",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold
-                            )
-                            Text(
-                                text = "Current Set: ${currentPaper?.metadata?.title.takeIf { !it.isNullOrBlank() } ?: "Question Paper"} (Q1–Q$totalExistingQuestions)",
-                                fontSize = 11.5.sp,
-                                color = colors.muted
-                            )
-                        }
+    BackHandler { onDismiss() }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = colors.surface,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Header Bar
+                    Surface(
+                        color = colors.surfaceVariant,
+                        tonalElevation = 2.dp,
+                        border = BorderStroke(0.5.dp, colors.border),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (selectedTab == 1) {
-                                IconButton(
-                                    onClick = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                                        if (clipText.isNotBlank()) {
-                                            pastedBatchText = clipText
-                                        }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Add Questions to Paper",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "Current Set: ${currentPaper?.metadata?.title.takeIf { !it.isNullOrBlank() } ?: "Question Paper"} (Q1–Q$totalExistingQuestions)",
+                                    fontSize = 11.5.sp,
+                                    color = colors.muted
+                                )
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (selectedTab == 1) {
+                                    IconButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                            val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                            if (clipText.isNotBlank()) {
+                                                pastedBatchText = clipText
+                                            }
+                                        },
+                                        modifier = Modifier.size(48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ContentPaste,
+                                            contentDescription = "Paste from clipboard",
+                                            tint = colors.teal
+                                        )
                                     }
+                                }
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.ContentPaste,
-                                        contentDescription = "Paste from clipboard",
-                                        tint = colors.teal
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close",
+                                        tint = colors.muted
                                     )
                                 }
                             }
-                            IconButton(onClick = onDismiss) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = colors.muted
-                                )
+                        }
+                    }
+
+                    TabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = colors.surfaceVariant.copy(alpha = 0.5f),
+                        contentColor = colors.tealDark,
+                        indicator = { tabPositions ->
+                            TabRowDefaults.SecondaryIndicator(
+                                Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                color = colors.teal
+                            )
+                        }
+                    ) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("Manual Form", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold) }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("Paste & Append", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold) }
+                        )
+                    }
+                }
+            },
+            bottomBar = {
+                // Pinned Bottom Action Bar
+                Surface(
+                    color = colors.surfaceVariant,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(
+                                WindowInsets.navigationBars
+                                    .union(WindowInsets.ime)
+                                    .union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                            )
+                    ) {
+                        HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                border = BorderStroke(1.dp, colors.border),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.ink),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                modifier = Modifier.heightIn(min = 48.dp)
+                            ) {
+                                Text("Cancel", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+
+                            if (selectedTab == 0) {
+                                val canAdd = questionText.isNotBlank() && optA.isNotBlank() && optB.isNotBlank() && duplicateNum == null
+                                Button(
+                                    onClick = {
+                                        val res = viewModel.addCustomQuestion(
+                                            questionText = questionText,
+                                            optionA = optA,
+                                            optionB = optB,
+                                            optionC = optC,
+                                            optionD = optD,
+                                            correctAnswer = selectedAnswer,
+                                            explanation = explanationText,
+                                            questionType = questionType,
+                                            diagramUrl = customDiagramUrl,
+                                            diagramLabel = customDiagramLabel,
+                                            formula = customFormula,
+                                            optionE = optE
+                                        )
+                                        if (res.first) {
+                                            onDismiss()
+                                        }
+                                    },
+                                    enabled = canAdd,
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White)
+                                ) {
+                                    Text("Add Question", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                val buttonText = when {
+                                    newQuestionsCount > 0 -> "Append $newQuestionsCount Questions (Q$nextStartNumber–Q$nextEndNumber)"
+                                    parsedQuestionsCount > 0 && duplicatesCount == parsedQuestionsCount -> "All $parsedQuestionsCount Questions are Duplicates"
+                                    else -> "Append Questions"
+                                }
+                                Button(
+                                    onClick = {
+                                        if (pastedBatchText.isNotBlank()) {
+                                            viewModel.appendQuestionsFromRawText(pastedBatchText)
+                                            onDismiss()
+                                        }
+                                    },
+                                    enabled = pastedBatchText.isNotBlank() && (newQuestionsCount > 0 || parsedQuestionsCount == 0),
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White)
+                                ) {
+                                    Text(buttonText, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
                             }
                         }
                     }
                 }
-
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = colors.surfaceVariant.copy(alpha = 0.5f),
-                    contentColor = colors.tealDark,
-                    indicator = { tabPositions ->
-                        TabRowDefaults.SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                            color = colors.teal
-                        )
-                    }
-                ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text("Manual Form", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold) }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("Paste & Append", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 18.dp)
-                ) {
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .padding(horizontal = 18.dp, vertical = 10.dp)
+            ) {
                         if (selectedTab == 0) {
                             // Manual Form
                             LazyColumn(
@@ -2375,88 +2444,10 @@ Explanation: Mitochondria generate most of the cell's ATP.
                                 )
                             }
                         }
-                    }
-
-                    // Pinned Bottom Action Bar
-                    Surface(
-                        color = colors.surfaceVariant,
-                        tonalElevation = 3.dp,
-                        border = BorderStroke(0.5.dp, colors.border),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(
-                                onClick = onDismiss,
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                modifier = Modifier.heightIn(min = 40.dp)
-                            ) {
-                                Text("Cancel", fontSize = 12.sp, color = colors.ink)
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            if (selectedTab == 0) {
-                                val canAdd = questionText.isNotBlank() && optA.isNotBlank() && optB.isNotBlank() && duplicateNum == null
-                                Button(
-                                    onClick = {
-                                        val res = viewModel.addCustomQuestion(
-                                            questionText = questionText,
-                                            optionA = optA,
-                                            optionB = optB,
-                                            optionC = optC,
-                                            optionD = optD,
-                                            correctAnswer = selectedAnswer,
-                                            explanation = explanationText,
-                                            questionType = questionType,
-                                            diagramUrl = customDiagramUrl,
-                                            diagramLabel = customDiagramLabel,
-                                            formula = customFormula,
-                                            optionE = optE
-                                        )
-                                        if (res.first) {
-                                            onDismiss()
-                                        }
-                                    },
-                                    enabled = canAdd,
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                    modifier = Modifier.heightIn(min = 40.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
-                                ) {
-                                    Text("Add Question", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            } else {
-                                val buttonText = when {
-                                    newQuestionsCount > 0 -> "Append $newQuestionsCount Questions (Q$nextStartNumber–Q$nextEndNumber)"
-                                    parsedQuestionsCount > 0 && duplicatesCount == parsedQuestionsCount -> "All $parsedQuestionsCount Questions are Duplicates"
-                                    else -> "Append Questions"
-                                }
-                                Button(
-                                    onClick = {
-                                        if (pastedBatchText.isNotBlank()) {
-                                            viewModel.appendQuestionsFromRawText(pastedBatchText)
-                                            onDismiss()
-                                        }
-                                    },
-                                    enabled = pastedBatchText.isNotBlank() && (newQuestionsCount > 0 || parsedQuestionsCount == 0),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                    modifier = Modifier.heightIn(min = 40.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
-                                ) {
-                                    Text(buttonText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
+}
 
 @Composable
 private fun FilterChip(

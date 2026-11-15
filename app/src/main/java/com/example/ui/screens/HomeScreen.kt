@@ -6,6 +6,12 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -181,6 +187,9 @@ fun HomeScreen(
     val studyNotes by viewModel.studyNotes.collectAsState()
     val knowledgeEditorDraft by viewModel.knowledgeEditorDraft.collectAsState()
     val activeKnowledgeReaderNoteId by viewModel.activeKnowledgeReaderNoteId.collectAsState()
+    val isEditMetadataOverlayOpen by viewModel.isEditMetadataOverlayOpen.collectAsState()
+    val editMetadataEnterQuestionEditAction by viewModel.editMetadataEnterQuestionEditAction.collectAsState()
+    val isAddQuestionOverlayOpen by viewModel.isAddQuestionOverlayOpen.collectAsState()
 
     val isFullScreenTestActive = selectedTab == 2 && isExamStarted && !isExamSubmitted && currentPaper != null
 
@@ -201,7 +210,6 @@ fun HomeScreen(
     var showPrintDialog by remember { mutableStateOf(false) }
     var showOmrScannerDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf(false) }
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
     var showPsychometricDialog by remember { mutableStateOf(false) }
@@ -244,8 +252,11 @@ fun HomeScreen(
             showFontSizeDialog -> {
                 showFontSizeDialog = false
             }
-            showEditDialog -> {
-                showEditDialog = false
+            isAddQuestionOverlayOpen -> {
+                viewModel.closeAddQuestionOverlay()
+            }
+            isEditMetadataOverlayOpen -> {
+                viewModel.closeEditMetadataOverlay()
             }
             selectedTab in 3..6 -> {
                 viewModel.selectTab(0)
@@ -284,7 +295,7 @@ fun HomeScreen(
     Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -687,7 +698,7 @@ fun HomeScreen(
                                                 text = { Text("Edit Paper Details", fontSize = 13.sp) },
                                                 onClick = {
                                                     showTopBarOverflowMenu = false
-                                                    showEditDialog = true
+                                                    viewModel.openEditMetadataOverlay()
                                                 },
                                                 leadingIcon = {
                                                     Icon(Icons.Default.Edit, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
@@ -1039,7 +1050,7 @@ fun HomeScreen(
                     onNavigateToMaster = { viewModel.selectTab(1) },
                     onNavigateToTests = { viewModel.selectTab(2) },
                     onNavigateToPrint = { viewModel.selectTab(3) },
-                    onEditMetadata = { showEditDialog = true },
+                    onEditMetadata = { viewModel.openEditMetadataOverlay() },
                     onScanOmr = { showOmrScannerDialog = true }
                 )
                 5 -> PromptGeneratorTab(
@@ -1283,30 +1294,6 @@ fun HomeScreen(
         )
     }
 
-    // Edit Metadata Dialog (Title, Subject, Topic, Set Number, Roll No, Booklet No, Duration & Marks)
-    if (showEditDialog && currentPaper != null) {
-        EditMetadataDialog(
-            initialMetadata = currentPaper!!.metadata,
-            folders = folders,
-            initialConfig = examConfig,
-            onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber, manualCategory ->
-                viewModel.updatePaperMetadata(
-                    title = title,
-                    subject = subject,
-                    topic = topic,
-                    setNumber = setNumber,
-                    rollNumber = rollNumber,
-                    bookletNumber = bookletNumber,
-                    manualCategory = manualCategory
-                )
-            },
-            onSaveConfig = { newConfig ->
-                viewModel.updateExamConfig(newConfig)
-            },
-            onDismiss = { showEditDialog = false }
-        )
-    }
-
     // Print Configuration Dialog
     if (showPrintDialog && currentPaper != null) {
         PrintConfigDialog(
@@ -1369,7 +1356,7 @@ fun HomeScreen(
             onDeletePaper = { viewModel.deleteSavedPaper(it) },
             onEditPaper = { paperEntity ->
                 viewModel.loadSavedPaper(paperEntity)
-                showEditDialog = true
+                viewModel.openEditMetadataOverlay()
             },
             onDismiss = { showSavedDialog = false }
         )
@@ -1437,6 +1424,49 @@ fun HomeScreen(
                 )
             },
             onDismiss = { viewModel.closeKnowledgeEditor() }
+        )
+    }
+
+    // Full-screen Activity-hosted Edit Question Set Details Sheet (native status, nav & IME insets)
+    AnimatedVisibility(
+        visible = isEditMetadataOverlayOpen && currentPaper != null,
+        enter = slideInVertically(animationSpec = tween(240), initialOffsetY = { it / 8 }) + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(animationSpec = tween(200), targetOffsetY = { it / 8 }) + fadeOut(animationSpec = tween(160))
+    ) {
+        currentPaper?.let { activePaperForEdit ->
+            EditMetadataDialog(
+                initialMetadata = activePaperForEdit.metadata,
+                folders = folders,
+                initialConfig = examConfig,
+                onSave = { title, subject, topic, setNumber, rollNumber, bookletNumber, manualCategory ->
+                    viewModel.updatePaperMetadata(
+                        title = title,
+                        subject = subject,
+                        topic = topic,
+                        setNumber = setNumber,
+                        rollNumber = rollNumber,
+                        bookletNumber = bookletNumber,
+                        manualCategory = manualCategory
+                    )
+                },
+                onSaveConfig = { newConfig ->
+                    viewModel.updateExamConfig(newConfig)
+                },
+                onDismiss = { viewModel.closeEditMetadataOverlay() },
+                onEnterQuestionEditMode = editMetadataEnterQuestionEditAction
+            )
+        }
+    }
+
+    // Full-screen Activity-hosted Add Questions Sheet (native status, nav & IME insets)
+    AnimatedVisibility(
+        visible = isAddQuestionOverlayOpen && currentPaper != null,
+        enter = slideInVertically(animationSpec = tween(240), initialOffsetY = { it / 8 }) + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(animationSpec = tween(200), targetOffsetY = { it / 8 }) + fadeOut(animationSpec = tween(160))
+    ) {
+        AddQuestionDialog(
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeAddQuestionOverlay() }
         )
     }
     }
