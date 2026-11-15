@@ -718,7 +718,8 @@ fun PaperExamCard(
         paper.effectiveCategory()
     }
     val durationMins = if (paper.durationMinutes > 0) paper.durationMinutes else if (paper.questionCount > 0) paper.questionCount else 60
-    val totalMarks = if (paper.questionCount > 0) (paper.questionCount * paper.positiveMarks).toInt() else 100
+    val totalMarksVal = if (paper.questionCount > 0) paper.questionCount * paper.positiveMarks else 100.0
+    val totalMarksLabel = if (totalMarksVal % 1.0 == 0.0) totalMarksVal.toInt().toString() else String.format(Locale.US, "%.2f", totalMarksVal)
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -840,7 +841,7 @@ fun PaperExamCard(
                             color = Color(0xFFDCFCE7),
                             border = BorderStroke(0.6.dp, Color(0xFF16A34A))
                         ) {
-                            val scoreStr = attemptScore?.let { if (it % 1.0 == 0.0) it.toInt().toString() else String.format(Locale.US, "%.1f", it) }
+                            val scoreStr = attemptScore?.let { String.format(Locale.US, "%.2f", it) }
                             Text(
                                 text = if (scoreStr != null) "✓ Completed ($scoreStr pts)" else "✓ Completed",
                                 fontSize = 9.5.sp,
@@ -926,7 +927,7 @@ fun PaperExamCard(
                 )
                 Text("•", fontSize = 11.sp, color = colors.border)
                 Text(
-                    text = "$totalMarks Marks",
+                    text = "$totalMarksLabel Marks",
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Medium,
                     color = colors.inkMuted
