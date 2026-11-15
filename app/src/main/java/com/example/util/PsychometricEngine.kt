@@ -127,6 +127,21 @@ object PsychometricEngine {
         val n = submissions.size
         val k = paper.questions.size
         if (n == 0 || k == 0) {
+            val emptyItems = paper.questions.map { q ->
+                ItemEvaluation(
+                    questionNum = q.num,
+                    difficultyP = 0f,
+                    discriminationD = 0f,
+                    pointBiserialR = 0f,
+                    totalAttempts = 0,
+                    correctCount = 0,
+                    unattemptedCount = 0,
+                    optionFrequencies = mapOf('A' to 0, 'B' to 0, 'C' to 0, 'D' to 0),
+                    nonFunctioningDistractors = emptyList(),
+                    isFlagged = false,
+                    flagReason = "Awaiting Live Submissions"
+                )
+            }
             return CohortPsychometricReport(
                 candidateCount = 0,
                 questionCount = k,
@@ -136,11 +151,15 @@ object PsychometricEngine {
                 lowestScore = 0.0,
                 standardDeviation = 0f,
                 cronbachAlpha = 0f,
-                items = emptyList(),
+                items = emptyItems,
                 flaggedItemCount = 0,
                 candidates = emptyList()
             )
         }
+
+        val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 1.0
+        val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 0.0
+        val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
 
         // 1. Calculate each candidate's raw score & correct counts
         data class CandidateEval(
@@ -173,10 +192,10 @@ object PsychometricEngine {
             val score = if (sub.precomputedScore != null) {
                 sub.precomputedScore
             } else {
-                val penaltyIncorrect = Math.round(incorrect * 0.33 * 100.0) / 100.0
-                val penaltyUnattended = Math.round(unanswered * 0.10 * 100.0) / 100.0
-                val raw = (correct * 1.0) - penaltyIncorrect - penaltyUnattended
-                maxOf(0.0, Math.round(raw * 100.0) / 100.0)
+                val penaltyIncorrect = Math.round(incorrect * negMarks * 100.0) / 100.0
+                val penaltyUnattended = Math.round(unanswered * unkMarks * 100.0) / 100.0
+                val raw = (correct * posMarks) - penaltyIncorrect - penaltyUnattended
+                Math.round(raw * 100.0) / 100.0
             }
             CandidateEval(sub, score, correct, incorrect, unanswered)
         }
@@ -533,14 +552,19 @@ object PsychometricEngine {
         sb.append("  Accuracy Rate     : ${candidate.accuracyPercent}%\n")
         sb.append("  Performance Band  : $performanceBand\n\n")
 
-        val penaltyIncorrect = Math.round(candidate.incorrectCount * 0.33 * 100.0) / 100.0
-        val penaltyUnattended = Math.round(candidate.unansweredCount * 0.10 * 100.0) / 100.0
+        val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 1.0
+        val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 0.0
+        val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
+
+        val earnedCorrect = Math.round(candidate.correctCount * posMarks * 100.0) / 100.0
+        val penaltyIncorrect = Math.round(candidate.incorrectCount * negMarks * 100.0) / 100.0
+        val penaltyUnattended = Math.round(candidate.unansweredCount * unkMarks * 100.0) / 100.0
 
         sb.append("SCORING & PENALTY BREAKDOWN:\n")
-        sb.append("  Correct Responses : ${candidate.correctCount}  [+${candidate.correctCount}.00 marks]\n")
-        sb.append("  Incorrect Responses : ${candidate.incorrectCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyIncorrect)} penalty marks (-0.33 each)]\n")
-        sb.append("  Unattempted / Skip  : ${candidate.unansweredCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyUnattended)} penalty marks (-0.10 each)]\n")
-        sb.append("  Net Score (Min 0) : $formattedScore marks\n")
+        sb.append("  Correct Responses : ${candidate.correctCount}  [+${String.format(java.util.Locale.US, "%.2f", earnedCorrect)} marks (+${String.format(java.util.Locale.US, "%.2f", posMarks)} each)]\n")
+        sb.append("  Incorrect Responses : ${candidate.incorrectCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyIncorrect)} penalty marks (-${String.format(java.util.Locale.US, "%.2f", negMarks)} each)]\n")
+        sb.append("  Unattempted / Skip  : ${candidate.unansweredCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyUnattended)} penalty marks (-${String.format(java.util.Locale.US, "%.2f", unkMarks)} each)]\n")
+        sb.append("  Net Score         : $formattedScore marks\n")
         sb.append("  Total Questions   : ${paper.questions.size}\n\n")
 
         if (!answers.isNullOrEmpty()) {
@@ -554,9 +578,9 @@ object PsychometricEngine {
                 val chosen = answers[q.num]?.uppercaseChar()
                 val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
                 val (pts, status) = when {
-                    chosen == null -> Pair("-0.10", "UNATTENDED / SKIPPED")
-                    chosen == correctChar -> Pair("+1.00", "CORRECT")
-                    else -> Pair("-0.33", "INCORRECT")
+                    chosen == null -> Pair(if (unkMarks > 0.0) "-${String.format(java.util.Locale.US, "%.2f", unkMarks)}" else "0.00", "UNATTENDED / SKIPPED")
+                    chosen == correctChar -> Pair("+${String.format(java.util.Locale.US, "%.2f", posMarks)}", "CORRECT")
+                    else -> Pair(if (negMarks > 0.0) "-${String.format(java.util.Locale.US, "%.2f", negMarks)}" else "0.00", "INCORRECT")
                 }
                 val markedDisplay = chosen?.toString() ?: "—"
                 val keyDisplay = correctChar?.toString() ?: "—"

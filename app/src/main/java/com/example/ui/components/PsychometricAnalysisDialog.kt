@@ -1106,9 +1106,11 @@ private fun CohortSwitcherStrip(
                     )
                     Text(
                         text = if (isSimulatedCohort) {
-                            "Simulated Cohort (${report.candidateCount} candidates)"
+                            "Calibrated Simulation (${report.candidateCount} Candidates)"
+                        } else if (report.candidateCount == 0) {
+                            "Live Mode (0 Submissions Recorded)"
                         } else {
-                            "Real Scanned & App Attempts (${report.candidateCount})"
+                            "Live Student Submissions (${report.candidateCount})"
                         },
                         fontSize = 10.5.sp,
                         color = colors.muted,
@@ -1135,7 +1137,7 @@ private fun CohortSwitcherStrip(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (useSimulationMode) "Use Real" else "Simulate 40",
+                        text = if (useSimulationMode) "Switch to Live" else "Simulate 40",
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = statusTint,
@@ -1190,8 +1192,8 @@ private fun ExecutiveKpiGrid(
             )
             ExecutiveMetricCard(
                 label = "Mean Score",
-                value = String.format(Locale.US, "%.1f", report.meanScore),
-                subtext = "±${String.format(Locale.US, "%.1f", report.standardDeviation)} SD Spread",
+                value = String.format(Locale.US, "%.2f", report.meanScore),
+                subtext = "±${String.format(Locale.US, "%.2f", report.standardDeviation)} SD Spread",
                 icon = Icons.AutoMirrored.Filled.TrendingUp,
                 color = accentTeal,
                 modifier = Modifier.weight(1f)
@@ -1248,7 +1250,7 @@ private fun ScoreDistributionStrip(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Low: ${String.format(Locale.US, "%.1f", report.lowestScore)}",
+                    text = "Low: ${String.format(Locale.US, "%.2f", report.lowestScore)}",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = FontFamily.Monospace,
@@ -1259,7 +1261,7 @@ private fun ScoreDistributionStrip(
                     color = colors.teal.copy(alpha = 0.12f)
                 ) {
                     Text(
-                        text = "Median ${String.format(Locale.US, "%.1f", report.medianScore)}",
+                        text = "Median ${String.format(Locale.US, "%.2f", report.medianScore)}",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
@@ -1268,7 +1270,7 @@ private fun ScoreDistributionStrip(
                     )
                 }
                 Text(
-                    text = "High: ${String.format(Locale.US, "%.1f", report.highestScore)}",
+                    text = "High: ${String.format(Locale.US, "%.2f", report.highestScore)}",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
@@ -1375,14 +1377,37 @@ private fun EmptyStudentRosterCard() {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Surface(
+                shape = CircleShape,
+                color = colors.teal.copy(alpha = 0.12f),
+                modifier = Modifier.size(46.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Groups,
+                        contentDescription = null,
+                        tint = colors.teal,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
             Text(
-                text = "No student scorecards yet",
-                fontSize = 14.sp,
+                text = "Awaiting Live Candidate Submissions",
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = colors.inkBold
+            )
+            Text(
+                text = "No live candidate test attempts recorded for this question set yet. Submissions completed in the Tests tab or scanned via OMR will immediately populate this roster and score matrix.",
+                fontSize = 12.sp,
+                color = colors.muted,
+                textAlign = TextAlign.Center,
+                lineHeight = 17.sp,
+                modifier = Modifier.widthIn(max = 420.dp)
             )
         }
     }

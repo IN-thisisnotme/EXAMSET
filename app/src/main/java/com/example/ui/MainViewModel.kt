@@ -393,6 +393,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         restoreAutosavedState()
         initTodayStudyAnalytics()
         backfillLegacyPaperNumbers()
+        com.example.util.TrustedTimeManager.syncWithNetworkAsync(viewModelScope)
     }
 
     private fun backfillLegacyPaperNumbers() {
@@ -623,6 +624,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         durationMinutes = updatedPaper.metadata.durationMinutes,
                         positiveMarks = updatedPaper.metadata.positiveMarks,
                         negativeMarks = updatedPaper.metadata.negativeMarks,
+                        unattendedMarks = updatedPaper.metadata.unattendedMarks,
                         updatedAt = System.currentTimeMillis()
                     )
                     paperDao.updatePaper(updated)
@@ -644,7 +646,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         bookletNumber = updatedPaper.metadata.bookletNumber,
                         durationMinutes = updatedPaper.metadata.durationMinutes,
                         positiveMarks = updatedPaper.metadata.positiveMarks,
-                        negativeMarks = updatedPaper.metadata.negativeMarks
+                        negativeMarks = updatedPaper.metadata.negativeMarks,
+                        unattendedMarks = updatedPaper.metadata.unattendedMarks
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -674,6 +677,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         durationMinutes = updatedPaper.metadata.durationMinutes,
                         positiveMarks = updatedPaper.metadata.positiveMarks,
                         negativeMarks = updatedPaper.metadata.negativeMarks,
+                        unattendedMarks = updatedPaper.metadata.unattendedMarks,
                         updatedAt = System.currentTimeMillis()
                     )
                     paperDao.updatePaper(updated)
@@ -695,7 +699,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         bookletNumber = updatedPaper.metadata.bookletNumber,
                         durationMinutes = updatedPaper.metadata.durationMinutes,
                         positiveMarks = updatedPaper.metadata.positiveMarks,
-                        negativeMarks = updatedPaper.metadata.negativeMarks
+                        negativeMarks = updatedPaper.metadata.negativeMarks,
+                        unattendedMarks = updatedPaper.metadata.unattendedMarks
                     )
                     paperDao.insertPaper(newEntity)
                 }
@@ -1084,6 +1089,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         durationMinutes: Int? = null,
         positiveMarks: Double? = null,
         negativeMarks: Double? = null,
+        unattendedMarks: Double? = null,
         manualCategory: String? = null
     ) {
         val active = _currentPaper.value ?: return
@@ -1109,6 +1115,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val finalDuration = durationMinutes ?: active.metadata.durationMinutes
         val finalPosMarks = positiveMarks ?: active.metadata.positiveMarks
         val finalNegMarks = negativeMarks ?: active.metadata.negativeMarks
+        val finalUnkMarks = unattendedMarks ?: active.metadata.unattendedMarks
         val finalCategory = manualCategory?.trim() ?: active.metadata.manualCategory
 
         val newMetadata = active.metadata.copy(
@@ -1122,7 +1129,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             manualCategory = finalCategory,
             durationMinutes = finalDuration,
             positiveMarks = finalPosMarks,
-            negativeMarks = finalNegMarks
+            negativeMarks = finalNegMarks,
+            unattendedMarks = finalUnkMarks
         )
         val updatedPaper = active.copy(metadata = newMetadata)
 
@@ -1135,6 +1143,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             durationMinutes = finalDuration,
             positiveMarks = finalPosMarks,
             negativeMarks = finalNegMarks,
+            unattendedMarks = finalUnkMarks,
             timeAllowed = "$finalDuration Minutes",
             maxMarks = "${(finalPosMarks * updatedPaper.questions.size).toInt()}"
         )
@@ -1162,6 +1171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customDurationMinutes: Int? = null,
         customPositiveMarks: Double? = null,
         customNegativeMarks: Double? = null,
+        customUnattendedMarks: Double? = null,
         customManualCategory: String? = null
     ) {
         // Immediately cancel any running or scheduled auto-save debounces and decouple active paper ID
@@ -1197,6 +1207,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val effectiveDuration = customDurationMinutes ?: _examConfig.value.durationMinutes.takeIf { it > 0 } ?: 60
             val effectivePositiveMarks = customPositiveMarks ?: _examConfig.value.positiveMarks.takeIf { it > 0.0 } ?: 4.0
             val effectiveNegativeMarks = customNegativeMarks ?: _examConfig.value.negativeMarks.takeIf { it >= 0.0 } ?: 1.0
+            val effectiveUnattendedMarks = customUnattendedMarks ?: _examConfig.value.unattendedMarks.takeIf { it >= 0.0 } ?: 0.0
             val effectiveTitle = if (!customTitle.isNullOrBlank()) customTitle.trim() else parsed.metadata.title
             val effectiveTopic = if (!customTopic.isNullOrBlank()) customTopic.trim() else parsed.metadata.topic
             val resolvedCategory = when {
@@ -1223,7 +1234,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 bookletNumber = finalBooklet,
                 durationMinutes = effectiveDuration,
                 positiveMarks = effectivePositiveMarks,
-                negativeMarks = effectiveNegativeMarks
+                negativeMarks = effectiveNegativeMarks,
+                unattendedMarks = effectiveUnattendedMarks
             )
             val finalPaper = parsed.copy(metadata = finalMetadata)
 
@@ -2139,7 +2151,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else if (allowSimulationFallback) {
             return PsychometricEngine.generateSimulatedCohortCalibration(paper, 40)
         }
-        return null
+        return PsychometricEngine.evaluateCohortWithCandidates(emptyList(), paper)
     }
 
     fun exportPsychometricReportCsv(
@@ -3483,6 +3495,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             val answersJson = AttemptEntity.buildAnswersJson(answersSnapshot)
+            val trustedSubmissionTime = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val updatedAttempt = if (attemptId != null) {
                 paperDao.getAttemptById(attemptId)?.copy(
                     answersJson = answersJson,
@@ -3493,7 +3506,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     unansweredCount = stats.unanswered,
                     score = stats.score,
                     timeSpentSeconds = _timeSpentSeconds.value,
-                    submittedAt = System.currentTimeMillis()
+                    submittedAt = trustedSubmissionTime
                 )
             } else {
                 AttemptEntity(
@@ -3506,7 +3519,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     unansweredCount = stats.unanswered,
                     score = stats.score,
                     timeSpentSeconds = _timeSpentSeconds.value,
-                    submittedAt = System.currentTimeMillis()
+                    submittedAt = trustedSubmissionTime
                 )
             }
 
@@ -3724,6 +3737,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _selectedTab.value = 2 // Switch to student test tab
     }
 
+    fun reviewCompletedPaperAttempt(paper: PaperEntity) {
+        val latest = allAttempts.value.filter { it.paperId == paper.id && it.isSubmitted }
+            .maxByOrNull { it.submittedAt ?: it.createdAt }
+        loadSavedPaper(paper) {
+            if (latest != null) {
+                loadOldAttempt(latest)
+            } else {
+                startExam()
+            }
+        }
+    }
+
     fun updateExamConfig(config: ExamConfig) {
         _examConfig.value = config
         val active = _currentPaper.value
@@ -3795,7 +3820,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // --- Student Test & Study Analytics Persistence ---
 
     fun getTodayDateString(): String {
-        return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val trustedTime = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
+        return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(trustedTime))
     }
 
     private fun initTodayStudyAnalytics() {
@@ -3935,10 +3961,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val penaltyUnattended: Double = 0.0,
             val maxPossibleMarks: Double = total * 1.0,
             val positiveMarks: Double = 1.0,
-            val negativeMarks: Double = 0.0
+            val negativeMarks: Double = 0.0,
+            val unattendedMarks: Double = 0.0
         ) {
             val formattedScore: String
-                get() = if (score % 1.0 == 0.0) score.toInt().toString() else String.format(java.util.Locale.US, "%.2f", score)
+                get() = String.format(java.util.Locale.US, "%.2f", score)
 
             val percentage: Int
                 get() = if (maxPossibleMarks > 0) ((score / maxPossibleMarks) * 100.0).toInt().coerceIn(0, 100)
@@ -3950,7 +3977,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             paper: QuestionPaper,
             answers: Map<Int, String>,
             positiveMarks: Double = paper.metadata.positiveMarks,
-            negativeMarks: Double = paper.metadata.negativeMarks
+            negativeMarks: Double = paper.metadata.negativeMarks,
+            unattendedMarks: Double = paper.metadata.unattendedMarks
         ): TestStats {
             var correct = 0
             var incorrect = 0
@@ -3973,14 +4001,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val pos = if (positiveMarks > 0.0) positiveMarks else 4.0
             val neg = if (negativeMarks >= 0.0) negativeMarks else 1.0
+            val unk = if (unattendedMarks >= 0.0) unattendedMarks else 0.0
 
             val penaltyIncorrect = Math.round(incorrect * neg * 100.0) / 100.0
-            val penaltyUnattended = if (pos == 1.0 && Math.abs(neg - 0.33) < 0.01) Math.round(unanswered * 0.10 * 100.0) / 100.0 else 0.0
+            val penaltyUnattended = Math.round(unanswered * unk * 100.0) / 100.0
             val rawScore = (correct * pos) - penaltyIncorrect - penaltyUnattended
             val rawScoreRounded = Math.round(rawScore * 100.0) / 100.0
 
-            // The minimum score shall be 0 regardless of how many penalties are incurred
-            val finalScore = maxOf(0.0, rawScoreRounded)
+            val finalScore = rawScoreRounded
             val maxMarks = paper.questions.size * pos
 
             return TestStats(
@@ -3994,7 +4022,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 penaltyUnattended = penaltyUnattended,
                 maxPossibleMarks = maxMarks,
                 positiveMarks = pos,
-                negativeMarks = neg
+                negativeMarks = neg,
+                unattendedMarks = unk
             )
         }
     }

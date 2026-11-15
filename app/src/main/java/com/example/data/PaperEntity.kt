@@ -31,6 +31,7 @@ data class PaperEntity(
     val durationMinutes: Int = 60,
     val positiveMarks: Double = 4.0,
     val negativeMarks: Double = 1.0,
+    val unattendedMarks: Double = 0.0,
     val manualCategory: String = ""
 )
 
@@ -79,6 +80,7 @@ fun PaperEntity.toQuestionPaper(): QuestionPaper {
             durationMinutes = if (durationMinutes > 0) durationMinutes else 60,
             positiveMarks = if (positiveMarks > 0.0) positiveMarks else 4.0,
             negativeMarks = if (negativeMarks >= 0.0) negativeMarks else 1.0,
+            unattendedMarks = if (unattendedMarks >= 0.0) unattendedMarks else 0.0,
             createdAt = createdAt
         )
     )

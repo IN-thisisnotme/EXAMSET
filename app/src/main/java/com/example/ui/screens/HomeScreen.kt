@@ -1237,7 +1237,7 @@ fun HomeScreen(
                 showInputSheet = false
                 creationTargetFolderId = null
             },
-            onGenerate = { text, title, subject, topic, setNumber, duration, posMarks, negMarks, manualCategory ->
+            onGenerate = { text, title, subject, topic, setNumber, duration, posMarks, negMarks, unkMarks, manualCategory ->
                 val targetFolder = creationTargetFolderId
                 creationTargetFolderId = null
                 viewModel.parseAndSetPaper(
@@ -1250,6 +1250,7 @@ fun HomeScreen(
                     customDurationMinutes = duration,
                     customPositiveMarks = posMarks,
                     customNegativeMarks = negMarks,
+                    customUnattendedMarks = unkMarks,
                     customManualCategory = manualCategory
                 )
             },

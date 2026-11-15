@@ -226,6 +226,7 @@ fun InputBottomSheet(
         durationMinutes: Int,
         positiveMarks: Double,
         negativeMarks: Double,
+        unattendedMarks: Double,
         manualCategory: String
     ) -> Unit,
     onGenerateConfig: ((ExamConfig) -> Unit)? = null,
@@ -279,6 +280,7 @@ fun InputBottomSheet(
     var customDurationMinutesStr by remember { mutableStateOf("60") }
     var customPositiveMarksStr by remember { mutableStateOf("4.0") }
     var customNegativeMarksStr by remember { mutableStateOf("1.0") }
+    var customUnattendedMarksStr by remember { mutableStateOf("0.0") }
     var showCategorizationSection by remember { mutableStateOf(true) }
     var isSubjectDropdownOpen by remember { mutableStateOf(false) }
     var activeSheetTab by remember { mutableStateOf(0) } // 0: Input/Paste, 1: Prompt Generator
@@ -1247,15 +1249,15 @@ fun InputBottomSheet(
 
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         OutlinedTextField(
                                             value = customDurationMinutesStr,
                                             onValueChange = { input ->
                                                 customDurationMinutesStr = input.filter { it.isDigit() }.take(4)
                                             },
-                                            label = { Text("Duration (m)", fontSize = 10.5.sp) },
-                                            placeholder = { Text("60", fontSize = 10.5.sp) },
+                                            label = { Text("Duration (m)", fontSize = 11.sp) },
+                                            placeholder = { Text("60", fontSize = 11.sp) },
                                             singleLine = true,
                                             colors = fieldColors,
                                             modifier = Modifier
@@ -1270,8 +1272,30 @@ fun InputBottomSheet(
                                                     customPositiveMarksStr = input
                                                 }
                                             },
-                                            label = { Text("Correct (+)", fontSize = 10.5.sp) },
-                                            placeholder = { Text("4.0", fontSize = 10.5.sp) },
+                                            label = { Text("Correct (+)", fontSize = 11.sp) },
+                                            placeholder = { Text("4.0", fontSize = 11.sp) },
+                                            singleLine = true,
+                                            colors = fieldColors,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 52.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = customNegativeMarksStr,
+                                            onValueChange = { input ->
+                                                if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
+                                                    customNegativeMarksStr = input
+                                                }
+                                            },
+                                            label = { Text("Penalty (-)", fontSize = 11.sp) },
+                                            placeholder = { Text("1.0", fontSize = 11.sp) },
                                             singleLine = true,
                                             colors = fieldColors,
                                             modifier = Modifier
@@ -1280,14 +1304,14 @@ fun InputBottomSheet(
                                             shape = RoundedCornerShape(6.dp)
                                         )
                                         OutlinedTextField(
-                                            value = customNegativeMarksStr,
+                                            value = customUnattendedMarksStr,
                                             onValueChange = { input ->
                                                 if (input.matches(Regex("""^\d*(\.\d{0,2})?$"""))) {
-                                                    customNegativeMarksStr = input
+                                                    customUnattendedMarksStr = input
                                                 }
                                             },
-                                            label = { Text("Penalty (-)", fontSize = 10.5.sp) },
-                                            placeholder = { Text("1.0", fontSize = 10.5.sp) },
+                                            label = { Text("Unattended (-)", fontSize = 11.sp) },
+                                            placeholder = { Text("0.0", fontSize = 11.sp) },
                                             singleLine = true,
                                             colors = fieldColors,
                                             modifier = Modifier
@@ -1932,6 +1956,7 @@ fun InputBottomSheet(
                                 val parsedDuration = customDurationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
                                 val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                                 val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
+                                val parsedUnkMarks = customUnattendedMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
 
                                 onGenerate(
                                     textInput,
@@ -1942,6 +1967,7 @@ fun InputBottomSheet(
                                     parsedDuration,
                                     parsedPosMarks,
                                     parsedNegMarks,
+                                    parsedUnkMarks,
                                     selectedCategory.code
                                 )
                                 onDismiss()

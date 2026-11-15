@@ -332,6 +332,27 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val cursorInfo = db.query("PRAGMA table_info(`question_papers`)")
+        val existingColumns = mutableSetOf<String>()
+        try {
+            val nameColIdx = cursorInfo.getColumnIndex("name")
+            while (cursorInfo.moveToNext()) {
+                if (nameColIdx >= 0) {
+                    existingColumns.add(cursorInfo.getString(nameColIdx))
+                }
+            }
+        } finally {
+            cursorInfo.close()
+        }
+
+        if (!existingColumns.contains("unattendedMarks")) {
+            db.execSQL("ALTER TABLE `question_papers` ADD COLUMN `unattendedMarks` REAL NOT NULL DEFAULT 0.0")
+        }
+    }
+}
+
 @Database(
     entities = [
         PaperEntity::class,
@@ -340,7 +361,7 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         StudyNoteEntity::class,
         BackupSnapshotEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -367,7 +388,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_5_6,
                         MIGRATION_6_7,
                         MIGRATION_7_8,
-                        MIGRATION_8_9
+                        MIGRATION_8_9,
+                        MIGRATION_9_10
                     )
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

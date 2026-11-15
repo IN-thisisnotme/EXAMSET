@@ -98,6 +98,7 @@ data class PaperMetadata(
     val durationMinutes: Int = 60,
     val positiveMarks: Double = 4.0,
     val negativeMarks: Double = 1.0,
+    val unattendedMarks: Double = 0.0,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -176,6 +177,7 @@ data class ExamConfig(
     val maxMarks: String = "50",
     val positiveMarks: Double = 4.0,
     val negativeMarks: Double = 1.0,
+    val unattendedMarks: Double = 0.0,
     val negativeMarking: String = "1.00 Mark Deduction",
     val includeCandidateDetails: Boolean = true,
     val includeInstructions: Boolean = true,
@@ -188,7 +190,7 @@ data class ExamConfig(
     val customInstructions: List<String> = listOf(
         "Check that this question paper contains all pages and questions in sequential order.",
         "Each question carries equal marks (+1.00). Choose the single most appropriate option (A, B, C, or D).",
-        "Penalty marking: -0.33 mark deducted for each incorrect answer, -0.10 mark for each unattended question.",
+        "Penalty marking: Deductions for incorrect answers apply as configured. Unattempted questions carry zero penalty unless specified.",
         "Darken the corresponding oval on the OMR Answer Sheet using Blue/Black ballpoint pen.",
         "Rough work may only be done on the designated space provided at the end of this booklet.",
         "Do not leave the examination hall until your answer sheet is collected by the invigilator."

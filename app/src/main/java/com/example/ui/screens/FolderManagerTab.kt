@@ -1162,8 +1162,13 @@ fun FolderManagerTab(
                     onNavigateToMaster()
                 },
                 onTakeTest = { paper ->
-                    viewModel.loadSavedPaper(paper) {
-                        viewModel.startExam()
+                    val isCompleted = paper.id in libraryIndex.completedPaperIds
+                    if (isCompleted) {
+                        viewModel.reviewCompletedPaperAttempt(paper)
+                    } else {
+                        viewModel.loadSavedPaper(paper) {
+                            viewModel.startExam()
+                        }
                     }
                     onNavigateToStudent()
                 },
@@ -1216,8 +1221,13 @@ fun FolderManagerTab(
                     onNavigateToMaster()
                 },
                 onTakeTest = { paper ->
-                    viewModel.loadSavedPaper(paper) {
-                        viewModel.startExam()
+                    val isCompleted = paper.id in libraryIndex.completedPaperIds
+                    if (isCompleted) {
+                        viewModel.reviewCompletedPaperAttempt(paper)
+                    } else {
+                        viewModel.loadSavedPaper(paper) {
+                            viewModel.startExam()
+                        }
                     }
                     onNavigateToStudent()
                 },
@@ -1836,7 +1846,12 @@ fun FolderManagerTab(
                                     },
                                     onTakeTest = {
                                         activeQuickFeatureFilter = null
-                                        viewModel.loadSavedPaper(paper) { viewModel.startExam() }
+                                        val isCompleted = paper.id in libraryIndex.completedPaperIds
+                                        if (isCompleted) {
+                                            viewModel.reviewCompletedPaperAttempt(paper)
+                                        } else {
+                                            viewModel.loadSavedPaper(paper) { viewModel.startExam() }
+                                        }
                                         onNavigateToStudent()
                                     },
                                     onAssignFolder = {
