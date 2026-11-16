@@ -894,7 +894,7 @@ fun HomeScreen(
                                 color = colors.navyBanner
                             ) {
                                 Text(
-                                    text = paper.metadata.setNumber.ifBlank { "SET A" }.uppercase(),
+                                    text = ExamNumberGenerator.formatSetDisplayLabel(paper.metadata.setNumber).uppercase(),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.navyBannerText,

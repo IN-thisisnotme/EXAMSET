@@ -187,12 +187,12 @@ class ExampleRobolectricTest {
         val paperId = dao.insertPaper(entity)
         assertTrue(paperId > 0)
 
-        // Q1 correct is A, Q2 correct is B, Q3 correct is C, Q10 correct is C
+        // Q1 correct is B, Q2 correct is B, Q3 correct is B, Q4 correct is A, Q5 correct is B
         val answers = mapOf(
-            1 to "A", // Correct
+            1 to "B", // Correct
             2 to "B", // Correct
-            3 to "A"  // Incorrect (correct is C)
-            // Q4..Q10 are unattempted (7 questions)
+            3 to "A"  // Incorrect (correct is B)
+            // Q4..Q5 are unattempted (2 questions)
         )
 
         val correctCount = parsed.questions.count { q -> answers[q.num]?.equals(q.correctAnswer, ignoreCase = true) == true }
@@ -204,7 +204,7 @@ class ExampleRobolectricTest {
 
         assertEquals(2, correctCount)
         assertEquals(1, incorrectCount)
-        assertEquals(7, unattemptedCount)
+        assertEquals(2, unattemptedCount)
 
         // Targeted Retry for Incorrect: should isolate question 3
         val incorrectQuestions = parsed.questions.filter { q ->
@@ -214,11 +214,11 @@ class ExampleRobolectricTest {
 
         assertEquals(listOf(3), incorrectQuestions)
 
-        // Targeted Retry for Unanswered: should isolate questions 4..10
+        // Targeted Retry for Unanswered: should isolate questions 4..5
         val unansweredQuestions = parsed.questions.filter { q -> answers[q.num] == null }.map { it.num }
-        assertEquals(7, unansweredQuestions.size)
+        assertEquals(2, unansweredQuestions.size)
         assertTrue(unansweredQuestions.contains(4))
-        assertTrue(unansweredQuestions.contains(10))
+        assertTrue(unansweredQuestions.contains(5))
 
         // Clean up
         dao.deleteById(paperId)

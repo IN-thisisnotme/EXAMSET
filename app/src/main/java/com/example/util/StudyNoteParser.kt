@@ -33,7 +33,14 @@ sealed interface StudyNoteBlock {
         val paragraphs: List<String> = emptyList(),
         val nestedBullets: List<Pair<Int, String>> = emptyList(),
         val formula: String = "",
-        val isReversed: Boolean = false
+        val isReversed: Boolean = false,
+        val isQuestionCard: Boolean = false,
+        val questionType: String = "",
+        val statusTag: String = "",
+        val candidateAnswer: String = "",
+        val optionsList: List<Pair<String, String>> = emptyList(),
+        val correctAnswer: String = "",
+        val keyTakeaway: String = ""
     ) : StudyNoteBlock
 
     data class Table(
@@ -208,6 +215,12 @@ object StudyNoteParser {
                 val nestedBullets = mutableListOf<Pair<Int, String>>()
                 val extraParagraphs = mutableListOf<String>()
                 var formula = ""
+                var parsedQuestionType = ""
+                var parsedStatusTag = ""
+                var parsedCandidateAnswer = ""
+                val parsedOptions = mutableListOf<Pair<String, String>>()
+                var parsedCorrectAnswer = ""
+                var parsedKeyTakeaway = ""
                 var j = i + 1
 
                 if (rule.preserveNestedBullets) {
@@ -220,24 +233,53 @@ object StudyNoteParser {
                         val subIndent = leadingSpaces(subRaw)
                         val isSubBullet = Regex("""^(?:[-*•‣▪◦]|\d+[.)]|[a-zA-Z][.)])\s+(.+)$""").find(subTrim)
                         val isIndentedMore = subIndent > baseIndent
-                        val isTagSubLine = Regex("""^(?:Formula|Equation|Example|E\.g\.|Note|Why|Trick|Mnemonic|Answer|Concept|Takeaway)\s*[:\-]\s*(.+)$""", RegexOption.IGNORE_CASE).find(subTrim)
+                        val isTagSubLine = Regex("""^(?:Formula|Equation|Example|E\.g\.|Note|Why|Trick|Mnemonic|Answer|Correct Answer|Key Takeaway|Explanation|Solution|Status|Type|Question Type|Concept|Takeaway)\s*[:\-]\s*(.+)$""", RegexOption.IGNORE_CASE).find(subTrim)
 
                         if (isIndentedMore && isSubBullet != null) {
                             val level = ((subIndent - baseIndent) / 2).coerceIn(1, 3)
                             val bulletText = cleanMarkdownDecorators(isSubBullet.groupValues[1])
-                            if (looksLikeFormula(bulletText) && formula.isBlank()) {
-                                formula = bulletText
-                            } else {
-                                nestedBullets.add(level to bulletText)
+                            val optMatch = Regex("""^\(([A-Ea-e])\)\s+(.+)$""").find(bulletText)
+                            val qMetaMatch = Regex("""^(Question Type|Type|Status|Correct Answer|Key Takeaway|Explanation|Solution|Formula|Equation)\s*:\s*(.+)$""", RegexOption.IGNORE_CASE).find(bulletText)
+
+                            when {
+                                optMatch != null && level == 1 -> {
+                                    parsedOptions.add(optMatch.groupValues[1].uppercase() to optMatch.groupValues[2].trim())
+                                }
+                                qMetaMatch != null -> {
+                                    val key = qMetaMatch.groupValues[1].trim().lowercase()
+                                    val value = qMetaMatch.groupValues[2].trim()
+                                    when (key) {
+                                        "type", "question type" -> parsedQuestionType = value
+                                        "status" -> {
+                                            parsedStatusTag = value
+                                            val marked = Regex("""Marked\s+([A-Ea-e0-9\-]+)""", RegexOption.IGNORE_CASE).find(value)
+                                            if (marked != null) {
+                                                parsedCandidateAnswer = marked.groupValues[1].uppercase()
+                                            }
+                                        }
+                                        "correct answer" -> parsedCorrectAnswer = value
+                                        "key takeaway", "explanation", "solution" -> parsedKeyTakeaway = value
+                                        "formula", "equation" -> formula = value
+                                    }
+                                }
+                                looksLikeFormula(bulletText) && formula.isBlank() -> {
+                                    formula = bulletText
+                                }
+                                else -> {
+                                    nestedBullets.add(level to bulletText)
+                                }
                             }
                             j++
                         } else if (isTagSubLine != null) {
                             val tag = subTrim.substringBefore(":").substringBefore("-").trim()
                             val body = cleanMarkdownDecorators(isTagSubLine.groupValues[1])
-                            if (tag.equals("Formula", ignoreCase = true) || tag.equals("Equation", ignoreCase = true)) {
-                                formula = body
-                            } else {
-                                nestedBullets.add(1 to "$tag: $body")
+                            when {
+                                tag.equals("Formula", ignoreCase = true) || tag.equals("Equation", ignoreCase = true) -> formula = body
+                                tag.equals("Type", ignoreCase = true) || tag.equals("Question Type", ignoreCase = true) -> parsedQuestionType = body
+                                tag.equals("Status", ignoreCase = true) -> parsedStatusTag = body
+                                tag.equals("Correct Answer", ignoreCase = true) || tag.equals("Answer", ignoreCase = true) -> parsedCorrectAnswer = body
+                                tag.equals("Key Takeaway", ignoreCase = true) || tag.equals("Explanation", ignoreCase = true) || tag.equals("Solution", ignoreCase = true) -> parsedKeyTakeaway = body
+                                else -> nestedBullets.add(1 to "$tag: $body")
                             }
                             j++
                         } else if (isIndentedMore) {
@@ -249,6 +291,44 @@ object StudyNoteParser {
                             break
                         }
                     }
+                }
+
+                // Detect question / remediation card (`**Q1: <stem>**` or `Q1: <stem>` or weak-area structured block)
+                val cleanedFullContent = cleanMarkdownDecorators(content)
+                val questionPrefixMatch = Regex("""^(Q\d+)\s*[:.]\s*(.+)$""", RegexOption.IGNORE_CASE).find(cleanedFullContent)
+                val isQuestionStructuredCard = questionPrefixMatch != null ||
+                    parsedStatusTag.isNotBlank() ||
+                    parsedCorrectAnswer.isNotBlank() ||
+                    parsedOptions.isNotEmpty() ||
+                    parsedKeyTakeaway.isNotBlank()
+
+                if (isQuestionStructuredCard) {
+                    val qBadge = questionPrefixMatch?.groupValues?.get(1)?.uppercase() ?: "Q$displayIdx"
+                    val qStem = questionPrefixMatch?.groupValues?.get(2)?.trim() ?: cleanedFullContent
+                    val resolvedType = parsedQuestionType.ifBlank {
+                        inferQuestionTypeLabel(qStem, parsedOptions, formula)
+                    }
+                    blocks.add(
+                        StudyNoteBlock.MultiLinerCard(
+                            blockIndex = blockCounter++,
+                            displayIndex = qBadge,
+                            title = qStem,
+                            badge = resolvedType,
+                            paragraphs = extraParagraphs.distinct(),
+                            nestedBullets = nestedBullets,
+                            formula = formula,
+                            isReversed = false,
+                            isQuestionCard = true,
+                            questionType = resolvedType,
+                            statusTag = parsedStatusTag,
+                            candidateAnswer = parsedCandidateAnswer,
+                            optionsList = parsedOptions,
+                            correctAnswer = parsedCorrectAnswer,
+                            keyTakeaway = parsedKeyTakeaway
+                        )
+                    )
+                    i = j
+                    continue
                 }
 
                 val splitResult = splitLeadAndDetail(content, rule.layerOrder)
@@ -271,6 +351,11 @@ object StudyNoteParser {
                         }
                         addAll(extraParagraphs)
                     }
+                    val resolvedType = when {
+                        formula.isNotBlank() -> "Formula & Concept"
+                        rule.collectionType == KnowledgeCollectionType.FORMULA_SHEET -> "Formula"
+                        else -> "Concept Card"
+                    }
                     blocks.add(
                         StudyNoteBlock.MultiLinerCard(
                             blockIndex = blockCounter++,
@@ -280,7 +365,8 @@ object StudyNoteParser {
                             paragraphs = cardParagraphs.distinct(),
                             nestedBullets = nestedBullets,
                             formula = formula,
-                            isReversed = splitResult.isReversed
+                            isReversed = splitResult.isReversed,
+                            questionType = resolvedType
                         )
                     )
                 } else {
@@ -414,6 +500,22 @@ object StudyNoteParser {
         }
     }
 
+    private fun inferQuestionTypeLabel(
+        stem: String,
+        options: List<Pair<String, String>>,
+        formula: String
+    ): String {
+        val lower = stem.lowercase()
+        return when {
+            lower.contains("assertion") && lower.contains("reason") -> "Assertion–Reason"
+            lower.contains("match the following") || lower.contains("list i") && lower.contains("list ii") -> "Match Type"
+            lower.contains("statement i") || lower.contains("consider the following statements") -> "Statement MCQ"
+            formula.isNotBlank() || lower.contains("calculate") || lower.contains("ratio of") || lower.contains("numerical") -> "Numerical MCQ"
+            options.isEmpty() -> "Concept Question"
+            else -> "Multiple Choice"
+        }
+    }
+
     fun buildWeakAreaNoteContent(
         paper: QuestionPaper,
         incorrectNums: Set<Int>,
@@ -446,8 +548,17 @@ object StudyNoteParser {
                 }.trim()
 
                 val cleanStem = q.question.replace(Regex("""\s+"""), " ").trim()
+                val nonBlankOptions = q.options.asList.filter { it.second.isNotBlank() }
+                val inferredType = q.questionType?.takeIf { it.isNotBlank() }
+                    ?: inferQuestionTypeLabel(cleanStem, nonBlankOptions, q.formula.orEmpty())
+
                 appendLine("${seq++}. **Q${q.num}: $cleanStem**")
+                appendLine("  - Question Type: $inferredType")
                 appendLine("  - Status: $statusTag")
+                nonBlankOptions.forEach { (optLetter, optText) ->
+                    val cleanOpt = optText.replace(Regex("""\s+"""), " ").trim()
+                    appendLine("  - ($optLetter) $cleanOpt")
+                }
                 if (correctLetter != null) {
                     val ansLine = if (correctOptionText.isNotBlank()) "($correctLetter) $correctOptionText" else correctLetter
                     appendLine("  - Correct Answer: $ansLine")
@@ -469,7 +580,8 @@ object StudyNoteParser {
         val starred = note.getBookmarkedIndices()
         val candidates = blocks.filter {
             (it is StudyNoteBlock.OneLiner && it.leadTerm.isNotBlank() && it.detail.isNotBlank()) ||
-                (it is StudyNoteBlock.MultiLinerCard && it.title.isNotBlank() && (it.paragraphs.isNotEmpty() || it.nestedBullets.isNotEmpty()))
+                (it is StudyNoteBlock.MultiLinerCard && it.title.isNotBlank() &&
+                    (it.paragraphs.isNotEmpty() || it.nestedBullets.isNotEmpty() || it.correctAnswer.isNotBlank() || it.keyTakeaway.isNotBlank()))
         }
         val selected = if (starred.isNotEmpty()) {
             val onlyStarred = candidates.filter { it.blockIndex in starred }
@@ -483,7 +595,8 @@ object StudyNoteParser {
         val poolAnswers = selected.mapNotNull { blk ->
             when (blk) {
                 is StudyNoteBlock.OneLiner -> blk.detail.take(90).trim().takeIf { it.isNotBlank() }
-                is StudyNoteBlock.MultiLinerCard -> blk.paragraphs.firstOrNull()?.take(90)?.trim()
+                is StudyNoteBlock.MultiLinerCard -> blk.correctAnswer.take(90).trim().takeIf { it.isNotBlank() }
+                    ?: blk.paragraphs.firstOrNull()?.take(90)?.trim()
                     ?: blk.nestedBullets.firstOrNull()?.second?.take(90)?.trim()
                 else -> null
             }
@@ -495,44 +608,59 @@ object StudyNoteParser {
             appendLine()
             selected.take(25).forEachIndexed { idx, blk ->
                 val qNum = idx + 1
-                val (prompt, correct, explanation) = when (blk) {
-                    is StudyNoteBlock.OneLiner -> Triple(
-                        "Which of the following accurately describes \"${blk.leadTerm}\"?",
-                        blk.detail,
-                        "${blk.leadTerm}: ${blk.detail}"
-                    )
-                    is StudyNoteBlock.MultiLinerCard -> {
-                        val mainDetail = blk.paragraphs.firstOrNull()
-                            ?: blk.nestedBullets.firstOrNull()?.second
-                            ?: blk.title
-                        val fullExp = (blk.paragraphs + blk.nestedBullets.map { it.second }).joinToString(" | ")
-                        Triple(
-                            "With reference to \"${blk.title}\", identify the accurate statement:",
-                            mainDetail.take(140),
-                            fullExp
-                        )
-                    }
-                    else -> Triple("", "", "")
-                }
-                if (prompt.isNotBlank() && correct.isNotBlank()) {
-                    val distractors = poolAnswers.filter { !it.equals(correct, ignoreCase = true) }.take(3).toMutableList()
-                    while (distractors.size < 3) {
-                        distractors.add(
-                            when (distractors.size) {
-                                0 -> "None of the statements listed above"
-                                1 -> "Applies exclusively under reversed conditions"
-                                else -> "Not associated with this concept"
-                            }
-                        )
-                    }
-                    appendLine("Q$qNum. $prompt")
-                    appendLine("(A) $correct")
-                    appendLine("(B) ${distractors[0]}")
-                    appendLine("(C) ${distractors[1]}")
-                    appendLine("(D) ${distractors[2]}")
-                    appendLine("Correct Answer: A")
-                    appendLine("Explanation: $explanation")
+                if (blk is StudyNoteBlock.MultiLinerCard && blk.isQuestionCard && blk.optionsList.size >= 2 && blk.correctAnswer.isNotBlank()) {
+                    val ansLetterMatch = Regex("""^\(?([A-E])\)?""").find(blk.correctAnswer.trim().uppercase())
+                    val ansLetter = ansLetterMatch?.groupValues?.get(1) ?: "A"
+                    appendLine("Q$qNum. ${blk.title}")
+                    blk.optionsList.forEach { (l, txt) -> appendLine("($l) $txt") }
+                    appendLine("Correct Answer: $ansLetter")
+                    val expText = blk.keyTakeaway.ifBlank { blk.correctAnswer }
+                    appendLine("Explanation: $expText")
                     appendLine()
+                } else {
+                    val (prompt, correct, explanation) = when (blk) {
+                        is StudyNoteBlock.OneLiner -> Triple(
+                            "Which of the following accurately describes \"${blk.leadTerm}\"?",
+                            blk.detail,
+                            "${blk.leadTerm}: ${blk.detail}"
+                        )
+                        is StudyNoteBlock.MultiLinerCard -> {
+                            val mainDetail = blk.correctAnswer.takeIf { it.isNotBlank() }
+                                ?: blk.paragraphs.firstOrNull()
+                                ?: blk.nestedBullets.firstOrNull()?.second
+                                ?: blk.title
+                            val fullExp = (listOfNotNull(
+                                blk.correctAnswer.takeIf { it.isNotBlank() },
+                                blk.keyTakeaway.takeIf { it.isNotBlank() }
+                            ) + blk.paragraphs + blk.nestedBullets.map { it.second }).joinToString(" | ")
+                            Triple(
+                                if (blk.isQuestionCard) blk.title else "With reference to \"${blk.title}\", identify the accurate statement:",
+                                mainDetail.take(140),
+                                fullExp
+                            )
+                        }
+                        else -> Triple("", "", "")
+                    }
+                    if (prompt.isNotBlank() && correct.isNotBlank()) {
+                        val distractors = poolAnswers.filter { !it.equals(correct, ignoreCase = true) }.take(3).toMutableList()
+                        while (distractors.size < 3) {
+                            distractors.add(
+                                when (distractors.size) {
+                                    0 -> "None of the statements listed above"
+                                    1 -> "Applies exclusively under reversed conditions"
+                                    else -> "Not associated with this concept"
+                                }
+                            )
+                        }
+                        appendLine("Q$qNum. $prompt")
+                        appendLine("(A) $correct")
+                        appendLine("(B) ${distractors[0]}")
+                        appendLine("(C) ${distractors[1]}")
+                        appendLine("(D) ${distractors[2]}")
+                        appendLine("Correct Answer: A")
+                        appendLine("Explanation: $explanation")
+                        appendLine()
+                    }
                 }
             }
         }.trim()
@@ -851,12 +979,32 @@ object StudyNoteParser {
                         val starClass = if (block.blockIndex in bookmarked) " star" else ""
                         val starMark = if (block.blockIndex in bookmarked) "★ " else ""
                         append("<div class='multicard$starClass'>")
-                        append("<div><span class='idx'>$starMark${esc(block.displayIndex)}.</span><span class='lead'>${esc(block.title)}</span></div>")
+                        append("<div><span class='idx'>$starMark${esc(block.displayIndex)}.</span><span class='lead'>${esc(block.title)}</span>")
+                        if (block.questionType.isNotBlank()) {
+                            append(" <span class='badge' style='margin-left:6px;'>${esc(block.questionType)}</span>")
+                        }
+                        if (block.statusTag.isNotBlank()) {
+                            append(" <span class='badge' style='background:#FEE2E2;color:#991B1B;margin-left:4px;'>${esc(block.statusTag)}</span>")
+                        }
+                        append("</div>")
+                        if (block.optionsList.isNotEmpty()) {
+                            append("<ul class='nested' style='list-style-type:none;padding-left:0;'>")
+                            block.optionsList.forEach { (l, txt) ->
+                                append("<li><strong>(${esc(l)})</strong> ${esc(txt)}</li>")
+                            }
+                            append("</ul>")
+                        }
                         block.paragraphs.forEach { p ->
                             append("<p style='margin:5px 0 3px 0;'>${esc(p)}</p>")
                         }
+                        if (block.correctAnswer.isNotBlank()) {
+                            append("<p style='margin:5px 0 3px 0;color:#0F766E;'><strong>Correct Answer:</strong> ${esc(block.correctAnswer)}</p>")
+                        }
                         if (block.formula.isNotBlank()) {
                             append("<div class='formula'>${esc(block.formula)}</div>")
+                        }
+                        if (block.keyTakeaway.isNotBlank()) {
+                            append("<p style='margin:5px 0 3px 0;'><strong>Key Takeaway:</strong> ${esc(block.keyTakeaway)}</p>")
                         }
                         if (block.nestedBullets.isNotEmpty()) {
                             append("<ul class='nested'>")

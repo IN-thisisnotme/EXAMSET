@@ -148,4 +148,53 @@ class StudyNoteParserTest {
         assertEquals(4, parsedPaper.questions.size)
         assertEquals("A", parsedPaper.questions.first().correctAnswer)
     }
+
+    @Test
+    fun `parseBlocks keeps full Q1 stem options and metadata visible for Active Recall`() {
+        val paper = QuestionPaper(
+            metadata = PaperMetadata(title = "Civil Core", subject = "Civil Engineering"),
+            questions = listOf(
+                McqQuestion(
+                    num = 1,
+                    question = "A simply supported beam of span L carries a uniformly distributed load w over the entire span. What is the bending moment ratio?",
+                    options = QuestionOptions("1", "1/2", "2", "4"),
+                    correctAnswer = "C",
+                    explanation = "Point load at mid-span gives WL/4 vs wL^2/8."
+                )
+            )
+        )
+
+        val generated = StudyNoteParser.buildWeakAreaNoteContent(
+            paper = paper,
+            incorrectNums = emptySet(),
+            unattendedNums = setOf(1),
+            answers = emptyMap()
+        )
+        val parsedGenerated = StudyNoteParser.parseBlocks(generated)
+        val generatedCard = parsedGenerated.filterIsInstance<StudyNoteBlock.MultiLinerCard>().firstOrNull()
+        assertTrue(generatedCard != null)
+        assertEquals("Q1", generatedCard?.displayIndex)
+        assertTrue(generatedCard?.isQuestionCard == true)
+        assertTrue(generatedCard?.title?.contains("simply supported beam of span L") == true)
+        assertEquals("Skipped", generatedCard?.statusTag)
+        assertEquals(4, generatedCard?.optionsList?.size)
+        assertTrue(generatedCard?.correctAnswer?.contains("(C) 2") == true)
+        assertTrue(generatedCard?.keyTakeaway?.contains("WL/4") == true)
+
+        // Legacy weak-area markdown without Question Type or Options still retains full stem in title
+        val legacyRaw = """
+            1. **Q1: A simply supported beam of span L carries a UDL w over the entire span:**
+              - Status: Skipped
+              - Correct Answer: (C) 2
+              - Key Takeaway: Mid-span point load induces twice the bending moment.
+        """.trimIndent()
+        val parsedLegacy = StudyNoteParser.parseBlocks(legacyRaw)
+        val legacyCard = parsedLegacy.filterIsInstance<StudyNoteBlock.MultiLinerCard>().firstOrNull()
+        assertTrue(legacyCard != null)
+        assertEquals("Q1", legacyCard?.displayIndex)
+        assertTrue(legacyCard?.isQuestionCard == true)
+        assertTrue(legacyCard?.title?.contains("simply supported beam of span L") == true)
+        assertEquals("Skipped", legacyCard?.statusTag)
+        assertTrue(legacyCard?.correctAnswer?.contains("(C) 2") == true)
+    }
 }
