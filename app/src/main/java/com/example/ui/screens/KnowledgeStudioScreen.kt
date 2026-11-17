@@ -860,6 +860,7 @@ fun KnowledgeStudioReaderScreen(
     val formatRule = remember(note.formatRuleJson, note.collectionType) { note.parsedFormatRule() }
 
     var searchQuery by remember { mutableStateOf("") }
+    var showSearchBar by remember { mutableStateOf(false) }
     var recallMode by remember { mutableStateOf(false) }
     var maskMode by remember { mutableStateOf(RecallMaskMode.ANSWER_AND_EXPLANATION) }
     var typeFilter by remember { mutableStateOf(RecallTypeFilter.ALL) }
@@ -1059,6 +1060,21 @@ fun KnowledgeStudioReaderScreen(
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
+                                onClick = {
+                                    if (showSearchBar && searchQuery.isNotBlank()) {
+                                        searchQuery = ""
+                                    }
+                                    showSearchBar = !showSearchBar
+                                },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = if (showSearchBar) "Hide Search" else "Search Notes",
+                                    tint = if (showSearchBar || searchQuery.isNotBlank()) colors.teal else colors.inkMuted
+                                )
+                            }
+                            IconButton(
                                 onClick = { onGenerateMcqDraft(note) },
                                 modifier = Modifier.size(48.dp)
                             ) {
@@ -1076,52 +1092,12 @@ fun KnowledgeStudioReaderScreen(
                         }
                     }
 
-                    if (!linkedPaperTitle.isNullOrBlank() && note.linkedPaperId != null && onOpenLinkedPaper != null) {
-                        Surface(
-                            onClick = { onOpenLinkedPaper(note.linkedPaperId) },
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.blueLight,
-                            border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Icon(Icons.Default.Link, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Linked Question Set: $linkedPaperTitle",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.tealDark,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Open Set →",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.teal,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-                    }
-
-                    // Primary Active Recall Studio Bar (zero clipping on mobile!)
+                    // Primary Active Recall Studio Bar (horizontally scrollable fallback for large font scales)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1131,12 +1107,11 @@ fun KnowledgeStudioReaderScreen(
                             color = if (recallMode) colors.teal else colors.surfaceVariant,
                             border = BorderStroke(1.dp, if (recallMode) colors.teal else colors.border),
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 42.dp)
+                                .heightIn(min = 38.dp)
                                 .testTag("active_recall_toggle_button")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1144,12 +1119,12 @@ fun KnowledgeStudioReaderScreen(
                                     imageVector = if (recallMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                     contentDescription = null,
                                     tint = if (recallMode) Color.White else colors.teal,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
-                                    text = if (recallMode) "Active Recall ON" else "Active Recall",
-                                    fontSize = 12.sp,
+                                    text = if (recallMode) "Recall ON" else "Active Recall",
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (recallMode) Color.White else colors.inkBold,
                                     maxLines = 1,
@@ -1163,15 +1138,15 @@ fun KnowledgeStudioReaderScreen(
                             shape = RoundedCornerShape(10.dp),
                             color = colors.surfaceVariant,
                             border = BorderStroke(0.9.dp, colors.border),
-                            modifier = Modifier.heightIn(min = 42.dp)
+                            modifier = Modifier.heightIn(min = 38.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(3.dp),
+                                modifier = Modifier.padding(2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Surface(
                                     onClick = { isDeckMode = false },
-                                    shape = RoundedCornerShape(7.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = if (!isDeckMode) colors.surface else Color.Transparent
                                 ) {
                                     Row(
@@ -1197,7 +1172,7 @@ fun KnowledgeStudioReaderScreen(
                                 }
                                 Surface(
                                     onClick = { isDeckMode = true },
-                                    shape = RoundedCornerShape(7.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = if (isDeckMode) colors.surface else Color.Transparent
                                 ) {
                                     Row(
@@ -1231,18 +1206,18 @@ fun KnowledgeStudioReaderScreen(
                             color = if (typeFilter != RecallTypeFilter.ALL || recallMode) colors.blueLight else colors.surfaceVariant,
                             border = BorderStroke(1.dp, if (typeFilter != RecallTypeFilter.ALL || recallMode) colors.teal.copy(alpha = 0.5f) else colors.border),
                             modifier = Modifier
-                                .heightIn(min = 42.dp)
+                                .heightIn(min = 38.dp)
                                 .testTag("recall_setup_button")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Tune,
                                     contentDescription = "Recall Setup & Filters",
                                     tint = colors.tealDark,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
@@ -1257,13 +1232,14 @@ fun KnowledgeStudioReaderScreen(
                         }
                     }
 
-                    // Wrapped Quick Filter Chips (Zero horizontal clipping — never cuts "Hide Mastered"!)
-                    FlowRow(
+                    // Single-Row Quick Filter Chips (never wraps onto a 2nd sticky row at any font size!)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 1.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         FilterChip(
                             selected = flipPair,
@@ -1271,7 +1247,7 @@ fun KnowledgeStudioReaderScreen(
                                 maskMode = if (flipPair) RecallMaskMode.ANSWER_AND_EXPLANATION else RecallMaskMode.REVERSE_PROMPT
                                 if (!recallMode && !flipPair) recallMode = true
                             },
-                            leadingIcon = { Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                            leadingIcon = { Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(14.dp)) },
                             label = { Text("Flip Prompt", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = colors.blueLight,
@@ -1281,7 +1257,7 @@ fun KnowledgeStudioReaderScreen(
                         FilterChip(
                             selected = starredOnly,
                             onClick = { starredOnly = !starredOnly },
-                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(14.dp)) },
                             label = { Text("Starred (${bookmarked.size})", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = colors.amberLight,
@@ -1291,7 +1267,7 @@ fun KnowledgeStudioReaderScreen(
                         FilterChip(
                             selected = hideMastered,
                             onClick = { hideMastered = !hideMastered },
-                            leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                            leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp)) },
                             label = { Text("Hide Mastered", fontSize = 11.sp, maxLines = 1, softWrap = false) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = colors.greenLight,
@@ -1301,7 +1277,7 @@ fun KnowledgeStudioReaderScreen(
                         FilterChip(
                             selected = typeFilter != RecallTypeFilter.ALL,
                             onClick = { showRecallSettingsDialog = true },
-                            leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                            leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(14.dp)) },
                             label = {
                                 Text(
                                     text = if (typeFilter == RecallTypeFilter.ALL) "Type: All" else "Type: ${typeFilter.label}",
@@ -1317,7 +1293,7 @@ fun KnowledgeStudioReaderScreen(
                         )
                     }
 
-                    // Active Recall Live Status & Progress Banner
+                    // Active Recall Live Status & Progress Banner (compact 1-row + slim progress bar)
                     AnimatedVisibility(visible = recallMode && recallableVisibleUnits.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -1325,37 +1301,31 @@ fun KnowledgeStudioReaderScreen(
                             border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.35f)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Recall Target: ${maskMode.shortLabel}",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.tealDark,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "Revealed $revealedVisibleCount of ${recallableVisibleUnits.size} items",
-                                            fontSize = 10.5.sp,
-                                            color = colors.inkMuted
-                                        )
-                                    }
+                                    Text(
+                                        text = "${maskMode.shortLabel} • $revealedVisibleCount/${recallableVisibleUnits.size} revealed",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.tealDark,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         TextButton(
                                             onClick = {
                                                 revealedIndices = emptySet()
                                                 selfSelectedOptions = emptyMap()
                                             },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier.heightIn(min = 34.dp)
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                            modifier = Modifier.heightIn(min = 30.dp)
                                         ) {
                                             Text("Hide All", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkBold, maxLines = 1, softWrap = false)
                                         }
@@ -1363,14 +1333,14 @@ fun KnowledgeStudioReaderScreen(
                                             onClick = {
                                                 revealedIndices = recallableVisibleUnits.map { it.blockIndex }.toSet()
                                             },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier.heightIn(min = 34.dp)
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                            modifier = Modifier.heightIn(min = 30.dp)
                                         ) {
                                             Text("Reveal All", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.tealDark, maxLines = 1, softWrap = false)
                                         }
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(5.dp))
+                                Spacer(modifier = Modifier.height(3.dp))
                                 val frac = if (recallableVisibleUnits.isNotEmpty()) {
                                     revealedVisibleCount.toFloat() / recallableVisibleUnits.size.toFloat()
                                 } else 0f
@@ -1378,8 +1348,8 @@ fun KnowledgeStudioReaderScreen(
                                     progress = { frac.coerceIn(0f, 1f) },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(5.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
                                     color = colors.teal,
                                     trackColor = colors.surface
                                 )
@@ -1387,24 +1357,30 @@ fun KnowledgeStudioReaderScreen(
                         }
                     }
 
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search questions, formulas, answers, or types...", fontSize = 12.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear search", modifier = Modifier.size(16.dp))
+                    // On-demand Collapsible Search Bar (reclaims ~64dp when closed!)
+                    AnimatedVisibility(visible = showSearchBar || searchQuery.isNotEmpty()) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search questions, formulas, answers, or types...", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        searchQuery = ""
+                                        showSearchBar = false
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close search", modifier = Modifier.size(16.dp))
                                 }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -1456,7 +1432,7 @@ fun KnowledgeStudioReaderScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1483,13 +1459,52 @@ fun KnowledgeStudioReaderScreen(
                             trackColor = colors.border.copy(alpha = 0.4f)
                         )
 
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
                                 .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            if (!linkedPaperTitle.isNullOrBlank() && note.linkedPaperId != null && onOpenLinkedPaper != null) {
+                                Surface(
+                                    onClick = { onOpenLinkedPaper(note.linkedPaperId) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = colors.blueLight,
+                                    border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                            Icon(Icons.Default.Link, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Linked Question Set: $linkedPaperTitle",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.tealDark,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Open Set →",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.teal,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
                             KnowledgeBlockItemView(
                                 block = activeBlock,
                                 isStarred = isStarred,
@@ -1523,7 +1538,7 @@ fun KnowledgeStudioReaderScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1597,9 +1612,51 @@ fun KnowledgeStudioReaderScreen(
                         .weight(1f)
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp),
+                    contentPadding = PaddingValues(vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Linked Question Set Banner scrolls cleanly with content instead of pinning at top
+                    if (!linkedPaperTitle.isNullOrBlank() && note.linkedPaperId != null && onOpenLinkedPaper != null) {
+                        item(key = "linked_paper_banner") {
+                            Surface(
+                                onClick = { onOpenLinkedPaper(note.linkedPaperId) },
+                                shape = RoundedCornerShape(10.dp),
+                                color = colors.blueLight,
+                                border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Default.Link, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Linked Question Set: $linkedPaperTitle",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.tealDark,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Open Set →",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.teal,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     if (visibleBlocks.isEmpty()) {
                         item {
                             Card(
@@ -2335,7 +2392,7 @@ fun KnowledgeBlockItemView(
                                 }
                             }
                         }
-                        IconButton(onClick = onToggleExpand, modifier = Modifier.size(44.dp)) {
+                        IconButton(onClick = onToggleExpand, modifier = Modifier.size(48.dp)) {
                             Icon(
                                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                 contentDescription = if (isExpanded) "Collapse card" else "Expand card",
@@ -2416,7 +2473,27 @@ fun KnowledgeBlockItemView(
                                                 modifier = Modifier.weight(1f)
                                             )
                                             if (!isHiddenRecall && isCorrectOpt) {
-                                                Icon(Icons.Default.Check, contentDescription = "Correct option", tint = colors.green, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(5.dp),
+                                                    color = colors.green.copy(alpha = 0.16f)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(Icons.Default.Check, contentDescription = "Correct option", tint = colors.green, modifier = Modifier.size(13.dp))
+                                                        Spacer(modifier = Modifier.width(3.dp))
+                                                        Text(
+                                                            text = "Correct",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = colors.green,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -2424,8 +2501,13 @@ fun KnowledgeBlockItemView(
                             }
                         }
 
-                        // Explanation-only mode: show Correct Answer immediately, hide Formula & Takeaway
-                        if (isHiddenRecall && maskMode == RecallMaskMode.EXPLANATION_ONLY && block.correctAnswer.isNotBlank()) {
+                        // Explanation-only mode: show Correct Answer when options aren't already highlighting it
+                        val optionsHighlightedCorrect = block.optionsList.isNotEmpty() &&
+                            !hideOptionsNow &&
+                            correctLetter != null &&
+                            block.optionsList.any { it.first.equals(correctLetter, ignoreCase = true) }
+
+                        if (isHiddenRecall && maskMode == RecallMaskMode.EXPLANATION_ONLY && block.correctAnswer.isNotBlank() && !optionsHighlightedCorrect) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -2524,7 +2606,8 @@ fun KnowledgeBlockItemView(
                                 }
                             }
 
-                            if (block.correctAnswer.isNotBlank()) {
+                            // Show dedicated Correct Answer box ONLY if not already highlighted inside visible (A)-(E) options
+                            if (block.correctAnswer.isNotBlank() && !optionsHighlightedCorrect) {
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = colors.greenLight.copy(alpha = 0.7f),
@@ -2650,16 +2733,16 @@ fun KnowledgeBlockItemView(
                         if (onToggleStar != null || onToggleMastered != null || (recallMode && !isHiddenRecall && onHide != null)) {
                             Spacer(modifier = Modifier.height(8.dp))
                             HorizontalDivider(color = colors.border.copy(alpha = 0.45f))
-                            Row(
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 if (recallMode && !isHiddenRecall && onHide != null) {
-                                    TextButton(onClick = onHide, modifier = Modifier.heightIn(min = 44.dp)) {
+                                    TextButton(onClick = onHide, modifier = Modifier.heightIn(min = 48.dp)) {
                                         Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(15.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Hide Answer", fontSize = 11.5.sp, color = colors.inkMuted)
+                                        Text("Hide Answer", fontSize = 11.5.sp, color = colors.inkMuted, maxLines = 1, softWrap = false)
                                     }
                                 } else {
                                     Spacer(modifier = Modifier.width(1.dp))
@@ -2667,7 +2750,7 @@ fun KnowledgeBlockItemView(
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (onToggleStar != null) {
-                                        TextButton(onClick = onToggleStar, modifier = Modifier.heightIn(min = 44.dp)) {
+                                        TextButton(onClick = onToggleStar, modifier = Modifier.heightIn(min = 48.dp)) {
                                             Icon(
                                                 imageVector = if (isStarred) Icons.Default.Star else Icons.Default.StarBorder,
                                                 contentDescription = null,
@@ -2678,12 +2761,14 @@ fun KnowledgeBlockItemView(
                                             Text(
                                                 text = if (isStarred) "Starred" else "Star",
                                                 fontSize = 11.5.sp,
-                                                color = if (isStarred) colors.amber else colors.inkMuted
+                                                color = if (isStarred) colors.amber else colors.inkMuted,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
                                     if (onToggleMastered != null) {
-                                        TextButton(onClick = onToggleMastered, modifier = Modifier.heightIn(min = 44.dp)) {
+                                        TextButton(onClick = onToggleMastered, modifier = Modifier.heightIn(min = 48.dp)) {
                                             Icon(
                                                 imageVector = if (isMastered) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                                 contentDescription = null,
@@ -2694,7 +2779,9 @@ fun KnowledgeBlockItemView(
                                             Text(
                                                 text = if (isMastered) "Mastered" else "Mark Mastered",
                                                 fontSize = 11.5.sp,
-                                                color = if (isMastered) colors.green else colors.inkMuted
+                                                color = if (isMastered) colors.green else colors.inkMuted,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }

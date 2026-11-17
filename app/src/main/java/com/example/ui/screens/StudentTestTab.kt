@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.GridView
@@ -81,6 +82,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -3026,7 +3029,7 @@ private fun ExamResultAndReviewView(
             .background(colors.background),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Pinned Post-Submission Navigation Hub Header
+        // Compact Pinned Post-Submission Navigation Hub Header (Font-Scale Safe)
         Surface(
             color = colors.surface,
             tonalElevation = 1.dp,
@@ -3041,14 +3044,16 @@ private fun ExamResultAndReviewView(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState())
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -3060,12 +3065,12 @@ private fun ExamResultAndReviewView(
                         ) {
                             Text(
                                 text = "${stats.formattedScore} / $formattedMaxMarks",
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (percentage >= 50) colors.green else colors.red,
                                 maxLines = 1,
                                 softWrap = false,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                         Surface(
@@ -3075,37 +3080,37 @@ private fun ExamResultAndReviewView(
                         ) {
                             Text(
                                 text = setDisplay,
-                                fontSize = 11.5.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal,
                                 maxLines = 1,
                                 softWrap = false,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     OutlinedButton(
                         onClick = onExitToOverview,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, colors.border),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .heightIn(min = 40.dp)
+                            .heightIn(min = 36.dp)
                             .testTag("result_exit_overview_button")
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back to Exam Overview",
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Overview",
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false
@@ -3143,28 +3148,30 @@ private fun ExamResultAndReviewView(
                             onClick = { activeTab = tab },
                             selectedContentColor = colors.teal,
                             unselectedContentColor = colors.muted,
-                            modifier = Modifier.testTag("result_tab_${tab.name.lowercase()}"),
-                            text = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = tabIcon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = tabLabel,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                            modifier = Modifier
+                                .heightIn(min = 44.dp)
+                                .testTag("result_tab_${tab.name.lowercase()}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = tabIcon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = tabLabel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -3181,16 +3188,16 @@ private fun ExamResultAndReviewView(
                         modifier = Modifier
                             .fillMaxSize()
                             .widthIn(max = 860.dp)
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(horizontal = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        item { Spacer(modifier = Modifier.height(6.dp)) }
+                        item { Spacer(modifier = Modifier.height(4.dp)) }
 
                         // Performance Hero Card
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                                 border = BorderStroke(
                                     1.2.dp,
@@ -3200,7 +3207,7 @@ private fun ExamResultAndReviewView(
                                 elevation = CardDefaults.cardElevation(defaultElevation = if (colors.isDark) 0.dp else 2.dp)
                             ) {
                                 Column(
-                                    modifier = Modifier.padding(16.dp),
+                                    modifier = Modifier.padding(14.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     val (statusText, statusBg, statusColor) = when {
@@ -3210,21 +3217,21 @@ private fun ExamResultAndReviewView(
                                     }
 
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         color = statusBg,
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
                                             text = statusText,
                                             color = statusColor,
-                                            fontSize = 12.5.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             textAlign = TextAlign.Center,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     // Candidate Identification Badges in FlowRow (never wraps awkwardly or truncates)
                                     FlowRow(
@@ -3285,11 +3292,11 @@ private fun ExamResultAndReviewView(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
 
                                     Text(
                                         text = "OFFICIAL SCORE",
-                                        fontSize = 11.sp,
+                                        fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 1.sp,
                                         color = colors.muted
@@ -3297,7 +3304,7 @@ private fun ExamResultAndReviewView(
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "${stats.formattedScore} / $formattedMaxMarks ($percentage%)",
-                                        fontSize = 23.sp,
+                                        fontSize = 21.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (percentage >= 50) colors.green else colors.red,
                                         textAlign = TextAlign.Center
@@ -3305,12 +3312,12 @@ private fun ExamResultAndReviewView(
 
                                     // Visual Outcome Breakdown Proportion Bar
                                     if (total > 0) {
-                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Spacer(modifier = Modifier.height(8.dp))
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(10.dp)
-                                                .clip(RoundedCornerShape(5.dp))
+                                                .height(8.dp)
+                                                .clip(RoundedCornerShape(4.dp))
                                                 .background(colors.surfaceVariant)
                                         ) {
                                             if (correctCount > 0) {
@@ -3340,7 +3347,7 @@ private fun ExamResultAndReviewView(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
 
                                     val formattedPos = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
                                     val formattedPenalty = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
@@ -3367,7 +3374,7 @@ private fun ExamResultAndReviewView(
                                         ScoreStatTile(
                                             title = "Correct ($correctCount)",
                                             value = formattedPointsCorrect,
-                                            subtitle = "$formattedPos ea • Tap to view",
+                                            subtitle = "$formattedPos ea • View",
                                             color = colors.green,
                                             onClick = {
                                                 filter = ReviewFilter.CORRECT
@@ -3378,7 +3385,7 @@ private fun ExamResultAndReviewView(
                                         ScoreStatTile(
                                             title = "Incorrect ($wrongCount)",
                                             value = "-${String.format(java.util.Locale.US, "%.2f", stats.penaltyIncorrect)}",
-                                            subtitle = "$formattedPenalty ea • Tap to view",
+                                            subtitle = "$formattedPenalty ea • View",
                                             color = colors.red,
                                             onClick = {
                                                 filter = ReviewFilter.INCORRECT
@@ -3406,14 +3413,14 @@ private fun ExamResultAndReviewView(
                                         ScoreStatTile(
                                             title = "Duration",
                                             value = durationFormatted,
-                                            subtitle = if (total > 0) "${timeSpentSeconds / total}s avg / question" else "Exam time",
+                                            subtitle = if (total > 0) "${timeSpentSeconds / total}s avg / Q" else "Exam time",
                                             color = colors.teal,
                                             onClick = onOpenAnalytics,
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
 
                                     // Primary CTA: Direct 1-Tap Jump to Detailed Solutions
                                     Button(
@@ -3421,7 +3428,7 @@ private fun ExamResultAndReviewView(
                                             filter = ReviewFilter.ALL
                                             activeTab = ResultHubTab.SOLUTIONS
                                         },
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = colors.teal,
                                             contentColor = Color.White
@@ -3439,20 +3446,21 @@ private fun ExamResultAndReviewView(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "Inspect Detailed Solutions ($total)",
-                                            fontSize = 14.sp,
+                                            fontSize = 13.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
-                                            softWrap = false
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                             contentDescription = null,
-                                            modifier = Modifier.size(17.dp)
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     // One-time scoring policy notice
                                     Surface(
@@ -3462,10 +3470,10 @@ private fun ExamResultAndReviewView(
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Default.Info, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
+                                            Icon(Icons.Default.Info, contentDescription = null, tint = colors.teal, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = "Official score is locked at submission. Retake the full test to re-evaluate.",
@@ -3681,217 +3689,195 @@ private fun ExamResultAndReviewView(
 
             ResultHubTab.SOLUTIONS -> {
                 val correctReviewCount = (total - persistentIncorrect.size - persistentUnattended.size).coerceAtLeast(0)
+                var showFilterMenu by remember { mutableStateOf(false) }
+
+                val (activeFilterLabel, activeFilterColor) = when (filter) {
+                    ReviewFilter.ALL -> "All ($total)" to colors.inkBold
+                    ReviewFilter.INCORRECT -> "Incorrect (${persistentIncorrect.size})" to colors.red
+                    ReviewFilter.UNANSWERED -> "Unattended (${persistentUnattended.size})" to colors.muted
+                    ReviewFilter.CORRECT -> "Correct ($correctReviewCount)" to colors.green
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .widthIn(max = 860.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Pinned Filter & Mode Controls Bar
+                    // Single Consolidated Horizontally-Scrollable Toolbar (~48dp height instead of 3 stacked rows!)
                     Surface(
                         color = colors.surface,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp, bottom = 6.dp)
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Horizontally scrollable M3 FilterChips (never crushed or clipped vertically)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val filterOptions = listOf(
-                                    Triple(ReviewFilter.ALL, "All ($total)", colors.inkBold),
-                                    Triple(ReviewFilter.INCORRECT, "Incorrect (${persistentIncorrect.size})", colors.red),
-                                    Triple(ReviewFilter.UNANSWERED, "Unattended (${persistentUnattended.size})", colors.muted),
-                                    Triple(ReviewFilter.CORRECT, "Correct ($correctReviewCount)", colors.green)
-                                )
-                                filterOptions.forEach { (itemFilter, text, accentColor) ->
-                                    val isSelected = filter == itemFilter
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = { filter = itemFilter },
-                                        label = {
-                                            Text(
-                                                text = text,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = accentColor.copy(alpha = 0.14f),
-                                            selectedLabelColor = accentColor,
-                                            labelColor = colors.inkBold
-                                        ),
-                                        border = FilterChipDefaults.filterChipBorder(
-                                            enabled = true,
-                                            selected = isSelected,
-                                            borderColor = colors.border,
-                                            selectedBorderColor = accentColor
-                                        )
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // View Mode Switcher (List vs Single Q) + Question Grid Trigger
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            // Filter Selector Dropdown Pill
+                            Box {
+                                Surface(
+                                    onClick = { showFilterMenu = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = activeFilterColor.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, activeFilterColor.copy(alpha = 0.55f)),
+                                    modifier = Modifier.heightIn(min = 38.dp)
                                 ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = colors.surfaceVariant,
-                                        border = BorderStroke(0.8.dp, colors.border)
-                                    ) {
-                                        Row(modifier = Modifier.padding(2.dp)) {
-                                            val isList = solutionsMode == ReviewSolutionsMode.LIST
-                                            Surface(
-                                                onClick = { solutionsMode = ReviewSolutionsMode.LIST },
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isList) colors.surface else Color.Transparent
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.ViewAgenda,
-                                                        contentDescription = null,
-                                                        tint = if (isList) colors.teal else colors.muted,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = "List",
-                                                        fontSize = 11.5.sp,
-                                                        fontWeight = if (isList) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isList) colors.teal else colors.muted,
-                                                        maxLines = 1,
-                                                        softWrap = false
-                                                    )
-                                                }
-                                            }
-                                            val isSingle = solutionsMode == ReviewSolutionsMode.SINGLE_QUESTION
-                                            Surface(
-                                                onClick = { solutionsMode = ReviewSolutionsMode.SINGLE_QUESTION },
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isSingle) colors.surface else Color.Transparent
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.ViewCarousel,
-                                                        contentDescription = null,
-                                                        tint = if (isSingle) colors.teal else colors.muted,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = "Single Q",
-                                                        fontSize = 11.5.sp,
-                                                        fontWeight = if (isSingle) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isSingle) colors.teal else colors.muted,
-                                                        maxLines = 1,
-                                                        softWrap = false
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (filteredQuestions.isNotEmpty()) {
-                                    OutlinedButton(
-                                        onClick = { showPaletteDialog = true },
-                                        shape = RoundedCornerShape(10.dp),
-                                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        modifier = Modifier
-                                            .heightIn(min = 38.dp)
-                                            .testTag("solutions_question_grid_button")
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.GridView,
-                                            contentDescription = "Open Question Palette Grid",
+                                            imageVector = Icons.Default.FilterList,
+                                            contentDescription = "Filter Solutions",
+                                            tint = activeFilterColor,
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(5.dp))
                                         Text(
-                                            text = "Question Grid (${filteredQuestions.size})",
-                                            fontSize = 11.5.sp,
+                                            text = activeFilterLabel,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
+                                            color = activeFilterColor,
                                             maxLines = 1,
                                             softWrap = false
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.ExpandMore,
+                                            contentDescription = null,
+                                            tint = activeFilterColor,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showFilterMenu,
+                                    onDismissRequest = { showFilterMenu = false }
+                                ) {
+                                    val filterOptions = listOf(
+                                        Triple(ReviewFilter.ALL, "All ($total)", colors.inkBold),
+                                        Triple(ReviewFilter.INCORRECT, "Incorrect (${persistentIncorrect.size})", colors.red),
+                                        Triple(ReviewFilter.UNANSWERED, "Unattended (${persistentUnattended.size})", colors.muted),
+                                        Triple(ReviewFilter.CORRECT, "Correct ($correctReviewCount)", colors.green)
+                                    )
+                                    filterOptions.forEach { (itemFilter, text, accentColor) ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = text,
+                                                    fontWeight = if (filter == itemFilter) FontWeight.Bold else FontWeight.Medium,
+                                                    color = accentColor
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                if (filter == itemFilter) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                                                }
+                                            },
+                                            onClick = {
+                                                filter = itemFilter
+                                                showFilterMenu = false
+                                            }
                                         )
                                     }
                                 }
                             }
 
-                            // Horizontal Quick-Jump Strip for immediate 1-tap question hopping
-                            if (filteredQuestions.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                LazyRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    itemsIndexed(filteredQuestions, key = { _, q -> "jump_${q.num}" }) { idx, q ->
-                                        val isWrong = q.num in persistentIncorrect
-                                        val isSkipped = q.num in persistentUnattended
-                                        val isFocused = idx == focusedQuestionIdx
-                                        val pillColor = when {
-                                            q.isNeutralized -> colors.teal
-                                            isWrong -> colors.red
-                                            isSkipped -> colors.muted
-                                            else -> colors.green
-                                        }
-                                        Surface(
-                                            onClick = {
-                                                focusedQuestionIdx = idx
-                                                if (solutionsMode == ReviewSolutionsMode.LIST) {
-                                                    coroutineScope.launch {
-                                                        solutionsListState.animateScrollToItem(idx)
-                                                    }
-                                                }
-                                            },
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = if (isFocused) pillColor else pillColor.copy(alpha = 0.12f),
-                                            border = BorderStroke(
-                                                if (isFocused) 1.4.dp else 0.8.dp,
-                                                pillColor.copy(alpha = if (isFocused) 1f else 0.45f)
-                                            )
+                            // List / Single Q Switcher
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(0.8.dp, colors.border),
+                                modifier = Modifier.heightIn(min = 38.dp)
+                            ) {
+                                Row(modifier = Modifier.padding(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    val isList = solutionsMode == ReviewSolutionsMode.LIST
+                                    Surface(
+                                        onClick = { solutionsMode = ReviewSolutionsMode.LIST },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isList) colors.surface else Color.Transparent
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ViewAgenda,
+                                                contentDescription = null,
+                                                tint = if (isList) colors.teal else colors.muted,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = "Q${q.num}",
+                                                text = "List",
                                                 fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isFocused) Color.White else pillColor,
+                                                fontWeight = if (isList) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isList) colors.teal else colors.muted,
                                                 maxLines = 1,
-                                                softWrap = false,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                                softWrap = false
                                             )
                                         }
                                     }
+                                    val isSingle = solutionsMode == ReviewSolutionsMode.SINGLE_QUESTION
+                                    Surface(
+                                        onClick = { solutionsMode = ReviewSolutionsMode.SINGLE_QUESTION },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSingle) colors.surface else Color.Transparent
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ViewCarousel,
+                                                contentDescription = null,
+                                                tint = if (isSingle) colors.teal else colors.muted,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Single Q",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = if (isSingle) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSingle) colors.teal else colors.muted,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Question Grid Palette Button
+                            if (filteredQuestions.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = { showPaletteDialog = true },
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.55f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .testTag("solutions_question_grid_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.GridView,
+                                        contentDescription = "Open Question Palette Grid",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Grid (${filteredQuestions.size})",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
                         }
@@ -3937,9 +3923,9 @@ private fun ExamResultAndReviewView(
                             state = solutionsListState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 14.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)
+                            contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
                         ) {
                             itemsIndexed(filteredQuestions, key = { _, q -> "result_q_${q.num}" }) { _, q ->
                                 ReviewQuestionCardBlock(
@@ -3955,7 +3941,7 @@ private fun ExamResultAndReviewView(
                             }
                         }
                     } else {
-                        // Single Question Focused Review Mode with Pinned Prev/Next Dock
+                        // Single Question Focused Review Mode with Compact Pinned Prev/Next Dock
                         val safeIdx = focusedQuestionIdx.coerceIn(0, filteredQuestions.lastIndex)
                         val activeQuestion = filteredQuestions[safeIdx]
 
@@ -3964,7 +3950,7 @@ private fun ExamResultAndReviewView(
                                 modifier = Modifier
                                     .weight(1f)
                                     .verticalScroll(rememberScrollState())
-                                    .padding(16.dp)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 ReviewQuestionCardBlock(
                                     question = activeQuestion,
@@ -3987,7 +3973,7 @@ private fun ExamResultAndReviewView(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .navigationBarsPadding()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        .padding(horizontal = 12.dp, vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -3995,6 +3981,7 @@ private fun ExamResultAndReviewView(
                                         onClick = { if (safeIdx > 0) focusedQuestionIdx = safeIdx - 1 },
                                         enabled = safeIdx > 0,
                                         shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                         modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
                                         Icon(
@@ -4003,7 +3990,7 @@ private fun ExamResultAndReviewView(
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Prev", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                        Text("Prev", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                                     }
 
                                     Surface(
@@ -4011,10 +3998,10 @@ private fun ExamResultAndReviewView(
                                         shape = RoundedCornerShape(10.dp),
                                         color = colors.surfaceVariant,
                                         border = BorderStroke(0.8.dp, colors.border),
-                                        modifier = Modifier.heightIn(min = 44.dp)
+                                        modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
@@ -4026,7 +4013,7 @@ private fun ExamResultAndReviewView(
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = "Q${activeQuestion.num} (${safeIdx + 1}/${filteredQuestions.size})",
-                                                fontSize = 12.5.sp,
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.inkBold,
                                                 maxLines = 1,
@@ -4043,9 +4030,10 @@ private fun ExamResultAndReviewView(
                                             containerColor = colors.teal,
                                             contentColor = Color.White
                                         ),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                         modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
-                                        Text("Next", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                        Text("Next", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,

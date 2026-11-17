@@ -877,8 +877,8 @@ fun HomeScreen(
                     }
                 }
 
-                // Quick Stats & Chips Row (hidden in true full-screen test mode)
-                if (!isFullScreenTestActive) {
+                // Quick Stats & Chips Row (hidden in active full-screen test mode and post-submission Result Hub)
+                if (!isFullScreenTestActive && !(selectedTab == 2 && isExamSubmitted)) {
                     currentPaper?.let { paper ->
                         Row(
                             modifier = Modifier
