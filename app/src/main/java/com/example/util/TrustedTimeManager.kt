@@ -8,6 +8,9 @@ import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -24,31 +27,26 @@ import java.util.concurrent.atomic.AtomicLong
  * Provides monotonically advancing real-world epoch time anchored by network time
  * whenever network connectivity is present, eliminating vulnerabilities where examinees
  * alter Android system date/time to falsify test submissions, streak dates, or timers.
- *
- * Architecture:
- * 1. Monotonic Hardware Anchor: Uses android.os.SystemClock.elapsedRealtime(), which
- *    counts hardware ticks since boot and CANNOT be altered by the user in Android settings.
- * 2. Network Time Synchronization: When online (on startup or via ConnectivityManager callback),
- *    queries trusted public time endpoints via HTTP Date headers and computes the offset:
- *    (networkTimeUtc - elapsedRealtime).
- * 3. Offline Immunity: In offline mode, current time advances steadily along the hardware
- *    tick rate. Any manual adjustment of the system clock is completely ignored once synced.
  */
 object TrustedTimeManager {
 
     private val isSynced = AtomicBoolean(false)
+    private val isSyncInFlight = AtomicBoolean(false)
     private val isObserverRegistered = AtomicBoolean(false)
     // Offset between network UTC timestamp and SystemClock.elapsedRealtime()
     private val bootOffsetMillis = AtomicLong(0L)
     private val lastSyncElapsedMillis = AtomicLong(0L)
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val _isNetworkTimeSynced = MutableStateFlow(false)
+    val isNetworkTimeSynced: StateFlow<Boolean> = _isNetworkTimeSynced.asStateFlow()
+
     private const val MIN_RESYNC_INTERVAL_MS = 60_000L
 
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(6, TimeUnit.SECONDS)
             .build()
     }
 
@@ -110,47 +108,53 @@ object TrustedTimeManager {
     }
 
     /**
-     * Attempts to synchronize with a reliable network timestamp.
+     * Attempts to synchronize with a reliable network timestamp via HTTP Date headers.
      */
     fun syncWithNetwork(): Boolean {
-        val testEndpoints = listOf(
-            "https://www.google.com/generate_204",
-            "https://connectivitycheck.gstatic.com/generate_204",
-            "https://cloudflare.com"
-        )
+        if (!isSyncInFlight.compareAndSet(false, true)) {
+            return isSynced.get()
+        }
+        try {
+            val testEndpoints = listOf(
+                "https://www.google.com/generate_204",
+                "https://connectivitycheck.gstatic.com/generate_204",
+                "https://1.1.1.1/cdn-cgi/trace",
+                "https://cloudflare.com"
+            )
 
-        for (url in testEndpoints) {
-            try {
-                val req = Request.Builder()
-                    .url(url)
-                    .head()
-                    .build()
+            for (url in testEndpoints) {
+                for (useHead in listOf(true, false)) {
+                    try {
+                        val reqBuilder = Request.Builder().url(url)
+                        val req = if (useHead) reqBuilder.head().build() else reqBuilder.get().build()
 
-                val callStartTick = SystemClock.elapsedRealtime()
-                val response = okHttpClient.newCall(req).execute()
-                val callEndTick = SystemClock.elapsedRealtime()
-                val rtt = (callEndTick - callStartTick).coerceAtLeast(0L)
-
-                val dateHeader = response.header("Date")
-                response.close()
-
-                if (!dateHeader.isNullOrBlank()) {
-                    val parsedEpoch = parseHttpDate(dateHeader)
-                    if (parsedEpoch > 0L) {
-                        // Estimated server time corresponding to callEndTick
-                        val estimatedEpoch = parsedEpoch + (rtt / 2L)
-                        val offset = estimatedEpoch - callEndTick
-                        bootOffsetMillis.set(offset)
-                        lastSyncElapsedMillis.set(callEndTick)
-                        isSynced.set(true)
-                        return true
+                        val callStartTick = SystemClock.elapsedRealtime()
+                        okHttpClient.newCall(req).execute().use { response ->
+                            val callEndTick = SystemClock.elapsedRealtime()
+                            val rtt = (callEndTick - callStartTick).coerceAtLeast(0L)
+                            val dateHeader = response.header("Date")
+                            if (!dateHeader.isNullOrBlank()) {
+                                val parsedEpoch = parseHttpDate(dateHeader)
+                                if (parsedEpoch > 0L) {
+                                    val estimatedEpoch = parsedEpoch + (rtt / 2L)
+                                    val offset = estimatedEpoch - callEndTick
+                                    bootOffsetMillis.set(offset)
+                                    lastSyncElapsedMillis.set(callEndTick)
+                                    isSynced.set(true)
+                                    _isNetworkTimeSynced.value = true
+                                    return true
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Try GET fallback or next endpoint
                     }
                 }
-            } catch (_: Exception) {
-                // Try next endpoint on transient network error
             }
+            return isSynced.get()
+        } finally {
+            isSyncInFlight.set(false)
         }
-        return false
     }
 
     /**

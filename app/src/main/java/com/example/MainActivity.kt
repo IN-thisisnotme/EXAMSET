@@ -65,7 +65,9 @@ class MainActivity : ComponentActivity() {
 
     private fun handleOAuthIntent(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "com.aistudio.examset.tbqpeh" && data.path == "/oauth2redirect") {
+        val schemeMatches = data.scheme.equals(BuildConfig.APPLICATION_ID, ignoreCase = true)
+        val pathMatches = data.path?.trimEnd('/') == "/oauth2redirect"
+        if (schemeMatches && pathMatches) {
             viewModel.handleOAuthRedirectUri(data)
         }
     }

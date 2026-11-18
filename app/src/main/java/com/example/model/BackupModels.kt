@@ -9,8 +9,8 @@ enum class CloudProviderType(val code: String, val displayName: String) {
 
 enum class AutoBackupSchedule(val code: String, val label: String, val intervalHours: Long) {
     OFF("OFF", "Manual Only", 0L),
-    ON_SIGNIFICANT_CHANGE("ON_CHANGE", "Auto After Edits (Wi-Fi)", 6L),
-    DAILY_WIFI("DAILY_WIFI", "Daily Auto Backup (Wi-Fi)", 24L);
+    ON_SIGNIFICANT_CHANGE("ON_CHANGE", "Every 6h (When Online)", 6L),
+    DAILY_WIFI("DAILY_WIFI", "Daily Auto Sync (Online)", 24L);
 
     companion object {
         fun fromCode(code: String?): AutoBackupSchedule {
@@ -56,6 +56,15 @@ data class RestorePreview(
     val tempFile: File?,
     val legacyJsonContent: String? = null
 )
+
+data class LinkedCloudFileStatus(
+    val uriString: String = "",
+    val displayName: String = "",
+    val lastSyncedAt: Long = 0L,
+    val lastError: String? = null
+) {
+    val isLinked: Boolean get() = uriString.isNotBlank()
+}
 
 data class CloudAccountStatus(
     val provider: CloudProviderType,

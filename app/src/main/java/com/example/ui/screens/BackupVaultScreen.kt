@@ -36,11 +36,15 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -77,11 +81,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.data.BackupSnapshotEntity
 import com.example.model.AutoBackupSchedule
 import com.example.model.BackupOperationState
 import com.example.model.CloudAccountStatus
 import com.example.model.CloudProviderType
+import com.example.model.LinkedCloudFileStatus
 import com.example.model.RemoteCloudBackupFile
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
@@ -110,6 +116,8 @@ fun BackupVaultCenterSection(
     val restorePreview by viewModel.restorePreview.collectAsState()
     val driveStatus by viewModel.driveStatus.collectAsState()
     val oneDriveStatus by viewModel.oneDriveStatus.collectAsState()
+    val linkedCloudFileStatus by viewModel.linkedCloudFileStatus.collectAsState()
+    val isNetworkTimeSynced by viewModel.isNetworkTimeSynced.collectAsState()
     val remoteCloudBackups by viewModel.remoteCloudBackups.collectAsState()
     val autoBackupSchedule by viewModel.autoBackupSchedule.collectAsState()
 
@@ -120,6 +128,14 @@ fun BackupVaultCenterSection(
     ) { uri ->
         if (uri != null) {
             viewModel.exportVaultToUri(uri)
+        }
+    }
+
+    val linkCloudFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.linkAndSyncCloudFile(uri)
         }
     }
 
@@ -344,22 +360,87 @@ fun BackupVaultCenterSection(
             }
         }
 
-        // 2. Direct Cloud Sync (Google Drive & OneDrive)
+        // 2. Online Cloud Sync (Zero-Setup Cloud File Sync + Direct OAuth2 Google Drive & OneDrive)
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surface),
             border = BorderStroke(0.8.dp, colors.border)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ONLINE CLOUD SYNC",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkMuted,
+                        letterSpacing = 0.5.sp
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isNetworkTimeSynced) colors.greenLight else colors.amberLight,
+                        border = BorderStroke(
+                            0.6.dp,
+                            if (isNetworkTimeSynced) colors.green.copy(alpha = 0.45f) else colors.amber.copy(alpha = 0.45f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(start = 8.dp, end = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = if (isNetworkTimeSynced) colors.green else colors.amber,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isNetworkTimeSynced) "Online Time Synced" else "Time Pending",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold
+                            )
+                            IconButton(
+                                onClick = { viewModel.refreshNetworkTimeSync() },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("refresh_network_time_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh network time sync",
+                                    tint = colors.inkMuted,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Zero-Config Quick Cloud File Sync (Works immediately with Google Drive, OneDrive, Dropbox, Files)
+                LinkedCloudFileSyncCard(
+                    status = linkedCloudFileStatus,
+                    onLinkFile = { linkCloudFileLauncher.launch("ExamSet_Live_Sync.examset.zip") },
+                    onSyncNow = { viewModel.syncLinkedCloudFileNow() },
+                    onRestore = { viewModel.restoreFromLinkedCloudFile() },
+                    onUnlink = { viewModel.unlinkCloudFile() }
+                )
+
+                HorizontalDivider(color = colors.border.copy(alpha = 0.45f))
+
                 Text(
-                    text = "DIRECT CLOUD SYNC (GOOGLE DRIVE & ONEDRIVE)",
-                    fontSize = 11.sp,
+                    text = "DIRECT OAUTH2 CLOUD SYNC (ADVANCED)",
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.inkMuted,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.4.sp
                 )
                 Text(
-                    text = "Sync full .examset.zip snapshots straight to your cloud app folder via OAuth2 PKCE, or use \"Save to Drive / Files\" above with zero setup.",
+                    text = "Optional: Connect your own Google Cloud or Microsoft Entra OAuth Client ID for direct API sync to your cloud app folder.",
                     fontSize = 11.5.sp,
                     color = colors.inkMuted
                 )
@@ -472,6 +553,135 @@ private fun VaultStatPill(label: String, color: Color) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+private fun LinkedCloudFileSyncCard(
+    status: LinkedCloudFileStatus,
+    onLinkFile: () -> Unit,
+    onSyncNow: () -> Unit,
+    onRestore: () -> Unit,
+    onUnlink: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (status.isLinked) colors.tealLight.copy(alpha = 0.35f) else colors.blueLight.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, if (status.isLinked) colors.teal.copy(alpha = 0.6f) else colors.teal.copy(alpha = 0.35f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (status.isLinked) Icons.Default.CloudDone else Icons.Default.Link,
+                    contentDescription = null,
+                    tint = colors.teal,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Quick Cloud File Sync (Zero Setup)",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
+                    )
+                    Text(
+                        text = if (status.isLinked) {
+                            status.displayName.ifBlank { "ExamSet_Live_Sync.examset.zip" }
+                        } else {
+                            "Pick a file in Google Drive, OneDrive, or Files once for 1-tap & automatic background sync — no Client ID required."
+                        },
+                        fontSize = 11.sp,
+                        color = colors.inkMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (status.isLinked && status.lastSyncedAt > 0L) {
+                val formatted = remember(status.lastSyncedAt) {
+                    SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(status.lastSyncedAt))
+                }
+                Text(
+                    text = "Last synced: $formatted",
+                    fontSize = 11.sp,
+                    color = colors.tealDark,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            if (!status.lastError.isNullOrBlank()) {
+                Text(
+                    text = status.lastError,
+                    fontSize = 11.sp,
+                    color = colors.red
+                )
+            }
+
+            if (!status.isLinked) {
+                Button(
+                    onClick = onLinkFile,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("link_cloud_file_button")
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Link Cloud File (Drive / OneDrive / Files)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = onSyncNow,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("sync_linked_cloud_file_button")
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = onRestore,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("restore_linked_cloud_file_button")
+                    ) {
+                        Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("Restore", fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = onLinkFile,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Change File", fontSize = 12.sp)
+                    }
+                    TextButton(
+                        onClick = onUnlink,
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Unlink", fontSize = 12.sp, color = colors.red)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun CloudProviderSyncCard(
     status: CloudAccountStatus,
     onConfigureClientId: () -> Unit,
@@ -543,40 +753,40 @@ private fun CloudProviderSyncCard(
                     OutlinedButton(
                         onClick = onConfigureClientId,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.heightIn(min = 40.dp)
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Client ID", fontSize = 11.5.sp)
+                        Text("Client ID", fontSize = 12.sp)
                     }
                     Button(
                         onClick = if (status.hasClientIdConfigured) onConnect else onConfigureClientId,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
-                        modifier = Modifier.heightIn(min = 40.dp)
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text(if (status.hasClientIdConfigured) "Connect Account" else "Setup & Connect", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Text(if (status.hasClientIdConfigured) "Connect Account" else "Setup & Connect", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Button(
                         onClick = onSyncNow,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
-                        modifier = Modifier.heightIn(min = 40.dp)
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Sync Now", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(
                         onClick = onBrowseBackups,
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.heightIn(min = 40.dp)
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("List Backups", fontSize = 11.5.sp)
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("List Backups", fontSize = 12.sp)
                     }
-                    TextButton(onClick = onDisconnect, modifier = Modifier.heightIn(min = 40.dp)) {
-                        Text("Disconnect", fontSize = 11.5.sp, color = colors.red)
+                    TextButton(onClick = onDisconnect, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("Disconnect", fontSize = 12.sp, color = colors.red)
                     }
                 }
             }
@@ -787,20 +997,60 @@ private fun CloudClientIdConfigDialog(
     val context = LocalContext.current
     var clientId by remember { mutableStateOf(initialClientId) }
 
+    fun copyValue(label: String, value: String) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        cm?.setPrimaryClip(ClipData.newPlainText(label, value))
+        Toast.makeText(context, "$label copied", Toast.LENGTH_SHORT).show()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("${provider.displayName} OAuth Setup", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
                     text = if (provider == CloudProviderType.GOOGLE_DRIVE) {
-                        "Paste your Google Cloud Android/Installed App OAuth Client ID (scope: drive.file)."
+                        "Create an Android OAuth Client ID in Google Cloud Console with the Package Name below, enable Custom URI Scheme, and enable Google Drive API (scope: drive.file)."
                     } else {
-                        "Paste your Microsoft Entra Public Client Application ID (scope: Files.ReadWrite.AppFolder)."
+                        "Register a Mobile / Public Client app in Microsoft Entra ID with the Redirect URI below (scope: Files.ReadWrite.AppFolder)."
                     },
                     fontSize = 12.sp,
                     color = colors.inkMuted
                 )
+
+                // Package Name copy row
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Android Package Name:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
+                            Text(
+                                text = BuildConfig.APPLICATION_ID,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = colors.inkBold
+                            )
+                        }
+                        IconButton(
+                            onClick = { copyValue("Package Name", BuildConfig.APPLICATION_ID) },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy Package Name", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+
+                // Redirect URI copy row
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = colors.surfaceVariant,
@@ -821,17 +1071,14 @@ private fun CloudClientIdConfigDialog(
                             )
                         }
                         IconButton(
-                            onClick = {
-                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                cm?.setPrimaryClip(ClipData.newPlainText("Redirect URI", CloudBackupClients.REDIRECT_URI))
-                                Toast.makeText(context, "Redirect URI copied", Toast.LENGTH_SHORT).show()
-                            },
+                            onClick = { copyValue("Redirect URI", CloudBackupClients.REDIRECT_URI) },
                             modifier = Modifier.size(48.dp)
                         ) {
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy Redirect URI", modifier = Modifier.size(16.dp))
                         }
                     }
                 }
+
                 OutlinedTextField(
                     value = clientId,
                     onValueChange = { clientId = it },
@@ -844,13 +1091,16 @@ private fun CloudClientIdConfigDialog(
         confirmButton = {
             Button(
                 onClick = { onSave(clientId.trim()) },
-                colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text("Save")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Cancel")
+            }
         }
     )
 }

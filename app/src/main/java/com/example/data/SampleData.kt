@@ -193,7 +193,7 @@ Consider the following statements regarding prokaryotic and eukaryotic transcrip
 1. Bacterial RNA polymerase requires a sigma factor for promoter recognition and initiation.
 2. Eukaryotic RNA polymerase II directly recognizes the TATA box without transcription factors.
 3. Rifampicin inhibits bacterial transcription by binding to the beta subunit of RNA polymerase.
-4. Eukaryotic transcription terminates strictly at a polyadenylation cleavage signal followed by exonucleolytic degradation by Xrn2.
+4. Eukaryotic RNA polymerase II transcription of canonical mRNAs terminates after polyadenylation cleavage followed by 5′→3′ exonucleolytic degradation by Xrn2 (torpedo model).
 
 Which of the statements given above are correct?
 (a) 1 and 3 only
@@ -365,7 +365,7 @@ Explanation: Passed candidates n(E ∪ M) = 100% - 10% = 90%. n(E ∩ M) = 70% +
 Explanation: Relative speed = 60 + 40 = 100 km/h = 100 × (5/18) = 250/9 m/s. Total distance = 140 + 160 = 300 m. Time = 300 / (250/9) = 10.8 seconds.
 
 4. Correct Answer: (A)
-Explanation: Placing C at position 1: A is second to left at pos 4. B is neighbor to both C and E, placing B at pos 2 and E at pos 3. The remaining position 5 must be D. In clockwise order facing center, immediately to the right of A is D.
+Explanation: Facing the center, moving clockwise is to each person's left and counter-clockwise is to their right. Number seats 1–5 clockwise and place C at seat 1: A (second to C's left) sits at seat 3. B is an immediate neighbor of both C and E, so B must be at seat 5 and E at seat 4 (since seat 3 is occupied by A). The remaining seat 2 is D, giving clockwise order C(1)–D(2)–A(3)–E(4)–B(5). Immediately to A's right (counter-clockwise from seat 3) is seat 2, which is D.
 
 5. Correct Answer: (B)
 Explanation: Each letter is shifted by +2 positions in the alphabetical order: T(+2)→V, E(+2)→G, N(+2)→P, N(+2)→P, I(+2)→K, S(+2)→U = VGPPKU.
@@ -636,15 +636,15 @@ Which of the statements given above is/are correct?
 (D) 1, 2 and 3
 
 Answer Key
-1: B
+1: D
 2: B
 3: C
 4: B
 5: A
 
 Detailed Explanations
-1. Correct Answer: (B)
-Explanation: Statement 1 is incorrect: Following the Supreme Court ruling in Maru Ram (1980) and Kehar Singh (1989), as well as recent clarifications, the President and Governor both hold pardoning powers, but under statutory provisions (CrPC Section 433A) and constitutional jurisprudence, the Governor can remit or commute death sentences, while exclusive complete pardon of death sentence rests with the President under Article 72. Statements 2 and 3 are correct: The Governor can suspend, remit, or commute death sentences, and has no jurisdiction over Court Martial convictions.
+1. Correct Answer: (D)
+Explanation: All three statements are correct. Under Article 72, the exclusive power to grant a complete pardon for a death sentence rests with the President; the Governor under Article 161 cannot completely pardon a death sentence (Statement 1 is correct). However, the Governor can suspend, remit, or commute a death sentence under Article 161 (Statement 2 is correct), and has no jurisdiction over sentences inflicted by a Court Martial (Statement 3 is correct).
 
 2. Correct Answer: (B)
 Explanation: Sterilization is an operation where the RBI insulates domestic liquidity and monetary base from the destabilizing effects of high capital inflows or outflows by selling or purchasing government securities via Open Market Operations (OMO) or Market Stabilization Scheme (MSS) bonds.
@@ -713,7 +713,7 @@ Which of the statements given above is/are correct?
 
 Answer Key
 1: C
-2: D
+2: B
 3: A
 4: B
 5: C
@@ -722,8 +722,8 @@ Detailed Explanations
 1. Correct Answer: (C)
 Explanation: The primary and fundamental purpose of a written Constitution in constitutional democracy is Constitutionalism—the limitation of arbitrariness and defining the structural boundaries within which the government may exercise state authority.
 
-2. Correct Answer: (D)
-Explanation: All statements are correct under Part IX of the Constitution (Articles 243B & 243A). Article 243B(2) specifically grants exemption from establishing intermediate panchayats to states with a population below 20 lakhs.
+2. Correct Answer: (B)
+Explanation: Statement 1 is incorrect because Part IX does not mandate a three-tier system in every State: Article 243M exempts Nagaland, Meghalaya, Mizoram, and specified hill/Sixth Schedule areas, and Article 243B(2) exempts States with a population not exceeding twenty lakhs from constituting intermediate-level Panchayats. Statements 2 and 3 are correct under Articles 243B(2) and 243A respectively.
 
 3. Correct Answer: (A)
 Explanation: Tso Kar (Ladakh), Chandertal (Himachal Pradesh), and Tsomoriri (Ladakh) are high-altitude alpine wetlands (> 4,000 meters above sea level). Renuka Wetland is a sub-tropical freshwater lake at approximately 672 m elevation in Sirmaur district of HP.

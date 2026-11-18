@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.content.Context
+import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -15,6 +16,7 @@ import com.example.data.ExamSetPreferences
 import com.example.data.ThemePreferences
 import com.example.model.AutoBackupSchedule
 import com.example.model.CloudProviderType
+import java.io.FileInputStream
 import java.util.concurrent.TimeUnit
 
 class VaultAutoBackupWorker(
@@ -40,9 +42,42 @@ class VaultAutoBackupWorker(
             )
             authStore.setLastLocalSnapshotAt(snapshot.createdAt)
 
+            // 1. Auto-sync to zero-config Linked Cloud File (Drive / OneDrive / Files SAF URI)
+            val linkedFile = authStore.getLinkedCloudFileStatus()
+            if (linkedFile.isLinked) {
+                runCatching {
+                    val uri = Uri.parse(linkedFile.uriString)
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                        FileInputStream(file).use { input ->
+                            input.copyTo(out, bufferSize = 16 * 1024)
+                        }
+                    } ?: throw IllegalStateException("Linked cloud file is not writable.")
+                    val now = TrustedTimeManager.getTrustedTimeMillis()
+                    authStore.saveLinkedCloudFile(linkedFile.uriString, linkedFile.displayName, now)
+                    db.backupSnapshotDao().insertSnapshot(
+                        BackupSnapshotEntity(
+                            provider = "CLOUD_FILE",
+                            fileName = linkedFile.displayName.ifBlank { file.name },
+                            localPath = file.absolutePath,
+                            checksumSha256 = snapshot.checksumSha256,
+                            papersCount = snapshot.papersCount,
+                            notesCount = snapshot.notesCount,
+                            foldersCount = snapshot.foldersCount,
+                            attemptsCount = snapshot.attemptsCount,
+                            sizeBytes = file.length(),
+                            status = "UPLOADED",
+                            details = "Auto-synced to linked cloud file"
+                        )
+                    )
+                }.onFailure { err ->
+                    authStore.setLinkedCloudFileError(err.localizedMessage ?: "Auto-sync to linked file failed")
+                }
+            }
+
+            // 2. Auto-sync to connected OAuth2 cloud providers (Google Drive / OneDrive)
             CloudProviderType.entries.forEach { provider ->
                 if (authStore.buildAccountStatus(provider).isConnected) {
-                    val uploadRes = CloudBackupClients.uploadBackupFile(provider, authStore, file)
+                    val uploadRes = CloudBackupClients.uploadBackupFile(provider, authStore, file, context)
                     uploadRes.onSuccess { remote ->
                         db.backupSnapshotDao().insertSnapshot(
                             BackupSnapshotEntity(
@@ -79,7 +114,7 @@ class VaultAutoBackupWorker(
                 return
             }
             val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.UNMETERED)
+                .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
                 .build()
 

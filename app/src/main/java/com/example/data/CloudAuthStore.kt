@@ -8,6 +8,7 @@ import android.util.Base64
 import com.example.model.AutoBackupSchedule
 import com.example.model.CloudAccountStatus
 import com.example.model.CloudProviderType
+import com.example.model.LinkedCloudFileStatus
 import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -132,6 +133,44 @@ class CloudAuthStore(context: Context) {
         prefs.edit().putLong(KEY_LAST_LOCAL_SNAPSHOT_AT, timestamp).apply()
     }
 
+    fun getLinkedCloudFileStatus(): LinkedCloudFileStatus {
+        val uriStr = prefs.getString(KEY_LINKED_FILE_URI, "")?.trim().orEmpty()
+        val name = prefs.getString(KEY_LINKED_FILE_NAME, "")?.trim().orEmpty()
+        val lastSynced = prefs.getLong(KEY_LINKED_FILE_SYNCED_AT, 0L)
+        val lastErr = prefs.getString(KEY_LINKED_FILE_ERROR, null)?.takeIf { it.isNotBlank() }
+        return LinkedCloudFileStatus(
+            uriString = uriStr,
+            displayName = name,
+            lastSyncedAt = lastSynced,
+            lastError = lastErr
+        )
+    }
+
+    fun saveLinkedCloudFile(uriString: String, displayName: String, syncedAt: Long) {
+        prefs.edit()
+            .putString(KEY_LINKED_FILE_URI, uriString.trim())
+            .putString(KEY_LINKED_FILE_NAME, displayName.trim())
+            .putLong(KEY_LINKED_FILE_SYNCED_AT, syncedAt)
+            .remove(KEY_LINKED_FILE_ERROR)
+            .apply()
+    }
+
+    fun setLinkedCloudFileError(error: String?) {
+        val editor = prefs.edit()
+        if (error.isNullOrBlank()) editor.remove(KEY_LINKED_FILE_ERROR)
+        else editor.putString(KEY_LINKED_FILE_ERROR, error)
+        editor.apply()
+    }
+
+    fun clearLinkedCloudFile() {
+        prefs.edit()
+            .remove(KEY_LINKED_FILE_URI)
+            .remove(KEY_LINKED_FILE_NAME)
+            .remove(KEY_LINKED_FILE_SYNCED_AT)
+            .remove(KEY_LINKED_FILE_ERROR)
+            .apply()
+    }
+
     fun savePendingOAuthFlow(flow: PendingOAuthFlowState) {
         val json = JSONObject().apply {
             put("provider", flow.provider.code)
@@ -240,5 +279,9 @@ class CloudAuthStore(context: Context) {
         private const val KEY_AUTO_BACKUP_SCHEDULE = "auto_backup_schedule"
         private const val KEY_LAST_LOCAL_SNAPSHOT_AT = "last_local_snapshot_at"
         private const val KEY_PENDING_OAUTH = "pending_oauth_flow"
+        private const val KEY_LINKED_FILE_URI = "linked_cloud_file_uri"
+        private const val KEY_LINKED_FILE_NAME = "linked_cloud_file_name"
+        private const val KEY_LINKED_FILE_SYNCED_AT = "linked_cloud_file_synced_at"
+        private const val KEY_LINKED_FILE_ERROR = "linked_cloud_file_error"
     }
 }

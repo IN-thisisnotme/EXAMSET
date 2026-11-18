@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
@@ -33,6 +34,7 @@ import com.example.model.ExamConfig
 import com.example.model.FolderItem
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeFormatRule
+import com.example.model.LinkedCloudFileStatus
 import com.example.model.McqQuestion
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
@@ -50,6 +52,7 @@ import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
 import com.example.util.PsychometricEngine
 import com.example.util.StudyNoteParser
+import com.example.util.TrustedTimeManager
 import com.example.util.VaultArchiveEngine
 import com.example.util.VaultAutoBackupWorker
 import kotlinx.coroutines.Dispatchers
@@ -150,6 +153,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _oneDriveStatus = MutableStateFlow(cloudAuthStore.buildAccountStatus(CloudProviderType.ONEDRIVE))
     val oneDriveStatus: StateFlow<CloudAccountStatus> = _oneDriveStatus.asStateFlow()
+
+    private val _linkedCloudFileStatus = MutableStateFlow(cloudAuthStore.getLinkedCloudFileStatus())
+    val linkedCloudFileStatus: StateFlow<LinkedCloudFileStatus> = _linkedCloudFileStatus.asStateFlow()
+
+    val isNetworkTimeSynced: StateFlow<Boolean> = TrustedTimeManager.isNetworkTimeSynced
 
     private val _remoteCloudBackups = MutableStateFlow<List<RemoteCloudBackupFile>>(emptyList())
     val remoteCloudBackups: StateFlow<List<RemoteCloudBackupFile>> = _remoteCloudBackups.asStateFlow()
@@ -2894,6 +2902,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun refreshCloudAccountStatuses() {
         _driveStatus.value = cloudAuthStore.buildAccountStatus(CloudProviderType.GOOGLE_DRIVE)
         _oneDriveStatus.value = cloudAuthStore.buildAccountStatus(CloudProviderType.ONEDRIVE)
+        _linkedCloudFileStatus.value = cloudAuthStore.getLinkedCloudFileStatus()
+    }
+
+    fun refreshNetworkTimeSync() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val synced = TrustedTimeManager.syncWithNetwork()
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = if (synced) {
+                    "Online network time synced"
+                } else {
+                    "Could not reach network time server — check internet connection"
+                }
+            }
+        }
     }
 
     fun getCloudClientId(provider: CloudProviderType): String = cloudAuthStore.getClientId(provider)
@@ -2905,7 +2927,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startCloudOAuth(context: Context, provider: CloudProviderType) {
-        val intentRes = CloudBackupClients.buildAuthorizeIntent(provider, cloudAuthStore)
+        val intentRes = CloudBackupClients.buildAuthorizeIntent(provider, cloudAuthStore, context)
         intentRes.onSuccess { authIntent ->
             runCatching { context.startActivity(authIntent) }
                 .onFailure { err ->
@@ -3158,7 +3180,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     prefix = "sync"
                 )
                 _backupOpState.value = BackupOperationState.Running("Uploading to ${provider.displayName}…", 0.7f)
-                val uploadRes = CloudBackupClients.uploadBackupFile(provider, cloudAuthStore, file)
+                val uploadRes = CloudBackupClients.uploadBackupFile(
+                    provider = provider,
+                    authStore = cloudAuthStore,
+                    vaultFile = file,
+                    context = getApplication()
+                )
                 refreshCloudAccountStatuses()
                 uploadRes.onSuccess { remote ->
                     backupSnapshotDao.insertSnapshot(
@@ -3190,7 +3217,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadRemoteBackups(provider: CloudProviderType) {
         viewModelScope.launch(Dispatchers.IO) {
-            val res = CloudBackupClients.listRemoteBackups(provider, cloudAuthStore)
+            val res = CloudBackupClients.listRemoteBackups(
+                provider = provider,
+                authStore = cloudAuthStore,
+                context = getApplication()
+            )
             refreshCloudAccountStatuses()
             res.onSuccess { files ->
                 val others = _remoteCloudBackups.value.filter { it.provider != provider }
@@ -3217,6 +3248,156 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "Cloud download failed")
             }
         }
+    }
+
+    fun linkAndSyncCloudFile(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val displayName = resolveDocumentDisplayName(uri)
+            _backupOpState.value = BackupOperationState.Running("Linking & syncing $displayName…", 0.25f)
+            try {
+                // Persist read+write URI grant so 1-tap Sync Now & background WorkManager Auto-Sync keep working across restarts
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                runCatching { app.contentResolver.takePersistableUriPermission(uri, flags) }
+
+                writeVaultToLinkedUri(uri, displayName)
+            } catch (e: Exception) {
+                val msg = "Unable to link cloud file: ${e.localizedMessage}"
+                cloudAuthStore.setLinkedCloudFileError(msg)
+                refreshCloudAccountStatuses()
+                _backupOpState.value = BackupOperationState.Error(msg)
+            }
+        }
+    }
+
+    fun syncLinkedCloudFileNow() {
+        val linked = cloudAuthStore.getLinkedCloudFileStatus()
+        if (!linked.isLinked) {
+            _backupOpState.value = BackupOperationState.Error("No cloud file linked yet. Tap \"Link Cloud File\" to pick a Drive / OneDrive / Files destination.")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val uri = Uri.parse(linked.uriString)
+            val name = linked.displayName.ifBlank { "ExamSet_Live_Sync.examset.zip" }
+            _backupOpState.value = BackupOperationState.Running("Syncing vault to $name…", 0.3f)
+            try {
+                writeVaultToLinkedUri(uri, name)
+            } catch (sec: SecurityException) {
+                val msg = "File permission expired for $name. Tap \"Change File\" to re-link your cloud file."
+                cloudAuthStore.setLinkedCloudFileError(msg)
+                refreshCloudAccountStatuses()
+                _backupOpState.value = BackupOperationState.Error(msg)
+            } catch (e: Exception) {
+                val msg = "Linked cloud sync failed: ${e.localizedMessage}"
+                cloudAuthStore.setLinkedCloudFileError(msg)
+                refreshCloudAccountStatuses()
+                _backupOpState.value = BackupOperationState.Error(msg)
+            }
+        }
+    }
+
+    fun restoreFromLinkedCloudFile() {
+        val linked = cloudAuthStore.getLinkedCloudFileStatus()
+        if (!linked.isLinked) {
+            _backupOpState.value = BackupOperationState.Error("No linked cloud file found.")
+            return
+        }
+        val uri = Uri.parse(linked.uriString)
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Inspecting ${linked.displayName}…", 0.4f)
+            try {
+                val preview = VaultArchiveEngine.inspectVaultUri(getApplication(), uri)
+                _restorePreview.value = preview
+                _backupOpState.value = BackupOperationState.Idle
+            } catch (sec: SecurityException) {
+                val msg = "Read permission expired for ${linked.displayName}. Tap \"Change File\" or \"Restore Vault / JSON\"."
+                cloudAuthStore.setLinkedCloudFileError(msg)
+                refreshCloudAccountStatuses()
+                _backupOpState.value = BackupOperationState.Error(msg)
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Unable to read linked cloud file: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun unlinkCloudFile() {
+        val linked = cloudAuthStore.getLinkedCloudFileStatus()
+        if (linked.isLinked) {
+            runCatching {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                getApplication<Application>().contentResolver.releasePersistableUriPermission(Uri.parse(linked.uriString), flags)
+            }
+        }
+        cloudAuthStore.clearLinkedCloudFile()
+        refreshCloudAccountStatuses()
+        _statusMessage.value = "Unlinked cloud sync file"
+    }
+
+    private suspend fun writeVaultToLinkedUri(uri: Uri, displayName: String) {
+        val app = getApplication<Application>()
+        val tempFile = File(VaultArchiveEngine.getExportCacheDir(app), VaultArchiveEngine.defaultVaultFileName("cloudsync"))
+        try {
+            val manifest = VaultArchiveEngine.createVaultArchive(
+                context = app,
+                db = db,
+                appPrefs = appPreferences,
+                themePrefs = themePreferences,
+                destinationFile = tempFile
+            ) { phase, prog ->
+                _backupOpState.value = BackupOperationState.Running(phase, prog * 0.7f)
+            }
+            _backupOpState.value = BackupOperationState.Running("Writing to $displayName…", 0.85f)
+            val outStream = app.contentResolver.openOutputStream(uri, "wt")
+                ?: app.contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("Cannot open linked cloud file for writing. Tap \"Change File\" to re-link.")
+            outStream.use { out ->
+                FileInputStream(tempFile).use { input ->
+                    input.copyTo(out, bufferSize = 16 * 1024)
+                }
+                out.flush()
+            }
+            val sha = VaultArchiveEngine.computeFileSha256(tempFile)
+            val syncedAt = TrustedTimeManager.getTrustedTimeMillis()
+            cloudAuthStore.saveLinkedCloudFile(uri.toString(), displayName, syncedAt)
+            backupSnapshotDao.insertSnapshot(
+                BackupSnapshotEntity(
+                    provider = "CLOUD_FILE",
+                    fileName = displayName,
+                    localPath = "",
+                    checksumSha256 = sha,
+                    papersCount = manifest.counts.papersCount,
+                    notesCount = manifest.counts.notesCount,
+                    foldersCount = manifest.counts.foldersCount,
+                    attemptsCount = manifest.counts.attemptsCount,
+                    sizeBytes = tempFile.length(),
+                    status = "SYNCED",
+                    details = "Synced to linked cloud file ($displayName)"
+                )
+            )
+            refreshCloudAccountStatuses()
+            _backupOpState.value = BackupOperationState.Success(
+                "Synced $displayName (${manifest.counts.papersCount} sets, ${manifest.counts.notesCount} knowledge sets)"
+            )
+        } finally {
+            runCatching { tempFile.delete() }
+        }
+    }
+
+    private fun resolveDocumentDisplayName(uri: Uri): String {
+        val app = getApplication<Application>()
+        runCatching {
+            app.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) {
+                        val name = cursor.getString(idx)
+                        if (!name.isNullOrBlank()) return name
+                    }
+                }
+            }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: "ExamSet_Live_Sync.examset.zip"
     }
 
     /**

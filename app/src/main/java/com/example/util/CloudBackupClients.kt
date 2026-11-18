@@ -1,9 +1,13 @@
 package com.example.util
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.util.Base64
+import com.example.BuildConfig
 import com.example.data.CloudAuthStore
 import com.example.data.OAuthTokenBundle
 import com.example.data.PendingOAuthFlowState
@@ -13,14 +17,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -29,29 +34,58 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
+private class CloudHttpStatusException(
+    val statusCode: Int,
+    message: String
+) : IllegalStateException(message)
+
 object CloudBackupClients {
 
-    const val REDIRECT_URI = "com.aistudio.examset.tbqpeh:/oauth2redirect"
+    val REDIRECT_URI: String
+        get() = "${BuildConfig.APPLICATION_ID}:/oauth2redirect"
+
     private const val DRIVE_FOLDER_NAME = "ExamSet Backups"
     private const val ONEDRIVE_FOLDER_NAME = "ExamSetBackups"
+    private const val ONEDRIVE_SIMPLE_UPLOAD_LIMIT_BYTES = 4L * 1024L * 1024L
+    // Microsoft Graph requires upload chunk sizes to be multiples of 320 KiB
+    private const val ONEDRIVE_CHUNK_SIZE_BYTES = 320 * 1024 * 10 // 3.2 MiB
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(25, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS)
             .build()
+    }
+
+    fun isDeviceOnline(context: Context): Boolean {
+        return try {
+            val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return true
+            val activeNetwork = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(activeNetwork) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (_: Exception) {
+            true
+        }
     }
 
     fun buildAuthorizeIntent(
         provider: CloudProviderType,
-        authStore: CloudAuthStore
+        authStore: CloudAuthStore,
+        callerContext: Context? = null
     ): Result<Intent> {
-        val clientId = authStore.getClientId(provider)
+        if (callerContext != null && !isDeviceOnline(callerContext)) {
+            return Result.failure(
+                IllegalStateException("No active internet connection. Connect to Wi-Fi or mobile data and try again.")
+            )
+        }
+
+        val clientId = authStore.getClientId(provider).trim()
         if (clientId.isBlank()) {
             return Result.failure(
                 IllegalStateException(
-                    "Set your ${provider.displayName} OAuth Client ID in Cloud Sync Settings first, or use the zero-config Save/Open via Drive & OneDrive System Picker."
+                    "Set your ${provider.displayName} OAuth Client ID first, or use Quick Cloud File Sync above with zero setup."
                 )
             )
         }
@@ -97,7 +131,10 @@ object CloudBackupClients {
         }
 
         val intent = Intent(Intent.ACTION_VIEW, authUri).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            if (callerContext !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
         }
         return Result.success(intent)
     }
@@ -107,7 +144,7 @@ object CloudBackupClients {
         authStore: CloudAuthStore
     ): Result<CloudProviderType> = withContext(Dispatchers.IO) {
         val pending = authStore.consumePendingOAuthFlow()
-            ?: return@withContext Result.failure(IllegalStateException("No active OAuth sign-in flow found."))
+            ?: return@withContext Result.failure(IllegalStateException("No active OAuth sign-in flow found. Please tap Connect again."))
 
         val error = uri.getQueryParameter("error")
         if (!error.isNullOrBlank()) {
@@ -140,47 +177,52 @@ object CloudBackupClients {
             .build()
 
         val req = Request.Builder().url(tokenEndpoint).post(form).build()
-        httpClient.newCall(req).execute().use { resp ->
-            val bodyStr = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) {
-                val msg = extractOAuthError(bodyStr, "HTTP ${resp.code}")
-                authStore.setLastError(pending.provider, msg)
-                return@withContext Result.failure(IllegalStateException(msg))
-            }
-            val obj = JSONObject(bodyStr)
-            val accessToken = obj.optString("access_token", "")
-            val refreshToken = obj.optString("refresh_token", "")
-            val expiresIn = obj.optLong("expires_in", 3600L)
-            if (accessToken.isBlank()) {
-                return@withContext Result.failure(IllegalStateException("Empty access token received."))
-            }
+        runCatching {
+            httpClient.newCall(req).execute().use { resp ->
+                val bodyStr = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    val msg = extractOAuthError(bodyStr, "Token exchange failed (HTTP ${resp.code})")
+                    authStore.setLastError(pending.provider, msg)
+                    throw IllegalStateException(msg)
+                }
+                val obj = JSONObject(bodyStr)
+                val accessToken = obj.optString("access_token", "")
+                val refreshToken = obj.optString("refresh_token", "")
+                val expiresIn = obj.optLong("expires_in", 3600L)
+                if (accessToken.isBlank()) {
+                    throw IllegalStateException("Empty access token received from ${pending.provider.displayName}.")
+                }
 
-            val (email, name) = fetchProfileInfo(pending.provider, accessToken)
-            val bundle = OAuthTokenBundle(
-                accessToken = accessToken,
-                refreshToken = refreshToken,
-                expiresAtMillis = System.currentTimeMillis() + (expiresIn * 1000L),
-                email = email,
-                displayName = name
-            )
-            authStore.saveTokenBundle(pending.provider, bundle)
-            authStore.setLastError(pending.provider, null)
-            Result.success(pending.provider)
+                val (email, name) = fetchProfileInfo(pending.provider, accessToken)
+                val bundle = OAuthTokenBundle(
+                    accessToken = accessToken,
+                    refreshToken = refreshToken,
+                    expiresAtMillis = System.currentTimeMillis() + (expiresIn * 1000L),
+                    email = email,
+                    displayName = name
+                )
+                authStore.saveTokenBundle(pending.provider, bundle)
+                authStore.setLastError(pending.provider, null)
+                pending.provider
+            }
         }
     }
 
     suspend fun ensureValidAccessToken(
         provider: CloudProviderType,
-        authStore: CloudAuthStore
+        authStore: CloudAuthStore,
+        forceRefresh: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         val current = authStore.getTokenBundle(provider)
             ?: return@withContext Result.failure(IllegalStateException("${provider.displayName} is not connected."))
-        if (current.isAccessTokenValid()) {
+        if (!forceRefresh && current.isAccessTokenValid()) {
             return@withContext Result.success(current.accessToken)
         }
         val clientId = authStore.getClientId(provider)
         if (current.refreshToken.isBlank() || clientId.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("${provider.displayName} session expired. Please reconnect."))
+            val msg = "${provider.displayName} session expired. Please reconnect your account."
+            authStore.setLastError(provider, msg)
+            return@withContext Result.failure(IllegalStateException(msg))
         }
 
         val tokenEndpoint = when (provider) {
@@ -195,45 +237,74 @@ object CloudBackupClients {
             .build()
 
         val req = Request.Builder().url(tokenEndpoint).post(form).build()
-        httpClient.newCall(req).execute().use { resp ->
-            val bodyStr = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) {
-                val msg = extractOAuthError(bodyStr, "Token refresh failed (HTTP ${resp.code})")
-                authStore.setLastError(provider, msg)
-                return@withContext Result.failure(IllegalStateException(msg))
+        runCatching {
+            httpClient.newCall(req).execute().use { resp ->
+                val bodyStr = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    val msg = extractOAuthError(bodyStr, "Token refresh failed (HTTP ${resp.code}). Please reconnect.")
+                    authStore.setLastError(provider, msg)
+                    throw IllegalStateException(msg)
+                }
+                val obj = JSONObject(bodyStr)
+                val newAccess = obj.optString("access_token", "")
+                val newRefresh = obj.optString("refresh_token", "").ifBlank { current.refreshToken }
+                val expiresIn = obj.optLong("expires_in", 3600L)
+                if (newAccess.isBlank()) {
+                    throw IllegalStateException("Empty refreshed access token.")
+                }
+                val updated = current.copy(
+                    accessToken = newAccess,
+                    refreshToken = newRefresh,
+                    expiresAtMillis = System.currentTimeMillis() + (expiresIn * 1000L)
+                )
+                authStore.saveTokenBundle(provider, updated)
+                authStore.setLastError(provider, null)
+                newAccess
             }
-            val obj = JSONObject(bodyStr)
-            val newAccess = obj.optString("access_token", "")
-            val newRefresh = obj.optString("refresh_token", "").ifBlank { current.refreshToken }
-            val expiresIn = obj.optLong("expires_in", 3600L)
-            if (newAccess.isBlank()) {
-                return@withContext Result.failure(IllegalStateException("Empty refreshed access token."))
+        }
+    }
+
+    private suspend fun <T> executeWithTokenRetry(
+        provider: CloudProviderType,
+        authStore: CloudAuthStore,
+        block: (accessToken: String) -> T
+    ): Result<T> {
+        val initialToken = ensureValidAccessToken(provider, authStore, forceRefresh = false)
+            .getOrElse { return Result.failure(it) }
+
+        return try {
+            Result.success(block(initialToken))
+        } catch (httpErr: CloudHttpStatusException) {
+            if (httpErr.statusCode == 401) {
+                val refreshedToken = ensureValidAccessToken(provider, authStore, forceRefresh = true)
+                    .getOrElse { return Result.failure(it) }
+                runCatching { block(refreshedToken) }
+            } else {
+                Result.failure(httpErr)
             }
-            val updated = current.copy(
-                accessToken = newAccess,
-                refreshToken = newRefresh,
-                expiresAtMillis = System.currentTimeMillis() + (expiresIn * 1000L)
-            )
-            authStore.saveTokenBundle(provider, updated)
-            Result.success(newAccess)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
     suspend fun uploadBackupFile(
         provider: CloudProviderType,
         authStore: CloudAuthStore,
-        vaultFile: File
+        vaultFile: File,
+        context: Context? = null
     ): Result<RemoteCloudBackupFile> = withContext(Dispatchers.IO) {
-        val token = ensureValidAccessToken(provider, authStore).getOrElse {
-            return@withContext Result.failure(it)
+        if (context != null && !isDeviceOnline(context)) {
+            val msg = "No active internet connection. Connect to Wi-Fi or mobile data and retry."
+            authStore.setLastError(provider, msg)
+            return@withContext Result.failure(IllegalStateException(msg))
         }
-        return@withContext runCatching {
+        executeWithTokenRetry(provider, authStore) { token ->
             when (provider) {
-                CloudProviderType.GOOGLE_DRIVE -> uploadToGoogleDrive(token, vaultFile)
+                CloudProviderType.GOOGLE_DRIVE -> uploadToGoogleDriveResumable(token, vaultFile)
                 CloudProviderType.ONEDRIVE -> uploadToOneDrive(token, vaultFile)
             }
         }.onSuccess {
-            authStore.setLastSyncedAt(provider, System.currentTimeMillis())
+            authStore.setLastSyncedAt(provider, TrustedTimeManager.getTrustedTimeMillis())
         }.onFailure { err ->
             authStore.setLastError(provider, err.localizedMessage ?: "Upload failed")
         }
@@ -241,12 +312,15 @@ object CloudBackupClients {
 
     suspend fun listRemoteBackups(
         provider: CloudProviderType,
-        authStore: CloudAuthStore
+        authStore: CloudAuthStore,
+        context: Context? = null
     ): Result<List<RemoteCloudBackupFile>> = withContext(Dispatchers.IO) {
-        val token = ensureValidAccessToken(provider, authStore).getOrElse {
-            return@withContext Result.failure(it)
+        if (context != null && !isDeviceOnline(context)) {
+            val msg = "No active internet connection. Connect to Wi-Fi or mobile data to browse cloud backups."
+            authStore.setLastError(provider, msg)
+            return@withContext Result.failure(IllegalStateException(msg))
         }
-        return@withContext runCatching {
+        executeWithTokenRetry(provider, authStore) { token ->
             when (provider) {
                 CloudProviderType.GOOGLE_DRIVE -> listGoogleDriveBackups(token)
                 CloudProviderType.ONEDRIVE -> listOneDriveBackups(token)
@@ -261,10 +335,12 @@ object CloudBackupClients {
         remoteFile: RemoteCloudBackupFile,
         authStore: CloudAuthStore
     ): Result<File> = withContext(Dispatchers.IO) {
-        val token = ensureValidAccessToken(remoteFile.provider, authStore).getOrElse {
-            return@withContext Result.failure(it)
+        if (!isDeviceOnline(context)) {
+            return@withContext Result.failure(
+                IllegalStateException("No active internet connection. Connect to Wi-Fi or mobile data to download backup.")
+            )
         }
-        return@withContext runCatching {
+        executeWithTokenRetry(remoteFile.provider, authStore) { token ->
             val dest = File(VaultArchiveEngine.getExportCacheDir(context), remoteFile.name)
             val url = when (remoteFile.provider) {
                 CloudProviderType.GOOGLE_DRIVE ->
@@ -279,7 +355,11 @@ object CloudBackupClients {
                 .build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    throw IllegalStateException("Download failed (HTTP ${resp.code})")
+                    val body = resp.body?.string().orEmpty()
+                    throw CloudHttpStatusException(
+                        resp.code,
+                        extractApiError(body, "Download failed (HTTP ${resp.code})")
+                    )
                 }
                 val stream = resp.body?.byteStream() ?: throw IllegalStateException("Empty download body")
                 BufferedOutputStream(FileOutputStream(dest)).use { out ->
@@ -290,7 +370,7 @@ object CloudBackupClients {
         }
     }
 
-    // --- Google Drive v3 Implementation ---
+    // --- Google Drive v3 Implementation (Resumable Upload for All Sizes) ---
 
     private fun ensureGoogleDriveBackupFolder(token: String): String {
         val query = Uri.encode("name='$DRIVE_FOLDER_NAME' and mimeType='application/vnd.google-apps.folder' and trashed=false")
@@ -301,7 +381,12 @@ object CloudBackupClients {
             .build()
         httpClient.newCall(searchReq).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) throw IllegalStateException("Google Drive lookup failed (HTTP ${resp.code})")
+            if (!resp.isSuccessful) {
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "Google Drive folder lookup failed (HTTP ${resp.code})")
+                )
+            }
             val files = JSONObject(body).optJSONArray("files")
             if (files != null && files.length() > 0) {
                 return files.getJSONObject(0).getString("id")
@@ -319,41 +404,66 @@ object CloudBackupClients {
             .build()
         httpClient.newCall(createReq).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) throw IllegalStateException("Unable to create Google Drive folder (HTTP ${resp.code})")
+            if (!resp.isSuccessful) {
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "Unable to create Google Drive backup folder (HTTP ${resp.code})")
+                )
+            }
             return JSONObject(body).getString("id")
         }
     }
 
-    private fun uploadToGoogleDrive(token: String, vaultFile: File): RemoteCloudBackupFile {
+    private fun uploadToGoogleDriveResumable(token: String, vaultFile: File): RemoteCloudBackupFile {
         val folderId = ensureGoogleDriveBackupFolder(token)
+        val fileLength = vaultFile.length()
         val metadataJson = JSONObject().apply {
             put("name", vaultFile.name)
-            put("parents", org.json.JSONArray().put(folderId))
+            put("mimeType", "application/zip")
+            put("parents", JSONArray().put(folderId))
         }.toString()
 
-        val multipartBody = MultipartBody.Builder()
-            .setType("multipart/related".toMediaType())
-            .addPart(metadataJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .addPart(vaultFile.asRequestBody("application/zip".toMediaType()))
-            .build()
-
-        val req = Request.Builder()
-            .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,modifiedTime")
+        // Step 1: Initiate resumable upload session
+        val initReq = Request.Builder()
+            .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,modifiedTime")
             .header("Authorization", "Bearer $token")
-            .post(multipartBody)
+            .header("X-Upload-Content-Type", "application/zip")
+            .header("X-Upload-Content-Length", fileLength.toString())
+            .post(metadataJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
-        httpClient.newCall(req).execute().use { resp ->
+        val uploadSessionUri = httpClient.newCall(initReq).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw IllegalStateException("Google Drive upload failed (HTTP ${resp.code})")
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "Google Drive upload session failed (HTTP ${resp.code})")
+                )
+            }
+            resp.header("Location")
+                ?: throw IllegalStateException("Google Drive did not return a resumable upload URL.")
+        }
+
+        // Step 2: Stream ZIP payload directly to the resumable session URI
+        val uploadReq = Request.Builder()
+            .url(uploadSessionUri)
+            .put(vaultFile.asRequestBody("application/zip".toMediaType()))
+            .build()
+
+        httpClient.newCall(uploadReq).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "Google Drive upload failed (HTTP ${resp.code})")
+                )
             }
             val obj = JSONObject(body)
             return RemoteCloudBackupFile(
                 provider = CloudProviderType.GOOGLE_DRIVE,
                 remoteId = obj.getString("id"),
                 name = obj.optString("name", vaultFile.name),
-                sizeBytes = obj.optString("size", vaultFile.length().toString()).toLongOrNull() ?: vaultFile.length(),
+                sizeBytes = obj.optString("size", fileLength.toString()).toLongOrNull() ?: fileLength,
                 modifiedAt = parseIsoTimestamp(obj.optString("modifiedTime", ""))
             )
         }
@@ -371,7 +481,10 @@ object CloudBackupClients {
         httpClient.newCall(req).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw IllegalStateException("Google Drive list failed (HTTP ${resp.code})")
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "Google Drive list failed (HTTP ${resp.code})")
+                )
             }
             val arr = JSONObject(body).optJSONArray("files") ?: return emptyList()
             return buildList {
@@ -391,9 +504,18 @@ object CloudBackupClients {
         }
     }
 
-    // --- OneDrive (Microsoft Graph AppFolder) Implementation ---
+    // --- OneDrive (Microsoft Graph AppFolder — Simple <=4MB, Chunked Session >4MB) ---
 
     private fun uploadToOneDrive(token: String, vaultFile: File): RemoteCloudBackupFile {
+        val fileLength = vaultFile.length()
+        return if (fileLength <= ONEDRIVE_SIMPLE_UPLOAD_LIMIT_BYTES) {
+            uploadToOneDriveSimple(token, vaultFile)
+        } else {
+            uploadToOneDriveResumable(token, vaultFile)
+        }
+    }
+
+    private fun uploadToOneDriveSimple(token: String, vaultFile: File): RemoteCloudBackupFile {
         val encodedName = Uri.encode(vaultFile.name)
         val url = "https://graph.microsoft.com/v1.0/me/drive/special/approot:/$ONEDRIVE_FOLDER_NAME/$encodedName:/content"
         val req = Request.Builder()
@@ -405,17 +527,103 @@ object CloudBackupClients {
         httpClient.newCall(req).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw IllegalStateException("OneDrive upload failed (HTTP ${resp.code})")
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "OneDrive upload failed (HTTP ${resp.code})")
+                )
             }
-            val obj = JSONObject(body)
-            return RemoteCloudBackupFile(
-                provider = CloudProviderType.ONEDRIVE,
-                remoteId = obj.getString("id"),
-                name = obj.optString("name", vaultFile.name),
-                sizeBytes = obj.optLong("size", vaultFile.length()),
-                modifiedAt = parseIsoTimestamp(obj.optString("lastModifiedDateTime", ""))
-            )
+            return parseOneDriveItem(JSONObject(body), vaultFile)
         }
+    }
+
+    private fun uploadToOneDriveResumable(token: String, vaultFile: File): RemoteCloudBackupFile {
+        val encodedName = Uri.encode(vaultFile.name)
+        val sessionUrlEndpoint =
+            "https://graph.microsoft.com/v1.0/me/drive/special/approot:/$ONEDRIVE_FOLDER_NAME/$encodedName:/createUploadSession"
+        val sessionPayload = JSONObject().apply {
+            put(
+                "item",
+                JSONObject().apply {
+                    put("@microsoft.graph.conflictBehavior", "replace")
+                    put("name", vaultFile.name)
+                }
+            )
+        }.toString()
+
+        val initReq = Request.Builder()
+            .url(sessionUrlEndpoint)
+            .header("Authorization", "Bearer $token")
+            .post(sessionPayload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+
+        val uploadUrl = httpClient.newCall(initReq).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "OneDrive upload session failed (HTTP ${resp.code})")
+                )
+            }
+            JSONObject(body).optString("uploadUrl", "").takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("OneDrive did not return an upload session URL.")
+        }
+
+        val totalSize = vaultFile.length()
+        val buffer = ByteArray(ONEDRIVE_CHUNK_SIZE_BYTES)
+        var offset = 0L
+        var finalItemJson: JSONObject? = null
+
+        FileInputStream(vaultFile).use { input ->
+            while (offset < totalSize) {
+                val toRead = minOf(ONEDRIVE_CHUNK_SIZE_BYTES.toLong(), totalSize - offset).toInt()
+                var bytesReadTotal = 0
+                while (bytesReadTotal < toRead) {
+                    val read = input.read(buffer, bytesReadTotal, toRead - bytesReadTotal)
+                    if (read == -1) break
+                    bytesReadTotal += read
+                }
+                if (bytesReadTotal <= 0) break
+
+                val rangeEnd = offset + bytesReadTotal - 1L
+                val chunkBody = buffer.toRequestBody(
+                    contentType = "application/octet-stream".toMediaType(),
+                    offset = 0,
+                    byteCount = bytesReadTotal
+                )
+                val chunkReq = Request.Builder()
+                    .url(uploadUrl)
+                    .header("Content-Range", "bytes $offset-$rangeEnd/$totalSize")
+                    .put(chunkBody)
+                    .build()
+
+                httpClient.newCall(chunkReq).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    if (resp.code == 200 || resp.code == 201) {
+                        finalItemJson = JSONObject(body)
+                    } else if (resp.code != 202) {
+                        throw CloudHttpStatusException(
+                            resp.code,
+                            extractApiError(body, "OneDrive chunk upload failed (HTTP ${resp.code})")
+                        )
+                    }
+                }
+                offset += bytesReadTotal
+            }
+        }
+
+        val completed = finalItemJson
+            ?: throw IllegalStateException("OneDrive upload completed without item metadata.")
+        return parseOneDriveItem(completed, vaultFile)
+    }
+
+    private fun parseOneDriveItem(obj: JSONObject, vaultFile: File): RemoteCloudBackupFile {
+        return RemoteCloudBackupFile(
+            provider = CloudProviderType.ONEDRIVE,
+            remoteId = obj.getString("id"),
+            name = obj.optString("name", vaultFile.name),
+            sizeBytes = obj.optLong("size", vaultFile.length()),
+            modifiedAt = parseIsoTimestamp(obj.optString("lastModifiedDateTime", ""))
+        )
     }
 
     private fun listOneDriveBackups(token: String): List<RemoteCloudBackupFile> {
@@ -430,7 +638,10 @@ object CloudBackupClients {
             if (resp.code == 404) return emptyList()
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw IllegalStateException("OneDrive list failed (HTTP ${resp.code})")
+                throw CloudHttpStatusException(
+                    resp.code,
+                    extractApiError(body, "OneDrive list failed (HTTP ${resp.code})")
+                )
             }
             val arr = JSONObject(body).optJSONArray("value") ?: return emptyList()
             return buildList {
@@ -497,8 +708,24 @@ object CloudBackupClients {
         }
     }
 
+    private fun extractApiError(body: String, fallback: String): String {
+        return try {
+            val obj = JSONObject(body)
+            val errObj = obj.optJSONObject("error")
+            val msg = errObj?.optString("message", "")?.trim().orEmpty()
+            val code = errObj?.optString("code", "")?.trim().orEmpty()
+            when {
+                msg.isNotBlank() && code.isNotBlank() -> "$msg ($code)"
+                msg.isNotBlank() -> msg
+                else -> extractOAuthError(body, fallback)
+            }
+        } catch (_: Exception) {
+            fallback
+        }
+    }
+
     private fun parseIsoTimestamp(raw: String): Long {
-        if (raw.isBlank()) return System.currentTimeMillis()
+        if (raw.isBlank()) return TrustedTimeManager.getTrustedTimeMillis()
         val formats = listOf(
             "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
             "yyyy-MM-dd'T'HH:mm:ss'Z'"
@@ -512,6 +739,6 @@ object CloudBackupClients {
             } catch (_: Exception) {
             }
         }
-        return System.currentTimeMillis()
+        return TrustedTimeManager.getTrustedTimeMillis()
     }
 }
