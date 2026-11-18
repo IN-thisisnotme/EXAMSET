@@ -1,6 +1,8 @@
 package com.example.ui
 
+import android.app.Activity
 import android.app.Application
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -69,9 +71,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
+import java.io.BufferedWriter
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -3043,6 +3047,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun launchShareFileIntent(
+        context: Context,
+        file: File,
+        title: String,
+        mimeType: String,
+        chooserTitle: String = title
+    ) {
+        val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            clipData = ClipData.newRawUri(title, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (context !is Activity) {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        context.startActivity(chooser)
+    }
+
+    private fun buildQuestionPaperForExport(entity: PaperEntity): QuestionPaper {
+        val parsed = McqParser.parse(entity.rawText)
+        return parsed.copy(
+            id = entity.id,
+            metadata = PaperMetadata(
+                id = "paper-${entity.id}",
+                title = entity.title,
+                subject = entity.subject,
+                topic = entity.topic,
+                setNumber = entity.setNumber.ifBlank { "Set 1" },
+                exam = entity.exam,
+                folderId = entity.folderId,
+                rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
+                bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
+                createdAt = entity.createdAt
+            )
+        )
+    }
+
     fun shareVaultArchive(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             _backupOpState.value = BackupOperationState.Running("Preparing shareable .examset.zip…", 0.3f)
@@ -3055,19 +3102,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     themePrefs = themePreferences,
                     destinationFile = file
                 )
-                val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/zip"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, "ExamSet Vault Backup (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Knowledge Sets)")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                val subject = "ExamSet Vault Backup (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Knowledge Sets)"
                 withContext(Dispatchers.Main) {
                     _backupOpState.value = BackupOperationState.Idle
-                    context.startActivity(Intent.createChooser(shareIntent, "Share ExamSet Vault"))
+                    launchShareFileIntent(
+                        context = context,
+                        file = file,
+                        title = subject,
+                        mimeType = "application/zip",
+                        chooserTitle = "Share ExamSet Vault"
+                    )
                 }
-            } catch (e: Exception) {
-                _backupOpState.value = BackupOperationState.Error("Share failed: ${e.localizedMessage}")
+            } catch (e: Throwable) {
+                _backupOpState.value = BackupOperationState.Error("Share failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
             }
         }
     }
@@ -3081,24 +3128,217 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val safeName = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
                 val file = File(VaultArchiveEngine.getExportCacheDir(context), safeName)
-                BufferedOutputStream(FileOutputStream(file)).use { out ->
-                    out.write(content.toByteArray(Charsets.UTF_8))
-                }
-                val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = mimeType
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, title)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                BufferedWriter(OutputStreamWriter(FileOutputStream(file), Charsets.UTF_8), 32 * 1024).use { writer ->
+                    writer.write(content)
                 }
                 withContext(Dispatchers.Main) {
-                    context.startActivity(Intent.createChooser(sendIntent, title))
+                    launchShareFileIntent(
+                        context = context,
+                        file = file,
+                        title = title,
+                        mimeType = mimeType
+                    )
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 withContext(Dispatchers.Main) {
-                    _statusMessage.value = "Unable to share file: ${e.localizedMessage}"
+                    _statusMessage.value = "Unable to share file: ${e.localizedMessage ?: e.javaClass.simpleName}"
                 }
             }
+        }
+    }
+
+    /**
+     * Memory-safe background streaming share for large question libraries (e.g. 23+ sets / 2,000+ long questions).
+     * Streams JSON directly to a cached file one set at a time on Dispatchers.IO so Main thread ANRs and OOM crashes never occur.
+     */
+    fun shareAllPapersAsJsonFile(
+        context: Context,
+        selectedPaperIds: Set<Long>? = null,
+        customTitle: String? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val papers = if (selectedPaperIds == null) {
+                paperDao.getAllPapersOnce()
+            } else {
+                paperDao.getAllPapersOnce().filter { it.id in selectedPaperIds }
+            }
+            if (papers.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "No saved question sets to share."
+                }
+                return@launch
+            }
+            _backupOpState.value = BackupOperationState.Running("Preparing JSON for ${papers.size} question sets…", 0.1f)
+            try {
+                val firstPaper = papers.first()
+                val title = customTitle ?: "ExamSet Backup (${papers.size} Question Sets)"
+                val safeName = "examset_backup_${papers.size}_sets.json"
+                val file = File(VaultArchiveEngine.getExportCacheDir(context), safeName)
+                FileOutputStream(file).use { fos ->
+                    ExamJsonHelper.streamBundleToOutputStream(
+                        examTitle = firstPaper.title.ifBlank { "Examination Package" },
+                        folderId = firstPaper.folderId,
+                        papers = papers,
+                        outputStream = fos,
+                        onProgress = { idx, total ->
+                            _backupOpState.value = BackupOperationState.Running(
+                                "Packing set $idx of $total…",
+                                (idx.toFloat() / total.coerceAtLeast(1)).coerceIn(0.1f, 0.95f)
+                            )
+                        },
+                        paperBuilder = ::buildQuestionPaperForExport
+                    )
+                }
+                withContext(Dispatchers.Main) {
+                    _backupOpState.value = BackupOperationState.Idle
+                    launchShareFileIntent(
+                        context = context,
+                        file = file,
+                        title = title,
+                        mimeType = "application/json",
+                        chooserTitle = "Share Question Sets (.json)"
+                    )
+                }
+            } catch (e: Throwable) {
+                _backupOpState.value = BackupOperationState.Error("Share failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Unable to share backup: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                }
+            }
+        }
+    }
+
+    /**
+     * Memory-safe background streaming share for formatted plain-text backups of large libraries.
+     */
+    fun shareAllPapersAsTextFile(
+        context: Context,
+        selectedPaperIds: Set<Long>? = null,
+        customTitle: String? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val papers = if (selectedPaperIds == null) {
+                paperDao.getAllPapersOnce()
+            } else {
+                paperDao.getAllPapersOnce().filter { it.id in selectedPaperIds }
+            }
+            if (papers.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "No saved question sets to share."
+                }
+                return@launch
+            }
+            _backupOpState.value = BackupOperationState.Running("Preparing text export for ${papers.size} sets…", 0.15f)
+            try {
+                val title = customTitle ?: "ExamSet Library (${papers.size} Sets)"
+                val file = File(VaultArchiveEngine.getExportCacheDir(context), "examset_backup_${papers.size}_sets.txt")
+                FileOutputStream(file).use { fos ->
+                    streamPapersAsTextToOutputStream(papers, fos)
+                }
+                withContext(Dispatchers.Main) {
+                    _backupOpState.value = BackupOperationState.Idle
+                    launchShareFileIntent(
+                        context = context,
+                        file = file,
+                        title = title,
+                        mimeType = "text/plain",
+                        chooserTitle = "Share Question Sets (.txt)"
+                    )
+                }
+            } catch (e: Throwable) {
+                _backupOpState.value = BackupOperationState.Error("Share failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Unable to share text backup: ${e.localizedMessage ?: e.javaClass.simpleName}"
+                }
+            }
+        }
+    }
+
+    fun exportAllPapersToUriAsJson(uri: Uri, selectedPaperIds: Set<Long>? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val papers = if (selectedPaperIds == null) {
+                paperDao.getAllPapersOnce()
+            } else {
+                paperDao.getAllPapersOnce().filter { it.id in selectedPaperIds }
+            }
+            if (papers.isEmpty()) {
+                _backupOpState.value = BackupOperationState.Error("No saved question sets to export.")
+                return@launch
+            }
+            _backupOpState.value = BackupOperationState.Running("Exporting ${papers.size} sets to JSON…", 0.1f)
+            try {
+                val firstPaper = papers.first()
+                val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: getApplication<Application>().contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Unable to open destination file for writing.")
+                out.use { stream ->
+                    ExamJsonHelper.streamBundleToOutputStream(
+                        examTitle = firstPaper.title.ifBlank { "Examination Package" },
+                        folderId = firstPaper.folderId,
+                        papers = papers,
+                        outputStream = stream,
+                        onProgress = { idx, total ->
+                            _backupOpState.value = BackupOperationState.Running(
+                                "Writing set $idx of $total…",
+                                (idx.toFloat() / total.coerceAtLeast(1)).coerceIn(0.1f, 0.95f)
+                            )
+                        },
+                        paperBuilder = ::buildQuestionPaperForExport
+                    )
+                }
+                _backupOpState.value = BackupOperationState.Success("Exported ${papers.size} question sets as JSON!")
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Saved ${papers.size} question sets as JSON"
+                }
+            } catch (e: Throwable) {
+                _backupOpState.value = BackupOperationState.Error("JSON export failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun exportAllPapersToUriAsText(uri: Uri, selectedPaperIds: Set<Long>? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val papers = if (selectedPaperIds == null) {
+                paperDao.getAllPapersOnce()
+            } else {
+                paperDao.getAllPapersOnce().filter { it.id in selectedPaperIds }
+            }
+            if (papers.isEmpty()) {
+                _backupOpState.value = BackupOperationState.Error("No saved question sets to export.")
+                return@launch
+            }
+            _backupOpState.value = BackupOperationState.Running("Exporting ${papers.size} sets to TXT…", 0.15f)
+            try {
+                val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: getApplication<Application>().contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Unable to open destination file for writing.")
+                out.use { stream ->
+                    streamPapersAsTextToOutputStream(papers, stream)
+                }
+                _backupOpState.value = BackupOperationState.Success("Exported ${papers.size} question sets as TXT!")
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Saved ${papers.size} question sets as TXT"
+                }
+            } catch (e: Throwable) {
+                _backupOpState.value = BackupOperationState.Error("TXT export failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private fun streamPapersAsTextToOutputStream(papers: List<PaperEntity>, outputStream: java.io.OutputStream) {
+        BufferedWriter(OutputStreamWriter(BufferedOutputStream(outputStream, 32 * 1024), Charsets.UTF_8)).use { writer ->
+            papers.forEachIndexed { index, entity ->
+                writer.write("========================================\n")
+                writer.write("EXAM SET ${index + 1}: ${entity.title}\n")
+                writer.write("Subject: ${entity.subject} | Set: ${entity.setNumber}\n")
+                if (entity.topic.isNotBlank()) writer.write("Topic: ${entity.topic}\n")
+                if (entity.exam.isNotBlank()) writer.write("Target Exam: ${entity.exam}\n")
+                writer.write("Questions: ${entity.questionCount}\n")
+                writer.write("========================================\n\n")
+                writer.write(entity.rawText.trim())
+                writer.write("\n\n\n")
+            }
+            writer.flush()
         }
     }
 

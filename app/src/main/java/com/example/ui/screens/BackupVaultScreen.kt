@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -290,7 +292,9 @@ fun BackupVaultCenterSection(
 
                     // Primary Vault Actions
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
@@ -300,6 +304,7 @@ fun BackupVaultCenterSection(
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("create_vault_snapshot_button")
                         ) {
@@ -315,6 +320,7 @@ fun BackupVaultCenterSection(
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("export_vault_saf_button")
                         ) {
@@ -325,14 +331,18 @@ fun BackupVaultCenterSection(
                     }
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = { viewModel.shareVaultArchive(context) },
                             shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("share_vault_zip_button")
                         ) {
@@ -346,8 +356,10 @@ fun BackupVaultCenterSection(
                                 importVaultLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream", "*/*"))
                             },
                             shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("restore_vault_picker_button")
                         ) {
@@ -367,28 +379,35 @@ fun BackupVaultCenterSection(
             border = BorderStroke(0.8.dp, colors.border)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = "ONLINE CLOUD SYNC",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkMuted,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.align(Alignment.CenterVertically)
                     )
                     Surface(
+                        onClick = { viewModel.refreshNetworkTimeSync() },
                         shape = RoundedCornerShape(8.dp),
                         color = if (isNetworkTimeSynced) colors.greenLight else colors.amberLight,
                         border = BorderStroke(
                             0.6.dp,
                             if (isNetworkTimeSynced) colors.green.copy(alpha = 0.45f) else colors.amber.copy(alpha = 0.45f)
-                        )
+                        ),
+                        modifier = Modifier
+                            .align(Alignment.CenterVertically)
+                            .testTag("refresh_network_time_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(start = 8.dp, end = 2.dp),
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -402,21 +421,17 @@ fun BackupVaultCenterSection(
                                 text = if (isNetworkTimeSynced) "Online Time Synced" else "Time Pending",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.inkBold
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                softWrap = false
                             )
-                            IconButton(
-                                onClick = { viewModel.refreshNetworkTimeSync() },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .testTag("refresh_network_time_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Refresh network time sync",
-                                    tint = colors.inkMuted,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            }
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh network time sync",
+                                tint = colors.inkMuted,
+                                modifier = Modifier.size(13.dp)
+                            )
                         }
                     }
                 }
@@ -592,10 +607,11 @@ private fun LinkedCloudFileSyncCard(
                         } else {
                             "Pick a file in Google Drive, OneDrive, or Files once for 1-tap & automatic background sync — no Client ID required."
                         },
-                        fontSize = 11.sp,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
                         color = colors.inkMuted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = if (status.isLinked) 2 else Int.MAX_VALUE,
+                        overflow = if (status.isLinked) TextOverflow.Ellipsis else TextOverflow.Clip
                     )
                 }
             }

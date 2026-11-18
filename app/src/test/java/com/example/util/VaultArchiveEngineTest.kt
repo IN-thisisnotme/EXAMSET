@@ -250,4 +250,76 @@ class VaultArchiveEngineTest {
         assertTrue(legacyPreview.checksumVerified)
         assertEquals(1, legacyPreview.manifest.counts.papersCount)
     }
+
+    @Test
+    fun streamBundleToOutputStream_handles25SetsAnd2500LongQuestionsCleanly() {
+        val longExplanation = "Detailed analytical explanation covering statutory provisions, constitutional articles, and case law precedent. ".repeat(6)
+        val entities = (1..25).map { setIdx ->
+            PaperEntity(
+                id = setIdx.toLong(),
+                title = "UPSC Mock Set $setIdx",
+                subject = "General Studies",
+                topic = "Mixed",
+                setNumber = "Set $setIdx",
+                exam = "UPSC CSE",
+                questionCount = 100,
+                answerKeyCount = 100,
+                explanationCount = 100,
+                rawText = ""
+            )
+        }
+
+        val outFile = File(tempDir, "streamed_25_sets.json")
+        var progressCalls = 0
+        outFile.outputStream().use { fos ->
+            ExamJsonHelper.streamBundleToOutputStream(
+                examTitle = "UPSC Full Library",
+                folderId = null,
+                papers = entities,
+                outputStream = fos,
+                onProgress = { _, _ -> progressCalls++ }
+            ) { entity ->
+                val qs = (1..100).map { qNum ->
+                    com.example.model.McqQuestion(
+                        num = qNum,
+                        question = "Question $qNum in ${entity.title}: Evaluate statements 1, 2, and 3.",
+                        options = com.example.model.QuestionOptions(
+                            a = "1 only",
+                            b = "2 only",
+                            c = "1 and 3 only",
+                            d = "1, 2 and 3"
+                        ),
+                        correctAnswer = "D",
+                        explanation = longExplanation
+                    )
+                }
+                com.example.model.QuestionPaper(
+                    id = entity.id,
+                    metadata = com.example.model.PaperMetadata(
+                        id = "paper-${entity.id}",
+                        title = entity.title,
+                        subject = entity.subject,
+                        topic = entity.topic,
+                        setNumber = entity.setNumber,
+                        exam = entity.exam,
+                        rollNumber = "1234567890",
+                        bookletNumber = "1234567"
+                    ),
+                    questions = qs,
+                    quickAnswersCount = 100,
+                    explanationsCount = 100
+                )
+            }
+        }
+
+        assertEquals(25, progressCalls)
+        assertTrue("Streamed JSON file must be non-empty", outFile.length() > 1_000_000L)
+
+        val roundTripped = ExamJsonHelper.bundleFromJson(outFile.readText(Charsets.UTF_8))
+        assertEquals(25, roundTripped.size)
+        assertEquals(100, roundTripped.first().questions.size)
+        assertEquals(100, roundTripped.last().questions.size)
+        assertEquals("D", roundTripped.last().questions.last().correctAnswer)
+        assertTrue(roundTripped.last().questions.last().explanation!!.contains("constitutional articles"))
+    }
 }

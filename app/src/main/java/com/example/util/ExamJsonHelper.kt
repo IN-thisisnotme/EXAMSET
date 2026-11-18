@@ -1,5 +1,7 @@
 package com.example.util
 
+import android.util.JsonWriter
+import com.example.data.PaperEntity
 import com.example.model.FolderItem
 import com.example.model.McqQuestion
 import com.example.model.PaperMetadata
@@ -7,15 +9,18 @@ import com.example.model.QuestionOptions
 import com.example.model.QuestionPaper
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedOutputStream
+import java.io.OutputStream
+import java.io.OutputStreamWriter
 
 object ExamJsonHelper {
 
     const val CURRENT_SCHEMA_VERSION = 2
 
     /**
-     * Exports a single question paper as a structured Schema v2 JSON string.
+     * Builds the Schema v2 JSONObject tree for a single question paper without stringifying.
      */
-    fun toJson(paper: QuestionPaper): String {
+    fun toJsonObject(paper: QuestionPaper): JSONObject {
         val root = JSONObject()
         root.put("schemaVersion", CURRENT_SCHEMA_VERSION)
         root.put("exportType", "SINGLE_QUESTION_SET")
@@ -83,7 +88,14 @@ object ExamJsonHelper {
         }
         root.put("questions", qArray)
 
-        return root.toString(2)
+        return root
+    }
+
+    /**
+     * Exports a single question paper as a structured Schema v2 JSON string.
+     */
+    fun toJson(paper: QuestionPaper): String {
+        return toJsonObject(paper).toString(2)
     }
 
     /**
@@ -102,11 +114,115 @@ object ExamJsonHelper {
 
         val setsArray = JSONArray()
         papers.forEach { paper ->
-            setsArray.put(JSONObject(toJson(paper)))
+            setsArray.put(toJsonObject(paper))
         }
         root.put("questionSets", setsArray)
 
-        return root.toString(2)
+        return if (papers.size <= 3) root.toString(2) else root.toString()
+    }
+
+    /**
+     * Memory-safe O(1)-heap streaming exporter for large libraries (20+ sets, 2,000+ long questions).
+     * Parses and writes one PaperEntity at a time directly to UTF-8 JSON without ever building
+     * a giant in-memory JSONObject tree or monolithic String.
+     */
+    fun streamBundleToOutputStream(
+        examTitle: String,
+        folderId: String?,
+        papers: List<PaperEntity>,
+        outputStream: OutputStream,
+        onProgress: (index: Int, total: Int) -> Unit = { _, _ -> },
+        paperBuilder: (PaperEntity) -> QuestionPaper
+    ) {
+        JsonWriter(OutputStreamWriter(BufferedOutputStream(outputStream, 32 * 1024), Charsets.UTF_8)).use { writer ->
+            writer.beginObject()
+            writer.name("schemaVersion").value(CURRENT_SCHEMA_VERSION)
+            writer.name("exportType").value("MULTI_SET_EXAM_BUNDLE")
+            writer.name("examTitle").value(examTitle)
+            if (!folderId.isNullOrBlank()) {
+                writer.name("folderId").value(folderId)
+            }
+            writer.name("totalSets").value(papers.size)
+            writer.name("exportedAt").value(System.currentTimeMillis())
+
+            writer.name("questionSets")
+            writer.beginArray()
+            papers.forEachIndexed { idx, entity ->
+                onProgress(idx + 1, papers.size)
+                val paper = paperBuilder(entity)
+                writeQuestionPaper(writer, paper)
+            }
+            writer.endArray()
+            writer.endObject()
+            writer.flush()
+        }
+    }
+
+    private fun writeQuestionPaper(writer: JsonWriter, paper: QuestionPaper) {
+        writer.beginObject()
+        writer.name("schemaVersion").value(CURRENT_SCHEMA_VERSION)
+        writer.name("exportType").value("SINGLE_QUESTION_SET")
+        writer.name("setNumber").value(paper.metadata.setNumber)
+        writer.name("rollNumber").value(paper.metadata.rollNumber)
+        writer.name("bookletNumber").value(paper.metadata.bookletNumber)
+        if (!paper.metadata.folderId.isNullOrBlank()) {
+            writer.name("folderId").value(paper.metadata.folderId)
+        }
+
+        writer.name("metadata")
+        writer.beginObject()
+        writer.name("id").value(if (paper.metadata.id.isNotBlank()) paper.metadata.id else "paper-${paper.id}")
+        writer.name("title").value(paper.metadata.title)
+        writer.name("subject").value(paper.metadata.subject)
+        writer.name("topic").value(paper.metadata.topic)
+        writer.name("setNumber").value(paper.metadata.setNumber)
+        writer.name("rollNumber").value(paper.metadata.rollNumber)
+        writer.name("bookletNumber").value(paper.metadata.bookletNumber)
+        writer.name("targetExam").value(paper.metadata.exam)
+        writer.name("createdAt").value(paper.createdAt)
+        if (!paper.metadata.folderId.isNullOrBlank()) {
+            writer.name("folderId").value(paper.metadata.folderId)
+        }
+        writer.endObject()
+
+        writer.name("questions")
+        writer.beginArray()
+        paper.questions.forEach { q ->
+            writer.beginObject()
+            writer.name("id").value("q-${q.num}")
+            writer.name("num").value(q.num)
+            writer.name("question").value(q.question)
+
+            writer.name("options")
+            writer.beginObject()
+            writer.name("a").value(q.options.a)
+            writer.name("b").value(q.options.b)
+            writer.name("c").value(q.options.c)
+            writer.name("d").value(q.options.d)
+            if (q.options.e.isNotBlank()) {
+                writer.name("e").value(q.options.e)
+            }
+            writer.endObject()
+
+            writer.name("correctAnswer")
+            if (q.correctAnswer != null) writer.value(q.correctAnswer) else writer.nullValue()
+            writer.name("explanation").value(q.explanation ?: "")
+            if (!q.questionType.isNullOrBlank()) {
+                writer.name("questionType").value(q.questionType)
+            }
+            if (!q.diagramUrl.isNullOrBlank()) {
+                writer.name("diagramUrl").value(q.diagramUrl)
+            }
+            if (!q.diagramLabel.isNullOrBlank()) {
+                writer.name("diagramLabel").value(q.diagramLabel)
+            }
+            if (!q.formula.isNullOrBlank()) {
+                writer.name("formula").value(q.formula)
+            }
+            writer.endObject()
+        }
+        writer.endArray()
+        writer.endObject()
     }
 
     /**
@@ -141,11 +257,11 @@ object ExamJsonHelper {
 
         val setsArray = JSONArray()
         papers.forEach { paper ->
-            setsArray.put(JSONObject(toJson(paper)))
+            setsArray.put(toJsonObject(paper))
         }
         root.put("questionSets", setsArray)
 
-        return root.toString(2)
+        return if (papers.size <= 3) root.toString(2) else root.toString()
     }
 
     /**

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -830,7 +831,8 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(colors.surface)
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .height(IntrinsicSize.Max),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val creatorSubTabs = listOf(
@@ -843,14 +845,17 @@ fun HomeScreen(
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 44.dp)
+                                    .fillMaxHeight()
+                                    .heightIn(min = 48.dp)
                                     .clickable { viewModel.selectTab(tabIdx) },
                                 shape = RoundedCornerShape(8.dp),
                                 color = if (isSubSelected) colors.tealLight else colors.surfaceVariant,
                                 border = BorderStroke(1.dp, if (isSubSelected) colors.teal else colors.border)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .padding(horizontal = 6.dp, vertical = 6.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -864,6 +869,7 @@ fun HomeScreen(
                                     Text(
                                         text = label,
                                         fontSize = 11.sp,
+                                        lineHeight = 14.sp,
                                         fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSubSelected) colors.teal else colors.inkBold,
                                         maxLines = 2,

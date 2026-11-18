@@ -176,71 +176,74 @@ fun CreatorTab(
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(14.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = colors.teal.copy(alpha = 0.12f),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Tune,
-                                        contentDescription = null,
-                                        tint = colors.teal,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Exam Tools & Diagnostics",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-                                Text(
-                                    text = "Active Set Inspector & Readability Settings",
-                                    fontSize = 12.sp,
-                                    color = colors.inkMuted
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.teal.copy(alpha = 0.12f),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-
-                        // Protection Badge
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = colors.greenLight,
-                            border = BorderStroke(0.6.dp, colors.green.copy(alpha = 0.5f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = colors.green,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Active Set Protected",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.green
-                                )
-                            }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Exam Tools & Diagnostics",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Active Set Inspector & Readability Settings",
+                                fontSize = 11.5.sp,
+                                color = colors.inkMuted
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Compact Protection Status Chip (placed below header so it never squeezes the title)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.greenLight,
+                        border = BorderStroke(0.6.dp, colors.green.copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = colors.green,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Active Set Protected",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.green,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Active Paper Metadata Banner
                     Surface(
@@ -315,19 +318,21 @@ fun CreatorTab(
                                     Text("Scan OMR", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
 
+                                val masterBtnBg = if (FeatureToggles.ENABLE_CAMERA_NOTES_SCANNER) colors.navyBanner else colors.primaryButtonBg
+                                val masterBtnFg = if (FeatureToggles.ENABLE_CAMERA_NOTES_SCANNER) colors.navyBannerText else colors.primaryButtonText
                                 Button(
                                     onClick = onNavigateToMaster,
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (FeatureToggles.ENABLE_CAMERA_NOTES_SCANNER) colors.navyBanner else colors.primaryButtonBg,
-                                        contentColor = colors.primaryButtonText
+                                        containerColor = masterBtnBg,
+                                        contentColor = masterBtnFg
                                     ),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                                    modifier = Modifier.heightIn(min = 38.dp)
+                                    modifier = Modifier.heightIn(min = 40.dp)
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
+                                    Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, modifier = Modifier.size(15.dp), tint = masterBtnFg)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Master View", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = colors.primaryButtonText)
+                                    Text("Master View", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, color = masterBtnFg)
                                 }
 
                                 OutlinedButton(
@@ -383,55 +388,59 @@ fun CreatorTab(
                     colors = CardDefaults.cardColors(containerColor = colors.surface),
                     border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.4f))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = colors.teal.copy(alpha = 0.12f),
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.CameraAlt,
-                                            contentDescription = null,
-                                            tint = colors.teal,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Scan Handwritten Notes",
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold
-                                    )
-                                    Text(
-                                        text = "On-device AI / OCR document recognition",
-                                        fontSize = 11.5.sp,
-                                        color = colors.inkMuted
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = colors.teal.copy(alpha = 0.12f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        tint = colors.teal,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = colors.greenLight,
-                                border = BorderStroke(0.5.dp, colors.green.copy(alpha = 0.5f))
-                            ) {
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Offline OCR",
-                                    fontSize = 10.5.sp,
+                                    text = "Scan Handwritten Notes",
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.green,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                    color = colors.inkBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "On-device AI / OCR document recognition",
+                                    fontSize = 11.5.sp,
+                                    color = colors.inkMuted
                                 )
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colors.greenLight,
+                            border = BorderStroke(0.5.dp, colors.green.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "Offline OCR",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.green,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -864,22 +873,18 @@ fun CreatorTab(
                             Text("Export Paper", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.ink, maxLines = 1)
                         }
 
-                        // 3. Batch Export All
+                        // 3. Batch Export All (streams directly to file & share sheet — avoids Binder clipboard limit)
                         OutlinedButton(
                             onClick = {
-                                val json = viewModel.exportAllPapersAsJson()
-                                if (!json.isNullOrBlank()) {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("All ExamSets JSON", json)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Exported ${savedPapers.size} papers to clipboard!", Toast.LENGTH_SHORT).show()
+                                if (savedPapers.isNotEmpty()) {
+                                    viewModel.shareAllPapersAsJsonFile(context)
                                 } else {
                                     Toast.makeText(context, "No saved papers to export.", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.heightIn(min = 36.dp)
+                            modifier = Modifier.heightIn(min = 40.dp)
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.green)
                             Spacer(modifier = Modifier.width(5.dp))

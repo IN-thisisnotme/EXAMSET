@@ -675,10 +675,10 @@ fun FolderManagerTab(
                                             leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                             onClick = {
                                                 showFolderExportMenu = false
-                                                val json = viewModel.exportAllPapersAsJson()
-                                                if (!json.isNullOrBlank()) {
-                                                    triggerShare(json, "ExamSet Library Backup (${savedPapers.size} Sets)")
-                                                }
+                                                viewModel.shareAllPapersAsJsonFile(
+                                                    context = context,
+                                                    customTitle = "ExamSet Library Backup (${savedPapers.size} Sets)"
+                                                )
                                             }
                                         )
                                         DropdownMenuItem(
@@ -686,10 +686,10 @@ fun FolderManagerTab(
                                             leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(15.dp)) },
                                             onClick = {
                                                 showFolderExportMenu = false
-                                                val txt = viewModel.exportPapersAsFormattedText()
-                                                if (!txt.isNullOrBlank()) {
-                                                    triggerShare(txt, "ExamSet Library Summary (${savedPapers.size} Sets)")
-                                                }
+                                                viewModel.shareAllPapersAsTextFile(
+                                                    context = context,
+                                                    customTitle = "ExamSet Library Summary (${savedPapers.size} Sets)"
+                                                )
                                             }
                                         )
                                     }

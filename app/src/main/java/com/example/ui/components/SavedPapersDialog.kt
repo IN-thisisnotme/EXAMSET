@@ -600,14 +600,11 @@ fun SavedPapersDialog(
                                 leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                 onClick = {
                                     showExportMenu = false
-                                    val json = if (isSubset) {
-                                        viewModel.exportSelectedPapersAsJson(selectedIds)
-                                    } else {
-                                        viewModel.exportAllPapersAsJson()
-                                    }
-                                    if (!json.isNullOrBlank()) {
-                                        triggerShare(json, "ExamSet ($count Questions Sets)")
-                                    }
+                                    viewModel.shareAllPapersAsJsonFile(
+                                        context = context,
+                                        selectedPaperIds = if (isSubset) selectedIds.toSet() else null,
+                                        customTitle = "ExamSet ($count Question Sets)"
+                                    )
                                 }
                             )
                         }

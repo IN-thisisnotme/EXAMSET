@@ -12,12 +12,17 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,6 +66,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ShareSystemTab(
     viewModel: MainViewModel,
@@ -81,7 +87,7 @@ fun ShareSystemTab(
     var pendingExportData by remember { mutableStateOf<String?>(null) }
     var pendingExportMimeType by remember { mutableStateOf("application/json") }
 
-    // Storage Access Framework launcher to save file directly to device File Manager
+    // Storage Access Framework launcher to save single/small files directly to device File Manager
     val createDocLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(pendingExportMimeType)
     ) { uri: Uri? ->
@@ -94,6 +100,23 @@ fun ShareSystemTab(
             } catch (e: Exception) {
                 Toast.makeText(context, "Failed to write file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    // Memory-safe streaming SAF launchers for bulk library JSON & TXT export
+    val exportAllJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.exportAllPapersToUriAsJson(uri)
+        }
+    }
+
+    val exportAllTxtLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.exportAllPapersToUriAsText(uri)
         }
     }
 
@@ -203,12 +226,15 @@ fun ShareSystemTab(
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        ) {
                             Icon(Icons.Default.Inventory2, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
@@ -219,12 +245,22 @@ fun ShareSystemTab(
                                 letterSpacing = 0.5.sp
                             )
                         }
-                        Text(
-                            text = "${savedPapers.size} Saved Sets",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.teal
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.tealLight,
+                            border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.35f)),
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        ) {
+                            Text(
+                                text = "${savedPapers.size} Saved Sets",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -239,60 +275,67 @@ fun ShareSystemTab(
                     if (savedPapers.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Max),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Export All as JSON File
+                                // Export All as JSON File (streaming on IO thread — safe for 2,000+ questions)
                                 Button(
                                     onClick = {
-                                        val json = viewModel.exportAllPapersAsJson()
-                                        if (!json.isNullOrBlank()) {
-                                            triggerExportToFile(json, "examset_all_${savedPapers.size}_papers.json", "application/json")
-                                        }
+                                        exportAllJsonLauncher.launch("examset_all_${savedPapers.size}_papers.json")
                                     },
                                     shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = Color(0xFF2563EB),
                                         contentColor = Color.White
                                     ),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .heightIn(min = 48.dp)
                                 ) {
                                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Save as JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Save as JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2)
                                 }
 
-                                // Export All as Text File
+                                // Export All as Text File (streaming on IO thread)
                                 Button(
                                     onClick = {
-                                        val textData = viewModel.exportPapersAsFormattedText()
-                                        if (!textData.isNullOrBlank()) {
-                                            triggerExportToFile(textData, "examset_all_${savedPapers.size}_papers.txt", "text/plain")
-                                        }
+                                        exportAllTxtLauncher.launch("examset_all_${savedPapers.size}_papers.txt")
                                     },
                                     shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = colors.navyBanner,
                                         contentColor = colors.navyBannerText
                                     ),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .heightIn(min = 48.dp)
                                 ) {
                                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Save as TXT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Save as TXT", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2)
                                 }
                             }
 
-                            // Share All via Android Apps
+                            // Share All via Android Apps (streaming on IO thread -> FileProvider URI + ClipData)
                             OutlinedButton(
                                 onClick = {
-                                    val json = viewModel.exportAllPapersAsJson()
-                                    if (!json.isNullOrBlank()) {
-                                        triggerShare(json, "ExamSet Backup (${savedPapers.size} Question Sets)")
-                                    }
+                                    viewModel.shareAllPapersAsJsonFile(
+                                        context = context,
+                                        customTitle = "ExamSet Backup (${savedPapers.size} Question Sets)"
+                                    )
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.teal)
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -345,10 +388,10 @@ fun ShareSystemTab(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Core Identifier Badges
-                        Row(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -412,9 +455,10 @@ fun ShareSystemTab(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        Row(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             // Copy JSON
                             Button(
@@ -428,11 +472,12 @@ fun ShareSystemTab(
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (copiedJson) Color(0xFF059669) else Color(0xFF2563EB),
                                     contentColor = Color.White
                                 ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Icon(
                                     if (copiedJson) Icons.Default.Check else Icons.Default.ContentCopy,
@@ -440,7 +485,13 @@ fun ShareSystemTab(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (copiedJson) "Copied!" else "Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (copiedJson) "Copied!" else "Copy JSON",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
 
                             // Save Active to File
@@ -453,15 +504,22 @@ fun ShareSystemTab(
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = colors.primaryButtonBg,
                                     contentColor = colors.primaryButtonText
                                 ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Save File", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "Save File",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
 
                             // Share via Apps
@@ -473,11 +531,18 @@ fun ShareSystemTab(
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "Share",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     } else {
@@ -499,17 +564,18 @@ fun ShareSystemTab(
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "CONCURRENT BATCH IMPORT",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkMuted,
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.align(Alignment.CenterVertically)
                         )
 
                         OutlinedButton(
@@ -518,11 +584,13 @@ fun ShareSystemTab(
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
+                            modifier = Modifier
+                                .align(Alignment.CenterVertically)
+                                .heightIn(min = 40.dp)
                         ) {
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Pick Files", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Pick Files", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
                     }
 
@@ -577,7 +645,9 @@ fun ShareSystemTab(
                             containerColor = Color(0xFF059669),
                             contentColor = Color.White
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -611,9 +681,10 @@ fun ShareSystemTab(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
                             onClick = {
@@ -625,19 +696,26 @@ fun ShareSystemTab(
                                 Toast.makeText(context, "Copied OMR Manifest CSV to clipboard!", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (copiedManifest) Color(0xFF059669) else Color(0xFF0284C7),
                                 contentColor = Color.White
                             ),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Icon(
                                 if (copiedManifest) Icons.Default.Check else Icons.Default.ContentCopy,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (copiedManifest) "Copied CSV!" else "Copy CSV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (copiedManifest) "Copied CSV!" else "Copy CSV",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
                         Button(
@@ -646,15 +724,22 @@ fun ShareSystemTab(
                                 triggerExportToFile(csv, "omr_candidate_manifest.csv", "text/csv")
                             },
                             shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF059669),
                                 contentColor = Color.White
                             ),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save CSV", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Save CSV",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
                         OutlinedButton(
@@ -663,11 +748,18 @@ fun ShareSystemTab(
                                 triggerShare(csv, "OMR Candidate Manifest CSV")
                             },
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Share",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -682,28 +774,32 @@ fun ShareSystemTab(
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "PSYCHOMETRIC & ITEM ANALYSIS (CTT)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.align(Alignment.CenterVertically)
                         )
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = colors.badgeSuccessBg
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.badgeSuccessBg,
+                            modifier = Modifier.align(Alignment.CenterVertically)
                         ) {
                             Text(
                                 text = "CALIBRATION READY",
-                                fontSize = 9.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.badgeSuccessText,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                             )
                         }
                     }
@@ -724,7 +820,9 @@ fun ShareSystemTab(
                             containerColor = Color(0xFF0284C7),
                             contentColor = Color.White
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -733,10 +831,10 @@ fun ShareSystemTab(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
@@ -744,19 +842,17 @@ fun ShareSystemTab(
                                 triggerExportToFile(csv, "item_psychometrics_report.csv", "text/csv")
                             },
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = "Item CSV",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
 
@@ -766,19 +862,17 @@ fun ShareSystemTab(
                                 triggerExportToFile(csv, "student_scorecards_roster.csv", "text/csv")
                             },
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = "Roster CSV",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
 
@@ -788,19 +882,17 @@ fun ShareSystemTab(
                                 triggerExportToFile(cardsText, "candidate_report_cards.txt", "text/plain")
                             },
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = "Report Cards",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
                     }
