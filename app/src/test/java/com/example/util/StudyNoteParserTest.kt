@@ -584,4 +584,19 @@ class StudyNoteParserTest {
             assertTrue("Expected >= 2 parsed cards for $style, got ${studyCards.size}", studyCards.size >= 2)
         }
     }
+
+    @Test
+    fun `parseBlocks strips unmatched bold asterisks from Callout label and body`() {
+        val raw = """
+            ## Weak-Area Remediation: Civil Core
+            > **Review Identification:** Roll No: `1234` • Series: `Set A`
+            > **Diagnostic Summary:** 0 Incorrect • 2 Skipped
+        """.trimIndent()
+        val callout = StudyNoteParser.parseBlocks(raw)
+            .filterIsInstance<StudyNoteBlock.Callout>()
+            .firstOrNull()
+        assertEquals("Review Identification", callout?.label)
+        assertTrue(callout?.body?.startsWith("Roll No:") == true)
+        assertTrue(callout?.body?.startsWith("*") != true)
+    }
 }

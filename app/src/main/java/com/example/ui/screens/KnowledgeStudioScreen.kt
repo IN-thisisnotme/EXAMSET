@@ -241,7 +241,9 @@ fun KnowledgeStudioEditorScreen(
     var activeEditorTab by remember(draft) { mutableIntStateOf(0) } // 0: Paste / Input, 1: AI Prompt Generator
     var promptCopied by remember(draft) { mutableStateOf(false) }
     var showMetadataPanel by remember(draft) { mutableStateOf(false) }
-    var isPreviewMode by remember(draft) { mutableStateOf(false) }
+    var isPreviewMode by remember(draft) {
+        mutableStateOf((initialNote?.rawContent ?: draft.prefillContent).isNotBlank())
+    }
     var showFolderDropdown by remember { mutableStateOf(false) }
     var showLinkedPaperDropdown by remember { mutableStateOf(false) }
 
@@ -342,37 +344,15 @@ fun KnowledgeStudioEditorScreen(
                             Text(
                                 text = if (rawContent.isBlank()) {
                                     "Paste notes, format layers, or build AI prompt"
+                                } else if (factCount > 0) {
+                                    "$factCount ${if (factCount == 1) "item" else "items"}"
                                 } else {
-                                    "$factCount items • $structuralCount headings/tables"
+                                    "$structuralCount ${if (structuralCount == 1) "section" else "sections"}"
                                 },
                                 fontSize = 11.5.sp,
                                 color = if (rawContent.isBlank()) colors.muted else colors.tealDark,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                                if (clip.isNotBlank()) {
-                                    switchToInputTab()
-                                    rawContent = clip
-                                    showMetadataPanel = false
-                                    Toast.makeText(context, "Pasted notes from clipboard", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .testTag("knowledge_paste_clipboard_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentPaste,
-                                contentDescription = "Paste from clipboard",
-                                tint = colors.teal
                             )
                         }
                     }
@@ -872,6 +852,7 @@ fun KnowledgeStudioEditorScreen(
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            val previewCount = if (factCount > 0) factCount else parsedBlocks.size
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -885,86 +866,94 @@ fun KnowledgeStudioEditorScreen(
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = colors.navyBanner,
                                             selectedLabelColor = colors.navyBannerText
-                                        )
+                                        ),
+                                        modifier = Modifier.testTag("knowledge_editor_write_mode_chip")
                                     )
                                     FilterChip(
                                         selected = isPreviewMode,
                                         onClick = { isPreviewMode = true },
-                                        label = { Text("Preview (${parsedBlocks.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                                        label = { Text("Preview ($previewCount)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = colors.tealLight,
                                             selectedLabelColor = colors.tealDark
-                                        )
+                                        ),
+                                        modifier = Modifier.testTag("knowledge_editor_preview_mode_chip")
                                     )
                                 }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (previousContentBeforeTransform != null) {
+                                if (!isPreviewMode) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        if (previousContentBeforeTransform != null) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    rawContent = previousContentBeforeTransform!!
+                                                    previousContentBeforeTransform = null
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.heightIn(min = 38.dp)
+                                            ) {
+                                                Icon(Icons.Default.Undo, contentDescription = "Undo transform", modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Undo", fontSize = 11.sp)
+                                            }
+                                        }
                                         OutlinedButton(
                                             onClick = {
-                                                rawContent = previousContentBeforeTransform!!
-                                                previousContentBeforeTransform = null
+                                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                                val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                                if (clip.isNotBlank()) {
+                                                    rawContent = clip
+                                                    showMetadataPanel = false
+                                                } else {
+                                                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                                }
                                             },
                                             shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.heightIn(min = 38.dp)
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .heightIn(min = 38.dp)
+                                                .testTag("knowledge_paste_clipboard_button")
                                         ) {
-                                            Icon(Icons.Default.Undo, contentDescription = "Undo transform", modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard", modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Undo", fontSize = 11.sp)
+                                            Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                                         }
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                            val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                                            if (clip.isNotBlank()) {
-                                                rawContent = clip
-                                                showMetadataPanel = false
-                                            } else {
-                                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        modifier = Modifier.heightIn(min = 38.dp)
-                                    ) {
-                                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard", modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
                             }
 
-                            // 1-Tap Transform Chips (handles backwards ChatGPT layers, chatter, multi-liner nesting)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                KnowledgeTransformAction.entries.forEach { action ->
-                                    Surface(
-                                        onClick = {
-                                            if (rawContent.isNotBlank()) {
-                                                previousContentBeforeTransform = rawContent
-                                                rawContent = StudyNoteParser.applyTransform(rawContent, action)
-                                                Toast.makeText(context, "Applied: ${action.label}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = colors.blueLight,
-                                        border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.35f)),
-                                        modifier = Modifier.heightIn(min = 34.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                            // 1-Tap Transform Chips (shown only in Write & Paste mode)
+                            AnimatedVisibility(visible = !isPreviewMode) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    KnowledgeTransformAction.entries.forEach { action ->
+                                        Surface(
+                                            onClick = {
+                                                if (rawContent.isNotBlank()) {
+                                                    previousContentBeforeTransform = rawContent
+                                                    rawContent = StudyNoteParser.applyTransform(rawContent, action)
+                                                    Toast.makeText(context, "Applied: ${action.label}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = colors.blueLight,
+                                            border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.35f)),
+                                            modifier = Modifier.heightIn(min = 34.dp)
                                         ) {
-                                            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.teal, modifier = Modifier.size(13.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(action.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.teal, modifier = Modifier.size(13.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(action.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                            }
                                         }
                                     }
                                 }
@@ -1027,7 +1016,7 @@ fun KnowledgeStudioEditorScreen(
                                                 flipPair = false,
                                                 isExpanded = true,
                                                 onReveal = {},
-                                                onToggleExpand = {},
+                                                onToggleExpand = null,
                                                 onToggleStar = null,
                                                 onToggleMastered = null
                                             )
@@ -2211,7 +2200,7 @@ fun KnowledgeBlockItemView(
     isExpanded: Boolean,
     onReveal: () -> Unit,
     onHide: (() -> Unit)? = null,
-    onToggleExpand: () -> Unit,
+    onToggleExpand: (() -> Unit)? = null,
     onToggleStar: (() -> Unit)?,
     onToggleMastered: (() -> Unit)?
 ) {
@@ -2399,7 +2388,7 @@ fun KnowledgeBlockItemView(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onToggleExpand() },
+                            .then(if (onToggleExpand != null) Modifier.clickable { onToggleExpand() } else Modifier),
                         verticalAlignment = Alignment.Top
                     ) {
                         Surface(
@@ -2467,23 +2456,25 @@ fun KnowledgeBlockItemView(
                                             )
                                         }
                                     }
-                                    val answerWordCount = remember(block) {
-                                        val combined = buildString {
-                                            block.paragraphs.forEach { append(it).append(' ') }
-                                            block.nestedBullets.forEach { append(it.second).append(' ') }
-                                            append(block.keyTakeaway)
-                                        }.trim()
-                                        if (combined.isBlank()) 0 else combined.split(Regex("""\s+""")).size
-                                    }
-                                    if (answerWordCount >= 80) {
-                                        Surface(shape = RoundedCornerShape(5.dp), color = colors.surfaceVariant) {
-                                            Text(
-                                                text = "~$answerWordCount words",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = colors.inkMuted,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                                    if (!block.isQuestionCard && block.optionsList.isEmpty()) {
+                                        val answerWordCount = remember(block) {
+                                            val combined = buildString {
+                                                block.paragraphs.forEach { append(it).append(' ') }
+                                                block.nestedBullets.forEach { append(it.second).append(' ') }
+                                                append(block.keyTakeaway)
+                                            }.trim()
+                                            if (combined.isBlank()) 0 else combined.split(Regex("""\s+""")).size
+                                        }
+                                        if (answerWordCount >= 120) {
+                                            Surface(shape = RoundedCornerShape(5.dp), color = colors.surfaceVariant) {
+                                                Text(
+                                                    text = "~$answerWordCount words",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = colors.inkMuted,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2534,12 +2525,14 @@ fun KnowledgeBlockItemView(
                                 }
                             }
                         }
-                        IconButton(onClick = onToggleExpand, modifier = Modifier.size(48.dp)) {
-                            Icon(
-                                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = if (isExpanded) "Collapse card" else "Expand card",
-                                tint = colors.inkMuted
-                            )
+                        if (onToggleExpand != null) {
+                            IconButton(onClick = onToggleExpand, modifier = Modifier.size(48.dp)) {
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = if (isExpanded) "Collapse card" else "Expand card",
+                                    tint = colors.inkMuted
+                                )
+                            }
                         }
                     }
 

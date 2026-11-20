@@ -153,13 +153,16 @@ object StudyNoteParser {
                 }
                 val joined = calloutLines.joinToString("\n")
                 val splitColon = joined.split(":", limit = 2)
-                val label = if (splitColon.size == 2 && cleanMarkdownDecorators(splitColon[0]).length <= 28) {
-                    cleanMarkdownDecorators(splitColon[0])
-                } else {
-                    "Key Insight"
-                }
-                val body = if (splitColon.size == 2 && cleanMarkdownDecorators(splitColon[0]).length <= 28) {
-                    splitColon[1].trim()
+                val rawPrefixCleaned = splitColon[0]
+                    .replace(Regex("""^\s*[*_`]+|[*_`]+\s*$"""), "")
+                    .trim()
+                val candidateLabel = cleanMarkdownDecorators(rawPrefixCleaned)
+                val hasLabel = splitColon.size == 2 && candidateLabel.isNotBlank() && candidateLabel.length <= 28
+                val label = if (hasLabel) candidateLabel else "Key Insight"
+                val body = if (hasLabel) {
+                    splitColon[1]
+                        .replace(Regex("""^\s*[*_]{1,3}\s*"""), "")
+                        .trim()
                 } else {
                     joined.trim()
                 }

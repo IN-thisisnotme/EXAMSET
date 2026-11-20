@@ -172,4 +172,55 @@ class KnowledgeStudioScreenTest {
         // Because card 2 was rated Again, it stays in the current session queue for re-testing!
         composeTestRule.onNodeWithTag("flashcard_reveal_button").assertIsDisplayed()
     }
+
+    @Test
+    fun knowledgeStudioEditor_existingNoteDefaultsToPreviewWithItemCountAndHidesEditClutter() {
+        val existingNote = com.example.data.StudyNoteEntity(
+            id = 77L,
+            title = "Weak Areas: Civil Engineering",
+            subject = "Civil Engineering",
+            collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW.code,
+            rawContent = """
+                ## Weak-Area Remediation: Civil Core
+                > **Review Identification:** Roll No: `101` • Attempt #1
+
+                1. **Q1: What is the bending moment at midspan of a simply supported beam under UDL?**
+                  - (A) wL^2/4
+                  - (B) wL^2/8
+                  - Correct Answer: (B) wL^2/8
+
+                2. **Q2: Which parameter equals unity in saturated undrained clay?**
+                  - (A) Skempton B = 1
+                  - (B) Skempton B = 0
+                  - Correct Answer: (A) Skempton B = 1
+            """.trimIndent()
+        )
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                KnowledgeStudioEditorScreen(
+                    draft = KnowledgeEditorDraft(note = existingNote),
+                    folders = emptyList(),
+                    savedPapers = emptyList(),
+                    onSave = { _, _, _, _, _, _, _, _, _, _ -> },
+                    onDismiss = {}
+                )
+            }
+        }
+
+        // Opens in Preview by default with actual item count (2), not 4 (heading+callout+2 items)
+        composeTestRule.onNodeWithText("2 items").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Preview (2)").assertIsDisplayed()
+        // Raw editing Paste button & text field are hidden in Preview mode
+        composeTestRule.onNodeWithTag("knowledge_paste_clipboard_button").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("study_note_content_input").assertDoesNotExist()
+        // Callout renders clean label without stray ** asterisks
+        composeTestRule.onNodeWithText("Review Identification").assertIsDisplayed()
+
+        // Switching to Write & Paste reveals raw input and Paste tool
+        composeTestRule.onNodeWithTag("knowledge_editor_write_mode_chip").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("study_note_content_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_paste_clipboard_button").assertIsDisplayed()
+    }
 }
