@@ -216,7 +216,7 @@ class VocabularyPromptState {
                 appendLine("---")
             } else {
                 appendLine("### OUTPUT FORMAT: STRICT JSON ARRAY (ZERO-DRIFT SCHEMA)")
-                appendLine("Return ONLY a valid JSON array starting with `[` and ending with `]` (no markdown fences or commentary outside JSON).")
+                appendLine("Return ONLY a valid JSON array inside a single ```json code block starting with `[` and ending with `]` (no extra commentary outside the code block).")
                 appendLine("Every object MUST use this exact schema:")
                 appendLine("[")
                 appendLine("  {")

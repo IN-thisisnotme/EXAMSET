@@ -352,4 +352,84 @@ class VocabularyEngineTest {
         assertEquals("Japanese", preset.vocabularyConfig?.language)
         assertEquals("JLPT N3", preset.vocabularyConfig?.customLevelLabel)
     }
+
+    @Test
+    fun parseVocabularyInput_handlesTruncatedTailMissingOuterBracketsTrailingCommasAndSmartQuotes() {
+        val messyChatGptOutput = """
+            ```json
+            [
+              {
+                "word": "aberration",
+                "pronunciation": "/ˌæb.əˈreɪ.ʃən/",
+                "partOfSpeech": "noun",
+                "level": "C2",
+                "meaning": "A departure from what is normal, usual, or expected.",
+                "translation": "अपवाद; असामान्य विचलन",
+                "examples": [
+                  {
+                    "context": "Academic",
+                    "sentence": "Researchers questioned whether the result was a genuine discovery or merely an aberration.",
+                    "translation": "शोधकर्ताओं ने सवाल उठाया कि परिणाम वास्तविक खोज था या केवल एक असामान्य विचलन।"
+                  },
+                ],
+                "synonyms": ["anomaly", "deviation",],
+                "usageNote": "Often implies a temporary deviation.",
+              },
+              {
+                "word": "incongruous",
+                "pronunciation": "/ɪnˈkɒŋɡruəs/",
+                "partOfSpeech": "adjective",
+                "level": "C2",
+                "meaning": "Not in harmony or agreement with the surrounding circumstances.",
+                "translation": "बेमेल; असंगत",
+                "examples": [
+                  {
+                    "context": "Everyday",
+                    "sentence": "His bright red shoes looked incongruous with the formal outfit.",
+                    "translation": "उसके चमकीले लाल जूते औपचारिक पहनावे के साथ बेमेल लग रहे थे।"
+                  }
+                ],
+                "synonyms": ["incompatible", "discordant"],
+                "antonyms": ["consistent", "harmonious"],
+                "collocations": ["incongruous combination"],
+                "usageNote": "Highlights a mismatch between things."
+              },
+              {
+                "word": "ubiquitous",
+                "meaning": "Present everywhere"
+        """.trimIndent()
+
+        val result = VocabularyEngine.parseVocabularyInput(messyChatGptOutput)
+        assertEquals(VocabularyInputFormat.JSON, result.detectedFormat)
+        assertEquals(2, result.entries.size)
+        assertEquals(listOf("aberration", "incongruous"), result.entries.map { it.word })
+        assertEquals("अपवाद; असामान्य विचलन", result.entries[0].translation)
+        assertEquals(1, result.entries[0].examples.size)
+        assertTrue(result.warnings.any { it.contains("Recovered 2 entries") })
+
+        // Also verify missing outer [ ] with smart quotes and trailing commentary containing brackets [1]
+        val noBracketsWithSmartQuotes = """
+            “word”: “ephemeral”,
+            “meaning”: “Lasting for a very short time.”,
+            “examples”: [{“context”: “Academic”, “sentence”: “Trends are ephemeral.”}]
+            }
+            {
+            “word”: “lucid”,
+            “meaning”: “Expressed clearly.”
+            }
+            [Note: Generated 2 words]
+        """.trimIndent()
+        val wrappedObjects = "{\n$noBracketsWithSmartQuotes"
+        val res2 = VocabularyEngine.parseVocabularyInput(wrappedObjects)
+        assertEquals(VocabularyInputFormat.JSON, res2.detectedFormat)
+        assertEquals(listOf("ephemeral", "lucid"), res2.entries.map { it.word })
+
+        // Verify broken JSON with zero recoverable entries gives a JSON-specific diagnostic
+        val brokenJson = "[{\"word\": \"incomplete\", \"meaning\":"
+        val res3 = VocabularyEngine.parseVocabularyInput(brokenJson)
+        assertTrue(res3.entries.isEmpty())
+        assertEquals(VocabularyInputFormat.JSON, res3.detectedFormat)
+        assertTrue(res3.warnings.first().contains("Detected JSON format"))
+    }
 }
+

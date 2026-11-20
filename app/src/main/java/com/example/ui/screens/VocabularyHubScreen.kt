@@ -3,8 +3,10 @@ package com.example.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,7 +82,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.FlashcardSrsState
 import com.example.model.FlashcardSrsStatus
@@ -150,9 +151,16 @@ fun VocabularyHubDialog(
         activeDeckId?.let { id -> decks.firstOrNull { it.id == id } }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+            .testTag("vocabulary_hub_screen")
     ) {
         BackHandler {
             if (activeDeck != null) {
@@ -168,7 +176,6 @@ fun VocabularyHubDialog(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .testTag("vocabulary_hub_screen")
         ) {
             if (activeDeck != null) {
                 VocabularyDeckDetailView(
@@ -211,32 +218,32 @@ fun VocabularyHubDialog(
                 )
             }
         }
-    }
 
-    if (showImportDialog) {
-        VocabularyImportDialog(
-            targetDeck = importTargetDeck,
-            allDecks = decks,
-            initialLanguage = if (selectedLanguage == "All") "English" else selectedLanguage,
-            initialLevelCode = if (selectedLevelCode == "ALL") VocabularyLevel.INTERMEDIATE.code else selectedLevelCode,
-            onDismiss = {
-                showImportDialog = false
-                importTargetDeck = null
-            },
-            onCommitImport = { targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions ->
-                onCommitImport(targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions)
-            }
-        )
-    }
+        if (showImportDialog) {
+            VocabularyImportDialog(
+                targetDeck = importTargetDeck,
+                allDecks = decks,
+                initialLanguage = if (selectedLanguage == "All") "English" else selectedLanguage,
+                initialLevelCode = if (selectedLevelCode == "ALL") VocabularyLevel.INTERMEDIATE.code else selectedLevelCode,
+                onDismiss = {
+                    showImportDialog = false
+                    importTargetDeck = null
+                },
+                onCommitImport = { targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions ->
+                    onCommitImport(targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions)
+                }
+            )
+        }
 
-    auditTargetDeck?.let { target ->
-        VocabularyAuditHubDialog(
-            deck = target,
-            onDismiss = { auditTargetDeck = null },
-            onApplyAuditFixes = { findings ->
-                onApplyAuditFixes(target.id, findings)
-            }
-        )
+        auditTargetDeck?.let { target ->
+            VocabularyAuditHubDialog(
+                deck = target,
+                onDismiss = { auditTargetDeck = null },
+                onApplyAuditFixes = { findings ->
+                    onApplyAuditFixes(target.id, findings)
+                }
+            )
+        }
     }
 
     renameTargetDeck?.let { target ->

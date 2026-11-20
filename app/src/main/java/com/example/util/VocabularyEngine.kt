@@ -173,22 +173,58 @@ object VocabularyEngine {
             return textResult
         }
 
+        val jsonWarning = jsonAttempt?.warnings?.firstOrNull()
         return VocabularyParseResult(
             entries = emptyList(),
-            detectedFormat = VocabularyInputFormat.UNKNOWN,
-            warnings = listOf("Could not detect structured vocabulary entries. Use JSON or labeled blocks (WORD:, MEANING:, EXAMPLES:).")
+            detectedFormat = jsonAttempt?.detectedFormat ?: VocabularyInputFormat.UNKNOWN,
+            warnings = listOf(
+                jsonWarning
+                    ?: "Could not detect structured vocabulary entries. Use JSON or labeled blocks (WORD:, MEANING:, EXAMPLES:)."
+            )
         )
     }
 
+    private fun normalizeClipboardArtifacts(raw: String): String {
+        return raw
+            .replace("\uFEFF", "")
+            .replace("\u200B", "")
+            .replace("\u200C", "")
+            .replace("\u200D", "")
+            .replace("\u2060", "")
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+    }
+
     private fun stripOuterCodeFences(raw: String): String {
-        val trimmed = raw.trim()
+        val trimmed = normalizeClipboardArtifacts(raw).trim()
         val fencedRegex = Regex("```(?:json|text|markdown|md)?\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE)
-        val match = fencedRegex.find(trimmed)
-        return if (match != null && match.groupValues[1].trim().isNotBlank()) {
-            match.groupValues[1].trim()
-        } else {
-            trimmed
+        val matches = fencedRegex.findAll(trimmed).mapNotNull { m ->
+            m.groupValues[1].trim().takeIf { it.isNotBlank() }
+        }.toList()
+        if (matches.isNotEmpty()) {
+            return matches.firstOrNull { block ->
+                block.contains("\"word\"", ignoreCase = true) ||
+                    block.contains("\"meaning\"", ignoreCase = true) ||
+                    block.contains("WORD:", ignoreCase = true)
+            } ?: matches.maxByOrNull { it.length }.orEmpty()
         }
+        // Also strip an unclosed leading fence (e.g., truncated ChatGPT output starting with ```json)
+        val unclosedStart = Regex("^```(?:json|text|markdown|md)?\\s*", RegexOption.IGNORE_CASE)
+        if (unclosedStart.containsMatchIn(trimmed)) {
+            return trimmed
+                .replaceFirst(unclosedStart, "")
+                .removeSuffix("```")
+                .trim()
+        }
+        return trimmed
+    }
+
+    private fun looksLikeVocabularyJson(cleaned: String): Boolean {
+        val t = cleaned.trimStart()
+        if (t.startsWith("[") || t.startsWith("{")) return true
+        val hasJsonKeys = Regex("\"(?:word|term|headword|meaning|definition|examples|translation|synonyms)\"\\s*:")
+            .containsMatchIn(cleaned)
+        return hasJsonKeys || (cleaned.contains("{") && cleaned.contains("\":"))
     }
 
     private fun tryParseJsonVocabulary(
@@ -196,35 +232,250 @@ object VocabularyEngine {
         defaultLevelCode: String,
         defaultCustomLevelLabel: String
     ): VocabularyParseResult? {
-        val arrayCandidate = extractJsonArrayString(cleaned) ?: return null
-        return runCatching {
-            val arr = JSONArray(arrayCandidate)
-            val entries = mutableListOf<VocabularyEntry>()
-            val warnings = mutableListOf<String>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val parsed = parseJsonEntryObject(obj, defaultLevelCode, defaultCustomLevelLabel)
-                if (parsed != null) {
-                    entries.add(parsed)
-                } else {
-                    warnings.add("Skipped JSON item #${i + 1} because word or meaning was missing.")
+        val looksJson = looksLikeVocabularyJson(cleaned)
+        var lastJsonError: String? = null
+
+        val arrayCandidate = extractJsonArrayString(cleaned)
+        if (arrayCandidate != null) {
+            val candidates = buildJsonSanitizedCandidates(arrayCandidate)
+            for (candidate in candidates) {
+                val parsed = runCatching {
+                    val arr = JSONArray(candidate)
+                    val entries = mutableListOf<VocabularyEntry>()
+                    val warnings = mutableListOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.optJSONObject(i) ?: continue
+                        val entry = parseJsonEntryObject(obj, defaultLevelCode, defaultCustomLevelLabel)
+                        if (entry != null) {
+                            entries.add(entry)
+                        } else {
+                            warnings.add("Skipped JSON item #${i + 1} because word or meaning was missing.")
+                        }
+                    }
+                    VocabularyParseResult(
+                        entries = entries,
+                        detectedFormat = VocabularyInputFormat.JSON,
+                        warnings = warnings
+                    )
+                }.onFailure { err ->
+                    if (lastJsonError == null) lastJsonError = err.message
+                }.getOrNull()
+
+                if (parsed != null && parsed.entries.isNotEmpty()) {
+                    return parsed
                 }
             }
-            VocabularyParseResult(
-                entries = entries,
+        }
+
+        // Salvage pass: recover individual complete {...} vocabulary objects even when outer [ ]
+        // is missing, trailing text contains brackets, the tail is truncated, or 1 entry is malformed.
+        if (looksJson) {
+            for (candidateText in buildJsonSanitizedCandidates(cleaned)) {
+                val salvaged = salvageJsonObjects(candidateText, defaultLevelCode, defaultCustomLevelLabel)
+                if (salvaged.entries.isNotEmpty()) {
+                    return salvaged
+                }
+            }
+            val reason = lastJsonError?.let { " (${it.take(120)})" }.orEmpty()
+            return VocabularyParseResult(
+                entries = emptyList(),
                 detectedFormat = VocabularyInputFormat.JSON,
-                warnings = warnings
+                warnings = listOf(
+                    "Detected JSON format, but could not parse valid vocabulary entries$reason. " +
+                        "Ensure at least one complete {\"word\": ..., \"meaning\": ...} object is present."
+                )
             )
-        }.getOrNull()
+        }
+
+        return null
+    }
+
+    private fun buildJsonSanitizedCandidates(raw: String): List<String> {
+        val out = LinkedHashSet<String>()
+        out.add(raw)
+        val noTrailingComma = stripTrailingCommasOutsideStrings(raw)
+        out.add(noTrailingComma)
+        val smartQuotesReplaced = replaceCurlyQuotes(raw)
+        if (smartQuotesReplaced != raw) {
+            out.add(smartQuotesReplaced)
+            out.add(stripTrailingCommasOutsideStrings(smartQuotesReplaced))
+        }
+        return out.toList()
+    }
+
+    private fun replaceCurlyQuotes(raw: String): String {
+        return raw
+            .replace('\u201C', '"')
+            .replace('\u201D', '"')
+            .replace('\u201E', '"')
+            .replace('\u201F', '"')
+    }
+
+    private fun stripTrailingCommasOutsideStrings(raw: String): String {
+        val sb = StringBuilder(raw.length)
+        var inString = false
+        var escaped = false
+        var i = 0
+        while (i < raw.length) {
+            val ch = raw[i]
+            if (inString) {
+                sb.append(ch)
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+            } else {
+                if (ch == '"') {
+                    inString = true
+                    sb.append(ch)
+                } else if (ch == ',') {
+                    var j = i + 1
+                    while (j < raw.length && raw[j].isWhitespace()) j++
+                    if (j < raw.length && (raw[j] == '}' || raw[j] == ']')) {
+                        // Drop trailing comma before closing } or ]
+                    } else {
+                        sb.append(ch)
+                    }
+                } else {
+                    sb.append(ch)
+                }
+            }
+            i++
+        }
+        return sb.toString()
+    }
+
+    private fun salvageJsonObjects(
+        text: String,
+        defaultLevelCode: String,
+        defaultCustomLevelLabel: String
+    ): VocabularyParseResult {
+        var scanStart = 0
+        val trimmedStart = text.trimStart()
+        if (trimmedStart.startsWith("{")) {
+            val wrapperMatch = Regex(
+                "\"(?:vocabulary|words|entries|items|cards|list|data)\"\\s*:\\s*\\[",
+                RegexOption.IGNORE_CASE
+            ).find(text)
+            if (wrapperMatch != null) {
+                scanStart = wrapperMatch.range.last + 1
+            }
+        }
+
+        val entries = mutableListOf<VocabularyEntry>()
+        var skippedMalformed = 0
+        var inString = false
+        var escaped = false
+        var braceDepth = 0
+        var objStart = -1
+
+        for (i in scanStart until text.length) {
+            val ch = text[i]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+                continue
+            }
+
+            when (ch) {
+                '"' -> inString = true
+                '{' -> {
+                    if (braceDepth == 0) objStart = i
+                    braceDepth++
+                }
+                '}' -> {
+                    if (braceDepth > 0) {
+                        braceDepth--
+                        if (braceDepth == 0 && objStart >= 0) {
+                            val objSlice = text.substring(objStart, i + 1)
+                            val parsedObj = runCatching { JSONObject(objSlice) }
+                                .recoverCatching { JSONObject(stripTrailingCommasOutsideStrings(objSlice)) }
+                                .getOrNull()
+                            if (parsedObj != null) {
+                                val entry = parseJsonEntryObject(parsedObj, defaultLevelCode, defaultCustomLevelLabel)
+                                if (entry != null) {
+                                    entries.add(entry)
+                                }
+                            } else if (objSlice.contains("\"word\"", ignoreCase = true) ||
+                                objSlice.contains("\"term\"", ignoreCase = true)
+                            ) {
+                                skippedMalformed++
+                            }
+                            objStart = -1
+                        }
+                    }
+                }
+            }
+        }
+
+        val hasUnclosedTail = braceDepth > 0 && objStart >= 0 &&
+            (text.substring(objStart).contains("\"word\"", ignoreCase = true) ||
+                text.substring(objStart).contains("\"term\"", ignoreCase = true))
+
+        val warnings = buildList {
+            if (skippedMalformed > 0 || hasUnclosedTail) {
+                val tailNote = if (hasUnclosedTail) " (1 incomplete trailing entry was skipped)" else ""
+                val errNote = if (skippedMalformed > 0) " ($skippedMalformed malformed object(s) skipped)" else ""
+                add("Recovered ${entries.size} entries$tailNote$errNote.")
+            }
+        }
+
+        return VocabularyParseResult(
+            entries = entries,
+            detectedFormat = VocabularyInputFormat.JSON,
+            warnings = warnings
+        )
+    }
+
+    private fun extractBalancedJsonArray(cleaned: String, startOffset: Int = 0): String? {
+        val openIdx = cleaned.indexOf('[', startOffset)
+        if (openIdx < 0) return null
+        var inString = false
+        var escaped = false
+        var depth = 0
+        for (i in openIdx until cleaned.length) {
+            val ch = cleaned[i]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+                continue
+            }
+            when (ch) {
+                '"' -> inString = true
+                '[' -> depth++
+                ']' -> {
+                    depth--
+                    if (depth == 0) {
+                        return cleaned.substring(openIdx, i + 1)
+                    }
+                }
+            }
+        }
+        return null
     }
 
     private fun extractJsonArrayString(cleaned: String): String? {
-        if (cleaned.startsWith("[")) {
-            val end = cleaned.lastIndexOf(']')
-            if (end > 0) return cleaned.substring(0, end + 1)
+        val trimmed = cleaned.trimStart()
+        if (trimmed.startsWith("[")) {
+            extractBalancedJsonArray(cleaned)?.let { return it }
         }
-        if (cleaned.startsWith("{")) {
-            val obj = runCatching { JSONObject(cleaned) }.getOrNull()
+        if (trimmed.startsWith("{")) {
+            val obj = runCatching { JSONObject(cleaned) }
+                .recoverCatching { JSONObject(stripTrailingCommasOutsideStrings(cleaned)) }
+                .getOrNull()
             if (obj != null) {
                 val keys = listOf("vocabulary", "words", "entries", "items", "cards", "list", "data")
                 keys.forEach { k ->
@@ -236,7 +487,10 @@ object VocabularyEngine {
                     return JSONArray().put(obj).toString()
                 }
             }
+            // Do not accidentally extract an inner "examples": [...] array if outer text is a list of objects
+            return null
         }
+        extractBalancedJsonArray(cleaned)?.let { return it }
         val firstBracket = cleaned.indexOf('[')
         val lastBracket = cleaned.lastIndexOf(']')
         if (firstBracket >= 0 && lastBracket > firstBracket) {

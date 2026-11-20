@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,15 +19,20 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -74,8 +80,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.example.model.VocabularyDeck
 import com.example.model.VocabularyEntry
 import com.example.model.VocabularyExample
@@ -161,9 +165,15 @@ fun VocabularyImportDialog(
         unfocusedTextColor = colors.inkBold
     )
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
     ) {
         BackHandler {
             if (pendingAnalysis != null) pendingAnalysis = null else onDismiss()
@@ -190,25 +200,21 @@ fun VocabularyImportDialog(
                     onDismiss()
                 }
             )
-            return@Dialog
-        }
-
-        Surface(
-            color = colors.background,
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top Bar
-                Surface(color = colors.surface, shadowElevation = 1.dp) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+        } else {
+            Surface(
+                color = colors.background,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Top Bar
+                    Surface(color = colors.surface, shadowElevation = 1.dp) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = colors.inkBold)
                         }
@@ -589,6 +595,7 @@ fun VocabularyImportDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -682,6 +689,7 @@ fun VocabularyImportDialog(
                 }
             }
         }
+        }
     }
 }
 
@@ -724,8 +732,6 @@ fun VocabularyDuplicateMergeReviewHub(
         color = colors.background,
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
             .testTag("vocab_duplicate_review_hub")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -734,6 +740,7 @@ fun VocabularyDuplicateMergeReviewHub(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -843,6 +850,7 @@ fun VocabularyDuplicateMergeReviewHub(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -1078,9 +1086,15 @@ fun VocabularyAuditHubDialog(
     var parseWarning by remember { mutableStateOf<String?>(null) }
     val selectedFixIds = remember { mutableStateMapOf<String, Boolean>() }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
     ) {
         BackHandler { onDismiss() }
 
@@ -1088,8 +1102,6 @@ fun VocabularyAuditHubDialog(
             color = colors.background,
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
                 .testTag("vocab_audit_hub_dialog")
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -1098,6 +1110,7 @@ fun VocabularyAuditHubDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .statusBarsPadding()
                             .padding(horizontal = 8.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1152,6 +1165,7 @@ fun VocabularyAuditHubDialog(
                         modifier = Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
+                            .navigationBarsPadding()
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -1217,6 +1231,7 @@ fun VocabularyAuditHubDialog(
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
+                            .then(if (report == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)) else Modifier)
                             .padding(horizontal = 16.dp),
                         contentPadding = PaddingValues(bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1351,6 +1366,7 @@ fun VocabularyAuditHubDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
