@@ -145,18 +145,14 @@ private sealed class VocabNavTier {
     ) : VocabNavTier()
     data class MixedFolder(val language: String, val initialTab: Int = 0) : VocabNavTier()
     data class AllDueReview(val initialTab: Int = 1) : VocabNavTier()
-    data class DeckDetail(
-        val deckId: String,
-        val returnToTier: VocabNavTier
-    ) : VocabNavTier()
 }
 
 /**
- * Dedicated full-screen Vocabulary Hub — organized into a 3-tier folder hierarchy:
+ * Dedicated full-screen Vocabulary Hub — organized into a clean folder hierarchy:
  * Tier 1: Language Folders (+ Global Word Search & Cross-Language Due Review)
- * Tier 2: Proficiency Level Subfolders (ordered A1 -> C2 -> Custom) + Language-Specific Word of the Day
- *         + Pinned Last "Mixed Vocabulary" Live Compilation Folder
- * Tier 3: Vocabulary Sets / Mixed Compilation -> A-Z Word List & SM-2 Active Recall.
+ * Tier 2: Proficiency Level Folders (A1 -> C2 -> Custom) + Language-Specific Word of the Day
+ *         + Pinned Last "Mixed Vocabulary" All-Levels Compilation Folder
+ * Tier 3: Words Directly (A-Z Word List & SM-2 Active Recall inside each Level or Mixed Compilation).
  */
 @Composable
 fun VocabularyHubDialog(
@@ -198,23 +194,59 @@ fun VocabularyHubDialog(
     onRateEntry: (deckId: String, entryId: String, rating: SrsRating) -> Unit,
     onResetDeckSrs: (deckId: String) -> Unit,
     onResetLanguageSrs: (language: String) -> Unit = {},
+    onResetLevelSrs: (language: String, levelCode: String, customLevelLabel: String) -> Unit = { _, _, _ -> },
+    onDeleteLevelFolder: (language: String, levelCode: String, customLevelLabel: String) -> Unit = { _, _, _ -> },
     onApplyAuditFixes: (deckId: String, findings: List<VocabularyAuditFinding>) -> Unit,
     onApplyMixedAuditFixes: (originDeckIdByEntryId: Map<String, String>, findings: List<VocabularyAuditFinding>) -> Unit = { _, _ -> }
 ) {
     val colors = ExamTheme.colors
     val ttsSpeaker = rememberVocabularyTtsSpeaker()
 
+    fun resolveLevelTierForDeck(
+        deck: VocabularyDeck?,
+        fallbackLanguage: String = "English",
+        entryId: String? = null,
+        levelCodeHint: String = "",
+        customHint: String = ""
+    ): VocabNavTier {
+        if (deck != null) {
+            val lang = deck.language.trim().ifBlank { fallbackLanguage.ifBlank { "English" } }
+            val entry = if (!entryId.isNullOrBlank()) {
+                deck.entries.firstOrNull { it.id == entryId }
+            } else {
+                deck.entries.firstOrNull()
+            }
+            val (effLvl, effCustom) = if (entry != null) {
+                VocabularyEngine.resolveEffectiveEntryLevel(entry, deck)
+            } else {
+                val safeLvl = VocabularyLevel.fromCode(deck.levelCode)
+                    .takeUnless { it == VocabularyLevel.MIXED }
+                    ?: VocabularyLevel.INTERMEDIATE
+                safeLvl to if (safeLvl == VocabularyLevel.CUSTOM) deck.customLevelLabel.trim() else ""
+            }
+            return VocabNavTier.LevelFolder(lang, effLvl.code, effCustom)
+        }
+        val cleanLang = fallbackLanguage.trim().ifBlank { "English" }
+        if (levelCodeHint.isNotBlank()) {
+            val safeLvl = VocabularyLevel.fromCode(levelCodeHint)
+                .takeUnless { it == VocabularyLevel.MIXED }
+                ?: VocabularyLevel.INTERMEDIATE
+            val cleanCustom = if (safeLvl == VocabularyLevel.CUSTOM) customHint.trim() else ""
+            return VocabNavTier.LevelFolder(cleanLang, safeLvl.code, cleanCustom)
+        }
+        return VocabNavTier.LanguageFolder(cleanLang)
+    }
+
     var navTier by remember(initialDeckId, initialLanguageFilter) {
         mutableStateOf<VocabNavTier>(
             when {
                 !initialDeckId.isNullOrBlank() -> {
                     val host = decks.firstOrNull { it.id == initialDeckId }
-                    val parent = if (host != null) {
-                        VocabNavTier.LevelFolder(host.language, host.levelCode, host.customLevelLabel)
+                    if (host != null) {
+                        resolveLevelTierForDeck(host)
                     } else {
                         VocabNavTier.LanguagesRoot
                     }
-                    VocabNavTier.DeckDetail(initialDeckId, parent)
                 }
                 !initialLanguageFilter.isNullOrBlank() && !initialLanguageFilter.equals("All", ignoreCase = true) -> {
                     VocabNavTier.LanguageFolder(initialLanguageFilter.trim())
@@ -233,18 +265,17 @@ fun VocabularyHubDialog(
 
     var auditTargetDeck by remember { mutableStateOf<VocabularyDeck?>(null) }
     var auditMixedSources by remember { mutableStateOf<Map<String, VocabularyCompiledSource>?>(null) }
-    var renameTargetDeck by remember { mutableStateOf<VocabularyDeck?>(null) }
-    var deleteTargetDeck by remember { mutableStateOf<VocabularyDeck?>(null) }
+    var pendingResetLevel by remember { mutableStateOf<VocabularyLevelFolderSummary?>(null) }
+    var pendingDeleteLevel by remember { mutableStateOf<VocabularyLevelFolderSummary?>(null) }
     var showWotdHistoryForState by remember { mutableStateOf<WordOfTheDayUiState.Ready?>(null) }
 
-    val activeLanguageForWotd = remember(navTier, decks) {
+    val activeLanguageForWotd = remember(navTier) {
         when (val tier = navTier) {
             VocabNavTier.LanguagesRoot -> null
             is VocabNavTier.AllDueReview -> null
             is VocabNavTier.LanguageFolder -> tier.language
             is VocabNavTier.LevelFolder -> tier.language
             is VocabNavTier.MixedFolder -> tier.language
-            is VocabNavTier.DeckDetail -> decks.firstOrNull { it.id == tier.deckId }?.language
         }
     }
 
@@ -260,14 +291,16 @@ fun VocabularyHubDialog(
     ) -> Unit = { target, lang, lvlCode, customLvl ->
         importTargetDeck = target
         importInitialLanguage = lang.ifBlank { "English" }
-        importInitialLevelCode = lvlCode.ifBlank { VocabularyLevel.INTERMEDIATE.code }
-        importInitialCustomLabel = customLvl
+        val safeLvl = VocabularyLevel.fromCode(lvlCode)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?: VocabularyLevel.INTERMEDIATE
+        importInitialLevelCode = safeLvl.code
+        importInitialCustomLabel = if (safeLvl == VocabularyLevel.CUSTOM) customLvl else ""
         showImportDialog = true
     }
 
     val stepBackOneTier: () -> Unit = {
         navTier = when (val tier = navTier) {
-            is VocabNavTier.DeckDetail -> tier.returnToTier
             is VocabNavTier.MixedFolder -> VocabNavTier.LanguageFolder(tier.language)
             is VocabNavTier.AllDueReview -> VocabNavTier.LanguagesRoot
             is VocabNavTier.LevelFolder -> VocabNavTier.LanguageFolder(tier.language)
@@ -317,17 +350,25 @@ fun VocabularyHubDialog(
                             hubSearchQuery = ""
                             navTier = VocabNavTier.LanguageFolder(lang)
                         },
+                        onOpenLevelFolder = { summary ->
+                            hubSearchQuery = ""
+                            navTier = VocabNavTier.LevelFolder(
+                                language = summary.language,
+                                levelCode = summary.levelCode,
+                                customLevelLabel = summary.customLevelLabel
+                            )
+                        },
                         onOpenAllDueReview = {
                             navTier = VocabNavTier.AllDueReview(initialTab = 1)
                         },
-                        onOpenDeckFromSearch = { deck ->
-                            navTier = VocabNavTier.DeckDetail(
-                                deckId = deck.id,
-                                returnToTier = VocabNavTier.LevelFolder(
-                                    language = deck.language,
-                                    levelCode = deck.levelCode,
-                                    customLevelLabel = deck.customLevelLabel
-                                )
+                        onOpenWordHit = { deck, entry ->
+                            hubSearchQuery = ""
+                            navTier = resolveLevelTierForDeck(
+                                deck = deck,
+                                fallbackLanguage = deck.language,
+                                entryId = entry.id,
+                                levelCodeHint = entry.levelCode,
+                                customHint = entry.customLevelLabel
                             )
                         },
                         onOpenImport = {
@@ -336,13 +377,7 @@ fun VocabularyHubDialog(
                         onOpenAiPromptBuilder = {
                             onDismiss()
                             onOpenAiPromptBuilderForVocab()
-                        },
-                        onAuditDeck = {
-                            auditMixedSources = null
-                            auditTargetDeck = it
-                        },
-                        onRenameDeck = { renameTargetDeck = it },
-                        onDeleteDeck = { deleteTargetDeck = it }
+                        }
                     )
                 }
 
@@ -364,10 +399,14 @@ fun VocabularyHubDialog(
                         onPracticeWotdInMixed = {
                             navTier = VocabNavTier.MixedFolder(tier.language, initialTab = 1)
                         },
-                        onOpenDeckById = { deckId ->
-                            navTier = VocabNavTier.DeckDetail(
-                                deckId = deckId,
-                                returnToTier = VocabNavTier.LanguageFolder(tier.language)
+                        onOpenWotdSourceLevel = { readyState ->
+                            val host = decks.firstOrNull { it.id == readyState.sourceDeckId }
+                            navTier = resolveLevelTierForDeck(
+                                deck = host,
+                                fallbackLanguage = readyState.language,
+                                entryId = readyState.entry.id,
+                                levelCodeHint = readyState.entry.levelCode,
+                                customHint = readyState.entry.customLevelLabel
                             )
                         },
                         onOpenLevelFolder = { summary ->
@@ -376,6 +415,23 @@ fun VocabularyHubDialog(
                                 levelCode = summary.levelCode,
                                 customLevelLabel = summary.customLevelLabel
                             )
+                        },
+                        onAuditLevelFolder = { summary ->
+                            val compiled = VocabularyEngine.compileLevelVocabularyDeck(
+                                language = summary.language,
+                                levelCode = summary.levelCode,
+                                customLevelLabel = summary.customLevelLabel,
+                                decks = decks,
+                                srsByDeck = srsByDeck
+                            )
+                            auditMixedSources = compiled.sourceByEntryId
+                            auditTargetDeck = compiled.virtualDeck
+                        },
+                        onResetLevelFolder = { summary ->
+                            pendingResetLevel = summary
+                        },
+                        onDeleteLevelFolder = { summary ->
+                            pendingDeleteLevel = summary
                         },
                         onOpenMixedFolder = {
                             navTier = VocabNavTier.MixedFolder(tier.language)
@@ -391,28 +447,52 @@ fun VocabularyHubDialog(
                 }
 
                 is VocabNavTier.LevelFolder -> {
-                    VocabularyLevelFolderView(
-                        language = tier.language,
-                        levelCode = tier.levelCode,
-                        customLevelLabel = tier.customLevelLabel,
-                        decks = decks,
-                        srsByDeck = srsByDeck,
+                    val compiledLevel = remember(tier.language, tier.levelCode, tier.customLevelLabel, decks, srsByDeck) {
+                        VocabularyEngine.compileLevelVocabularyDeck(
+                            language = tier.language,
+                            levelCode = tier.levelCode,
+                            customLevelLabel = tier.customLevelLabel,
+                            decks = decks,
+                            srsByDeck = srsByDeck
+                        )
+                    }
+                    VocabularyDeckDetailView(
+                        deck = compiledLevel.virtualDeck,
+                        srsMap = compiledLevel.srsByEntryId,
+                        preferredEnglishVariant = preferredEnglishVariant,
+                        ttsSpeaker = ttsSpeaker,
+                        isMixedVirtualDeck = true,
+                        showSourceBadges = false,
+                        compiledSources = compiledLevel.sourceByEntryId,
                         onBack = { navTier = VocabNavTier.LanguageFolder(tier.language) },
-                        onOpenDeck = { deck ->
-                            navTier = VocabNavTier.DeckDetail(
-                                deckId = deck.id,
-                                returnToTier = tier
-                            )
-                        },
-                        onOpenImport = {
+                        onAddWords = {
                             openImportFromContext(null, tier.language, tier.levelCode, tier.customLevelLabel)
                         },
-                        onAuditDeck = {
-                            auditMixedSources = null
-                            auditTargetDeck = it
+                        onOpenAudit = {
+                            auditMixedSources = compiledLevel.sourceByEntryId
+                            auditTargetDeck = compiledLevel.virtualDeck
                         },
-                        onRenameDeck = { renameTargetDeck = it },
-                        onDeleteDeck = { deleteTargetDeck = it }
+                        onToggleBookmark = { entryId ->
+                            val realDeckId = compiledLevel.sourceByEntryId[entryId]?.originDeckId
+                            if (!realDeckId.isNullOrBlank()) {
+                                onToggleEntryBookmark(realDeckId, entryId)
+                            }
+                        },
+                        onDeleteEntry = { entryId ->
+                            val realDeckId = compiledLevel.sourceByEntryId[entryId]?.originDeckId
+                            if (!realDeckId.isNullOrBlank()) {
+                                onDeleteEntry(realDeckId, entryId)
+                            }
+                        },
+                        onRateEntry = { entryId, rating ->
+                            val realDeckId = compiledLevel.sourceByEntryId[entryId]?.originDeckId
+                            if (!realDeckId.isNullOrBlank()) {
+                                onRateEntry(realDeckId, entryId, rating)
+                            }
+                        },
+                        onResetSrs = {
+                            onResetLevelSrs(tier.language, tier.levelCode, tier.customLevelLabel)
+                        }
                     )
                 }
 
@@ -431,6 +511,7 @@ fun VocabularyHubDialog(
                         preferredEnglishVariant = preferredEnglishVariant,
                         ttsSpeaker = ttsSpeaker,
                         isMixedVirtualDeck = true,
+                        showSourceBadges = true,
                         compiledSources = compiled.sourceByEntryId,
                         onBack = { navTier = VocabNavTier.LanguageFolder(tier.language) },
                         onAddWords = {
@@ -477,6 +558,7 @@ fun VocabularyHubDialog(
                         preferredEnglishVariant = preferredEnglishVariant,
                         ttsSpeaker = ttsSpeaker,
                         isMixedVirtualDeck = true,
+                        showSourceBadges = true,
                         compiledSources = compiledDue.sourceByEntryId,
                         onBack = { navTier = VocabNavTier.LanguagesRoot },
                         onAddWords = {
@@ -506,41 +588,6 @@ fun VocabularyHubDialog(
                         },
                         onResetSrs = {}
                     )
-                }
-
-                is VocabNavTier.DeckDetail -> {
-                    val activeDeck = remember(decks, tier.deckId) {
-                        decks.firstOrNull { it.id == tier.deckId }
-                    }
-                    if (activeDeck == null) {
-                        LaunchedEffect(tier.deckId) {
-                            navTier = tier.returnToTier
-                        }
-                    } else {
-                        VocabularyDeckDetailView(
-                            deck = activeDeck,
-                            srsMap = srsByDeck[activeDeck.id].orEmpty(),
-                            preferredEnglishVariant = preferredEnglishVariant,
-                            ttsSpeaker = ttsSpeaker,
-                            onBack = { navTier = tier.returnToTier },
-                            onAddWords = {
-                                openImportFromContext(
-                                    activeDeck,
-                                    activeDeck.language,
-                                    activeDeck.levelCode,
-                                    activeDeck.customLevelLabel
-                                )
-                            },
-                            onOpenAudit = {
-                                auditMixedSources = null
-                                auditTargetDeck = activeDeck
-                            },
-                            onToggleBookmark = { entryId -> onToggleEntryBookmark(activeDeck.id, entryId) },
-                            onDeleteEntry = { entryId -> onDeleteEntry(activeDeck.id, entryId) },
-                            onRateEntry = { entryId, rating -> onRateEntry(activeDeck.id, entryId, rating) },
-                            onResetSrs = { onResetDeckSrs(activeDeck.id) }
-                        )
-                    }
                 }
             }
         }
@@ -593,35 +640,23 @@ fun VocabularyHubDialog(
                 history = readyState.history,
                 colors = colors,
                 onDismiss = { showWotdHistoryForState = null },
-                onOpenDeck = { deckId ->
+                onOpenHistoryItem = { historyItem ->
                     showWotdHistoryForState = null
-                    if (decks.any { it.id == deckId }) {
-                        navTier = VocabNavTier.DeckDetail(
-                            deckId = deckId,
-                            returnToTier = VocabNavTier.LanguageFolder(readyState.language)
-                        )
-                    }
+                    val host = decks.firstOrNull { it.id == historyItem.sourceDeckId }
+                    navTier = resolveLevelTierForDeck(
+                        deck = host,
+                        fallbackLanguage = readyState.language,
+                        levelCodeHint = historyItem.levelCode,
+                        customHint = historyItem.customLevelLabel
+                    )
                 }
             )
         }
     }
 
-    renameTargetDeck?.let { target ->
-        EditVocabularyDeckMetadataDialog(
-            deck = target,
-            preferredEnglishVariant = preferredEnglishVariant,
-            colors = colors,
-            onDismiss = { renameTargetDeck = null },
-            onSave = { newTitle, newLang, newTrans, newLvl, newCustomLvl, newVariant ->
-                onRenameDeck(target.id, newTitle, newLang, newTrans, newLvl, newCustomLvl, newVariant)
-                renameTargetDeck = null
-            }
-        )
-    }
-
-    deleteTargetDeck?.let { target ->
+    pendingResetLevel?.let { summary ->
         AlertDialog(
-            onDismissRequest = { deleteTargetDeck = null },
+            onDismissRequest = { pendingResetLevel = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
             modifier = Modifier
                 .fillMaxWidth()
@@ -630,10 +665,49 @@ fun VocabularyHubDialog(
             containerColor = colors.surface,
             titleContentColor = colors.inkBold,
             textContentColor = colors.ink,
-            title = { Text("Delete Vocabulary Set?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            title = { Text("Reset Level Progress?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
             text = {
                 Text(
-                    "\"${target.title}\" (${target.entries.size} words) and its spaced repetition history will be permanently removed.",
+                    "Reset SM-2 spaced repetition progress for \"${summary.language} • ${summary.levelTitle}\"? Your saved words will remain intact.",
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onResetLevelSrs(summary.language, summary.levelCode, summary.customLevelLabel)
+                        pendingResetLevel = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.amber, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) { Text("Reset") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingResetLevel = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkMuted)
+                }
+            }
+        )
+    }
+
+    pendingDeleteLevel?.let { summary ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteLevel = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .widthIn(max = 460.dp),
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Delete Level Folder?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Text(
+                    "\"${summary.language} • ${summary.levelTitle}\" (${summary.uniqueWords} words) and its spaced repetition history will be permanently removed.",
                     fontSize = 13.sp
                 )
             },
@@ -641,11 +715,15 @@ fun VocabularyHubDialog(
                 Button(
                     onClick = {
                         val currentTier = navTier
-                        if (currentTier is VocabNavTier.DeckDetail && currentTier.deckId == target.id) {
-                            navTier = currentTier.returnToTier
+                        if (currentTier is VocabNavTier.LevelFolder &&
+                            currentTier.language.equals(summary.language, ignoreCase = true) &&
+                            currentTier.levelCode.equals(summary.levelCode, ignoreCase = true) &&
+                            currentTier.customLevelLabel.equals(summary.customLevelLabel, ignoreCase = true)
+                        ) {
+                            navTier = VocabNavTier.LanguageFolder(summary.language)
                         }
-                        onDeleteDeck(target.id)
-                        deleteTargetDeck = null
+                        onDeleteLevelFolder(summary.language, summary.levelCode, summary.customLevelLabel)
+                        pendingDeleteLevel = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
                     modifier = Modifier.heightIn(min = 48.dp)
@@ -653,7 +731,7 @@ fun VocabularyHubDialog(
             },
             dismissButton = {
                 TextButton(
-                    onClick = { deleteTargetDeck = null },
+                    onClick = { pendingDeleteLevel = null },
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text("Cancel", color = colors.inkMuted)
@@ -676,13 +754,11 @@ private fun VocabularyLanguagesRootView(
     onSearchQueryChange: (String) -> Unit,
     onBack: () -> Unit,
     onOpenLanguageFolder: (String) -> Unit,
+    onOpenLevelFolder: (VocabularyLevelFolderSummary) -> Unit,
     onOpenAllDueReview: () -> Unit,
-    onOpenDeckFromSearch: (VocabularyDeck) -> Unit,
+    onOpenWordHit: (VocabularyDeck, VocabularyEntry) -> Unit,
     onOpenImport: () -> Unit,
-    onOpenAiPromptBuilder: () -> Unit,
-    onAuditDeck: (VocabularyDeck) -> Unit,
-    onRenameDeck: (VocabularyDeck) -> Unit,
-    onDeleteDeck: (VocabularyDeck) -> Unit
+    onOpenAiPromptBuilder: () -> Unit
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
@@ -730,20 +806,26 @@ private fun VocabularyLanguagesRootView(
     }
 
     val totalWords = remember(languageSummaries) { languageSummaries.sumOf { it.uniqueWords } }
+    val totalLevels = remember(languageSummaries) { languageSummaries.sumOf { it.levelCount } }
     val totalDue = remember(languageSummaries) { languageSummaries.sumOf { it.dueCount } }
 
     val q = searchQuery.trim().lowercase(Locale.ROOT)
-    val matchingDecks = remember(decks, q) {
-        if (q.isBlank()) emptyList() else decks.filter { deck ->
-            deck.title.lowercase(Locale.ROOT).contains(q) ||
-                deck.language.lowercase(Locale.ROOT).contains(q) ||
-                deck.domain.lowercase(Locale.ROOT).contains(q) ||
-                deck.entries.any {
-                    it.word.lowercase(Locale.ROOT).contains(q) ||
-                        it.meaning.lowercase(Locale.ROOT).contains(q) ||
-                        it.translation.lowercase(Locale.ROOT).contains(q)
-                }
-        }.sortedWith(compareBy({ it.language.lowercase(Locale.ROOT) }, { it.resolvedLevel().sortRank }, { it.title.lowercase(Locale.ROOT) }))
+    val matchingLevelFolders = remember(languageSummaries, decks, srsByDeck, q, nowMillis) {
+        if (q.isBlank()) emptyList() else {
+            languageSummaries.flatMap { langSummary ->
+                VocabularyEngine.buildLevelFolderSummaries(
+                    language = langSummary.language,
+                    decks = decks,
+                    srsByDeck = srsByDeck,
+                    nowMillis = nowMillis
+                )
+            }.filter { summary ->
+                summary.language.lowercase(Locale.ROOT).contains(q) ||
+                    summary.levelTitle.lowercase(Locale.ROOT).contains(q) ||
+                    summary.compactBadge.lowercase(Locale.ROOT).contains(q) ||
+                    summary.customLevelLabel.lowercase(Locale.ROOT).contains(q)
+            }.sortedWith(compareBy({ it.language.lowercase(Locale.ROOT) }, { it.sortRank }, { it.levelTitle.lowercase(Locale.ROOT) }))
+        }
     }
     val matchingWordHits = remember(decks, q) {
         if (q.isBlank()) emptyList() else VocabularyEngine.searchEntriesAcrossDecks(decks, q, limit = 25)
@@ -776,7 +858,7 @@ private fun VocabularyLanguagesRootView(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${languageSummaries.size} Language(s) • ${decks.size} Sets • $totalWords Words${if (totalDue > 0) " • $totalDue Due" else ""}",
+                        text = "${languageSummaries.size} Language(s) • $totalLevels Level(s) • $totalWords Words${if (totalDue > 0) " • $totalDue Due" else ""}",
                         fontSize = 11.5.sp,
                         color = colors.inkMuted,
                         maxLines = 2,
@@ -832,7 +914,7 @@ private fun VocabularyLanguagesRootView(
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = onSearchQueryChange,
-                        placeholder = { Text("Search languages, sets, or any word...", fontSize = 12.5.sp) },
+                        placeholder = { Text("Search languages, levels, or any word...", fontSize = 12.5.sp) },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(18.dp)) },
                         trailingIcon = if (searchQuery.isNotEmpty()) {
                             {
@@ -891,7 +973,7 @@ private fun VocabularyLanguagesRootView(
                                 textAlign = TextAlign.Center
                             )
                             Text(
-                                text = "Organize by Language Folder -> Level Subfolder (Beginner A1 to Mastery C2 or Custom) -> Mixed Vocabulary compilation. Each language unlocks its own offline UTC Word of the Day once ${WordOfTheDayService.MIN_WORDS_THRESHOLD}+ words are saved.",
+                                text = "Organize cleanly by Language Folder -> Proficiency Level Folder (Beginner A1 to Mastery C2 or Custom Exam Track) + Mixed Vocabulary compilation. Each language unlocks its own offline UTC Word of the Day once ${WordOfTheDayService.MIN_WORDS_THRESHOLD}+ words are saved.",
                                 fontSize = 12.5.sp,
                                 color = colors.inkMuted,
                                 textAlign = TextAlign.Center,
@@ -908,7 +990,7 @@ private fun VocabularyLanguagesRootView(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Create or Paste Vocabulary Set", fontWeight = FontWeight.Bold)
+                                Text("Add or Paste Vocabulary", fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
                                 onClick = onOpenAiPromptBuilder,
@@ -940,13 +1022,14 @@ private fun VocabularyLanguagesRootView(
                         items = matchingWordHits,
                         key = { "word_hit_${it.deck.id}_${it.entry.id}" }
                     ) { hit ->
+                        val (effLvl, effCustom) = VocabularyEngine.resolveEffectiveEntryLevel(hit.entry, hit.deck)
                         Card(
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = colors.surface),
                             border = BorderStroke(0.75.dp, colors.border),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onOpenDeckFromSearch(hit.deck) }
+                                .clickable { onOpenWordHit(hit.deck, hit.entry) }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -966,7 +1049,7 @@ private fun VocabularyLanguagesRootView(
                                         )
                                         Surface(shape = RoundedCornerShape(5.dp), color = colors.tealLight) {
                                             Text(
-                                                text = "${hit.deck.language} • ${hit.entry.effectiveLevelBadge()}",
+                                                text = "${hit.deck.language} • ${effLvl.compactBadge(effCustom)}",
                                                 fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.tealDark,
@@ -1004,41 +1087,38 @@ private fun VocabularyLanguagesRootView(
                         }
                     }
                 }
-                item(key = "vocab_search_header") {
-                    Text(
-                        text = "MATCHING SETS (${matchingDecks.size})",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.inkMuted,
-                        letterSpacing = 0.6.sp
-                    )
+                if (matchingLevelFolders.isNotEmpty()) {
+                    item(key = "vocab_search_header") {
+                        Text(
+                            text = "MATCHING LEVEL FOLDERS (${matchingLevelFolders.size})",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkMuted,
+                            letterSpacing = 0.6.sp
+                        )
+                    }
+                    items(
+                        items = matchingLevelFolders,
+                        key = { "search_lvl_${it.language}_${it.levelCode}_${it.customLevelLabel}" }
+                    ) { levelSummary ->
+                        LevelFolderCard(
+                            summary = levelSummary,
+                            colors = colors,
+                            showLanguageInTitle = true,
+                            onOpen = { onOpenLevelFolder(levelSummary) }
+                        )
+                    }
                 }
-                if (matchingDecks.isEmpty() && matchingWordHits.isEmpty()) {
+                if (matchingLevelFolders.isEmpty() && matchingWordHits.isEmpty()) {
                     item(key = "vocab_search_empty") {
                         Text(
-                            text = "No vocabulary sets or words match \"$searchQuery\".",
+                            text = "No vocabulary folders or words match \"$searchQuery\".",
                             fontSize = 13.sp,
                             color = colors.inkMuted,
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 28.dp)
-                        )
-                    }
-                } else {
-                    items(matchingDecks, key = { it.id }) { deck ->
-                        val stats = remember(deck, srsByDeck[deck.id], nowMillis) {
-                            VocabularyEngine.computeDeckSrsStats(deck, srsByDeck[deck.id].orEmpty(), nowMillis)
-                        }
-                        VocabularyDeckCard(
-                            deck = deck,
-                            dueCount = stats.dueCount,
-                            masteredCount = stats.masteredCount,
-                            colors = colors,
-                            onOpen = { onOpenDeckFromSearch(deck) },
-                            onAudit = { onAuditDeck(deck) },
-                            onRename = { onRenameDeck(deck) },
-                            onDelete = { onDeleteDeck(deck) }
                         )
                     }
                 }
@@ -1171,7 +1251,7 @@ private fun LanguageFolderCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${summary.levelCount} Level(s) • ${summary.deckCount} Set(s) • Mixed Vocabulary ready",
+                        text = "${summary.levelCount} Level Folder(s) • ${summary.uniqueWords} Words • Mixed Vocabulary ready",
                         fontSize = 11.5.sp,
                         color = colors.inkMuted,
                         maxLines = 2,
@@ -1259,8 +1339,11 @@ private fun VocabularyLanguageFolderView(
     onOpenWotdHistory: (WordOfTheDayUiState.Ready) -> Unit,
     onToggleWotdBookmark: (deckId: String, entryId: String) -> Unit,
     onPracticeWotdInMixed: () -> Unit,
-    onOpenDeckById: (String) -> Unit,
+    onOpenWotdSourceLevel: (WordOfTheDayUiState.Ready) -> Unit,
     onOpenLevelFolder: (VocabularyLevelFolderSummary) -> Unit,
+    onAuditLevelFolder: (VocabularyLevelFolderSummary) -> Unit,
+    onResetLevelFolder: (VocabularyLevelFolderSummary) -> Unit,
+    onDeleteLevelFolder: (VocabularyLevelFolderSummary) -> Unit,
     onOpenMixedFolder: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenAiPromptBuilder: () -> Unit
@@ -1291,10 +1374,6 @@ private fun VocabularyLanguageFolderView(
             srsMap = compiledMixed.srsByEntryId,
             nowMillis = nowMillis
         )
-    }
-
-    val totalDecksInLanguage = remember(decks, language) {
-        decks.count { it.language.trim().ifBlank { "English" }.equals(language, ignoreCase = true) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1437,12 +1516,12 @@ private fun VocabularyLanguageFolderView(
                             onToggleWotdBookmark(wordOfTheDayState.sourceDeckId, wordOfTheDayState.entry.id)
                         },
                         onPracticeMixed = onPracticeWotdInMixed,
-                        onOpenDeckById = onOpenDeckById
+                        onOpenSourceLevel = { onOpenWotdSourceLevel(wordOfTheDayState) }
                     )
                 }
             }
 
-            if (totalDecksInLanguage == 0) {
+            if (levelSummaries.isEmpty()) {
                 item(key = "vocab_lang_empty") {
                     Card(
                         shape = RoundedCornerShape(14.dp),
@@ -1456,13 +1535,13 @@ private fun VocabularyLanguageFolderView(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "No $language sets yet",
+                                text = "No $language words yet",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkBold
                             )
                             Text(
-                                text = "Import or generate $language vocabulary sets to populate level folders and unlock Mixed Vocabulary + daily UTC Word of the Day.",
+                                text = "Import or generate $language vocabulary to populate proficiency level folders (A1–C2) and unlock Mixed Vocabulary + daily UTC Word of the Day.",
                                 fontSize = 12.5.sp,
                                 color = colors.inkMuted,
                                 textAlign = TextAlign.Center,
@@ -1501,7 +1580,10 @@ private fun VocabularyLanguageFolderView(
                     LevelFolderCard(
                         summary = levelSummary,
                         colors = colors,
-                        onOpen = { onOpenLevelFolder(levelSummary) }
+                        onOpen = { onOpenLevelFolder(levelSummary) },
+                        onAudit = { onAuditLevelFolder(levelSummary) },
+                        onResetSrs = { onResetLevelFolder(levelSummary) },
+                        onDelete = { onDeleteLevelFolder(levelSummary) }
                     )
                 }
 
@@ -1539,8 +1621,13 @@ private fun VocabularyLanguageFolderView(
 private fun LevelFolderCard(
     summary: VocabularyLevelFolderSummary,
     colors: ExamColorPalette,
-    onOpen: () -> Unit
+    showLanguageInTitle: Boolean = false,
+    onOpen: () -> Unit,
+    onAudit: (() -> Unit)? = null,
+    onResetSrs: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     val masteryFraction = if (summary.uniqueWords > 0) {
         (summary.masteredCount.toFloat() / summary.uniqueWords.toFloat()).coerceIn(0f, 1f)
     } else 0f
@@ -1584,7 +1671,7 @@ private fun LevelFolderCard(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = summary.levelTitle,
+                        text = if (showLanguageInTitle) "${summary.language} • ${summary.levelTitle}" else summary.levelTitle,
                         fontSize = 15.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkBold,
@@ -1592,7 +1679,7 @@ private fun LevelFolderCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${summary.deckCount} Set(s) • ${summary.uniqueWords} Words • ${summary.masteredCount} Mastered",
+                        text = "${summary.uniqueWords} Words • ${summary.masteredCount} Mastered",
                         fontSize = 11.5.sp,
                         color = colors.inkMuted,
                         maxLines = 2,
@@ -1610,12 +1697,47 @@ private fun LevelFolderCard(
                         )
                     }
                 }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "Open ${summary.levelTitle}",
-                    tint = colors.inkMuted,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (onAudit != null || onResetSrs != null || onDelete != null) {
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "${summary.levelTitle} folder options", tint = colors.inkMuted)
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            onAudit?.let { auditAction ->
+                                DropdownMenuItem(
+                                    text = { Text("AI Audit Level") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = colors.teal) },
+                                    onClick = { menuExpanded = false; auditAction() }
+                                )
+                            }
+                            onResetSrs?.let { resetAction ->
+                                DropdownMenuItem(
+                                    text = { Text("Reset Level Progress") },
+                                    leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = colors.amber) },
+                                    onClick = { menuExpanded = false; resetAction() }
+                                )
+                            }
+                            onDelete?.let { deleteAction ->
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Delete Level Folder", color = colors.red) },
+                                    leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = colors.red) },
+                                    onClick = { menuExpanded = false; deleteAction() }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Open ${summary.levelTitle}",
+                        tint = colors.inkMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             LinearProgressIndicator(
@@ -1758,283 +1880,6 @@ private fun MixedVocabularyFolderCard(
 }
 
 @Composable
-private fun VocabularyLevelFolderView(
-    language: String,
-    levelCode: String,
-    customLevelLabel: String,
-    decks: List<VocabularyDeck>,
-    srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
-    onBack: () -> Unit,
-    onOpenDeck: (VocabularyDeck) -> Unit,
-    onOpenImport: () -> Unit,
-    onAuditDeck: (VocabularyDeck) -> Unit,
-    onRenameDeck: (VocabularyDeck) -> Unit,
-    onDeleteDeck: (VocabularyDeck) -> Unit
-) {
-    val colors = ExamTheme.colors
-    val nowMillis = TrustedTimeManager.getTrustedTimeMillis()
-    val targetLevel = VocabularyLevel.fromCode(levelCode)
-    val levelTitle = targetLevel.displayTitle(customLevelLabel)
-
-    val matchingDecks = remember(decks, language, levelCode, customLevelLabel) {
-        decks.filter { deck ->
-            val langMatch = deck.language.trim().ifBlank { "English" }.equals(language, ignoreCase = true)
-            val deckLvl = deck.resolvedLevel()
-            val lvlMatch = if (targetLevel == VocabularyLevel.CUSTOM) {
-                deckLvl == VocabularyLevel.CUSTOM &&
-                    deck.customLevelLabel.trim().equals(customLevelLabel.trim(), ignoreCase = true)
-            } else {
-                deckLvl == targetLevel
-            }
-            langMatch && lvlMatch
-        }.sortedBy { it.title.lowercase(Locale.ROOT) }
-    }
-
-    val totalWords = remember(matchingDecks) { matchingDecks.sumOf { it.entries.size } }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Surface(color = colors.surface, shadowElevation = 1.dp) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("vocab_level_back_button")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to $language", tint = colors.inkBold)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = levelTitle,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.inkBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "$language / $levelTitle • ${matchingDecks.size} Set(s) • $totalWords Words",
-                        fontSize = 11.5.sp,
-                        color = colors.inkMuted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Button(
-                    onClick = onOpenImport,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier
-                        .padding(end = 6.dp)
-                        .heightIn(min = 48.dp)
-                        .testTag("vocab_level_import_button")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Set", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (matchingDecks.isEmpty()) {
-                item(key = "vocab_level_empty") {
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = colors.surface),
-                        border = BorderStroke(0.8.dp, colors.border),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "No sets in $language • $levelTitle",
-                                fontSize = 14.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                textAlign = TextAlign.Center
-                            )
-                            Button(
-                                onClick = onOpenImport,
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Create $levelTitle Set", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            } else {
-                items(matchingDecks, key = { it.id }) { deck ->
-                    val stats = remember(deck, srsByDeck[deck.id]) {
-                        VocabularyEngine.computeDeckSrsStats(deck, srsByDeck[deck.id].orEmpty(), nowMillis)
-                    }
-                    VocabularyDeckCard(
-                        deck = deck,
-                        dueCount = stats.dueCount,
-                        masteredCount = stats.masteredCount,
-                        colors = colors,
-                        onOpen = { onOpenDeck(deck) },
-                        onAudit = { onAuditDeck(deck) },
-                        onRename = { onRenameDeck(deck) },
-                        onDelete = { onDeleteDeck(deck) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun VocabularyDeckCard(
-    deck: VocabularyDeck,
-    dueCount: Int,
-    masteredCount: Int,
-    colors: ExamColorPalette,
-    onOpen: () -> Unit,
-    onAudit: () -> Unit,
-    onRename: () -> Unit,
-    onDelete: () -> Unit
-) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    val total = deck.entries.size
-    val masteryFraction = if (total > 0) (masteredCount.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
-
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
-        border = BorderStroke(0.9.dp, colors.border),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpen() }
-            .testTag("vocab_deck_card_${deck.id}")
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Surface(shape = RoundedCornerShape(6.dp), color = colors.tealLight) {
-                            Text(
-                                text = deck.languageDisplay(),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.tealDark,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                            )
-                        }
-                        Surface(shape = RoundedCornerShape(6.dp), color = colors.amberLight) {
-                            Text(
-                                text = deck.effectiveLevelTitle(),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.amber,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        text = deck.title,
-                        fontSize = 15.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.inkBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Box {
-                    IconButton(
-                        onClick = { menuExpanded = true },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Deck options", tint = colors.inkMuted)
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("AI Audit Hub") },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = colors.teal) },
-                            onClick = { menuExpanded = false; onAudit() }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Edit Title / Language / Level") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = colors.inkBold) },
-                            onClick = { menuExpanded = false; onRename() }
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("Delete Set", color = colors.red) },
-                            leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = colors.red) },
-                            onClick = { menuExpanded = false; onDelete() }
-                        )
-                    }
-                }
-            }
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "$total Words • $masteredCount Mastered • ${deck.domain}",
-                    fontSize = 11.5.sp,
-                    color = colors.inkMuted,
-                    modifier = Modifier.align(Alignment.CenterVertically)
-                )
-                if (dueCount > 0) {
-                    Surface(shape = RoundedCornerShape(6.dp), color = colors.amberLight) {
-                        Text(
-                            text = "$dueCount Due",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.amber,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            LinearProgressIndicator(
-                progress = { masteryFraction },
-                color = colors.teal,
-                trackColor = colors.borderLight,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(5.dp)
-            )
-        }
-    }
-}
-
-@Composable
 private fun VocabularyDeckDetailView(
     deck: VocabularyDeck,
     srsMap: Map<String, FlashcardSrsState>,
@@ -2042,6 +1887,7 @@ private fun VocabularyDeckDetailView(
     preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT,
     ttsSpeaker: VocabularyTtsSpeaker? = null,
     isMixedVirtualDeck: Boolean = false,
+    showSourceBadges: Boolean = isMixedVirtualDeck,
     compiledSources: Map<String, VocabularyCompiledSource> = emptyMap(),
     onBack: () -> Unit,
     onAddWords: () -> Unit,
@@ -2285,7 +2131,7 @@ private fun VocabularyDeckDetailView(
                     items(filteredEntries, key = { it.id }) { entry ->
                         val isExpanded = expandedIds[entry.id] == true
                         val srsStatus = SpacedRepetitionEngine.statusOf(srsMap[entry.id], nowMillis)
-                        val sourceInfo = if (isMixedVirtualDeck) compiledSources[entry.id] else null
+                        val sourceInfo = if (showSourceBadges) compiledSources[entry.id] else null
                         VocabularyWordExpandableCard(
                             entry = entry,
                             srsStatus = srsStatus,
@@ -2657,7 +2503,7 @@ private fun WordOfTheDayCard(
     onOpenHistory: () -> Unit,
     onToggleBookmark: () -> Unit,
     onPracticeMixed: () -> Unit,
-    onOpenDeckById: (String) -> Unit
+    onOpenSourceLevel: () -> Unit
 ) {
     var expanded by remember(state.utcDateKey, state.entry.id) { mutableStateOf(false) }
     var countdownLabel by remember {
@@ -2920,16 +2766,19 @@ private fun WordOfTheDayCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 TextButton(
-                    onClick = { onOpenDeckById(state.sourceDeckId) },
+                    onClick = onOpenSourceLevel,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     modifier = Modifier
                         .heightIn(min = 48.dp)
                         .testTag("vocab_wotd_open_deck_button")
                 ) {
+                    val wotdLevel = VocabularyLevel.fromCode(entry.levelCode)
+                        .takeUnless { it == VocabularyLevel.MIXED }
+                        ?: VocabularyLevel.INTERMEDIATE
                     Icon(Icons.Default.Folder, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "In \"${state.sourceDeckTitle}\"",
+                        text = "Open ${wotdLevel.displayTitle(entry.customLevelLabel)}",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.tealDark,
@@ -2989,7 +2838,7 @@ private fun WordOfTheDayHistoryDialog(
     history: List<WordOfTheDayHistoryItem>,
     colors: ExamColorPalette,
     onDismiss: () -> Unit,
-    onOpenDeck: (String) -> Unit
+    onOpenHistoryItem: (WordOfTheDayHistoryItem) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -3038,7 +2887,7 @@ private fun WordOfTheDayHistoryDialog(
                         key = { "${it.utcDateKey}_${it.wordKey}_${it.shownAtMillis}" }
                     ) { item ->
                         Surface(
-                            onClick = { if (item.sourceDeckId.isNotBlank()) onOpenDeck(item.sourceDeckId) },
+                            onClick = { onOpenHistoryItem(item) },
                             shape = RoundedCornerShape(10.dp),
                             color = colors.surfaceVariant.copy(alpha = 0.45f),
                             border = BorderStroke(0.7.dp, colors.borderLight),
@@ -3063,6 +2912,8 @@ private fun WordOfTheDayHistoryDialog(
                                     }
                                     if (item.levelCode.isNotBlank()) {
                                         val lvl = VocabularyLevel.fromCode(item.levelCode)
+                                            .takeUnless { it == VocabularyLevel.MIXED }
+                                            ?: VocabularyLevel.INTERMEDIATE
                                         Surface(shape = RoundedCornerShape(5.dp), color = colors.amberLight) {
                                             Text(
                                                 text = lvl.compactBadge(item.customLevelLabel),
@@ -3106,13 +2957,6 @@ private fun WordOfTheDayHistoryDialog(
                                         color = colors.tealDark
                                     )
                                 }
-                                if (item.sourceDeckTitle.isNotBlank()) {
-                                    Text(
-                                        text = "Set: ${item.sourceDeckTitle}",
-                                        fontSize = 10.5.sp,
-                                        color = colors.inkMuted
-                                    )
-                                }
                             }
                         }
                     }
@@ -3127,162 +2971,6 @@ private fun WordOfTheDayHistoryDialog(
             ) {
                 Text("Close")
             }
-        }
-    )
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun EditVocabularyDeckMetadataDialog(
-    deck: VocabularyDeck,
-    preferredEnglishVariant: String,
-    colors: ExamColorPalette,
-    onDismiss: () -> Unit,
-    onSave: (title: String, language: String, translationLanguage: String, levelCode: String, customLevelLabel: String, languageVariant: String) -> Unit
-) {
-    var title by remember(deck.id) { mutableStateOf(deck.title) }
-    var language by remember(deck.id) { mutableStateOf(deck.language) }
-    var languageVariant by remember(deck.id) {
-        mutableStateOf(
-            deck.languageVariant.ifBlank {
-                if (VocabularyLanguageVariants.isEnglish(deck.language)) preferredEnglishVariant else ""
-            }
-        )
-    }
-    var translation by remember(deck.id) { mutableStateOf(deck.translationLanguage) }
-    var levelCode by remember(deck.id) { mutableStateOf(deck.levelCode) }
-    var customLevel by remember(deck.id) { mutableStateOf(deck.customLevelLabel) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .widthIn(max = 460.dp),
-        containerColor = colors.surface,
-        titleContentColor = colors.inkBold,
-        textContentColor = colors.ink,
-        title = { Text("Edit Vocabulary Set", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Set Title", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = language,
-                        onValueChange = {
-                            language = it
-                            if (VocabularyLanguageVariants.isEnglish(it) && languageVariant.isBlank()) {
-                                languageVariant = preferredEnglishVariant
-                            }
-                        },
-                        label = { Text("Language", fontSize = 11.5.sp) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = translation,
-                        onValueChange = { translation = it },
-                        label = { Text("Translation", fontSize = 11.5.sp) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (VocabularyLanguageVariants.isEnglish(language)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Origin:", fontSize = 10.5.sp, color = colors.inkMuted)
-                        VocabularyLanguageVariants.ENGLISH_VARIANTS.forEach { v ->
-                            val sel = languageVariant.ifBlank { preferredEnglishVariant }.equals(v, ignoreCase = true)
-                            Surface(
-                                onClick = { languageVariant = v },
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (sel) colors.tealLight else colors.surfaceVariant,
-                                border = BorderStroke(0.7.dp, if (sel) colors.teal else colors.border),
-                                modifier = Modifier.heightIn(min = 40.dp)
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = VocabularyLanguageVariants.displayLabel(v),
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (sel) colors.tealDark else colors.inkBold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    VocabularyLevel.entries.forEach { lvl ->
-                        val sel = levelCode.equals(lvl.code, ignoreCase = true)
-                        Surface(
-                            onClick = { levelCode = lvl.code },
-                            shape = RoundedCornerShape(6.dp),
-                            color = if (sel) colors.tealLight else colors.surfaceVariant,
-                            border = BorderStroke(0.7.dp, if (sel) colors.teal else colors.border),
-                            modifier = Modifier.heightIn(min = 38.dp)
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = lvl.shortBadge,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (sel) colors.tealDark else colors.inkBold
-                                )
-                            }
-                        }
-                    }
-                }
-                if (VocabularyLevel.fromCode(levelCode) == VocabularyLevel.CUSTOM) {
-                    OutlinedTextField(
-                        value = customLevel,
-                        onValueChange = { customLevel = it },
-                        label = { Text("Custom Level Label", fontSize = 11.5.sp) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        val cleanLang = language.trim().ifBlank { "English" }
-                        val resolvedVariant = if (VocabularyLanguageVariants.isEnglish(cleanLang)) {
-                            languageVariant.ifBlank { preferredEnglishVariant }
-                        } else ""
-                        onSave(title.trim(), cleanLang, translation.trim(), levelCode, customLevel.trim(), resolvedVariant)
-                    }
-                },
-                enabled = title.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                modifier = Modifier.heightIn(min = 48.dp)
-            ) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.heightIn(min = 48.dp)
-            ) { Text("Cancel", color = colors.inkMuted) }
         }
     )
 }

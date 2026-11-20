@@ -367,21 +367,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val now = System.currentTimeMillis()
         val decksMutable = _vocabularyDecks.value.toMutableList()
         val cleanLang = language.trim().ifBlank { "English" }
+        val safeLevel = VocabularyLevel.fromCode(levelCode)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?: VocabularyLevel.INTERMEDIATE
+        val safeCustom = if (safeLevel == VocabularyLevel.CUSTOM) customLevelLabel.trim() else ""
         val resolvedVariant = languageVariant.trim().ifBlank {
             if (VocabularyLanguageVariants.isEnglish(cleanLang)) _preferredEnglishVariant.value else ""
         }
 
-        // Ensure target deck exists
+        // Ensure target deck exists (consolidating into matching canonical level deck if no explicit target ID)
         val resolvedTargetId: String
-        var targetIndex = if (targetDeckId != null) decksMutable.indexOfFirst { it.id == targetDeckId } else -1
+        var targetIndex = if (targetDeckId != null) {
+            decksMutable.indexOfFirst { it.id == targetDeckId }
+        } else {
+            decksMutable.indexOfFirst { deck ->
+                deck.language.trim().equals(cleanLang, ignoreCase = true) &&
+                    deck.resolvedLevel() == safeLevel &&
+                    (safeLevel != VocabularyLevel.CUSTOM || deck.customLevelLabel.trim().equals(safeCustom, ignoreCase = true))
+            }
+        }
         if (targetIndex < 0) {
             val newDeck = VocabularyDeck(
-                title = title.trim().ifBlank { "$cleanLang Vocabulary" },
+                title = title.trim().ifBlank { "$cleanLang • ${safeLevel.displayTitle(safeCustom)}" },
                 language = cleanLang,
                 languageVariant = resolvedVariant,
                 translationLanguage = translationLanguage.trim(),
-                levelCode = levelCode,
-                customLevelLabel = customLevelLabel.trim(),
+                levelCode = safeLevel.code,
+                customLevelLabel = safeCustom,
                 domain = domain.trim().ifBlank { "General" },
                 entries = emptyList(),
                 createdAt = now,
@@ -469,9 +481,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val addedEntriesByDeckId = mutableMapOf<String, MutableList<VocabularyEntry>>()
 
         val targetByBucketKey = targets.associateBy { it.bucketKey }
-        // 1. Resolve or create every target deck cleanly
+        // 1. Resolve or consolidate every target bucket into its canonical (language, level) folder deck
         targets.forEach { target ->
-            val existingIdx = target.targetDeckId?.let { id -> decksMutable.indexOfFirst { it.id == id } } ?: -1
+            val cleanLang = target.language.trim().ifBlank { "English" }
+            val safeLevel = VocabularyLevel.fromCode(target.levelCode)
+                .takeUnless { it == VocabularyLevel.MIXED }
+                ?: VocabularyLevel.INTERMEDIATE
+            val safeCustom = if (safeLevel == VocabularyLevel.CUSTOM) target.customLevelLabel.trim() else ""
+
+            val explicitIdx = target.targetDeckId?.let { id -> decksMutable.indexOfFirst { it.id == id } } ?: -1
+            val existingIdx = if (explicitIdx >= 0) {
+                explicitIdx
+            } else {
+                decksMutable.indexOfFirst { deck ->
+                    deck.language.trim().equals(cleanLang, ignoreCase = true) &&
+                        deck.resolvedLevel() == safeLevel &&
+                        (safeLevel != VocabularyLevel.CUSTOM || deck.customLevelLabel.trim().equals(safeCustom, ignoreCase = true))
+                }
+            }
             val resolvedId = if (existingIdx >= 0) {
                 val existingDeck = decksMutable[existingIdx]
                 val cleanTrans = target.translationLanguage.trim()
@@ -483,14 +510,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 existingDeck.id
             } else {
-                val cleanLang = target.language.trim().ifBlank { "English" }
                 val newDeck = VocabularyDeck(
-                    title = target.customTitle.trim().ifBlank { "$cleanLang ${VocabularyLevel.fromCode(target.levelCode).displayTitle(target.customLevelLabel)}" },
+                    title = target.customTitle.trim().ifBlank { "$cleanLang • ${safeLevel.displayTitle(safeCustom)}" },
                     language = cleanLang,
                     languageVariant = target.languageVariant.trim(),
                     translationLanguage = target.translationLanguage.trim(),
-                    levelCode = target.levelCode,
-                    customLevelLabel = target.customLevelLabel.trim(),
+                    levelCode = safeLevel.code,
+                    customLevelLabel = safeCustom,
                     domain = target.domain.trim().ifBlank { "General" },
                     entries = emptyList(),
                     createdAt = now,
@@ -653,20 +679,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteVocabularyEntry(deckId: String, entryId: String) {
-        val updated = _vocabularyDecks.value.map { deck ->
-            if (deck.id != deckId) deck else deck.copy(
-                entries = deck.entries.filterNot { it.id == entryId },
-                updatedAt = System.currentTimeMillis()
-            )
+        val now = System.currentTimeMillis()
+        val updated = _vocabularyDecks.value.mapNotNull { deck ->
+            if (deck.id != deckId) {
+                deck
+            } else {
+                val remaining = deck.entries.filterNot { it.id == entryId }
+                if (remaining.isEmpty()) null else deck.copy(entries = remaining, updatedAt = now)
+            }
         }
         _vocabularyDecks.value = updated
         appPreferences.saveVocabularyDecks(updated)
-        val deckSrs = _vocabularySrsByDeck.value[deckId]?.toMutableMap()
-        if (deckSrs != null && deckSrs.remove(entryId) != null) {
-            val allSrs = _vocabularySrsByDeck.value.toMutableMap()
-            if (deckSrs.isEmpty()) allSrs.remove(deckId) else allSrs[deckId] = deckSrs
-            _vocabularySrsByDeck.value = allSrs
-            appPreferences.saveAllVocabularySrsMaps(allSrs)
+        val deckStillExists = updated.any { it.id == deckId }
+        val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+        if (!deckStillExists) {
+            if (allSrs.remove(deckId) != null) {
+                _vocabularySrsByDeck.value = allSrs
+                appPreferences.saveAllVocabularySrsMaps(allSrs)
+            }
+        } else {
+            val deckSrs = allSrs[deckId]?.toMutableMap()
+            if (deckSrs != null && deckSrs.remove(entryId) != null) {
+                if (deckSrs.isEmpty()) allSrs.remove(deckId) else allSrs[deckId] = deckSrs
+                _vocabularySrsByDeck.value = allSrs
+                appPreferences.saveAllVocabularySrsMaps(allSrs)
+            }
         }
         refreshActiveWordOfTheDay()
     }
@@ -692,6 +729,100 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         allSrs.remove(deckId)
         _vocabularySrsByDeck.value = allSrs
         appPreferences.saveAllVocabularySrsMaps(allSrs)
+    }
+
+    fun resetVocabularyLevelSrs(
+        language: String,
+        levelCode: String,
+        customLevelLabel: String = ""
+    ) {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val targetLevel = VocabularyLevel.fromCode(levelCode)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?: VocabularyLevel.INTERMEDIATE
+        val cleanCustom = if (targetLevel == VocabularyLevel.CUSTOM) customLevelLabel.trim() else ""
+
+        val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+        var changed = false
+        _vocabularyDecks.value
+            .filter { it.language.trim().ifBlank { "English" }.equals(cleanLang, ignoreCase = true) }
+            .forEach { deck ->
+                val deckSrs = allSrs[deck.id]?.toMutableMap() ?: return@forEach
+                val matchingIds = deck.entries.filter { entry ->
+                    val (entryLvl, entryCustom) = VocabularyEngine.resolveEffectiveEntryLevel(entry, deck)
+                    if (targetLevel == VocabularyLevel.CUSTOM) {
+                        entryLvl == VocabularyLevel.CUSTOM && entryCustom.equals(cleanCustom, ignoreCase = true)
+                    } else {
+                        entryLvl == targetLevel
+                    }
+                }.map { it.id }
+                matchingIds.forEach { id ->
+                    if (deckSrs.remove(id) != null) changed = true
+                }
+                if (deckSrs.isEmpty()) allSrs.remove(deck.id) else allSrs[deck.id] = deckSrs
+            }
+        if (changed) {
+            _vocabularySrsByDeck.value = allSrs
+            appPreferences.saveAllVocabularySrsMaps(allSrs)
+        }
+        _statusMessage.value = "Reset spaced repetition progress for $cleanLang • ${targetLevel.displayTitle(cleanCustom)}"
+    }
+
+    fun deleteVocabularyLevelFolder(
+        language: String,
+        levelCode: String,
+        customLevelLabel: String = ""
+    ) {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val targetLevel = VocabularyLevel.fromCode(levelCode)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?: VocabularyLevel.INTERMEDIATE
+        val cleanCustom = if (targetLevel == VocabularyLevel.CUSTOM) customLevelLabel.trim() else ""
+        val now = System.currentTimeMillis()
+        val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+        var removedCount = 0
+
+        val updatedDecks = _vocabularyDecks.value.mapNotNull { deck ->
+            if (!deck.language.trim().ifBlank { "English" }.equals(cleanLang, ignoreCase = true)) {
+                deck
+            } else {
+                val removedIds = mutableListOf<String>()
+                val kept = deck.entries.filter { entry ->
+                    val (entryLvl, entryCustom) = VocabularyEngine.resolveEffectiveEntryLevel(entry, deck)
+                    val matches = if (targetLevel == VocabularyLevel.CUSTOM) {
+                        entryLvl == VocabularyLevel.CUSTOM && entryCustom.equals(cleanCustom, ignoreCase = true)
+                    } else {
+                        entryLvl == targetLevel
+                    }
+                    if (matches) {
+                        removedIds.add(entry.id)
+                        false
+                    } else {
+                        true
+                    }
+                }
+                if (removedIds.isEmpty()) {
+                    deck
+                } else {
+                    removedCount += removedIds.size
+                    val deckSrs = allSrs[deck.id]?.toMutableMap()
+                    if (deckSrs != null) {
+                        removedIds.forEach { deckSrs.remove(it) }
+                        if (deckSrs.isEmpty()) allSrs.remove(deck.id) else allSrs[deck.id] = deckSrs
+                    }
+                    if (kept.isEmpty()) null else deck.copy(entries = kept, updatedAt = now)
+                }
+            }
+        }
+
+        if (removedCount > 0) {
+            _vocabularyDecks.value = updatedDecks
+            appPreferences.saveVocabularyDecks(updatedDecks)
+            _vocabularySrsByDeck.value = allSrs
+            appPreferences.saveAllVocabularySrsMaps(allSrs)
+            refreshActiveWordOfTheDay()
+            _statusMessage.value = "Removed $removedCount word(s) from $cleanLang • ${targetLevel.displayTitle(cleanCustom)}"
+        }
     }
 
     fun resetVocabularyLanguageSrs(language: String) {

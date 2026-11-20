@@ -144,7 +144,15 @@ class VocabularyPromptState {
         val transLang = translationLanguage.trim()
         val hasTranslation = transLang.isNotBlank() && !transLang.equals("None", ignoreCase = true)
         val lvl = VocabularyLevel.fromCode(levelCode)
-        val levelLabel = lvl.displayTitle(customLevelLabel)
+        val cleanCustomTrack = customLevelLabel.trim()
+        val levelLabel = lvl.displayTitle(cleanCustomTrack)
+        val langProficiencyGuide = VocabularyLanguageVariants.proficiencyGuideForLanguage(lang)
+        val isMixedOrCustom = lvl == VocabularyLevel.MIXED || lvl == VocabularyLevel.CUSTOM
+        val schemaLevelHint = when {
+            lvl == VocabularyLevel.MIXED -> "A1 | A2 | B1 | B2 | C1 | C2"
+            lvl == VocabularyLevel.CUSTOM -> "A1 | A2 | B1 | B2 | C1 | C2"
+            else -> lvl.code
+        }
         val domainClean = domain.trim().ifBlank { "General" }
         val topicLine = topic.trim().ifBlank { "High-utility $domainClean vocabulary across everyday and real-world situations" }
         val count = wordCount.toInt().coerceIn(5, 60)
@@ -160,7 +168,19 @@ class VocabularyPromptState {
             if (resolvedVariant.isNotBlank()) {
                 appendLine("- Regional Origin / Standard: ${VocabularyLanguageVariants.displayLabel(resolvedVariant)}")
             }
-            appendLine("- Proficiency Level: $levelLabel (CEFR-aligned universal difficulty)")
+            when (lvl) {
+                VocabularyLevel.MIXED -> {
+                    appendLine("- Proficiency Spread: Mixed / Progressive (Distribute naturally across beginner A1 to mastery C2 for $lang)")
+                }
+                VocabularyLevel.CUSTOM -> {
+                    appendLine("- Curriculum / Track Focus: ${cleanCustomTrack.ifBlank { "Custom Track" }}")
+                    appendLine("- Proficiency Calibration: Assign each word's exact A1–C2 level equivalent for $lang")
+                }
+                else -> {
+                    appendLine("- Proficiency Level: $levelLabel")
+                }
+            }
+            appendLine("- Language Calibration: $langProficiencyGuide")
             appendLine("- Domain / Register: $domainClean")
             appendLine("- Focus Theme / Source Context: $topicLine")
             appendLine(
@@ -175,7 +195,11 @@ class VocabularyPromptState {
             appendLine("### STRICT QUALITY & ANTI-REPETITION RULES")
             appendLine("1. ZERO REPETITION: Every entry must be a distinct, unique headword. Never repeat the same word or near-identical inflections.")
             appendLine("2. SORTING: Return the final vocabulary list sorted strictly in ASCENDING alphabetical order (A -> Z).")
-            appendLine("3. CATEGORY / WORD CLASS PRECISION: Accurately label partOfSpeech (noun, verb, adjective, adverb, idiom, phrasal verb, etc.) and ensure each word carries its true CEFR level (A1/A2/B1/B2/C1/C2).")
+            if (isMixedOrCustom) {
+                appendLine("3. EXACT PER-WORD LEVEL TAGGING: Calibrate EVERY word individually and set `level` to its exact tier code (`A1`, `A2`, `B1`, `B2`, `C1`, or `C2`) for $lang. NEVER write \"MIXED\", \"Progressive\", or \"CUSTOM\" in `level`. Also label partOfSpeech accurately.")
+            } else {
+                appendLine("3. CATEGORY & LEVEL PRECISION: Accurately label partOfSpeech (noun, verb, adjective, adverb, idiom, phrasal verb, etc.) and tag `level` with each word's true proficiency code (`A1`–`C2`, targeting `${lvl.code}`).")
+            }
             if (variantDirective.isNotBlank()) {
                 appendLine("4. ORIGIN & SPELLING STANDARD: $variantDirective")
                 appendLine("5. CONTEXT VARIETY: Each word's $exCount examples must demonstrate genuinely different contexts/registers so the learner understands real usage nuances.")
@@ -210,7 +234,7 @@ class VocabularyPromptState {
                 appendLine("WORD: [Headword]")
                 if (includePronunciation) appendLine("PRONUNCIATION: [/IPA/ or romanization]")
                 appendLine("POS: [noun | verb | adjective | adverb | idiom | phrasal verb]")
-                appendLine("LEVEL: [${lvl.compactBadge(customLevelLabel)}]")
+                appendLine("LEVEL: [$schemaLevelHint]")
                 appendLine("MEANING: [Clear, crisp definition]")
                 if (hasTranslation) appendLine("TRANSLATION: [Natural $transLang meaning]")
                 appendLine("EXAMPLES:")
@@ -243,7 +267,7 @@ class VocabularyPromptState {
                 if (resolvedVariant.isNotBlank()) appendLine("    \"languageVariant\": \"$resolvedVariant\",")
                 appendLine("    \"pronunciation\": \"${if (includePronunciation) "/IPA/ or romanization" else ""}\",")
                 appendLine("    \"partOfSpeech\": \"noun | verb | adjective | adverb | idiom | phrasal verb\",")
-                appendLine("    \"level\": \"${lvl.compactBadge(customLevelLabel)}\",")
+                appendLine("    \"level\": \"$schemaLevelHint\",")
                 appendLine("    \"meaning\": \"Clear, precise definition\",")
                 appendLine("    \"translation\": \"${if (hasTranslation) "Natural $transLang translation" else ""}\",")
                 appendLine("    \"examples\": [")
@@ -664,7 +688,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         OutlinedTextField(
                             value = state.customLevelLabel,
                             onValueChange = { state.customLevelLabel = it },
-                            label = { Text("Custom Level Label", fontSize = 12.sp) },
+                            label = { Text("Custom Track / Exam Focus (words tagged A1–C2)", fontSize = 12.sp) },
                             placeholder = { Text("e.g. JLPT N3, HSK 4, GRE High-Freq, IELTS 8.0", fontSize = 11.5.sp) },
                             singleLine = true,
                             colors = vocabFieldColors(colors),

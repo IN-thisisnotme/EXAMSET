@@ -91,6 +91,9 @@ enum class VocabularyLevel(
     }
 
     companion object {
+        fun folderSelectableLevels(): List<VocabularyLevel> =
+            listOf(BEGINNER, ELEMENTARY, INTERMEDIATE, UPPER_INTERMEDIATE, ADVANCED, MASTERY, CUSTOM)
+
         fun fromCode(raw: String?): VocabularyLevel {
             if (raw.isNullOrBlank()) return INTERMEDIATE
             val clean = raw.trim().lowercase(Locale.ROOT)
@@ -200,6 +203,19 @@ object VocabularyLanguageVariants {
             "US" -> "Strictly follow American English spelling (e.g., color, analyze, program, center, judgment), US lexical usage, and General American IPA pronunciation."
             "Neutral" -> "Use standard international English; note UK/US spelling variants briefly in usageNote when relevant."
             else -> "Follow $norm English spelling, lexical usage, and pronunciation norms."
+        }
+    }
+
+    fun proficiencyGuideForLanguage(language: String): String {
+        return when (language.trim().lowercase(Locale.ROOT)) {
+            "japanese" -> "Calibrate Japanese difficulty to real usage & JLPT progression (A1≈JLPT N5 survival, A2≈N4 everyday, B1≈N3 practical fluency, B2≈N2 news/workplace, C1≈N1 formal/abstract, C2≈literary/specialist)."
+            "chinese", "mandarin", "mandarin chinese" -> "Calibrate Mandarin difficulty to real usage & HSK progression (A1≈HSK 1, A2≈HSK 2–3, B1≈HSK 4, B2≈HSK 5, C1≈HSK 6, C2≈HSK 7–9/classical)."
+            "korean" -> "Calibrate Korean difficulty to TOPIK & register progression (A1≈TOPIK I-1, A2≈TOPIK I-2, B1≈TOPIK II-3, B2≈TOPIK II-4, C1≈TOPIK II-5, C2≈TOPIK II-6/literary)."
+            "hindi", "urdu", "bengali", "marathi", "tamil", "telugu", "gujarati", "punjabi" ->
+                "Calibrate $language difficulty to authentic native usage & register progression (A1=core everyday spoken words, A2=routine practical expressions, B1=fluent general/news vocabulary, B2=formal/workplace register, C1=editorial/academic/high-register vocabulary, C2=literary/rare/classical nuance)."
+            "sanskrit" -> "Calibrate Sanskrit difficulty to textual & lexical progression (A1=foundational roots/pronouns/basic nouns, A2=common everyday & Gita-level verbs/nouns, B1=standard narrative prose/kavya vocabulary, B2=classical compound & philosophical terms, C1=academic/shastric terminology, C2=rare Vedic/kavya/poetic lexicon)."
+            "arabic" -> "Calibrate Arabic difficulty to MSA & register progression (A1=core survival MSA, A2=everyday practical MSA, B1=general fluency & media, B2=news/editorial & formal discussion, C1=academic/analytical MSA, C2=classical/literary rhetoric)."
+            else -> "Calibrate $language difficulty to CEFR usage frequency & register (A1=Beginner survival, A2=Elementary routine, B1=Intermediate fluency, B2=Upper-Intermediate workplace/discussion, C1=Advanced academic/editorial, C2=Mastery literary/specialist)."
         }
     }
 }

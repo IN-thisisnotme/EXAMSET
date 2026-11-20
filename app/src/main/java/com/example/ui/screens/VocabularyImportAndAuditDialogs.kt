@@ -145,11 +145,22 @@ fun VocabularyImportDialog(
     val context = LocalContext.current
     val isHubImport = targetDeck == null
 
-    // When creating/routing from Hub: 0 = Smart Auto-Route (Paste First), 1 = Single Set (Alternative), 2 = Single Word
-    // When adding inside an open Set: 0 = Paste JSON / Text, 1 = Add Single Word
+    // Unified 2-mode toggle: 0 = Paste & Auto-Sort (or Paste JSON/Text inside targetDeck), 1 = Add Single Word
     var inputMode by remember(targetDeck?.id) { mutableIntStateOf(0) }
-    val isManualSingleWord = if (isHubImport) inputMode == 2 else inputMode == 1
+    val isManualSingleWord = inputMode == 1
     val isSmartRouteMode = isHubImport && inputMode == 0
+
+    val safeInitialLevel = remember(targetDeck?.id, initialLevelCode) {
+        val raw = targetDeck?.levelCode ?: initialLevelCode
+        VocabularyLevel.fromCode(raw)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?.code ?: VocabularyLevel.INTERMEDIATE.code
+    }
+    val safeInitialCustom = remember(targetDeck?.id, safeInitialLevel, initialCustomLevelLabel) {
+        if (VocabularyLevel.fromCode(safeInitialLevel) == VocabularyLevel.CUSTOM) {
+            targetDeck?.customLevelLabel ?: initialCustomLevelLabel
+        } else ""
+    }
 
     var title by remember { mutableStateOf(targetDeck?.title ?: "") }
     var language by remember { mutableStateOf(targetDeck?.language ?: initialLanguage.ifBlank { "English" }) }
@@ -161,8 +172,8 @@ fun VocabularyImportDialog(
         )
     }
     var translationLanguage by remember { mutableStateOf(targetDeck?.translationLanguage ?: initialTranslationLanguage) }
-    var levelCode by remember { mutableStateOf(targetDeck?.levelCode ?: initialLevelCode) }
-    var customLevelLabel by remember { mutableStateOf(targetDeck?.customLevelLabel ?: initialCustomLevelLabel) }
+    var levelCode by remember(targetDeck?.id, safeInitialLevel) { mutableStateOf(safeInitialLevel) }
+    var customLevelLabel by remember(targetDeck?.id, safeInitialCustom) { mutableStateOf(safeInitialCustom) }
     var domain by remember { mutableStateOf(targetDeck?.domain ?: "General") }
     var checkCrossDeck by remember { mutableStateOf(true) }
 
@@ -184,13 +195,20 @@ fun VocabularyImportDialog(
     var manualNote by remember { mutableStateOf("") }
 
     // Live detection preview in Paste-First Smart Auto-Route mode
-    val liveDetectionPreview = remember(rawPaste, isSmartRouteMode, preferredEnglishVariant) {
+    val liveDetectionPreview = remember(
+        rawPaste,
+        isSmartRouteMode,
+        preferredEnglishVariant,
+        safeInitialLevel,
+        safeInitialCustom
+    ) {
         if (!isSmartRouteMode || rawPaste.trim().length < 6) {
             null
         } else {
             val parsed = VocabularyEngine.parseVocabularyInput(
                 rawInput = rawPaste,
-                defaultLevelCode = VocabularyLevel.INTERMEDIATE.code,
+                defaultLevelCode = safeInitialLevel,
+                defaultCustomLevelLabel = safeInitialCustom,
                 preferredEnglishVariant = preferredEnglishVariant
             )
             if (parsed.entries.isEmpty()) null else {
@@ -279,10 +297,10 @@ fun VocabularyImportDialog(
                     val only = pendingSmartTargetsSnapshot.first()
                     only.targetDeckId?.let { id -> allDecks.firstOrNull { it.id == id }?.title } ?: only.customTitle
                 } else {
-                    "${pendingSmartTargetsSnapshot.size} Routed Sets"
+                    "${pendingSmartTargetsSnapshot.size} Level Folders"
                 }
             } else {
-                title.trim().ifBlank { targetDeck?.title ?: "$language Vocabulary" }
+                title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel)}" }
             }
 
             VocabularyDuplicateMergeReviewHub(
@@ -381,7 +399,7 @@ fun VocabularyImportDialog(
                             }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (targetDeck != null) "Add Words to \"${targetDeck.title}\"" else "Import Vocabulary",
+                                    text = if (targetDeck != null) "Add Words to \"${targetDeck.title}\"" else "Add Vocabulary",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.inkBold,
@@ -390,7 +408,7 @@ fun VocabularyImportDialog(
                                 )
                                 Text(
                                     text = if (isHubImport) {
-                                        "Paste first to auto-route by language & level, or build a single set"
+                                        "Paste AI output to auto-sort into exact Language & Level folders, or add a single word"
                                     } else {
                                         "Supports Strict JSON, Structured Text, or manual entry with duplicate review"
                                     },
@@ -413,9 +431,8 @@ fun VocabularyImportDialog(
                         // Mode toggle (horizontally scrollable so large system font never truncates)
                         val modeOptions = if (isHubImport) {
                             listOf(
-                                0 to "Smart Auto-Route",
-                                1 to "Single Set",
-                                2 to "Single Word"
+                                0 to "Paste & Auto-Sort",
+                                1 to "Add Single Word"
                             )
                         } else {
                             listOf(
@@ -574,7 +591,7 @@ fun VocabularyImportDialog(
                                             }
                                             Surface(shape = RoundedCornerShape(6.dp), color = colors.greenLight) {
                                                 Text(
-                                                    text = "${previewBuckets.size} target set(s)",
+                                                    text = "${previewBuckets.size} level folder(s)",
                                                     fontSize = 10.5.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = colors.green,
@@ -597,9 +614,9 @@ fun VocabularyImportDialog(
                                         )
                                         Text(
                                             text = if (isSmartRouteMode) {
-                                                "Detect & merge duplicates across existing same-language sets"
+                                                "Detect & merge duplicates across existing same-language folders"
                                             } else {
-                                                "Also detect duplicates across other ${language.ifBlank { "English" }} sets"
+                                                "Also detect duplicates across other ${language.ifBlank { "English" }} folders"
                                             },
                                             fontSize = 12.sp,
                                             color = colors.inkBold,
@@ -709,7 +726,7 @@ fun VocabularyImportDialog(
                             }
                         }
 
-                        // Deck Metadata (shown in Single Set & Single Word modes when creating a new set)
+                        // Folder & Level Placement (shown in Add Single Word mode when creating/routing directly into a Level Folder)
                         if (isHubImport && !isSmartRouteMode) {
                             Card(
                                 shape = RoundedCornerShape(14.dp),
@@ -721,24 +738,11 @@ fun VocabularyImportDialog(
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Text(
-                                        text = "SET DETAILS (LANGUAGE, ORIGIN & LEVEL)",
+                                        text = "FOLDER & LEVEL PLACEMENT",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.teal,
                                         letterSpacing = 0.5.sp
-                                    )
-
-                                    OutlinedTextField(
-                                        value = title,
-                                        onValueChange = { title = it },
-                                        label = { Text("Vocabulary Set Title", fontSize = 12.sp) },
-                                        placeholder = { Text("e.g. Academic Verbs, Daily Japanese, Editorial Words", fontSize = 11.5.sp) },
-                                        singleLine = true,
-                                        colors = fieldColors,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .testTag("vocab_set_title_input")
                                     )
 
                                     Row(
@@ -839,7 +843,7 @@ fun VocabularyImportDialog(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        VocabularyLevel.entries.forEach { lvl ->
+                                        VocabularyLevel.folderSelectableLevels().forEach { lvl ->
                                             val selected = levelCode.equals(lvl.code, ignoreCase = true)
                                             Surface(
                                                 onClick = { levelCode = lvl.code },
@@ -912,7 +916,8 @@ fun VocabularyImportDialog(
                                     if (isSmartRouteMode) {
                                         val parsed = VocabularyEngine.parseVocabularyInput(
                                             rawInput = rawPaste,
-                                            defaultLevelCode = VocabularyLevel.INTERMEDIATE.code,
+                                            defaultLevelCode = safeInitialLevel,
+                                            defaultCustomLevelLabel = safeInitialCustom,
                                             preferredEnglishVariant = preferredEnglishVariant
                                         )
                                         if (parsed.entries.isEmpty()) {
@@ -964,64 +969,70 @@ fun VocabularyImportDialog(
                                             if (manualExample1.isNotBlank()) add(VocabularyExample(manualExample1Ctx, manualExample1.trim()))
                                             if (manualExample2.isNotBlank()) add(VocabularyExample(manualExample2Ctx, manualExample2.trim()))
                                         }
-                                        val entry = VocabularyEntry(
-                                            word = manualWord.trim(),
-                                            pronunciation = manualPron.trim(),
-                                            partOfSpeech = manualPos.trim(),
-                                            levelCode = levelCode,
-                                            customLevelLabel = customLevelLabel.trim(),
-                                            language = language.trim(),
-                                            languageVariant = resolvedVar,
-                                            meaning = manualMeaning.trim().ifBlank { manualTranslation.trim() },
-                                            translation = manualTranslation.trim(),
-                                            examples = exList,
-                                            synonyms = manualSynonyms.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                            usageNote = manualNote.trim()
-                                        )
-                                        VocabularyParseResult(
-                                            entries = listOf(entry),
-                                            detectedFormat = VocabularyInputFormat.STRUCTURED_TEXT
-                                        )
-                                    }
+                                         val cleanCustomForLevel = if (VocabularyLevel.fromCode(levelCode) == VocabularyLevel.CUSTOM) {
+                                             customLevelLabel.trim()
+                                         } else ""
+                                         val entry = VocabularyEntry(
+                                             word = manualWord.trim(),
+                                             pronunciation = manualPron.trim(),
+                                             partOfSpeech = manualPos.trim(),
+                                             levelCode = levelCode,
+                                             customLevelLabel = cleanCustomForLevel,
+                                             language = language.trim(),
+                                             languageVariant = resolvedVar,
+                                             meaning = manualMeaning.trim().ifBlank { manualTranslation.trim() },
+                                             translation = manualTranslation.trim(),
+                                             examples = exList,
+                                             synonyms = manualSynonyms.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                             usageNote = manualNote.trim()
+                                         )
+                                         VocabularyParseResult(
+                                             entries = listOf(entry),
+                                             detectedFormat = VocabularyInputFormat.STRUCTURED_TEXT
+                                         )
+                                     }
 
-                                    if (parseResult.entries.isEmpty()) {
-                                        parseError = parseResult.warnings.firstOrNull() ?: "No vocabulary entries detected."
-                                        return@Button
-                                    }
+                                     if (parseResult.entries.isEmpty()) {
+                                         parseError = parseResult.warnings.firstOrNull() ?: "No vocabulary entries detected."
+                                         return@Button
+                                     }
 
-                                    val analysis = VocabularyEngine.analyzeVocabularyImport(
-                                        parseResult = parseResult,
-                                        targetDeck = targetDeck,
-                                        targetLanguage = language,
-                                        allDecks = allDecks,
-                                        checkAcrossSameLanguage = checkCrossDeck
-                                    )
+                                     val analysis = VocabularyEngine.analyzeVocabularyImport(
+                                         parseResult = parseResult,
+                                         targetDeck = targetDeck,
+                                         targetLanguage = language,
+                                         allDecks = allDecks,
+                                         checkAcrossSameLanguage = checkCrossDeck
+                                     )
 
-                                    val resolvedTransLang = translationLanguage.trim().ifBlank {
-                                        parseResult.detectedTranslationLanguage
-                                    }
-                                    if (resolvedTransLang.isNotBlank() && translationLanguage.isBlank()) {
-                                        translationLanguage = resolvedTransLang
-                                    }
+                                     val resolvedTransLang = translationLanguage.trim().ifBlank {
+                                         parseResult.detectedTranslationLanguage
+                                     }
+                                     if (resolvedTransLang.isNotBlank() && translationLanguage.isBlank()) {
+                                         translationLanguage = resolvedTransLang
+                                     }
 
-                                    if (analysis.duplicateItems.isNotEmpty()) {
-                                        pendingSmartTargetsSnapshot = emptyList()
-                                        pendingAnalysis = analysis
-                                    } else {
-                                        onCommitImport(
-                                            targetDeck?.id,
-                                            title.trim().ifBlank { targetDeck?.title ?: "$language ${VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel)}" },
-                                            language.trim().ifBlank { "English" },
-                                            resolvedTransLang,
-                                            levelCode,
-                                            customLevelLabel.trim(),
-                                            domain.trim().ifBlank { "General" },
-                                            analysis,
-                                            emptyMap(),
-                                            resolvedVar
-                                        )
-                                        onDismiss()
-                                    }
+                                     if (analysis.duplicateItems.isNotEmpty()) {
+                                         pendingSmartTargetsSnapshot = emptyList()
+                                         pendingAnalysis = analysis
+                                     } else {
+                                         val cleanCustom = if (VocabularyLevel.fromCode(levelCode) == VocabularyLevel.CUSTOM) {
+                                             customLevelLabel.trim()
+                                         } else ""
+                                         onCommitImport(
+                                             targetDeck?.id,
+                                             title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitle(cleanCustom)}" },
+                                             language.trim().ifBlank { "English" },
+                                             resolvedTransLang,
+                                             levelCode,
+                                             cleanCustom,
+                                             domain.trim().ifBlank { "General" },
+                                             analysis,
+                                             emptyMap(),
+                                             resolvedVar
+                                         )
+                                         onDismiss()
+                                     }
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
@@ -1095,7 +1106,7 @@ private fun SmartVocabularyRoutingStep(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Auto-Detected Folders & Titles",
+                            text = "Destination Level Folders",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkBold,
@@ -1103,7 +1114,7 @@ private fun SmartVocabularyRoutingStep(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${parseResult.entries.size} word(s) grouped into ${buckets.size} language/level set(s)",
+                            text = "${parseResult.entries.size} word(s) sorted into ${buckets.size} Language & Level folder(s)",
                             fontSize = 11.5.sp,
                             color = colors.tealDark,
                             fontWeight = FontWeight.SemiBold,
@@ -1121,6 +1132,25 @@ private fun SmartVocabularyRoutingStep(
                 contentPadding = PaddingValues(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (buckets.size > 1) {
+                    item(key = "route_multi_level_banner") {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.tealLight.copy(alpha = 0.65f),
+                            border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.45f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Multiple proficiency levels detected — words will be placed directly into ${buckets.size} separate level folders.",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.tealDark,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                }
+
                 if (parseResult.warnings.isNotEmpty()) {
                     item(key = "route_warning") {
                         Surface(
@@ -1167,15 +1197,22 @@ private fun SmartVocabularyRoutingStep(
                     }
 
                     fun updateChoiceLanguages(newLang: String, newVariant: String, newTrans: String) {
-                        val cleanLang = newLang.ifBlank { bucket.language }
+                        val cleanLang = newLang.ifBlank { bucket.language }.trim()
                         val prevAuto = buildDynamicDefaultTitle(effectiveLang, choice.languageVariant, effectiveTrans)
                         val shouldUpdateTitle = choice.customTitle.isBlank() ||
                             choice.customTitle == bucket.defaultNewTitle ||
                             choice.customTitle == prevAuto
                         val nextTitle = if (shouldUpdateTitle) {
-                            buildDynamicDefaultTitle(cleanLang.trim(), newVariant.trim(), newTrans.trim())
+                            buildDynamicDefaultTitle(cleanLang, newVariant.trim(), newTrans.trim())
                         } else choice.customTitle
+                        val targetLvl = VocabularyLevel.fromCode(bucket.levelCode)
+                        val matchingDeck = allDecks.firstOrNull { d ->
+                            d.language.trim().ifBlank { "English" }.equals(cleanLang, ignoreCase = true) &&
+                                d.resolvedLevel() == targetLvl &&
+                                (targetLvl != VocabularyLevel.CUSTOM || d.customLevelLabel.trim().equals(bucket.customLevelLabel.trim(), ignoreCase = true))
+                        }
                         smartChoices[bucket.bucketKey] = choice.copy(
+                            targetDeckId = matchingDeck?.id,
                             language = newLang,
                             languageVariant = newVariant,
                             translationLanguage = newTrans,
@@ -1267,144 +1304,121 @@ private fun SmartVocabularyRoutingStep(
                                 }
                             }
 
-                            Text(
-                                text = "DESTINATION FOLDER / SET",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkMuted,
-                                letterSpacing = 0.5.sp
-                            )
-
-                            // Destination picker (existing matching sets + Create New Set)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(7.dp)
-                            ) {
-                                bucket.candidateDecks.forEach { deck ->
-                                    val selected = choice.targetDeckId == deck.id
-                                    Surface(
-                                        onClick = { smartChoices[bucket.bucketKey] = choice.copy(targetDeckId = deck.id) },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (selected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
-                                        border = BorderStroke(if (selected) 1.2.dp else 0.7.dp, if (selected) colors.teal else colors.border),
-                                        modifier = Modifier.heightIn(min = 40.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                        ) {
-                                            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = if (selected) colors.tealDark else colors.inkMuted, modifier = Modifier.size(14.dp))
-                                            Text(
-                                                text = "${deck.title} (${deck.entries.size})",
-                                                fontSize = 11.5.sp,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (selected) colors.tealDark else colors.inkBold
-                                            )
+                            val matchingExistingWords = remember(allDecks, effectiveLang, bucket.levelCode, bucket.customLevelLabel) {
+                                val targetLvl = VocabularyLevel.fromCode(bucket.levelCode)
+                                allDecks.filter { d ->
+                                    d.language.trim().ifBlank { "English" }.equals(effectiveLang, ignoreCase = true)
+                                }.sumOf { deck ->
+                                    deck.entries.count { entry ->
+                                        val (eLvl, eCustom) = VocabularyEngine.resolveEffectiveEntryLevel(entry, deck)
+                                        if (targetLvl == VocabularyLevel.CUSTOM) {
+                                            eLvl == VocabularyLevel.CUSTOM && eCustom.equals(bucket.customLevelLabel.trim(), ignoreCase = true)
+                                        } else {
+                                            eLvl == targetLvl
                                         }
-                                    }
-                                }
-
-                                val createNewSelected = choice.targetDeckId == null
-                                Surface(
-                                    onClick = { smartChoices[bucket.bucketKey] = choice.copy(targetDeckId = null) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (createNewSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
-                                    border = BorderStroke(if (createNewSelected) 1.2.dp else 0.7.dp, if (createNewSelected) colors.teal else colors.border),
-                                    modifier = Modifier.heightIn(min = 40.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        Icon(Icons.Default.CreateNewFolder, contentDescription = null, tint = if (createNewSelected) colors.tealDark else colors.inkMuted, modifier = Modifier.size(14.dp))
-                                        Text(
-                                            text = "+ Create New Set",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = if (createNewSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (createNewSelected) colors.tealDark else colors.inkBold
-                                        )
                                     }
                                 }
                             }
 
-                            if (choice.targetDeckId == null) {
+                            Surface(
+                                shape = RoundedCornerShape(9.dp),
+                                color = if (matchingExistingWords > 0) colors.tealLight.copy(alpha = 0.55f) else colors.surfaceVariant.copy(alpha = 0.45f),
+                                border = BorderStroke(0.7.dp, if (matchingExistingWords > 0) colors.teal.copy(alpha = 0.45f) else colors.borderLight),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (matchingExistingWords > 0) Icons.Default.FolderOpen else Icons.Default.CreateNewFolder,
+                                        contentDescription = null,
+                                        tint = if (matchingExistingWords > 0) colors.tealDark else colors.inkMuted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (matchingExistingWords > 0) {
+                                            "Merges into existing $effectiveLang • $levelDisplay folder ($matchingExistingWords words)"
+                                        } else {
+                                            "Creates $effectiveLang • $levelDisplay folder"
+                                        },
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (matchingExistingWords > 0) colors.tealDark else colors.inkBold,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            // Bilingual Language + Translation Language editor
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 OutlinedTextField(
-                                    value = choice.customTitle,
-                                    onValueChange = { smartChoices[bucket.bucketKey] = choice.copy(customTitle = it) },
-                                    label = { Text("New Set Title", fontSize = 11.5.sp) },
+                                    value = choice.language,
+                                    onValueChange = { newLang ->
+                                        val nextVar = if (VocabularyLanguageVariants.isEnglish(newLang)) {
+                                            choice.languageVariant.ifBlank { VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT }
+                                        } else ""
+                                        updateChoiceLanguages(newLang, nextVar, choice.translationLanguage)
+                                    },
+                                    label = { Text("Language", fontSize = 11.sp) },
                                     singleLine = true,
                                     colors = fieldColors,
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Row(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    bucket.titleSuggestions.forEach { suggested ->
-                                        val isCurrent = choice.customTitle == suggested
+                                        .weight(1f)
+                                        .testTag("smart_route_lang_input_${bucket.bucketKey}")
+                                )
+                                OutlinedTextField(
+                                    value = choice.translationLanguage,
+                                    onValueChange = { newTrans ->
+                                        updateChoiceLanguages(choice.language, choice.languageVariant, newTrans)
+                                    },
+                                    label = { Text("Translation (Opt.)", fontSize = 11.sp) },
+                                    placeholder = { Text("Monolingual", fontSize = 10.5.sp) },
+                                    singleLine = true,
+                                    colors = fieldColors,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("smart_route_trans_input_${bucket.bucketKey}")
+                                )
+                            }
+
+                            // Quick translation language chips
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Bridge:", fontSize = 10.5.sp, color = colors.inkMuted, fontWeight = FontWeight.SemiBold)
+                                listOf("" to "Monolingual", "English" to "English", "Hindi" to "Hindi", "Hinglish" to "Hinglish", "Spanish" to "Spanish")
+                                    .filter { (valCode, _) -> valCode.isBlank() || !valCode.equals(effectiveLang, ignoreCase = true) }
+                                    .forEach { (valCode, chipLabel) ->
+                                        val sel = effectiveTrans.equals(valCode, ignoreCase = true)
                                         Surface(
-                                            onClick = { smartChoices[bucket.bucketKey] = choice.copy(customTitle = suggested) },
+                                            onClick = { updateChoiceLanguages(choice.language, choice.languageVariant, valCode) },
                                             shape = RoundedCornerShape(6.dp),
-                                            color = if (isCurrent) colors.amberLight else colors.surfaceVariant.copy(alpha = 0.45f),
-                                            border = BorderStroke(0.7.dp, if (isCurrent) colors.amber else colors.border)
+                                            color = if (sel) colors.amberLight else colors.surfaceVariant.copy(alpha = 0.4f),
+                                            border = BorderStroke(0.7.dp, if (sel) colors.amber else colors.border)
                                         ) {
                                             Text(
-                                                text = suggested,
+                                                text = chipLabel,
                                                 fontSize = 10.5.sp,
-                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isCurrent) colors.amber else colors.ink,
+                                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (sel) colors.amber else colors.inkBold,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
                                         }
                                     }
-                                }
+                            }
 
-                                // Bilingual Language + Translation Language editor
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = choice.language,
-                                        onValueChange = { newLang ->
-                                            val nextVar = if (VocabularyLanguageVariants.isEnglish(newLang)) {
-                                                choice.languageVariant.ifBlank { VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT }
-                                            } else ""
-                                            updateChoiceLanguages(newLang, nextVar, choice.translationLanguage)
-                                        },
-                                        label = { Text("Language", fontSize = 11.sp) },
-                                        singleLine = true,
-                                        colors = fieldColors,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("smart_route_lang_input_${bucket.bucketKey}")
-                                    )
-                                    OutlinedTextField(
-                                        value = choice.translationLanguage,
-                                        onValueChange = { newTrans ->
-                                            updateChoiceLanguages(choice.language, choice.languageVariant, newTrans)
-                                        },
-                                        label = { Text("Translation (Opt.)", fontSize = 11.sp) },
-                                        placeholder = { Text("Monolingual", fontSize = 10.5.sp) },
-                                        singleLine = true,
-                                        colors = fieldColors,
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("smart_route_trans_input_${bucket.bucketKey}")
-                                    )
-                                }
-
-                                // Quick translation language chips
+                            if (isEnglish) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1412,53 +1426,22 @@ private fun SmartVocabularyRoutingStep(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Bridge:", fontSize = 10.5.sp, color = colors.inkMuted, fontWeight = FontWeight.SemiBold)
-                                    listOf("" to "Monolingual", "English" to "English", "Hindi" to "Hindi", "Hinglish" to "Hinglish", "Spanish" to "Spanish")
-                                        .filter { (valCode, _) -> valCode.isBlank() || !valCode.equals(effectiveLang, ignoreCase = true) }
-                                        .forEach { (valCode, chipLabel) ->
-                                            val sel = effectiveTrans.equals(valCode, ignoreCase = true)
-                                            Surface(
-                                                onClick = { updateChoiceLanguages(choice.language, choice.languageVariant, valCode) },
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = if (sel) colors.amberLight else colors.surfaceVariant.copy(alpha = 0.4f),
-                                                border = BorderStroke(0.7.dp, if (sel) colors.amber else colors.border)
-                                            ) {
-                                                Text(
-                                                    text = chipLabel,
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (sel) colors.amber else colors.inkBold,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                }
-
-                                if (isEnglish) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Origin:", fontSize = 10.5.sp, color = colors.inkMuted, fontWeight = FontWeight.SemiBold)
-                                        VocabularyLanguageVariants.ENGLISH_VARIANTS.forEach { v ->
-                                            val sel = choice.languageVariant.equals(v, ignoreCase = true)
-                                            Surface(
-                                                onClick = { updateChoiceLanguages(choice.language, v, choice.translationLanguage) },
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = if (sel) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
-                                                border = BorderStroke(0.7.dp, if (sel) colors.teal else colors.border)
-                                            ) {
-                                                Text(
-                                                    text = VocabularyLanguageVariants.shortBadge(v),
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (sel) colors.tealDark else colors.inkBold,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
+                                    Text("Origin:", fontSize = 10.5.sp, color = colors.inkMuted, fontWeight = FontWeight.SemiBold)
+                                    VocabularyLanguageVariants.ENGLISH_VARIANTS.forEach { v ->
+                                        val sel = choice.languageVariant.equals(v, ignoreCase = true)
+                                        Surface(
+                                            onClick = { updateChoiceLanguages(choice.language, v, choice.translationLanguage) },
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (sel) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
+                                            border = BorderStroke(0.7.dp, if (sel) colors.teal else colors.border)
+                                        ) {
+                                            Text(
+                                                text = VocabularyLanguageVariants.shortBadge(v),
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (sel) colors.tealDark else colors.inkBold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -1480,7 +1463,7 @@ private fun SmartVocabularyRoutingStep(
                             colors = CheckboxDefaults.colors(checkedColor = colors.teal)
                         )
                         Text(
-                            text = "Check duplicates across all existing same-language sets",
+                            text = "Check duplicates across all existing same-language folders",
                             fontSize = 12.sp,
                             color = colors.inkBold,
                             modifier = Modifier.weight(1f)
@@ -1516,7 +1499,7 @@ private fun SmartVocabularyRoutingStep(
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(17.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (buckets.size > 1) "Route & Save (${buckets.size} Sets)" else "Review & Save",
+                            text = if (buckets.size > 1) "Save to ${buckets.size} Level Folders" else "Save to Level Folder",
                             fontWeight = FontWeight.Bold
                         )
                     }

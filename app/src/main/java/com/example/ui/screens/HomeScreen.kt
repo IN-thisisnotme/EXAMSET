@@ -1507,6 +1507,12 @@ fun HomeScreen(
             onRateEntry = { deckId, entryId, rating -> viewModel.rateVocabularyEntry(deckId, entryId, rating) },
             onResetDeckSrs = { deckId -> viewModel.resetVocabularyDeckSrs(deckId) },
             onResetLanguageSrs = { language -> viewModel.resetVocabularyLanguageSrs(language) },
+            onResetLevelSrs = { language, levelCode, customLevelLabel ->
+                viewModel.resetVocabularyLevelSrs(language, levelCode, customLevelLabel)
+            },
+            onDeleteLevelFolder = { language, levelCode, customLevelLabel ->
+                viewModel.deleteVocabularyLevelFolder(language, levelCode, customLevelLabel)
+            },
             onApplyAuditFixes = { deckId, findings -> viewModel.applyVocabularyAuditFixes(deckId, findings) },
             onApplyMixedAuditFixes = { originByEntryId, findings ->
                 viewModel.applyMixedVocabularyAuditFixes(originByEntryId, findings)

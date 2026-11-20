@@ -14,6 +14,7 @@ import com.example.model.VocabularyLanguageVariants
 import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
 import com.example.ui.MainViewModel
+import com.example.ui.screens.VocabularyPromptState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -1241,6 +1242,181 @@ class VocabularyEngineTest {
         assertEquals(Locale.forLanguageTag("en-IN"), VocabularyTtsSpeaker.resolveLocale("English", "IN"))
         assertEquals(Locale.forLanguageTag("hi-IN"), VocabularyTtsSpeaker.resolveLocale("Hindi"))
         assertEquals(Locale.JAPANESE, VocabularyTtsSpeaker.resolveLocale("Japanese"))
+    }
+
+    @Test
+    fun promptBuilder_adaptsDifficultyToTargetLanguageAndForbidsLiteralMixedOrCustomLevels() {
+        val jpMixedState = VocabularyPromptState().apply {
+            language = "Japanese"
+            levelCode = VocabularyLevel.MIXED.code
+            outputFormat = "Strict JSON"
+        }
+        val jpPrompt = jpMixedState.buildPrompt()
+        assertTrue(jpPrompt.contains("JLPT"))
+        assertTrue(jpPrompt.contains("\"level\": \"A1 | A2 | B1 | B2 | C1 | C2\""))
+        assertTrue(jpPrompt.contains("NEVER write \"MIXED\""))
+        assertFalse(jpPrompt.contains("\"level\": \"MIXED\""))
+
+        val hiCustomState = VocabularyPromptState().apply {
+            language = "Hindi"
+            levelCode = VocabularyLevel.CUSTOM.code
+            customLevelLabel = "UPSC Essay"
+            outputFormat = "Structured Text"
+        }
+        val hiPrompt = hiCustomState.buildPrompt()
+        assertTrue(hiPrompt.contains("register progression"))
+        assertTrue(hiPrompt.contains("Curriculum / Track Focus: UPSC Essay"))
+        assertTrue(hiPrompt.contains("LEVEL: [A1 | A2 | B1 | B2 | C1 | C2]"))
+        assertFalse(hiPrompt.contains("LEVEL: [CUSTOM]"))
+        assertFalse(hiPrompt.contains("LEVEL: [UPSC Essay]"))
+    }
+
+    @Test
+    fun parseAndRoute_stripsLiteralMixedOrCustomAndConsolidatesMultiLevelFolders() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val vm = MainViewModel(app)
+
+        val aiBatchJson = """
+            [
+              {"word": "Brisk", "level": "A1", "meaning": "Quick and energetic.", "examples": [{"context": "Everyday", "sentence": "We went for a brisk morning walk."}]},
+              {"word": "Ambiguous", "level": "MIXED", "meaning": "Open to more than one interpretation.", "examples": [{"context": "Workplace", "sentence": "The policy wording was ambiguous."}]},
+              {"word": "Prudent", "level": "B2", "meaning": "Acting with care and thought for the future.", "examples": [{"context": "Finance", "sentence": "It is prudent to keep an emergency reserve."}]},
+              {"word": "Ephemeral", "level": "C1", "meaning": "Lasting for a very short time.", "examples": [{"context": "Editorial", "sentence": "Digital trends are often ephemeral."}]},
+              {"word": "Candid", "level": "custom", "meaning": "Truthful and straightforward.", "examples": [{"context": "Conversation", "sentence": "Thank you for your candid feedback."}]}
+            ]
+        """.trimIndent()
+
+        val parsed = VocabularyEngine.parseVocabularyInput(
+            rawInput = aiBatchJson,
+            defaultLevelCode = VocabularyLevel.INTERMEDIATE.code,
+            preferredEnglishVariant = "UK"
+        )
+        assertEquals(5, parsed.entries.size)
+        assertTrue(parsed.entries.none { it.levelCode.equals("MIXED", ignoreCase = true) })
+        assertTrue(parsed.entries.none { it.levelCode.equals("CUSTOM", ignoreCase = true) && it.customLevelLabel.isBlank() })
+
+        val buckets = VocabularyEngine.buildSmartRoutingPlan(parsed, vm.vocabularyDecks.value, "UK")
+        assertEquals(listOf("A1", "B1", "B2", "C1"), buckets.map { it.levelCode })
+        assertTrue(buckets.none { it.levelCode == VocabularyLevel.MIXED.code })
+
+        val choices = buckets.associate { b ->
+            b.bucketKey to VocabularySmartRouteTargetChoice(
+                bucketKey = b.bucketKey,
+                targetDeckId = b.recommendedDeckId,
+                customTitle = b.defaultNewTitle,
+                language = b.language,
+                languageVariant = b.languageVariant,
+                translationLanguage = b.translationLanguage,
+                levelCode = b.levelCode,
+                customLevelLabel = b.customLevelLabel
+            )
+        }
+        val routeAnalysis = VocabularyEngine.analyzeSmartRoutedImport(
+            parseResult = parsed,
+            buckets = buckets,
+            choices = choices,
+            allDecks = vm.vocabularyDecks.value
+        )
+        vm.commitSmartRoutedVocabularyImport(
+            targets = choices.values.toList(),
+            entryBucketById = routeAnalysis.entryBucketById,
+            analysis = routeAnalysis.analysis,
+            decisions = emptyMap()
+        )
+
+        val levelSummaries = VocabularyEngine.buildLevelFolderSummaries("English", vm.vocabularyDecks.value, vm.vocabularySrsByDeck.value)
+        assertEquals(listOf("A1", "B1", "B2", "C1"), levelSummaries.map { it.levelCode })
+
+        // Subsequent manual import into B2 without targetDeckId consolidates into existing B2 deck rather than spawning a duplicate
+        val secondB2Analysis = VocabularyEngine.analyzeVocabularyImport(
+            parseResult = VocabularyParseResult(
+                entries = listOf(VocabularyEntry(word = "Resilient", meaning = "Able to recover quickly.", levelCode = "B2")),
+                detectedFormat = VocabularyInputFormat.STRUCTURED_TEXT
+            ),
+            targetDeck = null,
+            targetLanguage = "English",
+            allDecks = vm.vocabularyDecks.value
+        )
+        vm.commitVocabularyImport(
+            targetDeckId = null,
+            title = "",
+            language = "English",
+            translationLanguage = "",
+            levelCode = "B2",
+            customLevelLabel = "",
+            domain = "General",
+            analysis = secondB2Analysis,
+            decisions = emptyMap(),
+            languageVariant = "UK"
+        )
+        val b2Decks = vm.vocabularyDecks.value.filter { it.language == "English" && it.levelCode == "B2" }
+        assertEquals(1, b2Decks.size)
+        assertEquals(2, b2Decks.single().entries.size)
+    }
+
+    @Test
+    fun legacyMixedDeckMigration_splitsEntriesIntoExactLevelFoldersAndWritesBackSafely() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val prefs = ExamSetPreferences(app)
+
+        val legacyDeck = VocabularyDeck(
+            id = "legacy_mixed_1",
+            title = "Legacy Mixed Pack",
+            language = "English",
+            levelCode = VocabularyLevel.MIXED.code,
+            entries = listOf(
+                VocabularyEntry(id = "lg_a1", word = "Brisk", meaning = "Quick", levelCode = "A1"),
+                VocabularyEntry(id = "lg_b2", word = "Prudent", meaning = "Careful", levelCode = "B2"),
+                VocabularyEntry(id = "lg_c1", word = "Cogent", meaning = "Convincing", levelCode = "C1"),
+                VocabularyEntry(id = "lg_untagged", word = "LegacyWord", meaning = "From older MIXED tag", levelCode = "MIXED")
+            )
+        )
+        val legacySrs = mapOf(
+            "legacy_mixed_1" to mapOf(
+                "lg_a1" to FlashcardSrsState(blockIndex = 0, repetitions = 3, intervalDays = 10),
+                "lg_b2" to FlashcardSrsState(blockIndex = 0, repetitions = 2, intervalDays = 6),
+                "lg_c1" to FlashcardSrsState(blockIndex = 0, repetitions = 1, intervalDays = 1)
+            )
+        )
+        prefs.saveVocabularyDecks(listOf(legacyDeck))
+        prefs.saveAllVocabularySrsMaps(legacySrs)
+
+        val vm = MainViewModel(app)
+        val summaries = VocabularyEngine.buildLevelFolderSummaries(
+            language = "English",
+            decks = vm.vocabularyDecks.value,
+            srsByDeck = vm.vocabularySrsByDeck.value
+        )
+        // Legacy MIXED deck never appears as a "MIXED" folder; untagged entry routes cleanly into B1
+        assertEquals(listOf("A1", "B1", "B2", "C1"), summaries.map { it.levelCode })
+        assertTrue(summaries.none { it.levelCode == VocabularyLevel.MIXED.code })
+
+        // Compiled B2 level folder maps back to original legacy_mixed_1 deck and preserves SRS
+        val compiledB2 = VocabularyEngine.compileLevelVocabularyDeck(
+            language = "English",
+            levelCode = "B2",
+            decks = vm.vocabularyDecks.value,
+            srsByDeck = vm.vocabularySrsByDeck.value
+        )
+        assertEquals(listOf("Prudent"), compiledB2.virtualDeck.entries.map { it.word })
+        assertEquals("legacy_mixed_1", compiledB2.sourceByEntryId["lg_b2"]?.originDeckId)
+        assertNotNull(compiledB2.srsByEntryId["lg_b2"])
+
+        // Resetting B2 progress affects ONLY lg_b2 inside legacy_mixed_1
+        vm.resetVocabularyLevelSrs("English", "B2")
+        val srsAfterB2Reset = vm.vocabularySrsByDeck.value["legacy_mixed_1"].orEmpty()
+        assertFalse(srsAfterB2Reset.containsKey("lg_b2"))
+        assertTrue(srsAfterB2Reset.containsKey("lg_a1"))
+        assertTrue(srsAfterB2Reset.containsKey("lg_c1"))
+
+        // Deleting C1 level folder removes ONLY lg_c1 while keeping A1, B1, B2 in legacy_mixed_1 intact
+        vm.deleteVocabularyLevelFolder("English", "C1")
+        val remainingEntries = vm.vocabularyDecks.value.first { it.id == "legacy_mixed_1" }.entries
+        assertEquals(setOf("lg_a1", "lg_b2", "lg_untagged"), remainingEntries.map { it.id }.toSet())
+        assertFalse(vm.vocabularySrsByDeck.value["legacy_mixed_1"].orEmpty().containsKey("lg_c1"))
+        assertTrue(vm.vocabularySrsByDeck.value["legacy_mixed_1"].orEmpty().containsKey("lg_a1"))
     }
 }
 
