@@ -164,6 +164,21 @@ fun PromptGeneratorTab(
                 }
             }
 
+            val cognitiveCalibration = when (difficulty) {
+                "Easy" -> "Cognitive Level (Easy / Foundational): Direct conceptual recall, core definitions, standard formulas, and clear distractors."
+                "Moderate" -> "Cognitive Level (Moderate / Standard): Competitive examination caliber requiring multi-step comprehension, application, and deduction."
+                "Hard" -> "Cognitive Level (Hard / Advanced): High analytical rigor, edge cases, multi-step calculations, and distractors targeting subtle misconceptions."
+                "Extreme" -> "Cognitive Level (Extreme Olympiad / Rank-Decider): Deep multi-concept synthesis, subtle distractor nuances, and demanding problem-solving."
+                else -> "Cognitive Level (Mixed Difficulty): Balanced ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging items."
+            }
+            val patternCalibration = when (questionType) {
+                "Conceptual & Theory" -> "Pattern Focus: Strictly conceptual & theoretical items evaluating governing laws, principles, and cause-effect reasoning."
+                "Numerical & Calculation" -> "Pattern Focus: Quantitative & numerical problem-solving with exact formulas, numeric options ordered lowest-to-highest, and verified calculation steps."
+                "Assertion-Reason & Statement-Based" -> "Pattern Focus: Analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'."
+                "Case Study & Passage-Based" -> "Pattern Focus: Context-driven scenarios, experimental setups, or clinical/field case studies evaluating applied judgment."
+                else -> "Pattern Diversity: Actively distribute the $countInt questions across direct conceptual, statement-evaluation, numerical/application, and assertion/analytical formats rather than repeating single-sentence recall."
+            }
+
             if (targetOutputFormat == "Strict JSON") {
                 buildString {
                     append(
@@ -193,10 +208,12 @@ fun PromptGeneratorTab(
 
                         ### 3. QUESTION QUALITY AND ANSWER RULES
                         1. Generate exactly $countInt questions relevant to $targetSubject and appropriate for $targetExam.
-                        2. Each question must contain EXACTLY $optionCount options, with keys ${if (optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.${if (optionCount == 4) " Never include an option \"e\" or any additional options." else ""}
-                        3. Each option must be plausible, relevant, and clearly distinguishable from the others. Avoid overlapping options, grammatical clues, and making the correct option noticeably longer without a valid reason.
-                        4. The "correctAnswer" value must be exactly one uppercase letter: ${if (optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct.
-                        5. Distribute correct answers approximately evenly across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} when feasible. Never compromise correctness to balance the answer key.
+                        2. $cognitiveCalibration
+                        3. $patternCalibration
+                        4. Each question must contain EXACTLY $optionCount options, with keys ${if (optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.${if (optionCount == 4) " Never include an option \"e\" or any additional options." else ""}
+                        5. Distractor Quality: Make all options plausible, mutually exclusive, and grammatically parallel. Never use "All of the above", "None of the above", or "Both A and B". Order numeric/date options lowest to highest, and do not make the correct option noticeably longest.
+                        6. The "correctAnswer" value must be exactly one uppercase letter: ${if (optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct.
+                        7. Distribute correct answers approximately evenly across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} when feasible. Never compromise correctness to balance the answer key.
 
                         ### 4. EXPLANATION REQUIREMENTS
                         Write every explanation in $effectiveExplanationLanguage. Ensure that the reasoning is accurate, specific to the question, and sufficient to justify the answer. Avoid repetition, filler, vague claims, and unrelated background information.
@@ -299,7 +316,7 @@ fun PromptGeneratorTab(
                 }
             } else if (targetOutputFormat == "Markdown Table") {
                 buildString {
-                    append("Act as an examination paper setter for $targetExam.\n\n")
+                    append("Act as a senior psychometrician and examination paper setter for $targetExam.\n\n")
                     append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty in $qLang (Question Pattern: $questionType).\n\n")
                     append("OUTPUT FORMAT: MARKDOWN TABLE\n")
                     append("Format the entire question set as a clean, standardized Markdown table with the following column headers:\n")
@@ -310,17 +327,24 @@ fun PromptGeneratorTab(
                         append("| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n")
                         append("|---|---|---|---|---|---|:---:|---|\n\n")
                     }
-                    append("Rules:\n")
-                    append("1. STRICT $optionCount-OPTION CONSTRAINT: Each question must have EXACTLY $optionCount options (${if (optionCount == 5) "Option A, B, C, D, E" else "Option A, Option B, Option C, Option D"}).\n")
-                    append("2. Put each question in a single table row.\n")
-                    append("3. In the 'Answer' column, write strictly ${if (optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}.\n")
-                    append("4. In the 'Explanation' column, provide a ${if (promptDensity == "Concise") "concise" else "detailed"}, step-by-step rationale (in $effectiveExplanationLanguage)${if (enableQuantityCorrectionRule) " kept strictly within 2–3 sentences to prevent truncation" else ""}.\n")
-                    append("5. Balanced key distribution across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"}.\n")
-                    if (includeFormulasAndDiagrams) {
-                        append("6. Use LaTeX formatting for mathematical expressions and chemical formulas where appropriate.\n")
-                        append("7. Do not include extra commentary or greeting text before or after the table.")
+                    val optionStrategyNote = if (explainAllFourOptions) {
+                        "briefly noting why the right answer works and why distractors fail"
                     } else {
-                        append("6. Do not include extra commentary or greeting text before or after the table.")
+                        "focusing concisely on the decisive reasoning"
+                    }
+                    append("Rules:\n")
+                    append("1. $cognitiveCalibration\n")
+                    append("2. $patternCalibration\n")
+                    append("3. STRICT $optionCount-OPTION CONSTRAINT: Each question must have EXACTLY $optionCount options (${if (optionCount == 5) "Option A, B, C, D, E" else "Option A, Option B, Option C, Option D"}). Never use 'All of the above' or 'None of the above'; keep options parallel and length-balanced.\n")
+                    append("4. SINGLE-ROW INTEGRITY: Put each question in a single table row and NEVER place raw `|` characters or line breaks inside cell text (use words or `\\lvert x \\rvert`).\n")
+                    append("5. In the 'Answer' column, write strictly ${if (optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}.\n")
+                    append("6. In the 'Explanation' column, provide a ${if (promptDensity == "Concise") "concise" else "detailed"} rationale in $effectiveExplanationLanguage, $optionStrategyNote${if (enableQuantityCorrectionRule) ", kept strictly within 2–3 sentences to prevent truncation" else ""}.\n")
+                    append("7. Balanced key distribution across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"}.\n")
+                    if (includeFormulasAndDiagrams) {
+                        append("8. Use single-line inline `\$...\$` LaTeX formatting for mathematical expressions and chemical formulas where appropriate.\n")
+                        append("9. Do not include extra commentary or greeting text before or after the table.")
+                    } else {
+                        append("8. Do not include extra commentary or greeting text before or after the table.")
                     }
                 }
             } else {

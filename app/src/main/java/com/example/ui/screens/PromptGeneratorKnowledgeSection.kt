@@ -107,12 +107,7 @@ class KnowledgePromptState {
     }
 
     fun buildPrompt(): String {
-        val resolvedTopic = when {
-            topic.isNotBlank() && subject.isNotBlank() -> "${topic.trim()} (${subject.trim()})"
-            topic.isNotBlank() -> topic.trim()
-            subject.isNotBlank() -> subject.trim()
-            else -> ""
-        }
+        val resolvedTopic = topic.trim().ifBlank { subject.trim() }
         return StudyNoteParser.compilePrompt(
             topic = resolvedTopic,
             collectionType = collectionType,
@@ -154,7 +149,8 @@ fun LazyListScope.knowledgePromptBuilderItems(
     haptic: HapticFeedback,
     copied: Boolean,
     onCopyPrompt: () -> Unit,
-    onOpenKnowledgeStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit
+    onOpenKnowledgeStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit,
+    showFooterButtons: Boolean = true
 ) {
     val countInt = state.itemCount.toInt()
     val compiledPrompt = state.buildPrompt()
@@ -713,7 +709,10 @@ fun LazyListScope.knowledgePromptBuilderItems(
 
                 val sampleSnippet = StudyNoteParser.buildSampleTemplate(
                     collectionType = state.collectionType,
-                    layerOrder = state.layerOrder
+                    layerOrder = state.layerOrder,
+                    includeLatexMath = state.includeLatexMath,
+                    includeCallouts = state.includeCallouts,
+                    includePyqTags = state.includePyqTags
                 )
                 Column(
                     modifier = Modifier
@@ -867,76 +866,78 @@ fun LazyListScope.knowledgePromptBuilderItems(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                if (showFooterButtons) {
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = onCopyPrompt,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("knowledge_prompt_footer_copy_button"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (copied) colors.green else colors.navyBanner,
-                            contentColor = colors.navyBannerText
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (copied) "Prompt Copied!" else "Copy Prompt",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            onOpenKnowledgeStudio(
-                                state.topic.trim().ifBlank { state.subject.trim() },
-                                state.subject.trim(),
-                                state.collectionType,
-                                state.toFormatRule()
+                        Button(
+                            onClick = onCopyPrompt,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("knowledge_prompt_footer_copy_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
                             )
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("knowledge_prompt_open_studio_button"),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.teal,
-                            containerColor = colors.surface
-                        ),
-                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = colors.teal
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Open Studio",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        ) {
+                            Icon(
+                                if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (copied) "Prompt Copied!" else "Copy Prompt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onOpenKnowledgeStudio(
+                                    state.topic.trim().ifBlank { state.subject.trim() },
+                                    state.subject.trim(),
+                                    state.collectionType,
+                                    state.toFormatRule()
+                                )
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("knowledge_prompt_open_studio_button"),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = colors.teal,
+                                containerColor = colors.surface
+                            ),
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.teal
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Studio",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

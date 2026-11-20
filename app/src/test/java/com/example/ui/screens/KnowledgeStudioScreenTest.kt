@@ -1,0 +1,113 @@
+package com.example.ui.screens
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
+import com.example.model.KnowledgeCollectionType
+import com.example.model.KnowledgeFormatRule
+import com.example.ui.KnowledgeEditorDraft
+import com.example.ui.theme.ExamSetTheme
+import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [36])
+class KnowledgeStudioScreenTest {
+
+    @get:Rule
+    val composeTestRule = createComposeRule()
+
+    @Test
+    fun knowledgeStudioEditor_twoTabsSwitchAndSyncStateAcrossPromptAndInput() {
+        var savedTitle = ""
+        var savedSubject = ""
+        var savedRawContent = ""
+        var savedCollectionType: KnowledgeCollectionType? = null
+        var savedRule: KnowledgeFormatRule? = null
+        var dismissed = false
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                KnowledgeStudioEditorScreen(
+                    draft = KnowledgeEditorDraft(),
+                    folders = emptyList(),
+                    savedPapers = emptyList(),
+                    onSave = { _, title, subject, _, rawContent, _, collectionType, _, _, formatRule ->
+                        savedTitle = title
+                        savedSubject = subject
+                        savedRawContent = rawContent
+                        savedCollectionType = collectionType
+                        savedRule = formatRule
+                    },
+                    onDismiss = { dismissed = true }
+                )
+            }
+        }
+
+        // Initial state: Tab 0 (Paste / Input) is active and Save button is disabled when empty
+        composeTestRule.onNodeWithText("Create Knowledge Set").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_tab_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_tab_prompt").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("study_note_content_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("save_knowledge_set_button").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("clear_knowledge_text_button").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("cancel_knowledge_sheet_button").assertIsDisplayed()
+
+        // Switch to Tab 1 (AI Prompt Generator)
+        composeTestRule.onNodeWithTag("knowledge_tab_prompt").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("AI Knowledge Prompt Builder").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_copy_prompt_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_switch_to_input_tab_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_prompt_open_studio_button").assertDoesNotExist()
+
+        val promptList = composeTestRule.onNodeWithTag("knowledge_sheet_prompt_lazy_column")
+        promptList.performScrollToNode(hasText("STUDY SCOPE & TOPIC"))
+        composeTestRule.onNodeWithTag("knowledge_prompt_subject_input").performScrollTo().performTextInput("Physics")
+        composeTestRule.onNodeWithTag("knowledge_prompt_topic_input").performScrollTo().performTextInput("Electrostatics")
+
+        promptList.performScrollToNode(hasText("COLLECTION FORMAT & DEPTH"))
+        composeTestRule.onNodeWithTag("knowledge_type_formula_sheet").performScrollTo().performClick()
+
+        promptList.performScrollToNode(hasText("CONSTRUCTED KNOWLEDGE PROMPT"))
+        composeTestRule.onNodeWithText("FORMULAS • 20 Items").performScrollTo().assertIsDisplayed()
+
+        // Click "Paste Response" in bottom bar to switch back to Tab 0 with synced metadata
+        composeTestRule.onNodeWithTag("knowledge_switch_to_input_tab_button").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("study_note_content_input").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Formula & Law Sheet • Electrostatics").assertIsDisplayed()
+
+        // Paste/enter study note content and save
+        composeTestRule.onNodeWithTag("study_note_content_input").performTextInput(
+            "1. **Coulomb's Law** -> Force between point charges\n  - Formula: \$F = k \\frac{q_1 q_2}{r^2}\$"
+        )
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("save_knowledge_set_button").assertIsEnabled().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Electrostatics", savedTitle)
+        assertEquals("Physics", savedSubject)
+        assertEquals(KnowledgeCollectionType.FORMULA_SHEET, savedCollectionType)
+        assertEquals(KnowledgeCollectionType.FORMULA_SHEET, savedRule?.collectionType)
+        assertTrue(savedRawContent.contains("Coulomb's Law"))
+        assertTrue(dismissed)
+    }
+}

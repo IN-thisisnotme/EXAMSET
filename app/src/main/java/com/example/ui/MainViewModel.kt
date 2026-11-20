@@ -427,6 +427,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var inputDebounceJob: Job? = null
     private var paperDebounceJob: Job? = null
 
+    private val _lastOpenedPaper = MutableStateFlow<PaperEntity?>(null)
+    val lastOpenedPaper: StateFlow<PaperEntity?> = _lastOpenedPaper.asStateFlow()
+
     init {
         restoreAutosavedState()
         initTodayStudyAnalytics()
@@ -458,9 +461,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
-    private val _lastOpenedPaper = MutableStateFlow<PaperEntity?>(null)
-    val lastOpenedPaper: StateFlow<PaperEntity?> = _lastOpenedPaper.asStateFlow()
 
     private fun restoreAutosavedState() {
         viewModelScope.launch(Dispatchers.IO) {

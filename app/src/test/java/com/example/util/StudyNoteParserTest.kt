@@ -334,5 +334,81 @@ class StudyNoteParserTest {
         assertTrue(sample.contains("First Law of Thermodynamics"))
         assertTrue(sample.contains("Formula:"))
     }
+
+    @Test
+    fun `compilePrompt resolves mode conflicts, enforces strict LaTeX & PYQ placement, and embeds 1-shot example`() {
+        // 1. ONE_LINERS even with BALANCED + preserveNestedBullets=true enforces single-line with no sub-bullets
+        val oneLinerPrompt = StudyNoteParser.compilePrompt(
+            topic = "Constitutional Amendments",
+            collectionType = KnowledgeCollectionType.ONE_LINERS,
+            rule = KnowledgeFormatRule(
+                collectionType = KnowledgeCollectionType.ONE_LINERS,
+                depth = KnowledgeDepth.BALANCED,
+                layerOrder = KnowledgeLayerOrder.AUTO_DETECT,
+                preserveNestedBullets = true,
+                includeLatexMath = false
+            ),
+            itemCount = 30
+        )
+        assertTrue(oneLinerPrompt.contains("NO nested sub-bullets"))
+        assertTrue(oneLinerPrompt.contains("Completion Parity"))
+        assertTrue(oneLinerPrompt.contains("EXACT OUTPUT EXAMPLE (FOLLOW THIS SYNTAX LINE-FOR-LINE):"))
+        assertTrue(oneLinerPrompt.contains("Article 32"))
+
+        // 2. COMPARISON_TABLE >= 25 rows splits across sub-tables, skips redundant table rule, forbids raw pipes
+        val tablePrompt = StudyNoteParser.compilePrompt(
+            topic = "Mitosis vs Meiosis",
+            collectionType = KnowledgeCollectionType.COMPARISON_TABLE,
+            rule = KnowledgeFormatRule(
+                collectionType = KnowledgeCollectionType.COMPARISON_TABLE,
+                layerOrder = KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST,
+                includeComparisonTable = true,
+                preserveNestedBullets = true
+            ),
+            itemCount = 40,
+            includePyqTags = true
+        )
+        assertTrue(tablePrompt.contains("split cleanly across 2–5 focused Markdown tables"))
+        assertTrue(tablePrompt.contains("NEVER insert nested bullets or raw unescaped `|`"))
+        assertTrue(!tablePrompt.contains("Include at least one Markdown comparison table"))
+        assertTrue(tablePrompt.contains("| Parameter | Isothermal | Adiabatic |"))
+
+        // 3. BACKWARDS_ANSWER_FIRST + PYQ puts marker before -> (never after trailing **Concept**)
+        val backwardsPrompt = StudyNoteParser.compilePrompt(
+            topic = "Optics Laws",
+            collectionType = KnowledgeCollectionType.MULTI_LINER,
+            rule = KnowledgeFormatRule(
+                collectionType = KnowledgeCollectionType.MULTI_LINER,
+                layerOrder = KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST,
+                includeLatexMath = true
+            ),
+            itemCount = 15,
+            includePyqTags = true
+        )
+        assertTrue(backwardsPrompt.contains("BEFORE `->` or on a sub-bullet—NEVER after trailing `**Concept**`"))
+        assertTrue(backwardsPrompt.contains("NEVER use `\$\$...\$\$`"))
+        assertTrue(backwardsPrompt.contains("[PYQ Focus] -> **Lenz's Law**"))
+
+        // 4. FORMULA_SHEET pluralization & WEAK_AREA_REVIEW structure
+        val formulaPrompt = StudyNoteParser.compilePrompt(
+            topic = "Thermodynamics",
+            collectionType = KnowledgeCollectionType.FORMULA_SHEET,
+            rule = KnowledgeFormatRule(collectionType = KnowledgeCollectionType.FORMULA_SHEET),
+            itemCount = 20
+        )
+        assertTrue(formulaPrompt.contains("20 important laws/formulas"))
+
+        val weakSample = StudyNoteParser.buildSampleTemplate(
+            collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
+            layerOrder = KnowledgeLayerOrder.TERM_FIRST,
+            includeLatexMath = false,
+            includeCallouts = false,
+            includePyqTags = true
+        )
+        assertTrue(weakSample.contains("- Trap:"))
+        assertTrue(!weakSample.contains("> Exam Tip:"))
+        assertTrue(weakSample.contains("[PYQ Focus]"))
+    }
 }
+
 

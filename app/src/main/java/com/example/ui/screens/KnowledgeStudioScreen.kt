@@ -18,16 +18,24 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -39,10 +47,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
@@ -78,9 +88,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -93,7 +108,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -176,6 +195,9 @@ fun KnowledgeStudioEditorScreen(
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val initialNote = draft.note
 
     val initialRule = remember(draft) {
@@ -184,62 +206,39 @@ fun KnowledgeStudioEditorScreen(
             ?: KnowledgeFormatRule(collectionType = draft.defaultCollectionType)
     }
 
+    // Shared Knowledge Prompt + Format Rule State so Tab 0 (Paste/Input) and Tab 1 (AI Prompt Generator) stay synchronized
+    val promptState = remember(draft) {
+        KnowledgePromptState().apply {
+            subject = initialNote?.subject ?: draft.defaultSubject
+            topic = initialNote?.title ?: draft.prefillTitle
+            collectionType = initialNote?.resolvedCollectionType() ?: draft.defaultCollectionType
+            customCollectionLabel = initialNote?.customLabel ?: initialRule.customCollectionLabel
+            layerOrder = initialRule.layerOrder
+            depth = initialRule.depth
+            language = initialRule.language
+            preserveNestedBullets = initialRule.preserveNestedBullets
+            includeLatexMath = initialRule.includeLatexMath
+            includeCallouts = initialRule.includeCallouts
+            includeComparisonTable = initialRule.includeComparisonTable
+            customInstruction = initialRule.customInstruction
+        }
+    }
+
     var title by remember(draft) { mutableStateOf(initialNote?.title ?: draft.prefillTitle) }
-    var subject by remember(draft) { mutableStateOf(initialNote?.subject ?: draft.defaultSubject) }
     var sourceAi by remember(draft) { mutableStateOf(initialNote?.sourceAi ?: "") }
     var selectedFolderId by remember(draft) { mutableStateOf(initialNote?.folderId ?: draft.defaultFolderId) }
-    var collectionType by remember(draft) {
-        mutableStateOf(initialNote?.resolvedCollectionType() ?: draft.defaultCollectionType)
-    }
-    var customLabel by remember(draft) {
-        mutableStateOf(initialNote?.customLabel ?: initialRule.customCollectionLabel)
-    }
     var linkedPaperId by remember(draft) { mutableStateOf(initialNote?.linkedPaperId ?: draft.defaultLinkedPaperId) }
     var rawContent by remember(draft) { mutableStateOf(initialNote?.rawContent ?: draft.prefillContent) }
     var previousContentBeforeTransform by remember(draft) { mutableStateOf<String?>(null) }
 
-    // Compiled Prompt Composer & Parser Rule state
-    var promptTopic by remember(draft) { mutableStateOf(initialNote?.title ?: draft.prefillTitle) }
-    var layerOrder by remember(draft) { mutableStateOf(initialRule.layerOrder) }
-    var depth by remember(draft) { mutableStateOf(initialRule.depth) }
-    var language by remember(draft) { mutableStateOf(initialRule.language) }
-    var preserveNestedBullets by remember(draft) { mutableStateOf(initialRule.preserveNestedBullets) }
-    var includeLatexMath by remember(draft) { mutableStateOf(initialRule.includeLatexMath) }
-    var includeCallouts by remember(draft) { mutableStateOf(initialRule.includeCallouts) }
-    var includeComparisonTable by remember(draft) { mutableStateOf(initialRule.includeComparisonTable) }
-    var customInstruction by remember(draft) { mutableStateOf(initialRule.customInstruction) }
-
-    var showMetadataPanel by remember(draft) { mutableStateOf(initialNote == null) }
-    var showPromptComposer by remember(draft) { mutableStateOf(false) }
+    var activeEditorTab by remember(draft) { mutableIntStateOf(0) } // 0: Paste / Input, 1: AI Prompt Generator
+    var promptCopied by remember(draft) { mutableStateOf(false) }
+    var showMetadataPanel by remember(draft) { mutableStateOf(false) }
     var isPreviewMode by remember(draft) { mutableStateOf(false) }
     var showFolderDropdown by remember { mutableStateOf(false) }
     var showLinkedPaperDropdown by remember { mutableStateOf(false) }
 
-    val activeRule = remember(
-        collectionType,
-        customLabel,
-        layerOrder,
-        depth,
-        language,
-        preserveNestedBullets,
-        includeLatexMath,
-        includeCallouts,
-        includeComparisonTable,
-        customInstruction
-    ) {
-        KnowledgeFormatRule(
-            collectionType = collectionType,
-            customCollectionLabel = customLabel.trim(),
-            layerOrder = layerOrder,
-            depth = depth,
-            language = language.ifBlank { "English" },
-            preserveNestedBullets = preserveNestedBullets,
-            includeLatexMath = includeLatexMath,
-            includeCallouts = includeCallouts,
-            includeComparisonTable = includeComparisonTable,
-            customInstruction = customInstruction
-        )
-    }
+    val activeRule = promptState.toFormatRule()
 
     val parsedBlocks = remember(rawContent, activeRule) {
         StudyNoteParser.parseBlocks(rawContent, activeRule)
@@ -251,595 +250,879 @@ fun KnowledgeStudioEditorScreen(
         parsedBlocks.count { it is StudyNoteBlock.Heading || it is StudyNoteBlock.Table || it is StudyNoteBlock.Callout }
     }
 
-    BackHandler { onDismiss() }
+    val switchToPromptTab = {
+        if (promptState.topic.isBlank() && title.isNotBlank()) {
+            promptState.topic = title
+        }
+        promptCopied = false
+        activeEditorTab = 1
+    }
 
-    // Edge-to-edge full-screen Surface (NO Dialog window) so IME & navigation insets never clip bottom text box
-    Surface(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding(),
-        color = colors.background
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Top Action Header
-            Surface(color = colors.surface, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(
+    val switchToInputTab = {
+        if (title.isBlank() && promptState.topic.isNotBlank()) {
+            title = promptState.topic.trim()
+        }
+        activeEditorTab = 0
+    }
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.teal,
+        unfocusedBorderColor = colors.border,
+        focusedLabelColor = colors.teal,
+        unfocusedLabelColor = colors.inkMuted,
+        focusedTextColor = colors.inkBold,
+        unfocusedTextColor = colors.inkBold,
+        focusedContainerColor = colors.surfaceVariant.copy(alpha = 0.25f),
+        unfocusedContainerColor = colors.surfaceVariant.copy(alpha = 0.15f)
+    )
+
+    BackHandler {
+        if (activeEditorTab == 1) {
+            switchToInputTab()
+        } else {
+            onDismiss()
+        }
+    }
+
+    // Edge-to-edge full-screen Scaffold matching Create Question Set's 2-tab layout & sticky bottomBar
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = colors.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            Surface(
+                color = colors.surface,
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .statusBarsPadding()
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus(force = true)
+                                onDismiss()
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("close_knowledge_sheet_button")
+                        ) {
                             Icon(Icons.Default.Close, contentDescription = "Close editor", tint = colors.inkBold)
                         }
-                        Column(modifier = Modifier.weight(1f)) {
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp)
+                        ) {
                             Text(
-                                text = if (initialNote != null) "Edit Knowledge Set" else "New Knowledge Set",
-                                fontSize = 16.5.sp,
+                                text = if (initialNote != null) "Edit Knowledge Set" else "Create Knowledge Set",
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = if (rawContent.isBlank()) "One-liners, Multi-liners & Study Codex"
-                                else "$factCount items • $structuralCount headings/tables",
-                                fontSize = 11.sp,
-                                color = colors.tealDark,
+                                text = if (rawContent.isBlank()) {
+                                    "Paste notes, format layers, or build AI prompt"
+                                } else {
+                                    "$factCount items • $structuralCount headings/tables"
+                                },
+                                fontSize = 11.5.sp,
+                                color = if (rawContent.isBlank()) colors.muted else colors.tealDark,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-                    Button(
-                        onClick = {
-                            onSave(
-                                initialNote?.id ?: 0L,
-                                title,
-                                subject,
-                                sourceAi,
-                                rawContent,
-                                selectedFolderId,
-                                collectionType,
-                                customLabel,
-                                linkedPaperId,
-                                activeRule
+
+                        IconButton(
+                            onClick = {
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                if (clip.isNotBlank()) {
+                                    switchToInputTab()
+                                    rawContent = clip
+                                    showMetadataPanel = false
+                                    Toast.makeText(context, "Pasted notes from clipboard", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("knowledge_paste_clipboard_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentPaste,
+                                contentDescription = "Paste from clipboard",
+                                tint = colors.teal
                             )
-                            onDismiss()
-                        },
-                        enabled = rawContent.isNotBlank(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
+                        }
+                    }
+                    HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                }
+            }
+        },
+        bottomBar = {
+            Surface(
+                color = colors.surfaceVariant,
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(
+                            WindowInsets.navigationBars
+                                .union(WindowInsets.ime)
+                                .union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    HorizontalDivider(color = colors.border, thickness = 0.8.dp)
+                    Column(
                         modifier = Modifier
-                            .padding(end = 6.dp)
-                            .heightIn(min = 48.dp)
-                            .testTag("save_knowledge_set_button")
+                            .widthIn(max = 760.dp)
+                            .fillMaxWidth()
                     ) {
-                        Text("Save", fontWeight = FontWeight.Bold)
+                        if (activeEditorTab == 0) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus(force = true)
+                                        onDismiss()
+                                    },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                                    border = BorderStroke(1.dp, colors.border),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .weight(0.75f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("cancel_knowledge_sheet_button")
+                                ) {
+                                    Text(
+                                        text = "Cancel",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        previousContentBeforeTransform = rawContent.ifBlank { null }
+                                        rawContent = ""
+                                    },
+                                    enabled = rawContent.isNotBlank(),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                                    border = BorderStroke(1.dp, colors.border),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .weight(0.75f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("clear_knowledge_text_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "Clear",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (rawContent.isNotBlank()) {
+                                            keyboardController?.hide()
+                                            focusManager.clearFocus(force = true)
+                                            val resolvedTitle = title.trim().ifBlank { promptState.topic.trim() }
+                                            onSave(
+                                                initialNote?.id ?: 0L,
+                                                resolvedTitle,
+                                                promptState.subject,
+                                                sourceAi,
+                                                rawContent,
+                                                selectedFolderId,
+                                                promptState.collectionType,
+                                                promptState.customCollectionLabel,
+                                                linkedPaperId,
+                                                activeRule
+                                            )
+                                            onDismiss()
+                                        }
+                                    },
+                                    enabled = rawContent.isNotBlank(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.teal,
+                                        contentColor = Color.White,
+                                        disabledContainerColor = colors.border,
+                                        disabledContentColor = colors.muted
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1.3f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("save_knowledge_set_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (factCount > 0) "Save ($factCount)" else "Save Set",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val clip = ClipData.newPlainText("ExamSet Knowledge Prompt", promptState.buildPrompt())
+                                        clipboard?.setPrimaryClip(clip)
+                                        promptCopied = true
+                                        Toast.makeText(context, "Knowledge prompt copied! Paste it into your AI assistant.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (promptCopied) colors.green else colors.navyBanner,
+                                        contentColor = colors.navyBannerText
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("knowledge_copy_prompt_button")
+                                ) {
+                                    Icon(
+                                        if (promptCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (promptCopied) "Prompt Copied!" else "Copy Prompt",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = switchToInputTab,
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = colors.tealDark,
+                                        containerColor = colors.surface
+                                    ),
+                                    border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("knowledge_switch_to_input_tab_button")
+                                ) {
+                                    Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.teal)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Paste Response",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
-
-            // Collapsible Metadata / Rename / Question-Set Linking Accordion
-            Surface(
-                color = colors.surfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.fillMaxWidth()
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxSize()
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
+                // Two-Tab Bar matching Create Question Set: "Paste / Input" and "AI Prompt Generator"
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TabRow(
+                        selectedTabIndex = activeEditorTab,
+                        containerColor = colors.surfaceVariant,
+                        contentColor = colors.inkBold,
+                        divider = {},
+                        indicator = { tabPositions ->
+                            TabRowDefaults.SecondaryIndicator(
+                                Modifier
+                                    .tabIndicatorOffset(tabPositions[activeEditorTab])
+                                    .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
+                                color = colors.teal,
+                                height = 3.dp
+                            )
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showMetadataPanel = !showMetadataPanel }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(RoundedCornerShape(12.dp))
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.Tune, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
-                            Text(
-                                text = customLabel.trim().ifBlank { collectionType.label } +
-                                    if (title.isNotBlank()) " • $title" else " • Setup, Rename & Link Set",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Icon(
-                            imageVector = if (showMetadataPanel) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = if (showMetadataPanel) "Collapse setup" else "Expand setup",
-                            tint = colors.inkMuted
-                        )
-                    }
-
-                    AnimatedVisibility(visible = showMetadataPanel) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 280.dp)
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = title,
-                                onValueChange = { title = it },
-                                label = { Text("Knowledge Set Title") },
-                                placeholder = { Text("e.g., Polity Articles & Doctrines") },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("study_note_title_input")
-                            )
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedTextField(
-                                    value = subject,
-                                    onValueChange = { subject = it },
-                                    label = { Text("Subject / Topic") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Box {
-                                    val selectedFolderName = folders.find { it.id == selectedFolderId }?.name ?: "Root"
-                                    OutlinedButton(
-                                        onClick = { showFolderDropdown = true },
-                                        modifier = Modifier.heightIn(min = 56.dp)
-                                    ) {
-                                        Text(selectedFolderName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                    DropdownMenu(expanded = showFolderDropdown, onDismissRequest = { showFolderDropdown = false }) {
-                                        DropdownMenuItem(
-                                            text = { Text("All / Root") },
-                                            onClick = {
-                                                selectedFolderId = null
-                                                showFolderDropdown = false
-                                            }
-                                        )
-                                        folders.forEach { folder ->
-                                            DropdownMenuItem(
-                                                text = { Text(folder.name) },
-                                                onClick = {
-                                                    selectedFolderId = folder.id
-                                                    showFolderDropdown = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Collection Type Chips + Custom Rename Label
-                            Column {
-                                Text(
-                                    text = "Collection Format & Custom Name",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkMuted
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    KnowledgeCollectionType.entries.forEach { type ->
-                                        FilterChip(
-                                            selected = collectionType == type,
-                                            onClick = { collectionType = type },
-                                            label = { Text(type.label, fontSize = 11.sp) },
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = colors.tealLight,
-                                                selectedLabelColor = colors.tealDark
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedTextField(
-                                    value = customLabel,
-                                    onValueChange = { customLabel = it },
-                                    label = { Text("Custom Badge Name") },
-                                    placeholder = { Text("e.g., Revision Codex") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = sourceAi,
-                                    onValueChange = { sourceAi = it },
-                                    label = { Text("Origin Tag (Optional)") },
-                                    placeholder = { Text("Auto / ChatGPT / Self") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            // Link to Question Set
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                val linkedPaper = savedPapers.find { it.id == linkedPaperId }
-                                OutlinedButton(
-                                    onClick = { showLinkedPaperDropdown = true },
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 48.dp)
-                                ) {
-                                    Icon(Icons.Default.Link, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
+                        Tab(
+                            selected = activeEditorTab == 0,
+                            onClick = switchToInputTab,
+                            modifier = Modifier.testTag("knowledge_tab_input"),
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.EditNote,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(17.dp),
+                                        tint = if (activeEditorTab == 0) colors.teal else colors.muted
+                                    )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (linkedPaper != null) "Linked Question Set: ${linkedPaper.title}" else "Link to a Question Set (Optional)",
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
+                                        "Paste / Input",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (activeEditorTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (activeEditorTab == 0) colors.inkBold else colors.muted
                                     )
                                 }
-                                DropdownMenu(expanded = showLinkedPaperDropdown, onDismissRequest = { showLinkedPaperDropdown = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text("No Linked Question Set") },
-                                        onClick = {
-                                            linkedPaperId = null
-                                            showLinkedPaperDropdown = false
-                                        }
+                            }
+                        )
+                        Tab(
+                            selected = activeEditorTab == 1,
+                            onClick = switchToPromptTab,
+                            modifier = Modifier.testTag("knowledge_tab_prompt"),
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (activeEditorTab == 1) colors.teal else colors.muted
                                     )
-                                    savedPapers.forEach { p ->
-                                        DropdownMenuItem(
-                                            text = { Text("${p.title} (${p.setNumber})", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                            onClick = {
-                                                linkedPaperId = p.id
-                                                if (subject.isBlank()) subject = p.subject
-                                                if (selectedFolderId == null) selectedFolderId = p.folderId
-                                                showLinkedPaperDropdown = false
-                                            }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "AI Prompt Generator",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (activeEditorTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (activeEditorTab == 1) colors.inkBold else colors.muted
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                if (activeEditorTab == 0) {
+                    // TAB 0: Paste / Input Notes + Setup + Transform + Live Preview
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Collapsible Metadata / Rename / Question-Set Linking Accordion
+                        Surface(
+                            color = colors.surfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showMetadataPanel = !showMetadataPanel }
+                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Tune, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
+                                        Text(
+                                            text = promptState.customCollectionLabel.trim().ifBlank { promptState.collectionType.label } +
+                                                if (title.isNotBlank()) " • $title" else " • Setup, Rename & Link Set",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.inkBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
+                                    }
+                                    Icon(
+                                        imageVector = if (showMetadataPanel) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = if (showMetadataPanel) "Collapse setup" else "Expand setup",
+                                        tint = colors.inkMuted
+                                    )
+                                }
+
+                                AnimatedVisibility(visible = showMetadataPanel) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 280.dp)
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = title,
+                                            onValueChange = {
+                                                title = it
+                                                promptState.topic = it
+                                            },
+                                            label = { Text("Knowledge Set Title") },
+                                            placeholder = { Text("e.g., Polity Articles & Doctrines") },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("study_note_title_input")
+                                        )
+
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedTextField(
+                                                value = promptState.subject,
+                                                onValueChange = { promptState.subject = it },
+                                                label = { Text("Subject / Topic") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Box {
+                                                val selectedFolderName = folders.find { it.id == selectedFolderId }?.name ?: "Root"
+                                                OutlinedButton(
+                                                    onClick = { showFolderDropdown = true },
+                                                    modifier = Modifier.heightIn(min = 56.dp)
+                                                ) {
+                                                    Text(selectedFolderName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                }
+                                                DropdownMenu(expanded = showFolderDropdown, onDismissRequest = { showFolderDropdown = false }) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("All / Root") },
+                                                        onClick = {
+                                                            selectedFolderId = null
+                                                            showFolderDropdown = false
+                                                        }
+                                                    )
+                                                    folders.forEach { folder ->
+                                                        DropdownMenuItem(
+                                                            text = { Text(folder.name) },
+                                                            onClick = {
+                                                                selectedFolderId = folder.id
+                                                                showFolderDropdown = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Collection Type Chips + Custom Rename Label
+                                        Column {
+                                            Text(
+                                                text = "Collection Format & Custom Name",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.inkMuted
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            FlowRow(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                KnowledgeCollectionType.entries.forEach { type ->
+                                                    FilterChip(
+                                                        selected = promptState.collectionType == type,
+                                                        onClick = { promptState.collectionType = type },
+                                                        label = { Text(type.label, fontSize = 11.sp) },
+                                                        colors = FilterChipDefaults.filterChipColors(
+                                                            selectedContainerColor = colors.tealLight,
+                                                            selectedLabelColor = colors.tealDark
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedTextField(
+                                                value = promptState.customCollectionLabel,
+                                                onValueChange = { promptState.customCollectionLabel = it },
+                                                label = { Text("Custom Badge Name") },
+                                                placeholder = { Text("e.g., Revision Codex") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            OutlinedTextField(
+                                                value = sourceAi,
+                                                onValueChange = { sourceAi = it },
+                                                label = { Text("Origin Tag (Optional)") },
+                                                placeholder = { Text("Auto / ChatGPT / Self") },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+
+                                        // Link to Question Set
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            val linkedPaper = savedPapers.find { it.id == linkedPaperId }
+                                            OutlinedButton(
+                                                onClick = { showLinkedPaperDropdown = true },
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 48.dp)
+                                            ) {
+                                                Icon(Icons.Default.Link, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (linkedPaper != null) "Linked Question Set: ${linkedPaper.title}" else "Link to a Question Set (Optional)",
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                            DropdownMenu(expanded = showLinkedPaperDropdown, onDismissRequest = { showLinkedPaperDropdown = false }) {
+                                                DropdownMenuItem(
+                                                    text = { Text("No Linked Question Set") },
+                                                    onClick = {
+                                                        linkedPaperId = null
+                                                        showLinkedPaperDropdown = false
+                                                    }
+                                                )
+                                                savedPapers.forEach { p ->
+                                                    DropdownMenuItem(
+                                                        text = { Text("${p.title} (${p.setNumber})", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                                        onClick = {
+                                                            linkedPaperId = p.id
+                                                            if (promptState.subject.isBlank()) promptState.subject = p.subject
+                                                            if (selectedFolderId == null) selectedFolderId = p.folderId
+                                                            showLinkedPaperDropdown = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
                                     }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
                         }
-                    }
 
-                    HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
-
-                    // Compiled AI Prompt Composer Accordion
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showPromptComposer = !showPromptComposer }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = colors.amber, modifier = Modifier.size(16.dp))
-                            Text(
-                                text = "AI Prompt Composer & Parser Rules (${layerOrder.label})",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Icon(
-                            imageVector = if (showPromptComposer) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = "Toggle AI prompt composer",
-                            tint = colors.inkMuted
-                        )
-                    }
-
-                    AnimatedVisibility(visible = showPromptComposer) {
+                        // Toolbar: Write vs Live Preview + Paste + 1-Tap Transform Chips
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 290.dp)
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                .background(colors.surface)
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedTextField(
-                                    value = promptTopic,
-                                    onValueChange = { promptTopic = it },
-                                    label = { Text("Prompt Topic / Chapter") },
-                                    placeholder = { Text(title.ifBlank { "e.g., Thermodynamics Laws" }) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1.4f)
-                                )
-                                OutlinedTextField(
-                                    value = language,
-                                    onValueChange = { language = it },
-                                    label = { Text("Language") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(0.9f)
-                                )
-                            }
-
-                            Text("Layer Order (Fixes Backwards ChatGPT Layers)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KnowledgeLayerOrder.entries.forEach { order ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     FilterChip(
-                                        selected = layerOrder == order,
-                                        onClick = { layerOrder = order },
-                                        label = { Text(order.label, fontSize = 10.5.sp) },
+                                        selected = !isPreviewMode,
+                                        onClick = { isPreviewMode = false },
+                                        label = { Text("Write & Paste", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = colors.navyBanner,
+                                            selectedLabelColor = colors.navyBannerText
+                                        )
+                                    )
+                                    FilterChip(
+                                        selected = isPreviewMode,
+                                        onClick = { isPreviewMode = true },
+                                        label = { Text("Preview (${parsedBlocks.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = colors.tealLight,
                                             selectedLabelColor = colors.tealDark
                                         )
                                     )
                                 }
-                            }
 
-                            Text("Concept Depth", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KnowledgeDepth.entries.forEach { d ->
-                                    FilterChip(
-                                        selected = depth == d,
-                                        onClick = { depth = d },
-                                        label = { Text(d.label, fontSize = 10.5.sp) }
-                                    )
-                                }
-                            }
-
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(
-                                        checked = preserveNestedBullets,
-                                        onCheckedChange = { preserveNestedBullets = it },
-                                        colors = SwitchDefaults.colors(checkedTrackColor = colors.teal)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Multi-Liner Bullets", fontSize = 11.sp, color = colors.inkBold)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(
-                                        checked = includeLatexMath,
-                                        onCheckedChange = { includeLatexMath = it },
-                                        colors = SwitchDefaults.colors(checkedTrackColor = colors.teal)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("LaTeX Math", fontSize = 11.sp, color = colors.inkBold)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(
-                                        checked = includeCallouts,
-                                        onCheckedChange = { includeCallouts = it },
-                                        colors = SwitchDefaults.colors(checkedTrackColor = colors.teal)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Exam Tips", fontSize = 11.sp, color = colors.inkBold)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(
-                                        checked = includeComparisonTable,
-                                        onCheckedChange = { includeComparisonTable = it },
-                                        colors = SwitchDefaults.colors(checkedTrackColor = colors.teal)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Comparison Table", fontSize = 11.sp, color = colors.inkBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (previousContentBeforeTransform != null) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                rawContent = previousContentBeforeTransform!!
+                                                previousContentBeforeTransform = null
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            modifier = Modifier.heightIn(min = 38.dp)
+                                        ) {
+                                            Icon(Icons.Default.Undo, contentDescription = "Undo transform", modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Undo", fontSize = 11.sp)
+                                        }
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                            val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                            if (clip.isNotBlank()) {
+                                                rawContent = clip
+                                                showMetadataPanel = false
+                                            } else {
+                                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.heightIn(min = 38.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard", modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                             }
 
-                            OutlinedTextField(
-                                value = customInstruction,
-                                onValueChange = { customInstruction = it },
-                                label = { Text("Custom User Formatting Rule (Optional)") },
-                                placeholder = { Text("e.g., Include Hindi keywords & PYQ year tags") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Button(
-                                onClick = {
-                                    val topicToUse = promptTopic.ifBlank { title.ifBlank { subject } }
-                                    val compiled = StudyNoteParser.compilePrompt(topicToUse, collectionType, activeRule)
-                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                    cm?.setPrimaryClip(ClipData.newPlainText("ExamSet Compiled Prompt", compiled))
-                                    Toast.makeText(context, "Compiled prompt copied! Paste output from AI back here.", Toast.LENGTH_LONG).show()
-                                    showPromptComposer = false
-                                    showMetadataPanel = false
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.navyBanner, contentColor = colors.navyBannerText),
+                            // 1-Tap Transform Chips (handles backwards ChatGPT layers, chatter, multi-liner nesting)
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .testTag("copy_compiled_prompt_button")
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Copy Compiled Prompt & Apply Rules", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-                    }
-                }
-            }
-
-            // Toolbar: Write vs Live Preview + Paste + 1-Tap Transform Chips
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.surface)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(
-                            selected = !isPreviewMode,
-                            onClick = { isPreviewMode = false },
-                            label = { Text("Write & Paste", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = colors.navyBanner,
-                                selectedLabelColor = colors.navyBannerText
-                            )
-                        )
-                        FilterChip(
-                            selected = isPreviewMode,
-                            onClick = { isPreviewMode = true },
-                            label = { Text("Preview (${parsedBlocks.size})", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = colors.tealLight,
-                                selectedLabelColor = colors.tealDark
-                            )
-                        )
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (previousContentBeforeTransform != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    rawContent = previousContentBeforeTransform!!
-                                    previousContentBeforeTransform = null
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                modifier = Modifier.heightIn(min = 38.dp)
-                            ) {
-                                Icon(Icons.Default.Undo, contentDescription = "Undo transform", modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Undo", fontSize = 11.sp)
-                            }
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                                if (clip.isNotBlank()) {
-                                    rawContent = clip
-                                    showMetadataPanel = false
-                                    showPromptComposer = false
-                                } else {
-                                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.heightIn(min = 38.dp)
-                        ) {
-                            Icon(Icons.Default.ContentPaste, contentDescription = "Paste from clipboard", modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Paste", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-
-                // 1-Tap Transform Chips (handles backwards ChatGPT layers, chatter, multi-liner nesting)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    KnowledgeTransformAction.entries.forEach { action ->
-                        Surface(
-                            onClick = {
-                                if (rawContent.isNotBlank()) {
-                                    previousContentBeforeTransform = rawContent
-                                    rawContent = StudyNoteParser.applyTransform(rawContent, action)
-                                    Toast.makeText(context, "Applied: ${action.label}", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.blueLight,
-                            border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.35f)),
-                            modifier = Modifier.heightIn(min = 34.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.teal, modifier = Modifier.size(13.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(action.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                KnowledgeTransformAction.entries.forEach { action ->
+                                    Surface(
+                                        onClick = {
+                                            if (rawContent.isNotBlank()) {
+                                                previousContentBeforeTransform = rawContent
+                                                rawContent = StudyNoteParser.applyTransform(rawContent, action)
+                                                Toast.makeText(context, "Applied: ${action.label}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.blueLight,
+                                        border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.35f)),
+                                        modifier = Modifier.heightIn(min = 34.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.teal, modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(action.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
+
+                        // Main Unclipped Workspace (Weight 1f with NO outer verticalScroll -> zero bottom cutoff!)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            if (!isPreviewMode) {
+                                OutlinedTextField(
+                                    value = rawContent,
+                                    onValueChange = { rawContent = it },
+                                    placeholder = {
+                                        Text(
+                                            text = "Write or paste any study format here...\n\nSupports:\n• Crisp One-Liners: `1. **Article 32** -> Constitutional Remedies`\n• Multi-Liner Cards with 2-space indented `- sub-points`, `Formula:`, `Example:`\n• Backwards ChatGPT outputs (`Detail -> **Term**` — use Fix Backwards ChatGPT chip above)\n• Markdown comparison tables & `> Exam Tip:` callouts",
+                                            fontSize = 12.5.sp,
+                                            color = colors.inkMuted,
+                                            lineHeight = 18.sp
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = colors.teal,
+                                        unfocusedBorderColor = colors.border,
+                                        focusedContainerColor = colors.surface,
+                                        unfocusedContainerColor = colors.surface
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .testTag("study_note_content_input")
+                                )
+                            } else {
+                                if (parsedBlocks.isEmpty()) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "Switch to Write & Paste to add content and preview live parsed blocks.",
+                                            fontSize = 13.sp,
+                                            color = colors.inkMuted
+                                        )
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        contentPadding = PaddingValues(bottom = 24.dp)
+                                    ) {
+                                        items(parsedBlocks, key = { "preview_${it.blockIndex}" }) { block ->
+                                            KnowledgeBlockItemView(
+                                                block = block,
+                                                isStarred = false,
+                                                isMastered = false,
+                                                isHiddenRecall = false,
+                                                flipPair = false,
+                                                isExpanded = true,
+                                                onReveal = {},
+                                                onToggleExpand = {},
+                                                onToggleStar = null,
+                                                onToggleMastered = null
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
-
-            HorizontalDivider(color = colors.border.copy(alpha = 0.5f))
-
-            // Main Unclipped Workspace (Weight 1f with NO outer verticalScroll -> zero bottom cutoff!)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                if (!isPreviewMode) {
-                    OutlinedTextField(
-                        value = rawContent,
-                        onValueChange = { rawContent = it },
-                        placeholder = {
-                            Text(
-                                text = "Write or paste any study format here...\n\nSupports:\n• Crisp One-Liners: `1. **Article 32** -> Constitutional Remedies`\n• Multi-Liner Cards with 2-space indented `- sub-points`, `Formula:`, `Example:`\n• Backwards ChatGPT outputs (`Detail -> **Term**` — use Fix Backwards ChatGPT chip above)\n• Markdown comparison tables & `> Exam Tip:` callouts",
-                                fontSize = 12.5.sp,
-                                color = colors.inkMuted,
-                                lineHeight = 18.sp
-                            )
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.teal,
-                            unfocusedBorderColor = colors.border,
-                            focusedContainerColor = colors.surface,
-                            unfocusedContainerColor = colors.surface
-                        ),
+                } else {
+                    // TAB 1: Full AI Prompt Generator inside Knowledge Set sheet (just like Create Question Set)
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .testTag("study_note_content_input")
-                    )
-                } else {
-                    if (parsedBlocks.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "Switch to Write & Paste to add content and preview live parsed blocks.",
-                                fontSize = 13.sp,
-                                color = colors.inkMuted
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            items(parsedBlocks, key = { "preview_${it.blockIndex}" }) { block ->
-                                KnowledgeBlockItemView(
-                                    block = block,
-                                    isStarred = false,
-                                    isMastered = false,
-                                    isHiddenRecall = false,
-                                    flipPair = false,
-                                    isExpanded = true,
-                                    onReveal = {},
-                                    onToggleExpand = {},
-                                    onToggleStar = null,
-                                    onToggleMastered = null
-                                )
+                            .padding(horizontal = 16.dp)
+                            .testTag("knowledge_sheet_prompt_lazy_column"),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        item(key = "knowledge_sheet_prompt_banner") {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = colors.tealLight.copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.3f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = colors.teal.copy(alpha = 0.15f),
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoAwesome,
+                                                    contentDescription = null,
+                                                    tint = colors.teal,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "AI Knowledge Prompt Builder",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = colors.inkBold
+                                            )
+                                            Text(
+                                                text = "Zero-drift study notes & one-liner prompts for Gemini, Claude, and ChatGPT",
+                                                fontSize = 11.5.sp,
+                                                color = colors.muted
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            promptState.reset()
+                                            promptCopied = false
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                        border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.4f))
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Reset prompt", tint = colors.teal, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Reset", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                                    }
+                                }
                             }
                         }
+
+                        knowledgePromptBuilderItems(
+                            state = promptState,
+                            colors = colors,
+                            fieldColors = fieldColors,
+                            context = context,
+                            haptic = haptic,
+                            copied = promptCopied,
+                            onCopyPrompt = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                clipboard?.setPrimaryClip(ClipData.newPlainText("ExamSet Knowledge Prompt", promptState.buildPrompt()))
+                                promptCopied = true
+                                Toast.makeText(context, "Knowledge prompt copied!", Toast.LENGTH_SHORT).show()
+                            },
+                            onOpenKnowledgeStudio = { _, _, _, _ -> switchToInputTab() },
+                            showFooterButtons = false
+                        )
                     }
                 }
             }
