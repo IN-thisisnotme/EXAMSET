@@ -1404,7 +1404,7 @@ object VocabularyEngine {
                 groupEntries.firstNotNullOfOrNull { it.customLevelLabel.takeIf { c -> c.isNotBlank() } }.orEmpty()
             } else ""
             val level = VocabularyLevel.fromCode(key.levelCode)
-            val levelTitle = level.displayTitle(customLabel)
+            val levelTitle = level.displayTitleForLanguage(lang, customLabel)
 
             // Resolve translation language per bucket first so mixed-language pastes never bleed into sibling buckets
             val transLang = detectTranslationLanguage(groupEntries, lang)
@@ -2100,7 +2100,7 @@ object VocabularyEngine {
         return grouped.values.map { acc ->
             val virtualForStats = VocabularyDeck(
                 id = levelVirtualDeckId(cleanLang, acc.level.code, acc.customLabel),
-                title = acc.level.displayTitle(acc.customLabel),
+                title = acc.level.displayTitleForLanguage(cleanLang, acc.customLabel),
                 language = cleanLang,
                 levelCode = acc.level.code,
                 customLevelLabel = acc.customLabel,
@@ -2115,8 +2115,8 @@ object VocabularyEngine {
                 language = cleanLang,
                 levelCode = acc.level.code,
                 customLevelLabel = acc.customLabel,
-                levelTitle = acc.level.displayTitle(acc.customLabel),
-                compactBadge = acc.level.compactBadge(acc.customLabel),
+                levelTitle = acc.level.displayTitleForLanguage(cleanLang, acc.customLabel),
+                compactBadge = acc.level.compactBadgeForLanguage(cleanLang, acc.customLabel),
                 sortRank = acc.level.sortRank,
                 deckCount = acc.contributingDeckIds.size,
                 totalWords = acc.rawWordCount,
@@ -2211,7 +2211,7 @@ object VocabularyEngine {
             .groupingBy { it }
             .eachCount()
             .maxByOrNull { it.value }?.key.orEmpty()
-        val levelTitle = targetLevel.displayTitle(cleanCustom)
+        val levelTitle = targetLevel.displayTitleForLanguage(cleanLang, cleanCustom)
 
         val virtualDeck = VocabularyDeck(
             id = levelVirtualDeckId(cleanLang, targetLevel.code, cleanCustom),

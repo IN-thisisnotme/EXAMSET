@@ -2778,7 +2778,7 @@ private fun WordOfTheDayCard(
                     Icon(Icons.Default.Folder, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Open ${wotdLevel.displayTitle(entry.customLevelLabel)}",
+                        text = "Open ${wotdLevel.displayTitleForLanguage(state.language, entry.customLevelLabel)}",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.tealDark,
@@ -2916,7 +2916,7 @@ private fun WordOfTheDayHistoryDialog(
                                             ?: VocabularyLevel.INTERMEDIATE
                                         Surface(shape = RoundedCornerShape(5.dp), color = colors.amberLight) {
                                             Text(
-                                                text = lvl.compactBadge(item.customLevelLabel),
+                                                text = lvl.compactBadgeForLanguage(language, item.customLevelLabel),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.amber,

@@ -1418,6 +1418,96 @@ class VocabularyEngineTest {
         assertFalse(vm.vocabularySrsByDeck.value["legacy_mixed_1"].orEmpty().containsKey("lg_c1"))
         assertTrue(vm.vocabularySrsByDeck.value["legacy_mixed_1"].orEmpty().containsKey("lg_a1"))
     }
+
+    @Test
+    fun vocabularyLevel_resolvesLanguageSpecificDescriptors() {
+        // Japanese (JLPT)
+        assertEquals("JLPT N5 (Basic Survival)", VocabularyLevel.BEGINNER.displayTitleForLanguage("Japanese"))
+        assertEquals("JLPT N3", VocabularyLevel.INTERMEDIATE.compactBadgeForLanguage("Japanese"))
+        assertEquals("JLPT N1+ (Literary & Nuanced)", VocabularyLevel.MASTERY.displayTitleForLanguage("Japanese"))
+
+        // Mandarin Chinese (HSK)
+        assertEquals("HSK 1 (Foundational Survival)", VocabularyLevel.BEGINNER.displayTitleForLanguage("Chinese"))
+        assertEquals("HSK 4", VocabularyLevel.INTERMEDIATE.compactBadgeForLanguage("Mandarin"))
+        assertEquals("HSK 7–9 (Classical & Mastery)", VocabularyLevel.MASTERY.displayTitleForLanguage("Chinese"))
+
+        // Korean (TOPIK)
+        assertEquals("TOPIK I-1 (Beginner Survival)", VocabularyLevel.BEGINNER.displayTitleForLanguage("Korean"))
+        assertEquals("TOPIK 4", VocabularyLevel.UPPER_INTERMEDIATE.compactBadgeForLanguage("Korean"))
+
+        // Sanskrit
+        assertEquals("Prathamā • प्रथमा (Roots & Gita Basics)", VocabularyLevel.BEGINNER.displayTitleForLanguage("Sanskrit"))
+        assertEquals("शास्त्री", VocabularyLevel.INTERMEDIATE.compactBadgeForLanguage("Sanskrit"))
+        assertEquals("Vaidika • वैदिक (Vedic & Arsha Nuances)", VocabularyLevel.MASTERY.displayTitleForLanguage("Sanskrit"))
+
+        // Hindi / Indic registers
+        assertEquals("Everyday Spoken • बोलचाल (A1)", VocabularyLevel.BEGINNER.displayTitleForLanguage("Hindi"))
+        assertEquals("सामान्य", VocabularyLevel.INTERMEDIATE.compactBadgeForLanguage("Hindi"))
+        assertEquals("Literary & Nuanced • साहित्यिक (C2)", VocabularyLevel.MASTERY.displayTitleForLanguage("Hindi"))
+
+        // Arabic (MSA)
+        assertEquals("Survival MSA • تواصل أولي (A1)", VocabularyLevel.BEGINNER.displayTitleForLanguage("Arabic"))
+        assertEquals("إعلامي", VocabularyLevel.INTERMEDIATE.compactBadgeForLanguage("Arabic"))
+
+        // European / Universal (English, Spanish, German, etc.)
+        assertEquals("Beginner (A1)", VocabularyLevel.BEGINNER.displayTitleForLanguage("English"))
+        assertEquals("B1", VocabularyLevel.INTERMEDIATE.compactBadgeForLanguage("Spanish"))
+    }
+
+    @Test
+    fun promptBuilder_generatesLanguageSpecificTargetProficiency() {
+        val jpState = VocabularyPromptState().apply {
+            language = "Japanese"
+            levelCode = "B1"
+            outputFormat = "Strict JSON"
+        }
+        val jpPrompt = jpState.buildPrompt()
+        assertTrue(jpPrompt.contains("Target Proficiency Level: JLPT N3 (Practical Fluency) (standardized level code: B1)"))
+        assertTrue(jpPrompt.contains("JLPT progression"))
+
+        val saState = VocabularyPromptState().apply {
+            language = "Sanskrit"
+            levelCode = "B2"
+            outputFormat = "Structured Text"
+        }
+        val saPrompt = saState.buildPrompt()
+        assertTrue(saPrompt.contains("Target Proficiency Level: Kāvya • काव्य (Classical Literature) (standardized level code: B2)"))
+
+        val zhState = VocabularyPromptState().apply {
+            language = "Chinese"
+            levelCode = "C1"
+            outputFormat = "Strict JSON"
+        }
+        val zhPrompt = zhState.buildPrompt()
+        assertTrue(zhPrompt.contains("Target Proficiency Level: HSK 6 (Advanced Academic) (standardized level code: C1)"))
+    }
+
+    @Test
+    fun vocabularyEngine_buildLevelFolderSummaries_usesLanguageSpecificTitles() {
+        val jpDeck = VocabularyDeck(
+            id = "jp_core",
+            title = "Japanese Core",
+            language = "Japanese",
+            levelCode = "B1",
+            entries = listOf(
+                VocabularyEntry(id = "j1", word = "食べる", meaning = "To eat", levelCode = "A1"),
+                VocabularyEntry(id = "j2", word = "準備", meaning = "Preparation", levelCode = "B1"),
+                VocabularyEntry(id = "j3", word = "抽象的", meaning = "Abstract", levelCode = "C1")
+            )
+        )
+        val summaries = VocabularyEngine.buildLevelFolderSummaries(
+            language = "Japanese",
+            decks = listOf(jpDeck),
+            srsByDeck = emptyMap()
+        )
+        assertEquals(3, summaries.size)
+        assertEquals("JLPT N5 (Basic Survival)", summaries[0].levelTitle)
+        assertEquals("JLPT N3 (Practical Fluency)", summaries[1].levelTitle)
+        assertEquals("JLPT N1 (Formal & Abstract)", summaries[2].levelTitle)
+        assertEquals("JLPT N5", summaries[0].compactBadge)
+        assertEquals("JLPT N3", summaries[1].compactBadge)
+        assertEquals("JLPT N1", summaries[2].compactBadge)
+    }
 }
 
 

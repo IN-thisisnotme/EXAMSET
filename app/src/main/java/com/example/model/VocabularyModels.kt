@@ -74,25 +74,113 @@ enum class VocabularyLevel(
         sortRank = 8
     );
 
-    fun displayTitle(customLabel: String = ""): String {
+    data class LanguageLevelDescriptor(
+        val title: String,
+        val shortBadge: String,
+        val description: String
+    )
+
+    fun descriptorForLanguage(language: String, customLabel: String = ""): LanguageLevelDescriptor {
+        val norm = language.trim().lowercase(Locale.ROOT)
+        if (this == CUSTOM && customLabel.isNotBlank()) {
+            return LanguageLevelDescriptor(
+                title = customLabel.trim(),
+                shortBadge = customLabel.trim().take(10),
+                description = "Custom Track Focus: ${customLabel.trim()}"
+            )
+        }
         return when {
-            this == CUSTOM && customLabel.isNotBlank() -> customLabel.trim()
-            this == MIXED -> label
-            this == CUSTOM -> label
-            else -> "$label ($shortBadge)"
+            norm == "japanese" || norm == "ja" -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("JLPT N5 (Basic Survival)", "JLPT N5", "Everyday survival Hiragana/Katakana & foundational vocabulary")
+                ELEMENTARY -> LanguageLevelDescriptor("JLPT N4 (Everyday Routine)", "JLPT N4", "Everyday practical conversations, travel & routine dialogues")
+                INTERMEDIATE -> LanguageLevelDescriptor("JLPT N3 (Practical Fluency)", "JLPT N3", "Independent comprehension, practical fluency & general news")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("JLPT N2 (News & Workplace)", "JLPT N2", "Newspaper articles, nuanced discussion & workplace Japanese")
+                ADVANCED -> LanguageLevelDescriptor("JLPT N1 (Formal & Abstract)", "JLPT N1", "Formal editorials, abstract concepts & academic Japanese")
+                MASTERY -> LanguageLevelDescriptor("JLPT N1+ (Literary & Nuanced)", "JLPT N1+", "Classical idioms, four-character idioms (yojijukugo) & literary nuance")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Progressive JLPT difficulty across levels")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Track" }, "CUSTOM", "Custom Japanese track")
+            }
+            norm == "chinese" || norm == "mandarin" || norm == "mandarin chinese" || norm == "zh" -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("HSK 1 (Foundational Survival)", "HSK 1", "Foundational Pinyin and essential survival vocabulary")
+                ELEMENTARY -> LanguageLevelDescriptor("HSK 2–3 (Routine Dialogue)", "HSK 2-3", "Routine everyday dialogues, shopping & practical phrases")
+                INTERMEDIATE -> LanguageLevelDescriptor("HSK 4 (General Fluency)", "HSK 4", "Conversational fluency across general topics and media")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("HSK 5 (News & Professional)", "HSK 5", "Newspapers, films, professional & workplace discussions")
+                ADVANCED -> LanguageLevelDescriptor("HSK 6 (Advanced Academic)", "HSK 6", "Formal prose, expressive idioms (chengyu) & high-register essays")
+                MASTERY -> LanguageLevelDescriptor("HSK 7–9 (Classical & Mastery)", "HSK 7-9", "Classical nuances (wenyan), specialized academic & literary mastery")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Progressive HSK difficulty across levels")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Track" }, "CUSTOM", "Custom Mandarin track")
+            }
+            norm == "korean" || norm == "ko" -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("TOPIK I-1 (Beginner Survival)", "TOPIK 1", "Basic survival Hangul, greetings and core everyday items")
+                ELEMENTARY -> LanguageLevelDescriptor("TOPIK I-2 (Routine Expressions)", "TOPIK 2", "Daily telephone, shopping, public transport and routine situations")
+                INTERMEDIATE -> LanguageLevelDescriptor("TOPIK II-3 (Practical Fluency)", "TOPIK 3", "General social conversations, common news & familiar issues")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("TOPIK II-4 (Workplace & Formal)", "TOPIK 4", "Workplace register, news articles & social/cultural topics")
+                ADVANCED -> LanguageLevelDescriptor("TOPIK II-5 (Editorial & Analytical)", "TOPIK 5", "Professional research, editorial debates & analytical discourse")
+                MASTERY -> LanguageLevelDescriptor("TOPIK II-6 (Literary & Specialist)", "TOPIK 6", "Specialist fields, nuanced idioms (sajaseong-eo) & literary style")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Progressive TOPIK difficulty across levels")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Track" }, "CUSTOM", "Custom Korean track")
+            }
+            norm == "sanskrit" || norm == "sa" -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("Prathamā • प्रथमा (Roots & Gita Basics)", "प्रथमा", "Foundational dhatu roots, pronouns & basic Gita shlokas")
+                ELEMENTARY -> LanguageLevelDescriptor("Madhyamā • मध्यमा (Prose & Subhashita)", "मध्यमा", "Common narrative prose (Panchatantra, Hitopadesha) & subhashitas")
+                INTERMEDIATE -> LanguageLevelDescriptor("Shāstrī • शास्त्री (Narrative & Drama)", "शास्त्री", "Standard classical kavya, nataka (Kalidasa) & narrative fluency")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("Kāvya • काव्य (Classical Literature)", "काव्य", "Complex samasa compounds, figures of speech & classical poetry")
+                ADVANCED -> LanguageLevelDescriptor("Āchārya • आचार्य (Darshana & Shastra)", "आचार्य", "Shastric debates, Upanishadic & philosophical terminology")
+                MASTERY -> LanguageLevelDescriptor("Vaidika • वैदिक (Vedic & Arsha Nuances)", "वैदिक", "Arsha prayoga, Vedic accents & rare classical nuances")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Progressive Sanskrit textual progression")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Track" }, "CUSTOM", "Custom Sanskrit track")
+            }
+            norm in listOf("hindi", "hi", "urdu", "ur", "bengali", "bn", "marathi", "mr", "tamil", "ta", "telugu", "te", "gujarati", "gu", "punjabi", "pa", "kannada", "kn", "malayalam", "ml", "odia") -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("Everyday Spoken • बोलचाल (A1)", "बोलचाल", "Core spoken vocabulary used in immediate daily interactions")
+                ELEMENTARY -> LanguageLevelDescriptor("Routine Practical • दैनिक (A2)", "दैनिक", "Practical neighborhood, market, travel & routine sentences")
+                INTERMEDIATE -> LanguageLevelDescriptor("General Fluency • सामान्य (B1)", "सामान्य", "Standard conversational fluency across general life and media")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("Formal & Workplace • दफ्तरी (B2)", "दफ्तरी", "Formal register, workplace communication & standard journalism")
+                ADVANCED -> LanguageLevelDescriptor("Editorial & High • संपादकीय (C1)", "संपादकीय", "Editorial columns, academic analysis & literary essays")
+                MASTERY -> LanguageLevelDescriptor("Literary & Nuanced • साहित्यिक (C2)", "साहित्यिक", "Classical idioms, poetic nuance, high-register and rare vocabulary")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Progressive register difficulty across levels")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Track" }, "CUSTOM", "Custom register track")
+            }
+            norm == "arabic" || norm == "ar" || norm == "persian" || norm == "fa" -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("Survival MSA • تواصل أولي (A1)", "أولي", "Core survival phrases, greetings and foundational words")
+                ELEMENTARY -> LanguageLevelDescriptor("Everyday Practical • يومي عملي (A2)", "عملي", "Everyday practical conversations, directions & routine topics")
+                INTERMEDIATE -> LanguageLevelDescriptor("General Media • إعلامي عام (B1)", "إعلامي", "Mainstream news broadcasts, articles & independent fluency")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("Formal & Editorial • رسمي وتحليلي (B2)", "رسمي", "Formal political/economic discourse & opinion editorials")
+                ADVANCED -> LanguageLevelDescriptor("Academic & Analytical • أكاديمي (C1)", "أكاديمي", "Scholarly publications, intellectual debates & literary nuance")
+                MASTERY -> LanguageLevelDescriptor("Classical & Balaaghah • بلاغة وتراثي (C2)", "بلاغة", "Classical language (Fus'ha Turathi), rhetoric & eloquent lexicon")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Progressive register difficulty across levels")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Track" }, "CUSTOM", "Custom Arabic track")
+            }
+            else -> when (this) {
+                BEGINNER -> LanguageLevelDescriptor("Beginner (A1)", "A1", "Core everyday survival words & expressions")
+                ELEMENTARY -> LanguageLevelDescriptor("Elementary (A2)", "A2", "Routine conversations, travel & common topics")
+                INTERMEDIATE -> LanguageLevelDescriptor("Intermediate (B1)", "B1", "Independent reading, news & everyday fluency")
+                UPPER_INTERMEDIATE -> LanguageLevelDescriptor("Upper-Intermediate (B2)", "B2", "Nuanced discussion, workplace & standard exams")
+                ADVANCED -> LanguageLevelDescriptor("Advanced (C1)", "C1", "Academic, editorial & high-precision vocabulary")
+                MASTERY -> LanguageLevelDescriptor("Mastery (C2)", "C2", "Literary, rare & domain-specialist nuance")
+                MIXED -> LanguageLevelDescriptor("Mixed / Progressive", "MIXED", "Spans multiple difficulty tiers")
+                CUSTOM -> LanguageLevelDescriptor(customLabel.ifBlank { "Custom Level" }, "CUSTOM", "Track-specific level")
+            }
         }
     }
 
-    fun compactBadge(customLabel: String = ""): String {
-        return when {
-            this == CUSTOM && customLabel.isNotBlank() -> customLabel.trim().take(12)
-            else -> shortBadge
-        }
-    }
+    fun displayTitleForLanguage(language: String, customLabel: String = ""): String =
+        descriptorForLanguage(language, customLabel).title
+
+    fun compactBadgeForLanguage(language: String, customLabel: String = ""): String =
+        descriptorForLanguage(language, customLabel).shortBadge
+
+    fun descriptionForLanguage(language: String): String =
+        descriptorForLanguage(language).description
+
+    fun displayTitle(customLabel: String = ""): String =
+        displayTitleForLanguage("", customLabel)
+
+    fun compactBadge(customLabel: String = ""): String =
+        compactBadgeForLanguage("", customLabel)
 
     companion object {
         fun folderSelectableLevels(): List<VocabularyLevel> =
-            listOf(BEGINNER, ELEMENTARY, INTERMEDIATE, UPPER_INTERMEDIATE, ADVANCED, MASTERY, CUSTOM)
+            listOf(BEGINNER, ELEMENTARY, INTERMEDIATE, UPPER_INTERMEDIATE, ADVANCED, MASTERY)
 
         fun fromCode(raw: String?): VocabularyLevel {
             if (raw.isNullOrBlank()) return INTERMEDIATE
@@ -243,16 +331,17 @@ data class VocabularyEntry(
 ) {
     fun resolvedLevel(): VocabularyLevel = VocabularyLevel.fromCode(levelCode)
 
-    fun effectiveLevelBadge(): String {
+    fun effectiveLevelBadge(lang: String = this.language): String {
         val lvl = resolvedLevel()
         return if (lvl == VocabularyLevel.CUSTOM && customLevelLabel.isNotBlank()) {
             customLevelLabel.trim().take(12)
         } else {
-            lvl.compactBadge(customLevelLabel)
+            lvl.compactBadgeForLanguage(lang.ifBlank { this.language }, customLevelLabel)
         }
     }
 
-    fun effectiveLevelTitle(): String = resolvedLevel().displayTitle(customLevelLabel)
+    fun effectiveLevelTitle(lang: String = this.language): String =
+        resolvedLevel().displayTitleForLanguage(lang.ifBlank { this.language }, customLevelLabel)
 
     /**
      * Normalized lookup key for accurate cross-batch and cross-deck duplicate detection.
@@ -359,9 +448,11 @@ data class VocabularyDeck(
 ) {
     fun resolvedLevel(): VocabularyLevel = VocabularyLevel.fromCode(levelCode)
 
-    fun effectiveLevelTitle(): String = resolvedLevel().displayTitle(customLevelLabel)
+    fun effectiveLevelTitle(lang: String = this.language): String =
+        resolvedLevel().displayTitleForLanguage(lang.ifBlank { this.language }, customLevelLabel)
 
-    fun effectiveLevelBadge(): String = resolvedLevel().compactBadge(customLevelLabel)
+    fun effectiveLevelBadge(lang: String = this.language): String =
+        resolvedLevel().compactBadgeForLanguage(lang.ifBlank { this.language }, customLevelLabel)
 
     fun languageDisplay(): String {
         val src = language.trim().ifBlank { "English" }

@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -300,7 +301,7 @@ fun VocabularyImportDialog(
                     "${pendingSmartTargetsSnapshot.size} Level Folders"
                 }
             } else {
-                title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel)}" }
+                title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitleForLanguage(language, customLevelLabel)}" }
             }
 
             VocabularyDuplicateMergeReviewHub(
@@ -318,7 +319,7 @@ fun VocabularyImportDialog(
                     } else {
                         onCommitImport(
                             targetDeck?.id,
-                            title.trim().ifBlank { targetDeck?.title ?: "$language ${VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel)}" },
+                            title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitleForLanguage(language, customLevelLabel)}" },
                             language.trim().ifBlank { "English" },
                             translationLanguage.trim(),
                             levelCode,
@@ -839,9 +840,11 @@ fun VocabularyImportDialog(
                                         }
                                     }
 
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         VocabularyLevel.folderSelectableLevels().forEach { lvl ->
                                             val selected = levelCode.equals(lvl.code, ignoreCase = true)
@@ -852,7 +855,7 @@ fun VocabularyImportDialog(
                                                 border = BorderStroke(0.8.dp, if (selected) colors.teal else colors.border)
                                             ) {
                                                 Text(
-                                                    text = lvl.displayTitle(),
+                                                    text = lvl.displayTitleForLanguage(language),
                                                     fontSize = 11.sp,
                                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                                     color = if (selected) colors.tealDark else colors.inkBold,
@@ -862,18 +865,14 @@ fun VocabularyImportDialog(
                                         }
                                     }
 
-                                    if (VocabularyLevel.fromCode(levelCode) == VocabularyLevel.CUSTOM) {
-                                        OutlinedTextField(
-                                            value = customLevelLabel,
-                                            onValueChange = { customLevelLabel = it },
-                                            label = { Text("Custom Level Name", fontSize = 11.5.sp) },
-                                            placeholder = { Text("e.g. JLPT N3, GRE, HSK 4", fontSize = 11.5.sp) },
-                                            singleLine = true,
-                                            colors = fieldColors,
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
+                                    val activeManualDescriptor = VocabularyLevel.fromCode(levelCode)
+                                        .descriptorForLanguage(language, customLevelLabel)
+                                    Text(
+                                        text = activeManualDescriptor.description,
+                                        fontSize = 11.sp,
+                                        fontStyle = FontStyle.Italic,
+                                        color = colors.inkMuted
+                                    )
                                 }
                             }
                         }
@@ -1021,7 +1020,7 @@ fun VocabularyImportDialog(
                                          } else ""
                                          onCommitImport(
                                              targetDeck?.id,
-                                             title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitle(cleanCustom)}" },
+                                             title.trim().ifBlank { targetDeck?.title ?: "$language • ${VocabularyLevel.fromCode(levelCode).displayTitleForLanguage(language, cleanCustom)}" },
                                              language.trim().ifBlank { "English" },
                                              resolvedTransLang,
                                              levelCode,
@@ -1180,8 +1179,8 @@ private fun SmartVocabularyRoutingStep(
                         levelCode = bucket.levelCode,
                         customLevelLabel = bucket.customLevelLabel
                     )
-                    val levelDisplay = VocabularyLevel.fromCode(bucket.levelCode).displayTitle(bucket.customLevelLabel)
                     val effectiveLang = choice.language.trim().ifBlank { bucket.language }
+                    val levelDisplay = VocabularyLevel.fromCode(bucket.levelCode).displayTitleForLanguage(effectiveLang, bucket.customLevelLabel)
                     val isEnglish = VocabularyLanguageVariants.isEnglish(effectiveLang)
                     val effectiveTrans = choice.translationLanguage.trim()
 

@@ -58,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -145,7 +146,7 @@ class VocabularyPromptState {
         val hasTranslation = transLang.isNotBlank() && !transLang.equals("None", ignoreCase = true)
         val lvl = VocabularyLevel.fromCode(levelCode)
         val cleanCustomTrack = customLevelLabel.trim()
-        val levelLabel = lvl.displayTitle(cleanCustomTrack)
+        val levelLabel = lvl.displayTitleForLanguage(lang, cleanCustomTrack)
         val langProficiencyGuide = VocabularyLanguageVariants.proficiencyGuideForLanguage(lang)
         val isMixedOrCustom = lvl == VocabularyLevel.MIXED || lvl == VocabularyLevel.CUSTOM
         val schemaLevelHint = when {
@@ -177,7 +178,7 @@ class VocabularyPromptState {
                     appendLine("- Proficiency Calibration: Assign each word's exact A1–C2 level equivalent for $lang")
                 }
                 else -> {
-                    appendLine("- Proficiency Level: $levelLabel")
+                    appendLine("- Target Proficiency Level: $levelLabel (standardized level code: ${lvl.code})")
                 }
             }
             appendLine("- Language Calibration: $langProficiencyGuide")
@@ -289,15 +290,26 @@ class VocabularyPromptState {
 }
 
 private val COMMON_VOCAB_LANGUAGES = listOf(
-    "English", "Hindi", "Spanish", "French", "German", "Japanese", "Arabic", "Korean", "Sanskrit"
+    // Global & European
+    "English", "Spanish", "French", "German", "Italian", "Portuguese", "Russian", "Latin",
+    // East Asian
+    "Japanese", "Chinese", "Korean",
+    // South Asian (Indic)
+    "Hindi", "Sanskrit", "Urdu", "Bengali", "Marathi", "Tamil", "Telugu", "Gujarati", "Punjabi", "Kannada", "Malayalam",
+    // Middle Eastern
+    "Arabic", "Persian"
 )
 
 private val COMMON_TRANSLATION_LANGUAGES = listOf(
     "" to "Monolingual",
     "English" to "English",
     "Hindi" to "Hindi",
-    "Hinglish" to "Hinglish",
-    "Spanish" to "Spanish"
+    "Spanish" to "Spanish",
+    "French" to "French",
+    "German" to "German",
+    "Japanese" to "Japanese",
+    "Chinese" to "Chinese",
+    "Arabic" to "Arabic"
 )
 
 private val COMMON_VOCAB_DOMAINS = listOf(
@@ -357,7 +369,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         color = colors.tealLight
                     ) {
                         Text(
-                            text = VocabularyLevel.fromCode(state.levelCode).displayTitle(state.customLevelLabel),
+                            text = VocabularyLevel.fromCode(state.levelCode).displayTitleForLanguage(state.language, state.customLevelLabel),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.tealDark,
@@ -581,7 +593,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
     // Compact summary pill when advanced settings are collapsed by a saved preset
     if (!showAdvancedSettings) {
         item(key = "vocab_compact_summary") {
-            val lvlTitle = VocabularyLevel.fromCode(state.levelCode).displayTitle(state.customLevelLabel)
+            val lvlTitle = VocabularyLevel.fromCode(state.levelCode).displayTitleForLanguage(state.language, state.customLevelLabel)
             Surface(
                 onClick = onExpandAdvancedSettings,
                 shape = RoundedCornerShape(12.dp),
@@ -656,12 +668,13 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         letterSpacing = 0.5.sp
                     )
 
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        VocabularyLevel.entries.forEach { lvl ->
+                        VocabularyLevel.folderSelectableLevels().forEach { lvl ->
                             val selected = state.levelCode.equals(lvl.code, ignoreCase = true)
                             Surface(
                                 onClick = { state.levelCode = lvl.code },
@@ -674,7 +687,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                 modifier = Modifier.testTag("vocab_level_${lvl.code.lowercase()}")
                             ) {
                                 Text(
-                                    text = lvl.displayTitle(),
+                                    text = lvl.displayTitleForLanguage(state.language),
                                     fontSize = 11.5.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (selected) colors.tealDark else colors.inkBold,
@@ -684,18 +697,14 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         }
                     }
 
-                    if (VocabularyLevel.fromCode(state.levelCode) == VocabularyLevel.CUSTOM) {
-                        OutlinedTextField(
-                            value = state.customLevelLabel,
-                            onValueChange = { state.customLevelLabel = it },
-                            label = { Text("Custom Track / Exam Focus (words tagged A1–C2)", fontSize = 12.sp) },
-                            placeholder = { Text("e.g. JLPT N3, HSK 4, GRE High-Freq, IELTS 8.0", fontSize = 11.5.sp) },
-                            singleLine = true,
-                            colors = vocabFieldColors(colors),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    val activeDescriptor = VocabularyLevel.fromCode(state.levelCode)
+                        .descriptorForLanguage(state.language, state.customLevelLabel)
+                    Text(
+                        text = activeDescriptor.description,
+                        fontSize = 11.sp,
+                        fontStyle = FontStyle.Italic,
+                        color = colors.inkMuted
+                    )
 
                     HorizontalDivider(color = colors.borderLight)
 
