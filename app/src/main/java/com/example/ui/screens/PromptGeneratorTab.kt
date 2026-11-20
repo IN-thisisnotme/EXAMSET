@@ -81,16 +81,23 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
 
+import com.example.model.KnowledgeCollectionType
+import com.example.model.KnowledgeFormatRule
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PromptGeneratorTab(
     viewModel: MainViewModel,
     onNavigateToCreator: () -> Unit,
+    onOpenKnowledgeStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit = { _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+
+    var isKnowledgeMode by remember { mutableStateOf(false) }
+    val knowledgeState = remember { KnowledgePromptState() }
 
     var examType by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
@@ -421,11 +428,19 @@ fun PromptGeneratorTab(
 
     val copyAction = {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        val activePrompt = if (isKnowledgeMode) knowledgeState.buildPrompt() else generatedPrompt
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("AI Exam Prompt", generatedPrompt)
+        val clip = ClipData.newPlainText(
+            if (isKnowledgeMode) "AI Knowledge Prompt" else "AI Exam Prompt",
+            activePrompt
+        )
         clipboard.setPrimaryClip(clip)
         copied = true
-        Toast.makeText(context, "Prompt copied to clipboard", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            if (isKnowledgeMode) "Knowledge prompt copied to clipboard" else "Prompt copied to clipboard",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -497,6 +512,87 @@ fun PromptGeneratorTab(
                     }
 
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Max),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isKnowledgeMode = false
+                                copied = false
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .heightIn(min = 48.dp)
+                                .testTag("prompt_mode_question_set"),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (!isKnowledgeMode) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(
+                                if (!isKnowledgeMode) 1.4.dp else 0.6.dp,
+                                if (!isKnowledgeMode) colors.teal else colors.border
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Text(
+                                    text = "Question Set",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (!isKnowledgeMode) colors.teal else colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "MCQs & Answer Keys",
+                                    fontSize = 10.sp,
+                                    color = if (!isKnowledgeMode) colors.tealDark else colors.inkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isKnowledgeMode = true
+                                copied = false
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .heightIn(min = 48.dp)
+                                .testTag("prompt_mode_knowledge_set"),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isKnowledgeMode) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(
+                                if (isKnowledgeMode) 1.4.dp else 0.6.dp,
+                                if (isKnowledgeMode) colors.teal else colors.border
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Text(
+                                    text = "Knowledge Set",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isKnowledgeMode) colors.teal else colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "One-Liners & Codex",
+                                    fontSize = 10.sp,
+                                    color = if (isKnowledgeMode) colors.tealDark else colors.inkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -531,22 +627,26 @@ fun PromptGeneratorTab(
                         OutlinedButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                examType = ""
-                                subject = ""
-                                topic = ""
-                                questionCount = 20f
-                                difficulty = "Moderate"
-                                questionType = "Mixed Formats"
-                                questionLanguage = "English"
-                                explanationChoice = "Same as Question"
-                                customExplanationLanguage = ""
-                                optionCount = 4
-                                explainAllFourOptions = true
-                                includeFormulasAndDiagrams = true
-                                promptPhasingStyle = "Standard"
-                                targetOutputFormat = "Strict JSON"
-                                promptDensity = "Concise"
-                                enableQuantityCorrectionRule = false
+                                if (isKnowledgeMode) {
+                                    knowledgeState.reset()
+                                } else {
+                                    examType = ""
+                                    subject = ""
+                                    topic = ""
+                                    questionCount = 20f
+                                    difficulty = "Moderate"
+                                    questionType = "Mixed Formats"
+                                    questionLanguage = "English"
+                                    explanationChoice = "Same as Question"
+                                    customExplanationLanguage = ""
+                                    optionCount = 4
+                                    explainAllFourOptions = true
+                                    includeFormulasAndDiagrams = true
+                                    promptPhasingStyle = "Standard"
+                                    targetOutputFormat = "Strict JSON"
+                                    promptDensity = "Concise"
+                                    enableQuantityCorrectionRule = false
+                                }
                                 copied = false
                             },
                             shape = RoundedCornerShape(8.dp),
@@ -576,6 +676,18 @@ fun PromptGeneratorTab(
             }
         }
 
+        if (isKnowledgeMode) {
+            knowledgePromptBuilderItems(
+                state = knowledgeState,
+                colors = colors,
+                fieldColors = fieldColors,
+                context = context,
+                haptic = haptic,
+                copied = copied,
+                onCopyPrompt = copyAction,
+                onOpenKnowledgeStudio = onOpenKnowledgeStudio
+            )
+        } else {
         // 2. Card 1: Examination Parameters (Exam & Subject Details)
         item(key = "exam_params") {
             Card(
@@ -1113,11 +1225,7 @@ fun PromptGeneratorTab(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            listOf(
-                                "English", "Hindi", "Bengali", "Marathi", "Telugu",
-                                "Tamil", "Gujarati", "Urdu", "Kannada", "Malayalam",
-                                "Odia", "Punjabi", "Sanskrit", "Spanish", "French", "German"
-                            ).forEach { lang ->
+                            com.example.util.PaperLanguageDetector.PRESET_LANGUAGES.forEach { lang ->
                                 val isSelected = questionLanguage.trim().equals(lang, ignoreCase = true)
                                 Surface(
                                     onClick = {
@@ -1860,6 +1968,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                     .navigationBarsPadding()
                     .height(24.dp)
             )
+        }
         }
     }
 }

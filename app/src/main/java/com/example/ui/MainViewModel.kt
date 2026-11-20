@@ -93,7 +93,8 @@ data class KnowledgeEditorDraft(
     val defaultLinkedPaperId: Long? = null,
     val prefillTitle: String = "",
     val prefillContent: String = "",
-    val defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS
+    val defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS,
+    val defaultFormatRule: KnowledgeFormatRule? = null
 )
 
 data class LibraryIndexState(
@@ -2767,7 +2768,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         defaultLinkedPaperId: Long? = null,
         prefillTitle: String = "",
         prefillContent: String = "",
-        defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS
+        defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS,
+        defaultFormatRule: KnowledgeFormatRule? = null
     ) {
         _knowledgeEditorDraft.value = KnowledgeEditorDraft(
             note = note,
@@ -2776,7 +2778,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             defaultLinkedPaperId = defaultLinkedPaperId,
             prefillTitle = prefillTitle,
             prefillContent = prefillContent,
-            defaultCollectionType = defaultCollectionType
+            defaultCollectionType = defaultCollectionType,
+            defaultFormatRule = defaultFormatRule
         )
     }
 

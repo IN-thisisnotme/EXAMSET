@@ -13,6 +13,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamSetTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import androidx.compose.ui.test.performTextInput
+import com.example.model.KnowledgeCollectionType
+import com.example.model.KnowledgeFormatRule
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,4 +76,62 @@ class PromptGeneratorTabTest {
         list.performScrollToNode(hasText("CONSTRUCTED AI PROMPT"))
         composeTestRule.onNodeWithText("Guard Active").performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun promptGeneratorTab_knowledgeSetModeRendersCardsAndOpensStudioWithConfiguredRule() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = MainViewModel(app)
+
+        var capturedTitle = ""
+        var capturedSubject = ""
+        var capturedType: KnowledgeCollectionType? = null
+        var capturedRule: KnowledgeFormatRule? = null
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                PromptGeneratorTab(
+                    viewModel = viewModel,
+                    onNavigateToCreator = {},
+                    onOpenKnowledgeStudio = { title, subject, type, rule ->
+                        capturedTitle = title
+                        capturedSubject = subject
+                        capturedType = type
+                        capturedRule = rule
+                    }
+                )
+            }
+        }
+
+        // Switch to Knowledge Set mode
+        composeTestRule.onNodeWithTag("prompt_mode_knowledge_set").performClick()
+        composeTestRule.waitForIdle()
+
+        val list = composeTestRule.onNodeWithTag("prompt_lazy_column")
+
+        list.performScrollToNode(hasText("STUDY SCOPE & TOPIC"))
+        composeTestRule.onNodeWithText("STUDY SCOPE & TOPIC").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("knowledge_prompt_subject_input").performScrollTo().performTextInput("Physics")
+        composeTestRule.onNodeWithTag("knowledge_prompt_topic_input").performScrollTo().performTextInput("Laws of Thermodynamics")
+
+        list.performScrollToNode(hasText("COLLECTION FORMAT & DEPTH"))
+        composeTestRule.onNodeWithText("COLLECTION FORMAT & DEPTH").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_type_formula_sheet").performScrollTo().performClick()
+
+        list.performScrollToNode(hasText("PARSER RULES & FORMAT SAMPLE"))
+        composeTestRule.onNodeWithText("PARSER RULES & FORMAT SAMPLE").performScrollTo().assertIsDisplayed()
+
+        list.performScrollToNode(hasText("CONSTRUCTED KNOWLEDGE PROMPT"))
+        composeTestRule.onNodeWithText("CONSTRUCTED KNOWLEDGE PROMPT").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("FORMULAS • 20 Items").performScrollTo().assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("knowledge_prompt_open_studio_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Laws of Thermodynamics", capturedTitle)
+        assertEquals("Physics", capturedSubject)
+        assertEquals(KnowledgeCollectionType.FORMULA_SHEET, capturedType)
+        assertEquals(KnowledgeCollectionType.FORMULA_SHEET, capturedRule?.collectionType)
+    }
 }
+

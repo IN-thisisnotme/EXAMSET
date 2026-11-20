@@ -179,7 +179,9 @@ fun KnowledgeStudioEditorScreen(
     val initialNote = draft.note
 
     val initialRule = remember(draft) {
-        initialNote?.parsedFormatRule() ?: KnowledgeFormatRule(collectionType = draft.defaultCollectionType)
+        initialNote?.parsedFormatRule()
+            ?: draft.defaultFormatRule
+            ?: KnowledgeFormatRule(collectionType = draft.defaultCollectionType)
     }
 
     var title by remember(draft) { mutableStateOf(initialNote?.title ?: draft.prefillTitle) }
@@ -189,7 +191,9 @@ fun KnowledgeStudioEditorScreen(
     var collectionType by remember(draft) {
         mutableStateOf(initialNote?.resolvedCollectionType() ?: draft.defaultCollectionType)
     }
-    var customLabel by remember(draft) { mutableStateOf(initialNote?.customLabel ?: "") }
+    var customLabel by remember(draft) {
+        mutableStateOf(initialNote?.customLabel ?: initialRule.customCollectionLabel)
+    }
     var linkedPaperId by remember(draft) { mutableStateOf(initialNote?.linkedPaperId ?: draft.defaultLinkedPaperId) }
     var rawContent by remember(draft) { mutableStateOf(initialNote?.rawContent ?: draft.prefillContent) }
     var previousContentBeforeTransform by remember(draft) { mutableStateOf<String?>(null) }

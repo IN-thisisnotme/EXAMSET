@@ -426,10 +426,18 @@ object StudyNoteParser {
     fun compilePrompt(
         topic: String,
         collectionType: KnowledgeCollectionType,
-        rule: KnowledgeFormatRule
+        rule: KnowledgeFormatRule,
+        examTarget: String = "",
+        subject: String = "",
+        itemCount: Int? = null,
+        includeBilingualTerms: Boolean = false,
+        includePyqTags: Boolean = false
     ): String {
         val cleanTopic = topic.trim().ifBlank { "[ENTER YOUR SUBJECT / TOPIC HERE]" }
+        val cleanSubject = subject.trim()
+        val cleanExam = examTarget.trim()
         val collectionTitle = rule.customCollectionLabel.trim().ifBlank { collectionType.label }
+        val targetLang = rule.language.ifBlank { "English" }
 
         val depthInstruction = when (rule.depth) {
             KnowledgeDepth.CRISP -> "Keep every item crisp, high-yield, and exam-focused (1-2 lines max per takeaway)."
@@ -444,47 +452,111 @@ object StudyNoteParser {
             KnowledgeLayerOrder.AUTO_DETECT -> "Use clean numbered items (`1. **Concept** -> Core Fact`) with optional 2-space indented `- sub-point` bullets for multi-liners."
         }
 
+        val countPrefix = if (itemCount != null && itemCount > 0) "Generate exactly $itemCount" else null
         val styleRule = when (collectionType) {
-            KnowledgeCollectionType.ONE_LINERS -> "Generate 20–30 ultra-dense exam one-liners grouped under `## Section Headings`."
-            KnowledgeCollectionType.MULTI_LINER -> "Generate 10–15 Multi-Liner Concept Cards. Each numbered item has a **Concept Title** and 2–3 indented `- sub-points` (mechanism, example, exception)."
-            KnowledgeCollectionType.CONCEPT_CODEX -> "Generate a comprehensive Concept Codex with `## Topic Headings`, **Core Principles**, indented sub-bullets, and `> Exam Trap:` callouts."
-            KnowledgeCollectionType.COMPARISON_TABLE -> "Structure the core comparison as clean Markdown tables (`| Feature | Item A | Item B |`) followed by `> Key Difference:` insights."
-            KnowledgeCollectionType.FORMULA_SHEET -> "List every important law/formula with `Formula:` lines, SI units, boundary conditions, and common numerical pitfalls."
-            KnowledgeCollectionType.WEAK_AREA_REVIEW -> "Create targeted remediation cards focusing on misconceptions, look-alike traps, and quick memory anchors."
-            KnowledgeCollectionType.CUSTOM -> "Structure the output cleanly as a '$collectionTitle' sheet tailored to exam mastery."
+            KnowledgeCollectionType.ONE_LINERS -> "${countPrefix ?: "Generate 20–30"} ultra-dense exam one-liners grouped under `## Section Headings`."
+            KnowledgeCollectionType.MULTI_LINER -> "${countPrefix ?: "Generate 10–15"} Multi-Liner Concept Cards. Each numbered item has a **Concept Title** and 2–3 indented `- sub-points` (mechanism, example, exception)."
+            KnowledgeCollectionType.CONCEPT_CODEX -> "${countPrefix?.let { "$it topic blocks in" } ?: "Generate"} a comprehensive Concept Codex with `## Topic Headings`, **Core Principles**, indented sub-bullets, and `> Exam Trap:` callouts."
+            KnowledgeCollectionType.COMPARISON_TABLE -> "${countPrefix?.let { "Cover $it key comparison rows across" } ?: "Structure the core comparison as"} clean Markdown tables (`| Feature | Item A | Item B |`) followed by `> Key Difference:` insights."
+            KnowledgeCollectionType.FORMULA_SHEET -> "${countPrefix ?: "List every important"} law/formula with `Formula:` lines, SI units, boundary conditions, and common numerical pitfalls."
+            KnowledgeCollectionType.WEAK_AREA_REVIEW -> "${countPrefix ?: "Create 12–20"} targeted remediation cards focusing on misconceptions, look-alike traps, and quick memory anchors."
+            KnowledgeCollectionType.CUSTOM -> "${countPrefix?.let { "$it items formatted" } ?: "Structure the output"} cleanly as a '$collectionTitle' sheet tailored to exam mastery."
         }
 
         return buildString {
             appendLine("Create a high-yield **$collectionTitle** study sheet for: $cleanTopic")
-            appendLine("Output Language: ${rule.language.ifBlank { "English" }}")
+            if (cleanSubject.isNotBlank() && !cleanSubject.equals(cleanTopic, ignoreCase = true)) {
+                appendLine("Subject Domain: $cleanSubject")
+            }
+            if (cleanExam.isNotBlank()) {
+                appendLine("Target Examination: $cleanExam")
+            }
+            appendLine("Output Language: $targetLang")
             appendLine()
             appendLine("STRICT FORMATTING RULES (so ExamSet parses 100% cleanly):")
             appendLine("1. $styleRule")
             appendLine("2. $depthInstruction")
             appendLine("3. $layerInstruction")
+            var ruleNum = 4
             if (rule.preserveNestedBullets) {
-                appendLine("4. For multi-layer concepts, indent sub-points with exactly 2 spaces (`  - Sub-point`) under the parent numbered item.")
+                appendLine("$ruleNum. For multi-layer concepts, indent sub-points with exactly 2 spaces (`  - Sub-point`) under the parent numbered item.")
             } else {
-                appendLine("4. Avoid nested sub-bullets; keep each fact on a single crisp line.")
+                appendLine("$ruleNum. Avoid nested sub-bullets; keep each fact on a single crisp line.")
             }
+            ruleNum++
             if (rule.includeLatexMath) {
-                appendLine("5. Wrap all mathematical formulas, chemical symbols, and equations in inline `\$...\$` (do NOT use `\\\\[...\\\\]` or code blocks).")
+                appendLine("$ruleNum. Wrap all mathematical formulas, chemical symbols, and equations in inline `\$...\$` (do NOT use `\\\\[...\\\\]` or code blocks).")
             } else {
-                appendLine("5. Write formulas in clean plain Unicode text without LaTeX delimiters.")
+                appendLine("$ruleNum. Write formulas in clean plain Unicode text without LaTeX delimiters.")
             }
+            ruleNum++
             if (rule.includeCallouts) {
-                appendLine("6. Highlight high-risk exam traps and memory mnemonics using `> Exam Tip: ...` blockquotes.")
+                appendLine("$ruleNum. Highlight high-risk exam traps and memory mnemonics using `> Exam Tip: ...` blockquotes.")
+                ruleNum++
             }
             if (rule.includeComparisonTable) {
-                appendLine("7. Include at least one Markdown comparison table (`| Parameter | ... |`).")
+                appendLine("$ruleNum. Include at least one Markdown comparison table (`| Parameter | ... |`).")
+                ruleNum++
             }
-            appendLine("8. Output ONLY the structured notes directly (no intro chatter, no closing remarks, no outer ```markdown``` wrapper).")
+            if (includeBilingualTerms && !targetLang.equals("English", ignoreCase = true)) {
+                appendLine("$ruleNum. Keep standard technical/scientific terms in English inside parentheses alongside $targetLang explanations.")
+                ruleNum++
+            }
+            if (includePyqTags) {
+                appendLine("$ruleNum. Append concise exam-relevance or PYQ markers (e.g., `[High-Yield]` or `[PYQ Focus]`) where applicable.")
+                ruleNum++
+            }
+            appendLine("$ruleNum. Output ONLY the structured notes directly (no intro chatter, no closing remarks, no outer ```markdown``` wrapper).")
             if (rule.customInstruction.isNotBlank()) {
                 appendLine()
                 appendLine("USER CUSTOM REQUIREMENT:")
                 appendLine(rule.customInstruction.trim())
             }
         }.trim()
+    }
+
+    fun buildSampleTemplate(
+        collectionType: KnowledgeCollectionType,
+        layerOrder: KnowledgeLayerOrder
+    ): String {
+        val sampleLine = when (layerOrder) {
+            KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST ->
+                "1. Rapid voltage drop across an inductive load during switching -> **Lenz's Law**"
+            KnowledgeLayerOrder.QA_SEPARATE_LINES ->
+                "Q: What governs induced EMF direction?\nA: Lenz's Law — opposes the flux change producing it."
+            else ->
+                "1. **Lenz's Law** -> Induced EMF always opposes the magnetic flux change causing it."
+        }
+        return when (collectionType) {
+            KnowledgeCollectionType.COMPARISON_TABLE -> """
+                ## Key Comparison
+                | Parameter | Isothermal | Adiabatic |
+                | --- | --- | --- |
+                | Constant | Temperature (${'$'}T${'$'}) | Entropy / Heat (${'$'}Q = 0${'$'}) |
+                | Work Done | ${'$'}nRT \ln(V_2/V_1)${'$'} | ${'$'}-\Delta U${'$'} |
+
+                > Exam Tip: Adiabatic curve is always steeper than isothermal at the same state point.
+            """.trimIndent()
+            KnowledgeCollectionType.FORMULA_SHEET -> """
+                ## Core Laws & Equations
+                1. **First Law of Thermodynamics** -> Conservation of internal energy, heat, and work.
+                  - Formula: ${'$'}\Delta U = Q - W${'$'}
+                  - Units: Joules (J); ${'$'}W > 0${'$'} when done by the system.
+                > Exam Tip: For an isolated system, ${'$'}\Delta U = 0${'$'} always holds.
+            """.trimIndent()
+            KnowledgeCollectionType.ONE_LINERS -> """
+                ## High-Yield One-Liners
+                $sampleLine
+                2. **Article 32** -> Right to Constitutional Remedies; enforceable via five Supreme Court writs.
+            """.trimIndent()
+            else -> """
+                ## Core Concept Card
+                $sampleLine
+                  - Formula: ${'$'}\mathcal{E} = -N \frac{d\Phi_B}{dt}${'$'}
+                  - Exam Trap: Negative sign denotes opposition, not negative magnitude.
+                > Exam Tip: Conservation of energy underpins Lenz's Law.
+            """.trimIndent()
+        }
     }
 
     fun applyTransform(rawText: String, action: KnowledgeTransformAction): String {

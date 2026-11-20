@@ -301,4 +301,38 @@ class StudyNoteParserTest {
         val occurrences = compiled.split("Right to Constitutional Remedies").size - 1
         assertEquals(1, occurrences)
     }
+
+    @Test
+    fun `compilePrompt supports exam target, subject, item count, bilingual terms, pyq tags, and sample templates`() {
+        val rule = KnowledgeFormatRule(
+            collectionType = KnowledgeCollectionType.ONE_LINERS,
+            layerOrder = KnowledgeLayerOrder.TERM_FIRST,
+            depth = KnowledgeDepth.CRISP,
+            language = "Hindi"
+        )
+        val prompt = StudyNoteParser.compilePrompt(
+            topic = "Fundamental Rights",
+            collectionType = KnowledgeCollectionType.ONE_LINERS,
+            rule = rule,
+            examTarget = "UPSC Civil Services",
+            subject = "Polity & Governance",
+            itemCount = 25,
+            includeBilingualTerms = true,
+            includePyqTags = true
+        )
+        assertTrue(prompt.contains("Subject Domain: Polity & Governance"))
+        assertTrue(prompt.contains("Target Examination: UPSC Civil Services"))
+        assertTrue(prompt.contains("Output Language: Hindi"))
+        assertTrue(prompt.contains("Generate exactly 25 ultra-dense exam one-liners"))
+        assertTrue(prompt.contains("inside parentheses alongside Hindi explanations"))
+        assertTrue(prompt.contains("[PYQ Focus]"))
+
+        val sample = StudyNoteParser.buildSampleTemplate(
+            collectionType = KnowledgeCollectionType.FORMULA_SHEET,
+            layerOrder = KnowledgeLayerOrder.TERM_FIRST
+        )
+        assertTrue(sample.contains("First Law of Thermodynamics"))
+        assertTrue(sample.contains("Formula:"))
+    }
 }
+

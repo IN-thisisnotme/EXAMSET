@@ -1060,7 +1060,15 @@ fun HomeScreen(
                 )
                 5 -> PromptGeneratorTab(
                     viewModel = viewModel,
-                    onNavigateToCreator = { viewModel.selectTab(4) }
+                    onNavigateToCreator = { viewModel.selectTab(4) },
+                    onOpenKnowledgeStudio = { noteTitle, noteSubject, collectionType, rule ->
+                        viewModel.openKnowledgeEditor(
+                            prefillTitle = noteTitle,
+                            defaultSubject = noteSubject,
+                            defaultCollectionType = collectionType,
+                            defaultFormatRule = rule
+                        )
+                    }
                 )
                 6 -> ShareSystemTab(
                     viewModel = viewModel,
