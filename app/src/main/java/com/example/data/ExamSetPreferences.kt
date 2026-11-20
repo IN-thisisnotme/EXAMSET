@@ -379,6 +379,24 @@ class ExamSetPreferences(context: Context) {
         }.getOrDefault(emptyMap())
     }
 
+    fun getPreferredEnglishVariant(): String {
+        val raw = prefs.getString(KEY_PREFERRED_ENGLISH_VARIANT, com.example.model.VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT)
+        return com.example.model.VocabularyLanguageVariants.normalizeVariant("English", raw)
+    }
+
+    fun setPreferredEnglishVariant(variant: String) {
+        val clean = com.example.model.VocabularyLanguageVariants.normalizeVariant("English", variant)
+        prefs.edit().putString(KEY_PREFERRED_ENGLISH_VARIANT, clean).apply()
+    }
+
+    fun getWordOfTheDayCacheJson(): String? {
+        return prefs.getString(KEY_WORD_OF_THE_DAY_CACHE, null)?.ifBlank { null }
+    }
+
+    fun saveWordOfTheDayCacheJson(rawJson: String) {
+        prefs.edit().putString(KEY_WORD_OF_THE_DAY_CACHE, rawJson).apply()
+    }
+
     fun getActivePromptPresetId(mode: com.example.model.PromptPresetMode): String? {
         return prefs.getString("$KEY_ACTIVE_PROMPT_PRESET_PREFIX${mode.code}", null)?.ifBlank { null }
     }
@@ -410,6 +428,8 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_VOCABULARY_PROMPT_DRAFT = "key_prompt_draft_vocabulary_v1"
         private const val KEY_VOCABULARY_DECKS = "key_vocabulary_decks_v1"
         private const val KEY_VOCABULARY_SRS = "key_vocabulary_srs_v1"
+        private const val KEY_PREFERRED_ENGLISH_VARIANT = "key_vocab_preferred_english_variant_v1"
+        private const val KEY_WORD_OF_THE_DAY_CACHE = "key_vocab_wotd_cache_v1"
         private const val KEY_ACTIVE_PROMPT_PRESET_PREFIX = "key_active_prompt_preset_"
     }
 }

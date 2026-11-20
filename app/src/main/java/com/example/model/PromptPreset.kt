@@ -346,6 +346,7 @@ data class FlashcardPromptConfig(
 
 data class VocabularyPromptConfig(
     val language: String = "English",
+    val languageVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT,
     val translationLanguage: String = "",
     val levelCode: String = VocabularyLevel.INTERMEDIATE.code,
     val customLevelLabel: String = "",
@@ -358,17 +359,22 @@ data class VocabularyPromptConfig(
     val includeUsageNote: Boolean = true,
     val customInstruction: String = ""
 ) {
-    fun normalized(): VocabularyPromptConfig = copy(
-        language = language.trim().ifBlank { "English" },
-        translationLanguage = translationLanguage.trim(),
-        levelCode = VocabularyLevel.fromCode(levelCode).code,
-        customLevelLabel = customLevelLabel.trim(),
-        domain = domain.trim().ifBlank { "General" },
-        wordCount = wordCount.coerceIn(5, 60),
-        examplesPerWord = examplesPerWord.coerceIn(1, 4),
-        outputFormat = if (outputFormat.equals("Structured Text", ignoreCase = true)) "Structured Text" else "Strict JSON",
-        customInstruction = customInstruction.trim()
-    )
+    fun normalized(): VocabularyPromptConfig {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val normVariant = VocabularyLanguageVariants.normalizeVariant(cleanLang, languageVariant)
+        return copy(
+            language = cleanLang,
+            languageVariant = normVariant,
+            translationLanguage = translationLanguage.trim(),
+            levelCode = VocabularyLevel.fromCode(levelCode).code,
+            customLevelLabel = customLevelLabel.trim(),
+            domain = domain.trim().ifBlank { "General" },
+            wordCount = wordCount.coerceIn(5, 60),
+            examplesPerWord = examplesPerWord.coerceIn(1, 4),
+            outputFormat = if (outputFormat.equals("Structured Text", ignoreCase = true)) "Structured Text" else "Strict JSON",
+            customInstruction = customInstruction.trim()
+        )
+    }
 
     fun formatBadge(): String {
         val lvl = VocabularyLevel.fromCode(levelCode).compactBadge(customLevelLabel)
@@ -377,7 +383,12 @@ data class VocabularyPromptConfig(
     }
 
     fun specChips(): List<String> = buildList {
-        add(abbreviateTag(language, 14))
+        val langTag = if (languageVariant.isNotBlank() && !languageVariant.equals("Neutral", ignoreCase = true)) {
+            "${abbreviateTag(language, 12)} (${VocabularyLanguageVariants.shortBadge(languageVariant)})"
+        } else {
+            abbreviateTag(language, 14)
+        }
+        add(langTag)
         if (translationLanguage.isNotBlank()) add("-> ${abbreviateTag(translationLanguage, 12)}")
         add(VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel))
         add("$wordCount Words")
@@ -388,8 +399,13 @@ data class VocabularyPromptConfig(
 
     fun suggestName(): String {
         val lvl = VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel)
+        val langPart = if (languageVariant.isNotBlank() && !languageVariant.equals("Neutral", ignoreCase = true)) {
+            "${abbreviateTag(language, 12)} (${VocabularyLanguageVariants.shortBadge(languageVariant)})"
+        } else {
+            abbreviateTag(language, 14)
+        }
         val parts = buildList {
-            add(abbreviateTag(language, 14))
+            add(langPart)
             add(lvl)
             if (!domain.equals("General", ignoreCase = true)) add(abbreviateTag(domain, 14))
             add(if (outputFormat == "Structured Text") "Text" else "JSON")
@@ -399,6 +415,7 @@ data class VocabularyPromptConfig(
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("language", language)
+        put("languageVariant", languageVariant)
         put("translationLanguage", translationLanguage)
         put("levelCode", levelCode)
         put("customLevelLabel", customLevelLabel)
@@ -415,8 +432,11 @@ data class VocabularyPromptConfig(
     companion object {
         fun fromJson(obj: JSONObject?): VocabularyPromptConfig {
             if (obj == null) return VocabularyPromptConfig()
+            val lang = obj.optString("language", "English").ifBlank { "English" }
+            val defaultVar = if (VocabularyLanguageVariants.isEnglish(lang)) VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT else ""
             return VocabularyPromptConfig(
-                language = obj.optString("language", "English").ifBlank { "English" },
+                language = lang,
+                languageVariant = obj.optString("languageVariant", defaultVar),
                 translationLanguage = obj.optString("translationLanguage", ""),
                 levelCode = obj.optString("levelCode", VocabularyLevel.INTERMEDIATE.code),
                 customLevelLabel = obj.optString("customLevelLabel", ""),

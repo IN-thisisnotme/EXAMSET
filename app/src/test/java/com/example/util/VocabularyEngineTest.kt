@@ -3,15 +3,20 @@ package com.example.util
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.ExamSetPreferences
 import com.example.model.PromptPresetMode
 import com.example.model.SrsRating
 import com.example.model.VocabularyDeck
 import com.example.model.VocabularyEntry
 import com.example.model.VocabularyExample
+import com.example.model.VocabularyLanguageVariants
 import com.example.model.VocabularyLevel
+import com.example.model.VocabularyPromptConfig
 import com.example.ui.MainViewModel
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -431,5 +436,491 @@ class VocabularyEngineTest {
         assertEquals(VocabularyInputFormat.JSON, res3.detectedFormat)
         assertTrue(res3.warnings.first().contains("Detected JSON format"))
     }
+
+    @Test
+    fun smartRouting_detectsLanguagesVariantsLevelsAndRoutesIntoExistingOrNewSets() {
+        val existingC1Deck = VocabularyDeck(
+            id = "deck-en-c1",
+            title = "Oxford C1 Core",
+            language = "English",
+            languageVariant = "UK",
+            levelCode = VocabularyLevel.ADVANCED.code,
+            entries = listOf(
+                VocabularyEntry(
+                    id = "existing-eloquent",
+                    word = "Eloquent",
+                    meaning = "Fluent or persuasive in speaking or writing.",
+                    levelCode = "C1"
+                )
+            )
+        )
+
+        val mixedBatch = """
+            ```json
+            [
+              {
+                "word": "analyse",
+                "partOfSpeech": "Verb",
+                "level": "B2",
+                "meaning": "Examine methodically and in detail.",
+                "translation": "विश्लेषण करना",
+                "examples": [{"context": "Academic", "sentence": "We will analyse the findings."}]
+              },
+              {
+                "word": "eloquent",
+                "partOfSpeech": "Adjective",
+                "level": "C1",
+                "meaning": "Fluent and persuasive.",
+                "translation": "वाक्पटु",
+                "examples": [{"context": "Formal", "sentence": "She gave an eloquent speech."}]
+              },
+              {
+                "word": "ephemeral",
+                "partOfSpeech": "Adjective",
+                "level": "C2",
+                "meaning": "Lasting for a very short time.",
+                "translation": "क्षणभंगुर",
+                "examples": [{"context": "Literary", "sentence": "Social media trends are ephemeral."}]
+              },
+              {
+                "word": "一期一会",
+                "partOfSpeech": "Idiom",
+                "level": "JLPT N2",
+                "meaning": "One time, one meeting; treasure every encounter.",
+                "examples": [{"context": "Culture", "sentence": "一期一会の精神を大切にする。"}]
+              }
+            ]
+            ```
+        """.trimIndent()
+
+        val parseResult = VocabularyEngine.parseVocabularyInput(
+            rawInput = mixedBatch,
+            preferredEnglishVariant = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
+        )
+        assertEquals(4, parseResult.entries.size)
+        assertEquals("UK", parseResult.detectedVariant)
+        assertEquals("Hindi", parseResult.detectedTranslationLanguage)
+        assertTrue(parseResult.detectedLanguages.containsAll(listOf("English", "Japanese")))
+
+        val buckets = VocabularyEngine.buildSmartRoutingPlan(
+            parseResult = parseResult,
+            allDecks = listOf(existingC1Deck),
+            preferredEnglishVariant = "UK"
+        )
+        // Expected 4 buckets: English B2, English C1, English C2, Japanese CUSTOM (JLPT N2)
+        assertEquals(4, buckets.size)
+
+        val enC1Bucket = buckets.first { it.language == "English" && it.levelCode == "C1" }
+        assertEquals("deck-en-c1", enC1Bucket.recommendedDeckId)
+        assertTrue(enC1Bucket.titleSuggestions.isNotEmpty())
+
+        val jpBucket = buckets.first { it.language == "Japanese" }
+        assertEquals(VocabularyLevel.CUSTOM.code, jpBucket.levelCode)
+        assertEquals("JLPT N2", jpBucket.customLevelLabel)
+        assertTrue(jpBucket.defaultNewTitle.contains("JLPT N2"))
+
+        // Choose targets (route C1 to existing deck, custom titles for the other 3 new sets)
+        val choices = buckets.associate { b ->
+            b.bucketKey to VocabularySmartRouteTargetChoice(
+                bucketKey = b.bucketKey,
+                targetDeckId = b.recommendedDeckId,
+                customTitle = b.defaultNewTitle,
+                language = b.language,
+                languageVariant = b.languageVariant,
+                translationLanguage = b.translationLanguage,
+                levelCode = b.levelCode,
+                customLevelLabel = b.customLevelLabel
+            )
+        }
+        val routeAnalysis = VocabularyEngine.analyzeSmartRoutedImport(
+            parseResult = parseResult,
+            buckets = buckets,
+            choices = choices,
+            allDecks = listOf(existingC1Deck),
+            checkAcrossSameLanguage = true
+        )
+        assertEquals(3, routeAnalysis.analysis.uniqueNewEntries.size) // analyse, ephemeral, 一期一会
+        assertEquals(1, routeAnalysis.analysis.duplicateItems.size) // eloquent matches existingC1Deck
+
+        // Verify ViewModel commitSmartRoutedVocabularyImport splits entries across sets accurately
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val vm = MainViewModel(app)
+        val existingCommitted = vm.commitVocabularyImport(
+            targetDeckId = null,
+            title = "Oxford C1 Core",
+            language = "English",
+            translationLanguage = "Hindi",
+            levelCode = "C1",
+            customLevelLabel = "",
+            domain = "General",
+            analysis = VocabularyEngine.analyzeVocabularyImport(
+                parseResult = VocabularyParseResult(
+                    entries = existingC1Deck.entries,
+                    detectedFormat = VocabularyInputFormat.JSON
+                ),
+                targetDeck = null,
+                targetLanguage = "English",
+                allDecks = emptyList()
+            ),
+            decisions = emptyMap(),
+            languageVariant = "UK"
+        )
+        val updatedBuckets = VocabularyEngine.buildSmartRoutingPlan(parseResult, vm.vocabularyDecks.value, "UK")
+        val updatedChoices = updatedBuckets.associate { b ->
+            b.bucketKey to VocabularySmartRouteTargetChoice(
+                bucketKey = b.bucketKey,
+                targetDeckId = b.recommendedDeckId,
+                customTitle = b.defaultNewTitle,
+                language = b.language,
+                languageVariant = b.languageVariant,
+                translationLanguage = b.translationLanguage,
+                levelCode = b.levelCode,
+                customLevelLabel = b.customLevelLabel
+            )
+        }
+        val vmRouteAnalysis = VocabularyEngine.analyzeSmartRoutedImport(
+            parseResult = parseResult,
+            buckets = updatedBuckets,
+            choices = updatedChoices,
+            allDecks = vm.vocabularyDecks.value,
+            checkAcrossSameLanguage = true
+        )
+        val mergeDecisions = vmRouteAnalysis.analysis.duplicateItems.associate { dup ->
+            dup.id to VocabularyMergeDecision(
+                action = VocabularyDuplicateAction.MERGE_SEGMENTS,
+                mergeExamples = true,
+                mergeTranslation = true
+            )
+        }
+        val touched = vm.commitSmartRoutedVocabularyImport(
+            targets = updatedChoices.values.toList(),
+            entryBucketById = vmRouteAnalysis.entryBucketById,
+            analysis = vmRouteAnalysis.analysis,
+            decisions = mergeDecisions
+        )
+        assertEquals(4, touched.size)
+        val reloadedC1 = vm.vocabularyDecks.value.first { it.id == existingCommitted.id }
+        assertEquals("वाक्पटु", reloadedC1.entries.first().translation)
+        assertTrue(vm.vocabularyDecks.value.any { it.language == "Japanese" && it.entries.any { e -> e.word == "一期一会" } })
+    }
+
+    @Test
+    fun wordOfTheDayService_parsesUkAndUsPhoneticsAndConfigDefaultsToUk() {
+        val sampleApiJson = """
+            [
+              {
+                "word": "candor",
+                "phonetic": "/ˈkændər/",
+                "phonetics": [
+                  { "text": "/ˈkændə(r)/", "audio": "https://api.dictionaryapi.dev/media/pronunciations/en/candor-uk.mp3" },
+                  { "text": "/ˈkændɚ/", "audio": "https://api.dictionaryapi.dev/media/pronunciations/en/candor-us.mp3" }
+                ],
+                "meanings": [
+                  {
+                    "partOfSpeech": "noun",
+                    "definitions": [
+                      {
+                        "definition": "The quality of being open and honest in expression; frankness.",
+                        "example": "She spoke with remarkable candour about the challenges."
+                      }
+                    ],
+                    "synonyms": ["frankness", "openness"],
+                    "antonyms": ["dishonesty"]
+                  }
+                ]
+              }
+            ]
+        """.trimIndent()
+
+        val ukEntry = WordOfTheDayService.parseDictionaryApiJson(sampleApiJson, "candour", "UK")
+        assertNotNull(ukEntry)
+        assertEquals("Candour", ukEntry?.word)
+        assertEquals("/ˈkændə(r)/", ukEntry?.pronunciation)
+        assertEquals("UK", ukEntry?.languageVariant)
+
+        val usEntry = WordOfTheDayService.parseDictionaryApiJson(sampleApiJson, "candor", "US")
+        assertNotNull(usEntry)
+        assertEquals("Candor", usEntry?.word)
+        assertEquals("/ˈkændɚ/", usEntry?.pronunciation)
+        assertEquals("US", usEntry?.languageVariant)
+
+        // Default prompt config origin is UK (Oxford) and round-trips through JSON cleanly
+        val defaultCfg = VocabularyPromptConfig()
+        assertEquals("UK", defaultCfg.languageVariant)
+        val roundTripped = VocabularyPromptConfig.fromJson(defaultCfg.copy(languageVariant = "US").toJson())
+        assertEquals("US", roundTripped.languageVariant)
+
+        // Preferences default to UK & persist Word of the Day cache round-trip
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val prefs = ExamSetPreferences(app)
+        assertEquals("UK", prefs.getPreferredEnglishVariant())
+        prefs.setPreferredEnglishVariant("US")
+        assertEquals("US", prefs.getPreferredEnglishVariant())
+
+        // Cached entry resolves immediately via loadDailyWord
+        val today = WordOfTheDayService.todayDateKey()
+        prefs.saveWordOfTheDayCacheJson(
+            org.json.JSONObject().apply {
+                put("dateKey", today)
+                put("variant", "US")
+                put("offset", 0)
+                put("entry", usEntry!!.toJson())
+            }.toString()
+        )
+        val loaded = runBlocking {
+            WordOfTheDayService.loadDailyWord(
+                prefs = prefs,
+                decks = emptyList(),
+                variant = "US",
+                offset = 0,
+                forceRefresh = false
+            )
+        }
+        assertTrue(loaded is WordOfTheDayUiState.Ready)
+        assertEquals("Candor", (loaded as WordOfTheDayUiState.Ready).entry.word)
+    }
+
+    @Test
+    fun wordOfTheDayService_curatedOfflineDictionaryWorksWithoutNetworkAndMeetsMinimumCount() {
+        assertTrue(WordOfTheDayService.offlineDictionarySize >= 60)
+
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val prefs = ExamSetPreferences(app)
+
+        val ukState = runBlocking {
+            WordOfTheDayService.loadDailyWord(
+                prefs = prefs,
+                decks = emptyList(),
+                variant = "UK",
+                offset = 0,
+                forceRefresh = true,
+                allowNetworkLookup = false
+            )
+        }
+        assertTrue(ukState is WordOfTheDayUiState.Ready)
+        val ready = ukState as WordOfTheDayUiState.Ready
+        assertEquals(WordOfTheDaySource.CURATED_DICTIONARY, ready.source)
+        assertEquals("UK", ready.variant)
+        assertEquals(null, ready.existingDeckId)
+        assertTrue(ready.entry.word.isNotBlank())
+        assertTrue(ready.entry.pronunciation.isNotBlank())
+        assertTrue(ready.entry.partOfSpeech.isNotBlank())
+        assertTrue(ready.entry.meaning.isNotBlank())
+        assertTrue(ready.entry.examples.isNotEmpty())
+        assertTrue(ready.entry.synonyms.isNotEmpty())
+
+        // Cycling offsets returns distinct curated words
+        val cycledWords = (0..5).map { idx ->
+            WordOfTheDayService.curatedOfflineEntryFor(variant = "UK", offset = idx).word
+        }.distinct()
+        assertEquals(6, cycledWords.size)
+
+        // Verify UK vs US spelling difference in curated dictionary (e.g. Candour / Candor)
+        val candourOffset = (0 until WordOfTheDayService.offlineDictionarySize).first { idx ->
+            WordOfTheDayService.candidateWordFor(variant = "UK", offset = idx) == "candour"
+        }
+        val ukCandour = WordOfTheDayService.curatedOfflineEntryFor(variant = "UK", offset = candourOffset)
+        val usCandor = WordOfTheDayService.curatedOfflineEntryFor(variant = "US", offset = candourOffset)
+        assertEquals("Candour", ukCandour.word)
+        assertEquals("Candor", usCandor.word)
+        assertEquals("UK", ukCandour.languageVariant)
+        assertEquals("US", usCandor.languageVariant)
+    }
+
+    @Test
+    fun parseVocabularyInput_overridesMismatchedScriptTagAndParsesBilingualTags() {
+        val mismatchedJson = """
+            [
+              {
+                "word": "संकल्प",
+                "language": "English",
+                "level": "B2",
+                "meaning": "Firm determination or resolve to accomplish a goal.",
+                "examples": [{"context": "Everyday", "sentence": "दृढ़ संकल्प से कठिन लक्ष्य भी पूरे होते हैं।"}]
+              },
+              {
+                "word": "一期一会",
+                "language": "English",
+                "level": "JLPT N2",
+                "meaning": "Cherishing each unique encounter as once in a lifetime.",
+                "examples": [{"context": "Culture", "sentence": "一期一会の出会いを大切にする。"}]
+              },
+              {
+                "word": "Efímero",
+                "language": "Spanish -> English",
+                "level": "C1",
+                "meaning": "Lasting for a very short time.",
+                "examples": [{"context": "Literary", "sentence": "La fama en internet suele ser efímera."}]
+              },
+              {
+                "word": "स्वावलंबी",
+                "language": "Hindi / English",
+                "level": "B2",
+                "meaning": "Self-reliant and independent in work or thought.",
+                "examples": [{"context": "Formal", "sentence": "स्वावलंबी समाज आत्मविश्वास से आगे बढ़ता है।"}]
+              }
+            ]
+        """.trimIndent()
+
+        val result = VocabularyEngine.parseVocabularyInput(mismatchedJson)
+        assertEquals(4, result.entries.size)
+
+        val hindiFirst = result.entries[0]
+        assertEquals("Hindi", hindiFirst.language)
+        assertEquals("English", hindiFirst.translationLanguage)
+
+        val jpSecond = result.entries[1]
+        assertEquals("Japanese", jpSecond.language)
+        assertEquals("English", jpSecond.translationLanguage)
+
+        val esThird = result.entries[2]
+        assertEquals("Spanish", esThird.language)
+        assertEquals("English", esThird.translationLanguage)
+
+        val hiFourth = result.entries[3]
+        assertEquals("Hindi", hiFourth.language)
+        assertEquals("English", hiFourth.translationLanguage)
+
+        assertTrue(result.warnings.any { it.contains("Auto-corrected language from English to Hindi") })
+        assertTrue(result.warnings.any { it.contains("Auto-corrected language from English to Japanese") })
+
+        // Structured text bilingual header & translation language support
+        val structuredBilingual = """
+            LANGUAGE: Japanese -> English
+            WORD: 木漏れ日
+            LEVEL: JLPT N1
+            MEANING: Sunlight filtering gently through the leaves of trees.
+            EXAMPLES:
+            - [Literary] 森の中で木漏れ日を浴びながら歩いた。
+        """.trimIndent()
+        val structuredResult = VocabularyEngine.parseVocabularyInput(structuredBilingual)
+        assertEquals(1, structuredResult.entries.size)
+        assertEquals("Japanese", structuredResult.entries.single().language)
+        assertEquals("English", structuredResult.entries.single().translationLanguage)
+    }
+
+    @Test
+    fun smartRouting_detectsMeaningOnlyBilingualEntriesWithoutCrossBleedAndBackfillsExistingDeck() {
+        val mixedBilingualBatch = """
+            [
+              {
+                "word": "Pragmatic",
+                "partOfSpeech": "Adjective",
+                "level": "C1",
+                "meaning": "व्यावहारिक और यथार्थवादी दृष्टिकोण अपनाने वाला।",
+                "examples": [{"context": "Workplace", "sentence": "We took a pragmatic approach to the project timeline."}]
+              },
+              {
+                "word": "木漏れ日",
+                "partOfSpeech": "Noun",
+                "level": "JLPT N1",
+                "meaning": "The interplay of sunlight filtering through the leaves of trees.",
+                "examples": [{"context": "Literary", "sentence": "木漏れ日が小道を柔らかく照らしていた。"}]
+              },
+              {
+                "word": "Efímero",
+                "language": "Spanish",
+                "partOfSpeech": "Adjective",
+                "level": "C1",
+                "meaning": "Que dura muy poco tiempo.",
+                "examples": [{"context": "Editorial", "sentence": "El éxito mediático suele ser efímero."}]
+              }
+            ]
+        """.trimIndent()
+
+        val parsed = VocabularyEngine.parseVocabularyInput(mixedBilingualBatch, preferredEnglishVariant = "UK")
+        assertEquals(3, parsed.entries.size)
+
+        val enEntry = parsed.entries[0]
+        assertEquals("English", enEntry.language)
+        assertEquals("Hindi", enEntry.translationLanguage)
+
+        val jpEntry = parsed.entries[1]
+        assertEquals("Japanese", jpEntry.language)
+        assertEquals("English", jpEntry.translationLanguage)
+
+        // Short monolingual Spanish meaning must NOT falsely trigger translationLanguage = "English"
+        val esEntry = parsed.entries[2]
+        assertEquals("Spanish", esEntry.language)
+        assertEquals("", esEntry.translationLanguage)
+
+        // Existing English C1 deck initially has blank translationLanguage
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val vm = MainViewModel(app)
+        val initialEnDeck = vm.commitVocabularyImport(
+            targetDeckId = null,
+            title = "Oxford C1 General",
+            language = "English",
+            translationLanguage = "",
+            levelCode = "C1",
+            customLevelLabel = "",
+            domain = "General",
+            analysis = VocabularyEngine.analyzeVocabularyImport(
+                parseResult = VocabularyParseResult(
+                    entries = listOf(VocabularyEntry(word = "Cogent", meaning = "Clear and convincing.", levelCode = "C1")),
+                    detectedFormat = VocabularyInputFormat.JSON
+                ),
+                targetDeck = null,
+                targetLanguage = "English",
+                allDecks = emptyList()
+            ),
+            decisions = emptyMap(),
+            languageVariant = "UK"
+        )
+        assertEquals("", initialEnDeck.translationLanguage)
+
+        val buckets = VocabularyEngine.buildSmartRoutingPlan(parsed, vm.vocabularyDecks.value, "UK")
+        assertEquals(3, buckets.size)
+
+        val enBucket = buckets.first { it.language == "English" }
+        val jpBucket = buckets.first { it.language == "Japanese" }
+        val esBucket = buckets.first { it.language == "Spanish" }
+
+        // Per-bucket translation languages must remain isolated (no bleed of Hindi into Japanese/Spanish)
+        assertEquals("Hindi", enBucket.translationLanguage)
+        assertEquals("English", jpBucket.translationLanguage)
+        assertEquals("", esBucket.translationLanguage)
+        assertEquals(initialEnDeck.id, enBucket.recommendedDeckId)
+
+        val choices = buckets.associate { b ->
+            b.bucketKey to VocabularySmartRouteTargetChoice(
+                bucketKey = b.bucketKey,
+                targetDeckId = b.recommendedDeckId,
+                customTitle = b.defaultNewTitle,
+                language = b.language,
+                languageVariant = b.languageVariant,
+                translationLanguage = b.translationLanguage,
+                levelCode = b.levelCode,
+                customLevelLabel = b.customLevelLabel
+            )
+        }
+        val routeAnalysis = VocabularyEngine.analyzeSmartRoutedImport(
+            parseResult = parsed,
+            buckets = buckets,
+            choices = choices,
+            allDecks = vm.vocabularyDecks.value
+        )
+        vm.commitSmartRoutedVocabularyImport(
+            targets = choices.values.toList(),
+            entryBucketById = routeAnalysis.entryBucketById,
+            analysis = routeAnalysis.analysis,
+            decisions = emptyMap()
+        )
+
+        val updatedEnDeck = vm.vocabularyDecks.value.first { it.id == initialEnDeck.id }
+        assertEquals("Hindi", updatedEnDeck.translationLanguage)
+        assertTrue(updatedEnDeck.entries.any { it.word == "Pragmatic" && it.translationLanguage == "Hindi" })
+
+        val createdJpDeck = vm.vocabularyDecks.value.first { it.language == "Japanese" }
+        assertEquals("English", createdJpDeck.translationLanguage)
+
+        val createdEsDeck = vm.vocabularyDecks.value.first { it.language == "Spanish" }
+        assertEquals("", createdEsDeck.translationLanguage)
+    }
 }
+
 

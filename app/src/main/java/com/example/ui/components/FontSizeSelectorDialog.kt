@@ -33,6 +33,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.AppFontScaleMode
 import com.example.ui.theme.ExamTheme
+import kotlin.math.roundToInt
 
 @Composable
 fun FontSizeSelectorDialog(
@@ -139,8 +142,13 @@ fun FontSizeSelectorDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Mode Selection Options
+                val systemFontScale = LocalConfiguration.current.fontScale.coerceAtLeast(0.5f)
                 AppFontScaleMode.entries.forEach { mode ->
                     val isSelected = mode == currentMode
+                    val effectiveTitle = if (mode == AppFontScaleMode.FOLLOW_SYSTEM) {
+                        val clamped = (systemFontScale.coerceIn(0.85f, 1.35f) * 100f).roundToInt()
+                        "${mode.title} • Now $clamped%"
+                    } else mode.title
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -188,7 +196,7 @@ fun FontSizeSelectorDialog(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = mode.title,
+                                    text = effectiveTitle,
                                     fontSize = 14.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                     color = if (isSelected) colors.tealDark else colors.inkBold
@@ -227,7 +235,8 @@ fun FontSizeSelectorDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "Q1. Find the rate of change for f(x) = 3x² + 5x at x = 2.",
@@ -236,16 +245,23 @@ fun FontSizeSelectorDialog(
                             color = colors.inkBold,
                             softWrap = true
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(text = "A. 17", fontSize = 12.sp, color = colors.ink)
                             Text(text = "B. 12", fontSize = 12.sp, color = colors.ink)
                             Text(text = "C. 21", fontSize = 12.sp, color = colors.ink)
                             Text(text = "D. 9", fontSize = 12.sp, color = colors.ink)
                         }
+                        Text(
+                            text = "Vocab: Perspicacious • /ˌpɜː.spɪˈkeɪ.ʃəs/ • C2 (UK)",
+                            fontSize = 12.sp,
+                            color = colors.tealDark,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
 

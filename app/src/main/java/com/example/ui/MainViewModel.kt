@@ -58,6 +58,8 @@ import com.example.model.RestorePreview
 import com.example.model.SrsRating
 import com.example.model.VocabularyDeck
 import com.example.model.VocabularyEntry
+import com.example.model.VocabularyLanguageVariants
+import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
 import com.example.ui.components.computeNextSetForSubject
 import com.example.ui.components.isSetNumberMatch
@@ -82,6 +84,9 @@ import com.example.util.VocabularyDuplicateAction
 import com.example.util.VocabularyEngine
 import com.example.util.VocabularyImportAnalysis
 import com.example.util.VocabularyMergeDecision
+import com.example.util.VocabularySmartRouteTargetChoice
+import com.example.util.WordOfTheDayService
+import com.example.util.WordOfTheDayUiState
 import com.example.util.StudyNoteParser
 import com.example.util.TrustedTimeManager
 import com.example.util.VaultArchiveEngine
@@ -237,7 +242,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.getFlashcardPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
     }
     val vocabularyPromptState = VocabularyPromptState().apply {
-        appPreferences.getVocabularyPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
+        val draft = appPreferences.getVocabularyPromptDraft()
+        if (draft != null) {
+            applyConfig(draft, preserveTopic = false)
+        } else {
+            languageVariant = appPreferences.getPreferredEnglishVariant()
+        }
     }
 
     // Dedicated Vocabulary Hub state (completely separate from Knowledge Sets)
@@ -247,6 +257,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _vocabularySrsByDeck = MutableStateFlow(appPreferences.getAllVocabularySrsMaps())
     val vocabularySrsByDeck: StateFlow<Map<String, Map<String, FlashcardSrsState>>> = _vocabularySrsByDeck.asStateFlow()
 
+    private val _preferredEnglishVariant = MutableStateFlow(appPreferences.getPreferredEnglishVariant())
+    val preferredEnglishVariant: StateFlow<String> = _preferredEnglishVariant.asStateFlow()
+
+    private var wotdOffset = 0
+    private val _wordOfTheDayState = MutableStateFlow<WordOfTheDayUiState>(
+        WordOfTheDayUiState.Loading(_preferredEnglishVariant.value)
+    )
+    val wordOfTheDayState: StateFlow<WordOfTheDayUiState> = _wordOfTheDayState.asStateFlow()
+
     var showVocabularyHub by mutableStateOf(false)
         private set
     var vocabularyHubInitialLanguage by mutableStateOf<String?>(null)
@@ -255,10 +274,92 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun openVocabularyHub(languageFilter: String? = null) {
         vocabularyHubInitialLanguage = languageFilter?.trim()?.ifBlank { null }
         showVocabularyHub = true
+        loadWordOfTheDay(forceRefresh = false, cycleNext = false)
     }
 
     fun closeVocabularyHub() {
         showVocabularyHub = false
+    }
+
+    fun setPreferredEnglishVariant(variant: String) {
+        val norm = VocabularyLanguageVariants.normalizeVariant("English", variant)
+        if (_preferredEnglishVariant.value == norm) return
+        appPreferences.setPreferredEnglishVariant(norm)
+        _preferredEnglishVariant.value = norm
+        if (VocabularyLanguageVariants.isEnglish(vocabularyPromptState.language)) {
+            vocabularyPromptState.languageVariant = norm
+            appPreferences.saveVocabularyPromptDraft(vocabularyPromptState.toConfig())
+        }
+        loadWordOfTheDay(forceRefresh = false, cycleNext = false)
+    }
+
+    fun loadWordOfTheDay(forceRefresh: Boolean = false, cycleNext: Boolean = false) {
+        if (cycleNext) wotdOffset += 1
+        val variant = _preferredEnglishVariant.value
+        _wordOfTheDayState.value = WordOfTheDayUiState.Loading(variant)
+        viewModelScope.launch {
+            _wordOfTheDayState.value = WordOfTheDayService.loadDailyWord(
+                prefs = appPreferences,
+                decks = _vocabularyDecks.value,
+                variant = variant,
+                offset = wotdOffset,
+                forceRefresh = forceRefresh
+            )
+        }
+    }
+
+    fun saveWordOfTheDayToHub(entry: VocabularyEntry): VocabularyDeck {
+        val normVariant = _preferredEnglishVariant.value
+        val existingKey = entry.normalizedWordKey()
+        val alreadyDeck = _vocabularyDecks.value.firstOrNull { deck ->
+            deck.entries.any { it.normalizedWordKey() == existingKey }
+        }
+        if (alreadyDeck != null) {
+            _statusMessage.value = "\"${entry.word}\" is already saved in \"${alreadyDeck.title}\""
+            return alreadyDeck
+        }
+
+        val matchingLevelDeck = _vocabularyDecks.value
+            .filter {
+                VocabularyLanguageVariants.isEnglish(it.language) &&
+                    it.levelCode.equals(entry.levelCode, ignoreCase = true)
+            }
+            .sortedByDescending { it.languageVariant.equals(normVariant, ignoreCase = true) }
+            .firstOrNull()
+
+        val parse = com.example.util.VocabularyParseResult(
+            entries = listOf(entry.copy(language = "English", languageVariant = normVariant)),
+            detectedFormat = com.example.util.VocabularyInputFormat.JSON,
+            detectedLanguages = listOf("English"),
+            detectedVariant = normVariant
+        )
+        val analysis = VocabularyEngine.analyzeVocabularyImport(
+            parseResult = parse,
+            targetDeck = matchingLevelDeck,
+            targetLanguage = "English",
+            allDecks = _vocabularyDecks.value,
+            checkAcrossSameLanguage = true
+        )
+        val savedDeck = commitVocabularyImport(
+            targetDeckId = matchingLevelDeck?.id,
+            title = matchingLevelDeck?.title ?: "English ($normVariant) • ${VocabularyLevel.fromCode(entry.levelCode).displayTitle()}",
+            language = "English",
+            languageVariant = normVariant,
+            translationLanguage = "",
+            levelCode = entry.levelCode,
+            customLevelLabel = entry.customLevelLabel,
+            domain = "General",
+            analysis = analysis,
+            decisions = emptyMap()
+        )
+        val currentWotd = _wordOfTheDayState.value
+        if (currentWotd is WordOfTheDayUiState.Ready && currentWotd.entry.normalizedWordKey() == existingKey) {
+            _wordOfTheDayState.value = currentWotd.copy(
+                existingDeckId = savedDeck.id,
+                existingDeckTitle = savedDeck.title
+            )
+        }
+        return savedDeck
     }
 
     fun existingVocabularyWordsForLanguage(language: String): List<String> {
@@ -281,18 +382,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customLevelLabel: String,
         domain: String,
         analysis: VocabularyImportAnalysis,
-        decisions: Map<String, VocabularyMergeDecision>
+        decisions: Map<String, VocabularyMergeDecision>,
+        languageVariant: String = ""
     ): VocabularyDeck {
         val now = System.currentTimeMillis()
         val decksMutable = _vocabularyDecks.value.toMutableList()
+        val cleanLang = language.trim().ifBlank { "English" }
+        val resolvedVariant = languageVariant.trim().ifBlank {
+            if (VocabularyLanguageVariants.isEnglish(cleanLang)) _preferredEnglishVariant.value else ""
+        }
 
         // Ensure target deck exists
         val resolvedTargetId: String
         var targetIndex = if (targetDeckId != null) decksMutable.indexOfFirst { it.id == targetDeckId } else -1
         if (targetIndex < 0) {
             val newDeck = VocabularyDeck(
-                title = title.trim().ifBlank { "$language Vocabulary" },
-                language = language.trim().ifBlank { "English" },
+                title = title.trim().ifBlank { "$cleanLang Vocabulary" },
+                language = cleanLang,
+                languageVariant = resolvedVariant,
                 translationLanguage = translationLanguage.trim(),
                 levelCode = levelCode,
                 customLevelLabel = customLevelLabel.trim(),
@@ -365,22 +472,170 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return updatedTargetDeck
     }
 
+    /**
+     * Atomically routes parsed vocabulary across multiple `(language, level)` destination folders/sets
+     * according to user-confirmed bucket targets while enforcing duplicate & merge decisions.
+     */
+    fun commitSmartRoutedVocabularyImport(
+        targets: List<VocabularySmartRouteTargetChoice>,
+        entryBucketById: Map<String, String>,
+        analysis: VocabularyImportAnalysis,
+        decisions: Map<String, VocabularyMergeDecision>
+    ): List<VocabularyDeck> {
+        if (targets.isEmpty()) return emptyList()
+        val now = System.currentTimeMillis()
+        val decksMutable = _vocabularyDecks.value.toMutableList()
+        val deckIdByBucketKey = mutableMapOf<String, String>()
+        val addedEntriesByDeckId = mutableMapOf<String, MutableList<VocabularyEntry>>()
+
+        val targetByBucketKey = targets.associateBy { it.bucketKey }
+        // 1. Resolve or create every target deck cleanly
+        targets.forEach { target ->
+            val existingIdx = target.targetDeckId?.let { id -> decksMutable.indexOfFirst { it.id == id } } ?: -1
+            val resolvedId = if (existingIdx >= 0) {
+                val existingDeck = decksMutable[existingIdx]
+                val cleanTrans = target.translationLanguage.trim()
+                if (existingDeck.translationLanguage.isBlank() && cleanTrans.isNotBlank()) {
+                    decksMutable[existingIdx] = existingDeck.copy(
+                        translationLanguage = cleanTrans,
+                        updatedAt = now
+                    )
+                }
+                existingDeck.id
+            } else {
+                val cleanLang = target.language.trim().ifBlank { "English" }
+                val newDeck = VocabularyDeck(
+                    title = target.customTitle.trim().ifBlank { "$cleanLang ${VocabularyLevel.fromCode(target.levelCode).displayTitle(target.customLevelLabel)}" },
+                    language = cleanLang,
+                    languageVariant = target.languageVariant.trim(),
+                    translationLanguage = target.translationLanguage.trim(),
+                    levelCode = target.levelCode,
+                    customLevelLabel = target.customLevelLabel.trim(),
+                    domain = target.domain.trim().ifBlank { "General" },
+                    entries = emptyList(),
+                    createdAt = now,
+                    updatedAt = now
+                )
+                decksMutable.add(0, newDeck)
+                newDeck.id
+            }
+            deckIdByBucketKey[target.bucketKey] = resolvedId
+            addedEntriesByDeckId.getOrPut(resolvedId) { mutableListOf() }
+        }
+
+        val fallbackDeckId = deckIdByBucketKey.values.first()
+
+        // 2. Route unique new entries into their respective bucket decks
+        analysis.uniqueNewEntries.forEach { entry ->
+            val bucketKey = entryBucketById[entry.id]
+            val targetId = (bucketKey?.let { deckIdByBucketKey[it] }) ?: fallbackDeckId
+            val targetChoice = bucketKey?.let { targetByBucketKey[it] }
+            val stampedEntry = if (targetChoice != null) {
+                entry.copy(
+                    language = targetChoice.language.trim().ifBlank { entry.language },
+                    languageVariant = targetChoice.languageVariant.trim().ifBlank { entry.languageVariant },
+                    translationLanguage = targetChoice.translationLanguage.trim().ifBlank { entry.translationLanguage }
+                )
+            } else entry
+            addedEntriesByDeckId.getOrPut(targetId) { mutableListOf() }.add(stampedEntry)
+        }
+
+        // 3. Apply duplicate/merge decisions across buckets & existing decks
+        analysis.duplicateItems.forEach { dup ->
+            val decision = decisions[dup.id] ?: VocabularyMergeDecision(action = VocabularyDuplicateAction.SKIP)
+            when (decision.action) {
+                VocabularyDuplicateAction.SKIP -> Unit
+                VocabularyDuplicateAction.KEEP_SEPARATE -> {
+                    val bucketKey = entryBucketById[dup.incoming.id]
+                    val targetId = (bucketKey?.let { deckIdByBucketKey[it] }) ?: fallbackDeckId
+                    addedEntriesByDeckId.getOrPut(targetId) { mutableListOf() }.add(
+                        dup.incoming.copy(id = java.util.UUID.randomUUID().toString(), createdAt = now, updatedAt = now)
+                    )
+                }
+                VocabularyDuplicateAction.MERGE_SEGMENTS,
+                VocabularyDuplicateAction.REPLACE_EXISTING -> {
+                    if (dup.isIntraBatch) {
+                        var updatedInBatch = false
+                        addedEntriesByDeckId.values.forEach { bucketList ->
+                            val idx = bucketList.indexOfFirst { it.id == dup.existing.id }
+                            if (idx >= 0) {
+                                bucketList[idx] = VocabularyEngine.mergeVocabularyEntry(bucketList[idx], dup.incoming, decision)
+                                updatedInBatch = true
+                            }
+                        }
+                        if (!updatedInBatch) {
+                            val hostIdx = decksMutable.indexOfFirst { it.id == dup.existingDeckId }
+                            if (hostIdx >= 0) {
+                                val hostDeck = decksMutable[hostIdx]
+                                val updatedEntries = hostDeck.entries.map { existingEntry ->
+                                    if (existingEntry.id == dup.existing.id) {
+                                        VocabularyEngine.mergeVocabularyEntry(existingEntry, dup.incoming, decision)
+                                    } else existingEntry
+                                }
+                                decksMutable[hostIdx] = hostDeck.copy(entries = updatedEntries, updatedAt = now)
+                            }
+                        }
+                    } else {
+                        val hostIdx = decksMutable.indexOfFirst { it.id == dup.existingDeckId }
+                        if (hostIdx >= 0) {
+                            val hostDeck = decksMutable[hostIdx]
+                            val updatedEntries = hostDeck.entries.map { existingEntry ->
+                                if (existingEntry.id == dup.existing.id) {
+                                    VocabularyEngine.mergeVocabularyEntry(existingEntry, dup.incoming, decision)
+                                } else existingEntry
+                            }
+                            decksMutable[hostIdx] = hostDeck.copy(entries = updatedEntries, updatedAt = now)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Sort and finalize every touched deck
+        val touchedDecks = mutableListOf<VocabularyDeck>()
+        val targetDeckIds = deckIdByBucketKey.values.toSet()
+        for (i in decksMutable.indices) {
+            val deck = decksMutable[i]
+            val incomingList = addedEntriesByDeckId[deck.id].orEmpty()
+            if (deck.id in targetDeckIds || incomingList.isNotEmpty()) {
+                val combined = (deck.entries + incomingList).sortedWith(
+                    compareBy<VocabularyEntry>(
+                        { it.word.trim().lowercase() },
+                        { it.partOfSpeech.trim().lowercase() }
+                    )
+                )
+                val updated = deck.copy(entries = combined, updatedAt = now)
+                decksMutable[i] = updated
+                if (deck.id in targetDeckIds) touchedDecks.add(updated)
+            }
+        }
+
+        _vocabularyDecks.value = decksMutable
+        appPreferences.saveVocabularyDecks(decksMutable)
+        val totalAdded = addedEntriesByDeckId.values.sumOf { it.size }
+        _statusMessage.value = "Routed $totalAdded word(s) across ${touchedDecks.size} set(s)"
+        return touchedDecks
+    }
+
     fun renameVocabularyDeck(
         deckId: String,
         newTitle: String,
         language: String,
         translationLanguage: String,
         levelCode: String,
-        customLevelLabel: String
+        customLevelLabel: String,
+        languageVariant: String = ""
     ) {
         val cleanTitle = newTitle.trim()
         if (cleanTitle.isBlank()) return
         val now = System.currentTimeMillis()
         val updated = _vocabularyDecks.value.map { deck ->
             if (deck.id == deckId) {
+                val cleanLang = language.trim().ifBlank { deck.language }
                 deck.copy(
                     title = cleanTitle,
-                    language = language.trim().ifBlank { deck.language },
+                    language = cleanLang,
+                    languageVariant = languageVariant.trim(),
                     translationLanguage = translationLanguage.trim(),
                     levelCode = levelCode,
                     customLevelLabel = customLevelLabel.trim(),

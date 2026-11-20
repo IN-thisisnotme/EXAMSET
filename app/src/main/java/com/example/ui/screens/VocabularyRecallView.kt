@@ -382,13 +382,20 @@ fun VocabularyRecallView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Surface(shape = RoundedCornerShape(6.dp), color = colors.tealLight) {
                                 Text(
                                     text = activeEntry.effectiveLevelBadge(),
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.tealDark,
+                                    maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                 )
                             }
@@ -399,15 +406,31 @@ fun VocabularyRecallView(
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.ink,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            if (activeEntry.languageVariant.isNotBlank() && !activeEntry.languageVariant.equals("Neutral", ignoreCase = true)) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = colors.amberLight) {
+                                    Text(
+                                        text = activeEntry.languageVariant,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.amber,
+                                        maxLines = 1,
                                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                     )
                                 }
                             }
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = direction.subtitle,
                             fontSize = 10.5.sp,
-                            color = colors.inkMuted
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
@@ -689,14 +712,16 @@ fun VocabularyRecallView(
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = fg,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center
                                 )
                                 Text(
                                     text = intervalPreviews[rating] ?: "",
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = fg.copy(alpha = 0.85f),
-                                    maxLines = 1,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Center,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -759,7 +784,15 @@ private fun VocabSrsMetricPill(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = fg)
-            Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = fg.copy(alpha = 0.85f), maxLines = 1)
+            Text(
+                text = label,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = fg.copy(alpha = 0.85f),
+                maxLines = 2,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

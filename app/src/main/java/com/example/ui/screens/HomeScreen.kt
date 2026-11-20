@@ -1453,16 +1453,23 @@ fun HomeScreen(
     if (viewModel.showVocabularyHub) {
         val vocabDecks by viewModel.vocabularyDecks.collectAsState()
         val vocabSrs by viewModel.vocabularySrsByDeck.collectAsState()
+        val preferredEnglishVariant by viewModel.preferredEnglishVariant.collectAsState()
+        val wordOfTheDayState by viewModel.wordOfTheDayState.collectAsState()
         VocabularyHubDialog(
             decks = vocabDecks,
             srsByDeck = vocabSrs,
+            preferredEnglishVariant = preferredEnglishVariant,
+            wordOfTheDayState = wordOfTheDayState,
             initialLanguageFilter = viewModel.vocabularyHubInitialLanguage,
             onDismiss = { viewModel.closeVocabularyHub() },
             onOpenAiPromptBuilderForVocab = {
                 viewModel.promptBuilderMode = PromptBuilderMode.VOCABULARY
                 viewModel.selectTab(5)
             },
-            onCommitImport = { targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions ->
+            onChangeEnglishVariant = { variant -> viewModel.setPreferredEnglishVariant(variant) },
+            onRefreshWordOfTheDay = { cycleNext -> viewModel.loadWordOfTheDay(forceRefresh = true, cycleNext = cycleNext) },
+            onSaveWordOfTheDay = { entry -> viewModel.saveWordOfTheDayToHub(entry) },
+            onCommitImport = { targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions, langVariant ->
                 viewModel.commitVocabularyImport(
                     targetDeckId = targetId,
                     title = title,
@@ -1472,11 +1479,20 @@ fun HomeScreen(
                     customLevelLabel = customLvl,
                     domain = dom,
                     analysis = analysis,
+                    decisions = decisions,
+                    languageVariant = langVariant
+                )
+            },
+            onCommitSmartRoutedImport = { targets, entryBucketById, analysis, decisions ->
+                viewModel.commitSmartRoutedVocabularyImport(
+                    targets = targets,
+                    entryBucketById = entryBucketById,
+                    analysis = analysis,
                     decisions = decisions
                 )
             },
-            onRenameDeck = { id, newTitle, lang, trans, lvl, customLvl ->
-                viewModel.renameVocabularyDeck(id, newTitle, lang, trans, lvl, customLvl)
+            onRenameDeck = { id, newTitle, lang, trans, lvl, customLvl, langVariant ->
+                viewModel.renameVocabularyDeck(id, newTitle, lang, trans, lvl, customLvl, langVariant)
             },
             onDeleteDeck = { id -> viewModel.deleteVocabularyDeck(id) },
             onToggleEntryBookmark = { deckId, entryId -> viewModel.toggleVocabularyEntryBookmark(deckId, entryId) },

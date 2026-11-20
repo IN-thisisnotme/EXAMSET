@@ -7,6 +7,7 @@ import com.example.model.VocabularyDeck
 import com.example.model.VocabularyEntry
 import com.example.model.VocabularyExample
 import com.example.model.VocabularyLevel
+import com.example.model.VocabularyLanguageVariants
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -21,7 +22,41 @@ enum class VocabularyInputFormat(val label: String) {
 data class VocabularyParseResult(
     val entries: List<VocabularyEntry>,
     val detectedFormat: VocabularyInputFormat,
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    val detectedLanguages: List<String> = emptyList(),
+    val detectedVariant: String = "",
+    val detectedTranslationLanguage: String = ""
+)
+
+data class VocabularyRouteBucket(
+    val bucketKey: String,
+    val language: String,
+    val languageVariant: String,
+    val translationLanguage: String,
+    val levelCode: String,
+    val customLevelLabel: String,
+    val entries: List<VocabularyEntry>,
+    val candidateDecks: List<VocabularyDeck>,
+    val recommendedDeckId: String?,
+    val titleSuggestions: List<String>,
+    val defaultNewTitle: String
+)
+
+data class VocabularySmartRouteTargetChoice(
+    val bucketKey: String,
+    val targetDeckId: String?,
+    val customTitle: String,
+    val language: String,
+    val languageVariant: String,
+    val translationLanguage: String,
+    val levelCode: String,
+    val customLevelLabel: String,
+    val domain: String = "General"
+)
+
+data class VocabularySmartRouteAnalysis(
+    val analysis: VocabularyImportAnalysis,
+    val entryBucketById: Map<String, String>
 )
 
 enum class VocabularyDuplicateAction(val label: String) {
@@ -154,7 +189,8 @@ object VocabularyEngine {
     fun parseVocabularyInput(
         rawInput: String,
         defaultLevelCode: String = VocabularyLevel.INTERMEDIATE.code,
-        defaultCustomLevelLabel: String = ""
+        defaultCustomLevelLabel: String = "",
+        preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
     ): VocabularyParseResult {
         val cleaned = stripOuterCodeFences(rawInput)
         if (cleaned.isBlank()) {
@@ -164,13 +200,13 @@ object VocabularyEngine {
         // 1. Try JSON parser first when input looks like JSON
         val jsonAttempt = tryParseJsonVocabulary(cleaned, defaultLevelCode, defaultCustomLevelLabel)
         if (jsonAttempt != null && jsonAttempt.entries.isNotEmpty()) {
-            return jsonAttempt
+            return enrichParsedResultWithDetection(jsonAttempt, cleaned, preferredEnglishVariant)
         }
 
         // 2. Fall back to Structured Text parser
         val textResult = parseStructuredTextVocabulary(cleaned, defaultLevelCode, defaultCustomLevelLabel)
         if (textResult.entries.isNotEmpty()) {
-            return textResult
+            return enrichParsedResultWithDetection(textResult, cleaned, preferredEnglishVariant)
         }
 
         val jsonWarning = jsonAttempt?.warnings?.firstOrNull()
@@ -520,6 +556,9 @@ object VocabularyEngine {
         } else {
             ""
         }
+        val explicitLang = firstNonBlank(obj, "language", "lang", "sourceLanguage", "targetLanguage")
+        val explicitTransLang = firstNonBlank(obj, "translationLanguage", "bridgeLanguage", "meaningLanguage", "nativeLanguage")
+        val explicitVariant = firstNonBlank(obj, "languageVariant", "variant", "origin", "dialect", "englishVariant", "standard")
 
         val examples = parseJsonExamples(obj)
         val synonyms = parseFlexibleStringList(obj, "synonyms", "similar")
@@ -533,8 +572,11 @@ object VocabularyEngine {
             partOfSpeech = pos,
             levelCode = resolvedLvl.code,
             customLevelLabel = customLvl,
+            language = explicitLang,
+            languageVariant = explicitVariant,
             meaning = meaning.ifBlank { translation },
             translation = translation,
+            translationLanguage = explicitTransLang,
             examples = examples,
             synonyms = synonyms,
             antonyms = antonyms,
@@ -607,6 +649,12 @@ object VocabularyEngine {
         var pronunciation = ""
         var pos = ""
         var levelRaw = ""
+        var explicitLang = ""
+        var explicitTransLang = ""
+        var explicitVariant = ""
+        var docHeaderLang = ""
+        var docHeaderTransLang = ""
+        var docHeaderVariant = ""
         var meaning = ""
         var translation = ""
         val examples = mutableListOf<VocabularyExample>()
@@ -626,8 +674,11 @@ object VocabularyEngine {
                         partOfSpeech = pos.trim(),
                         levelCode = lvl.code,
                         customLevelLabel = if (lvl == VocabularyLevel.CUSTOM) levelRaw.ifBlank { defaultCustomLevelLabel } else "",
+                        language = explicitLang.ifBlank { docHeaderLang }.trim(),
+                        languageVariant = explicitVariant.ifBlank { docHeaderVariant }.trim(),
                         meaning = meaning.trim().ifBlank { translation.trim() },
                         translation = translation.trim(),
+                        translationLanguage = explicitTransLang.ifBlank { docHeaderTransLang }.trim(),
                         examples = examples.toList(),
                         synonyms = synonyms.distinct(),
                         antonyms = antonyms.distinct(),
@@ -640,6 +691,9 @@ object VocabularyEngine {
             pronunciation = ""
             pos = ""
             levelRaw = ""
+            explicitLang = ""
+            explicitTransLang = ""
+            explicitVariant = ""
             meaning = ""
             translation = ""
             examples.clear()
@@ -686,6 +740,16 @@ object VocabularyEngine {
             }
 
             if (currentWord.isBlank()) {
+                val topField = labeledFieldRegex.matchEntire(line)
+                if (topField != null) {
+                    val key = topField.groupValues[1].trim().lowercase(Locale.ROOT)
+                    val value = topField.groupValues[2].replace("**", "").trim()
+                    when (key) {
+                        "language", "lang", "target language", "source language" -> if (value.isNotBlank()) { docHeaderLang = value; continue }
+                        "translation language", "bridge language", "meaning language" -> if (value.isNotBlank()) { docHeaderTransLang = value; continue }
+                        "variant", "origin", "standard", "english variant" -> if (value.isNotBlank()) { docHeaderVariant = value; continue }
+                    }
+                }
                 // Handle simple one-line "Word — Meaning" fallback when no WORD: header exists
                 val simpleDash = Regex("^(?:\\d+[.)]\\s*|[-•*]\\s*)?([^:—–\\-]{2,60})\\s*(?:—|–|->|::)\\s*(.{4,})$").matchEntire(line)
                 if (simpleDash != null) {
@@ -705,6 +769,18 @@ object VocabularyEngine {
                 val key = fieldMatch.groupValues[1].trim().lowercase(Locale.ROOT)
                 val value = fieldMatch.groupValues[2].replace("**", "").trim()
                 when {
+                    key in setOf("language", "lang", "target language", "source language") -> {
+                        explicitLang = value
+                        inExamplesSection = false
+                    }
+                    key in setOf("translation language", "bridge language", "meaning language") -> {
+                        explicitTransLang = value
+                        inExamplesSection = false
+                    }
+                    key in setOf("variant", "origin", "standard", "dialect", "english variant") -> {
+                        explicitVariant = value
+                        inExamplesSection = false
+                    }
                     key in setOf("pronunciation", "ipa", "phonetic", "romanization", "reading") -> {
                         pronunciation = value
                         inExamplesSection = false
@@ -945,6 +1021,572 @@ object VocabularyEngine {
         )
     }
 
+    private val LATIN_SCRIPT_LANGUAGES = setOf(
+        "english", "french", "spanish", "german", "portuguese", "italian",
+        "dutch", "polish", "turkish", "indonesian", "malay", "vietnamese",
+        "swedish", "norwegian", "danish", "finnish", "romanian", "czech",
+        "hungarian", "swahili", "filipino"
+    )
+
+    private val ENGLISH_GLOSS_CUES = setOf(
+        "the", "a", "an", "to", "of", "in", "for", "from", "with", "on", "by",
+        "that", "who", "which", "or", "and", "is", "are", "was", "were", "be",
+        "being", "having", "not", "without", "someone", "something", "state",
+        "act", "quality", "process", "person", "place", "thing", "very", "more"
+    )
+
+    /**
+     * Auto-detects per-entry language, regional origin (UK vs US English), and bilingual
+     * translation/meaning language from explicit tags + word/sentence/meaning script analysis.
+     */
+    private fun enrichParsedResultWithDetection(
+        rawResult: VocabularyParseResult,
+        cleanedSource: String,
+        preferredEnglishVariant: String
+    ): VocabularyParseResult {
+        if (rawResult.entries.isEmpty()) return rawResult
+
+        // Check optional top-level JSON wrapper metadata
+        var topLevelRawLang = ""
+        var topLevelVariant = ""
+        var topLevelRawTransLang = ""
+        val trimmedSource = cleanedSource.trimStart()
+        if (trimmedSource.startsWith("{")) {
+            val wrapperObj = runCatching { JSONObject(cleanedSource) }
+                .recoverCatching { JSONObject(stripTrailingCommasOutsideStrings(cleanedSource)) }
+                .getOrNull()
+            if (wrapperObj != null && !wrapperObj.has("word")) {
+                topLevelRawLang = firstNonBlank(wrapperObj, "language", "lang", "targetLanguage", "sourceLanguage")
+                topLevelVariant = firstNonBlank(wrapperObj, "languageVariant", "variant", "origin", "standard", "englishVariant")
+                topLevelRawTransLang = firstNonBlank(wrapperObj, "translationLanguage", "bridgeLanguage", "meaningLanguage", "nativeLanguage")
+            }
+        }
+
+        val (topLevelLang, topLevelTagTrans) = parseBilingualLanguageTag(topLevelRawLang)
+        val topLevelTransLang = canonicalizeSingleLanguage(topLevelRawTransLang).ifBlank { topLevelTagTrans }
+
+        val mismatchCounts = LinkedHashMap<Pair<String, String>, Int>()
+
+        val enrichedEntries = rawResult.entries.map { entry ->
+            val (resolvedLang, mismatchPair) = resolveEntryLanguage(entry, topLevelLang)
+            if (mismatchPair != null) {
+                mismatchCounts[mismatchPair] = (mismatchCounts[mismatchPair] ?: 0) + 1
+            }
+            val resolvedVariant = resolveEntryVariant(entry, resolvedLang, topLevelVariant, preferredEnglishVariant)
+            val resolvedTransLang = resolveEntryTranslationLanguage(
+                entry = entry,
+                sourceLanguage = resolvedLang,
+                topLevelLangTag = topLevelLang,
+                topLevelTransLang = topLevelTransLang
+            )
+            entry.copy(
+                language = resolvedLang,
+                languageVariant = resolvedVariant,
+                translationLanguage = resolvedTransLang
+            )
+        }
+
+        val detectedLanguages = enrichedEntries
+            .map { it.language.ifBlank { "English" } }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+
+        val dominantVariant = enrichedEntries
+            .firstOrNull { VocabularyLanguageVariants.isEnglish(it.language) && it.languageVariant.isNotBlank() }
+            ?.languageVariant
+            ?: topLevelVariant.ifBlank {
+                if (detectedLanguages.any { VocabularyLanguageVariants.isEnglish(it) }) {
+                    VocabularyLanguageVariants.normalizeVariant("English", preferredEnglishVariant)
+                } else ""
+            }
+
+        val detectedTranslation = enrichedEntries
+            .map { it.translationLanguage }
+            .firstOrNull { it.isNotBlank() }
+            ?: topLevelTransLang.takeIf { it.isNotBlank() && detectedLanguages.none { dl -> dl.equals(it, ignoreCase = true) } }
+            ?: detectTranslationLanguage(enrichedEntries, detectedLanguages.firstOrNull().orEmpty())
+
+        val mismatchWarnings = mismatchCounts.map { (pair, count) ->
+            "Auto-corrected language from ${pair.first} to ${pair.second} for $count word(s) based on pasted word script."
+        }
+
+        return rawResult.copy(
+            entries = enrichedEntries,
+            warnings = (rawResult.warnings + mismatchWarnings).distinct(),
+            detectedLanguages = detectedLanguages,
+            detectedVariant = dominantVariant,
+            detectedTranslationLanguage = detectedTranslation
+        )
+    }
+
+    private fun resolveEntryLanguage(
+        entry: VocabularyEntry,
+        topLevelLang: String
+    ): Pair<String, Pair<String, String>?> {
+        val rawExplicit = entry.language.ifBlank { topLevelLang }.trim()
+        val (explicitSource, _) = parseBilingualLanguageTag(rawExplicit)
+
+        val nonLatinScriptLang = inferNonLatinWordLanguage(entry)
+        val sentenceLatinLang = inferLatinSentenceLanguage(entry)
+
+        if (explicitSource.isNotBlank()) {
+            val isExplicitLatin = explicitSource.lowercase(Locale.ROOT) in LATIN_SCRIPT_LANGUAGES
+            // If an explicit tag claims a Latin language (e.g. "English") while the actual word/examples
+            // are written in a non-Latin script (e.g. Hindi, Japanese, Arabic), trust the pasted word script.
+            if (isExplicitLatin && nonLatinScriptLang != null && !nonLatinScriptLang.equals(explicitSource, ignoreCase = true)) {
+                return nonLatinScriptLang to (explicitSource to nonLatinScriptLang)
+            }
+            return explicitSource to null
+        }
+
+        if (nonLatinScriptLang != null) {
+            return nonLatinScriptLang to null
+        }
+        if (sentenceLatinLang != null) {
+            return sentenceLatinLang to null
+        }
+        return "English" to null
+    }
+
+    private fun inferNonLatinWordLanguage(entry: VocabularyEntry): String? {
+        val targetSample = buildString {
+            append(entry.word).append(' ')
+            entry.examples.forEach { append(it.sentence).append(' ') }
+        }.trim()
+        val hasNonAsciiLetters = targetSample.any { ch -> ch.code > 127 && Character.isLetter(ch) }
+        if (!hasNonAsciiLetters) return null
+        val detected = PaperLanguageDetector.detectLanguages(targetSample)
+        return detected.firstOrNull { !it.equals("English", ignoreCase = true) && it.lowercase(Locale.ROOT) !in LATIN_SCRIPT_LANGUAGES }
+            ?: detected.firstOrNull { !it.equals("English", ignoreCase = true) }
+    }
+
+    private fun inferLatinSentenceLanguage(entry: VocabularyEntry): String? {
+        val sentenceOnly = entry.examples.joinToString(" ") { it.sentence }.trim()
+        if (sentenceOnly.length < 24) return null
+        val detected = PaperLanguageDetector.detectLanguages(sentenceOnly)
+        return detected.firstOrNull { !it.equals("English", ignoreCase = true) }
+    }
+
+    private fun parseBilingualLanguageTag(raw: String): Pair<String, String> {
+        val clean = raw.trim()
+        if (clean.isBlank()) return "" to ""
+        val bilingualMatch = Regex(
+            """^(.+?)\s*(?:->|=>|→|/|(?i:\bto\b))\s*(.+)$"""
+        ).matchEntire(clean)
+        if (bilingualMatch != null) {
+            val left = canonicalizeSingleLanguage(bilingualMatch.groupValues[1])
+            val right = canonicalizeSingleLanguage(bilingualMatch.groupValues[2])
+            if (left.isNotBlank() && right.isNotBlank() && !left.equals(right, ignoreCase = true)) {
+                return left to right
+            }
+        }
+        return canonicalizeSingleLanguage(clean) to ""
+    }
+
+    private fun canonicalizeSingleLanguage(raw: String): String {
+        val clean = raw.trim()
+        if (clean.isBlank()) return ""
+        val lower = clean.lowercase(Locale.ROOT)
+        if (lower == "none" || lower == "monolingual" || lower == "n/a") return ""
+        return when {
+            lower == "uk english" || lower == "british english" || lower == "us english" || lower == "american english" -> "English"
+            else -> {
+                val detected = PaperLanguageDetector.detectLanguages("Language: $clean")
+                detected.firstOrNull() ?: clean.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+            }
+        }
+    }
+
+    private fun resolveEntryVariant(
+        entry: VocabularyEntry,
+        language: String,
+        topLevelVariant: String,
+        preferredEnglishVariant: String
+    ): String {
+        val explicit = entry.languageVariant.ifBlank { topLevelVariant }.trim()
+        if (explicit.isNotBlank()) {
+            return VocabularyLanguageVariants.normalizeVariant(language, explicit)
+        }
+        if (!VocabularyLanguageVariants.isEnglish(language)) {
+            return ""
+        }
+        // Check subtle UK vs US spelling markers in word/meaning/examples if unambiguous
+        val sample = buildString {
+            append(entry.word).append(' ')
+            append(entry.meaning).append(' ')
+            entry.examples.forEach { append(it.sentence).append(' ') }
+        }.lowercase(Locale.ROOT)
+        val ukHits = UK_SPELLING_CUES.count { it.containsMatchIn(sample) }
+        val usHits = US_SPELLING_CUES.count { it.containsMatchIn(sample) }
+        return when {
+            ukHits > usHits && ukHits >= 1 -> "UK"
+            usHits > ukHits && usHits >= 1 -> "US"
+            else -> VocabularyLanguageVariants.normalizeVariant("English", preferredEnglishVariant)
+        }
+    }
+
+    private fun resolveEntryTranslationLanguage(
+        entry: VocabularyEntry,
+        sourceLanguage: String,
+        topLevelLangTag: String,
+        topLevelTransLang: String
+    ): String {
+        val explicitEntryTrans = canonicalizeSingleLanguage(entry.translationLanguage)
+        if (explicitEntryTrans.isNotBlank() && !explicitEntryTrans.equals(sourceLanguage, ignoreCase = true)) {
+            return explicitEntryTrans
+        }
+        val (_, entryTagTrans) = parseBilingualLanguageTag(entry.language)
+        if (entryTagTrans.isNotBlank() && !entryTagTrans.equals(sourceLanguage, ignoreCase = true)) {
+            return entryTagTrans
+        }
+        val (_, topTagTrans) = parseBilingualLanguageTag(topLevelLangTag)
+        if (topTagTrans.isNotBlank() && !topTagTrans.equals(sourceLanguage, ignoreCase = true)) {
+            return topTagTrans
+        }
+
+        // 1. Inspect dedicated translation fields on word + examples
+        val transSample = buildString {
+            if (entry.translation.isNotBlank()) append(entry.translation).append('\n')
+            entry.examples.forEach { ex ->
+                if (ex.translation.isNotBlank()) append(ex.translation).append('\n')
+            }
+        }.trim()
+        if (transSample.isNotBlank()) {
+            val fromTrans = detectBridgeTextLanguage(transSample, sourceLanguage, strictLatinCheck = false)
+            if (fromTrans.isNotBlank() && !fromTrans.equals(sourceLanguage, ignoreCase = true)) {
+                return fromTrans
+            }
+        }
+
+        // 2. Inspect `meaning` when AI placed the other language's meaning directly in `meaning`
+        if (entry.meaning.isNotBlank()) {
+            val fromMeaning = detectBridgeTextLanguage(entry.meaning, sourceLanguage, strictLatinCheck = true)
+            if (fromMeaning.isNotBlank() && !fromMeaning.equals(sourceLanguage, ignoreCase = true)) {
+                return fromMeaning
+            }
+        }
+
+        return topLevelTransLang.takeIf { it.isNotBlank() && !it.equals(sourceLanguage, ignoreCase = true) }.orEmpty()
+    }
+
+    private fun detectTranslationLanguage(
+        entries: List<VocabularyEntry>,
+        sourceLanguage: String = ""
+    ): String {
+        val explicit = entries.map { it.translationLanguage }.firstOrNull { it.isNotBlank() }
+        if (!explicit.isNullOrBlank()) return explicit
+
+        val transSample = buildString {
+            entries.forEach { e ->
+                if (e.translation.isNotBlank()) append(e.translation).append('\n')
+                e.examples.forEach { ex ->
+                    if (ex.translation.isNotBlank()) append(ex.translation).append('\n')
+                }
+            }
+        }.trim()
+        if (transSample.isNotBlank()) {
+            val detected = detectBridgeTextLanguage(transSample, sourceLanguage, strictLatinCheck = false)
+            if (detected.isNotBlank() && !detected.equals(sourceLanguage, ignoreCase = true)) return detected
+        }
+
+        val meaningSample = entries.mapNotNull { it.meaning.trim().takeIf { m -> m.isNotBlank() } }.joinToString("\n")
+        if (meaningSample.isNotBlank() && sourceLanguage.isNotBlank()) {
+            val fromMeaning = detectBridgeTextLanguage(meaningSample, sourceLanguage, strictLatinCheck = true)
+            if (fromMeaning.isNotBlank() && !fromMeaning.equals(sourceLanguage, ignoreCase = true)) return fromMeaning
+        }
+        return ""
+    }
+
+    private fun detectBridgeTextLanguage(
+        sample: String,
+        sourceLanguage: String,
+        strictLatinCheck: Boolean
+    ): String {
+        if (sample.isBlank()) return ""
+        val hasNonAsciiLetters = sample.any { ch -> ch.code > 127 && Character.isLetter(ch) }
+        val nonLatinHit = if (hasNonAsciiLetters) {
+            PaperLanguageDetector.detectLanguages(sample)
+                .firstOrNull { !it.equals("English", ignoreCase = true) }
+        } else null
+        if (!nonLatinHit.isNullOrBlank()) {
+            return nonLatinHit
+        }
+
+        // Latin-script sample: avoid false "English" fallback on short monolingual non-English glosses
+        val srcLower = sourceLanguage.trim().lowercase(Locale.ROOT)
+        val isSourceNonLatin = srcLower.isNotBlank() && srcLower !in LATIN_SCRIPT_LANGUAGES
+
+        val latinDetected = PaperLanguageDetector.detectLanguages(sample).firstOrNull().orEmpty()
+        if (latinDetected.isNotBlank() && !latinDetected.equals("English", ignoreCase = true)) {
+            return latinDetected
+        }
+
+        val words = Regex("[A-Za-z]+").findAll(sample).map { it.value.lowercase(Locale.ROOT) }.toList()
+        if (words.isEmpty()) return ""
+        val englishCueHits = words.count { it in ENGLISH_GLOSS_CUES }
+
+        return when {
+            !strictLatinCheck -> "English"
+            isSourceNonLatin && words.size >= 2 -> "English"
+            srcLower.isNotBlank() && srcLower != "english" && englishCueHits >= 2 -> "English"
+            else -> ""
+        }
+    }
+
+    /**
+     * Groups parsed vocabulary entries into automatic `(language, level)` destination buckets
+     * matched against existing folders/sets in [allDecks], with suggested titles for any new set.
+     */
+    fun buildSmartRoutingPlan(
+        parseResult: VocabularyParseResult,
+        allDecks: List<VocabularyDeck>,
+        preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
+    ): List<VocabularyRouteBucket> {
+        if (parseResult.entries.isEmpty()) return emptyList()
+
+        data class GroupKey(
+            val langNorm: String,
+            val levelCode: String,
+            val customLabelNorm: String
+        )
+
+        val grouped = LinkedHashMap<GroupKey, MutableList<VocabularyEntry>>()
+        parseResult.entries.forEach { entry ->
+            val lang = entry.language.trim().ifBlank { "English" }
+            val lvl = VocabularyLevel.fromCode(entry.levelCode)
+            val customNorm = if (lvl == VocabularyLevel.CUSTOM) entry.customLevelLabel.trim().lowercase(Locale.ROOT) else ""
+            val key = GroupKey(lang.lowercase(Locale.ROOT), lvl.code, customNorm)
+            grouped.getOrPut(key) { mutableListOf() }.add(entry)
+        }
+
+        val sortedGroups = grouped.entries.sortedWith(
+            compareBy<Map.Entry<GroupKey, MutableList<VocabularyEntry>>>(
+                { it.key.langNorm },
+                { VocabularyLevel.fromCode(it.key.levelCode).sortRank },
+                { it.key.customLabelNorm }
+            )
+        )
+
+        return sortedGroups.map { (key, groupEntries) ->
+            val lang = groupEntries.firstOrNull { it.language.isNotBlank() }?.language ?: "English"
+            val variant = if (VocabularyLanguageVariants.isEnglish(lang)) {
+                groupEntries.firstNotNullOfOrNull { it.languageVariant.takeIf { v -> v.isNotBlank() } }
+                    ?: VocabularyLanguageVariants.normalizeVariant("English", preferredEnglishVariant)
+            } else {
+                groupEntries.firstNotNullOfOrNull { it.languageVariant.takeIf { v -> v.isNotBlank() } }.orEmpty()
+            }
+            val customLabel = if (key.levelCode == VocabularyLevel.CUSTOM.code) {
+                groupEntries.firstNotNullOfOrNull { it.customLevelLabel.takeIf { c -> c.isNotBlank() } }.orEmpty()
+            } else ""
+            val level = VocabularyLevel.fromCode(key.levelCode)
+            val levelTitle = level.displayTitle(customLabel)
+
+            // Resolve translation language per bucket first so mixed-language pastes never bleed into sibling buckets
+            val transLang = detectTranslationLanguage(groupEntries, lang)
+                .takeIf { it.isNotBlank() && !it.equals(lang, ignoreCase = true) }
+                ?: parseResult.detectedTranslationLanguage
+                    .takeIf {
+                        it.isNotBlank() &&
+                            !it.equals(lang, ignoreCase = true) &&
+                            groupEntries.any { e ->
+                                e.translationLanguage.equals(it, ignoreCase = true) ||
+                                    e.translation.isNotBlank()
+                            }
+                    }
+                    .orEmpty()
+
+            val matchingDecks = allDecks
+                .filter { deck ->
+                    deck.language.trim().equals(lang, ignoreCase = true) &&
+                        deck.levelCode.equals(level.code, ignoreCase = true) &&
+                        (level != VocabularyLevel.CUSTOM || deck.customLevelLabel.trim().equals(customLabel, ignoreCase = true))
+                }
+                .sortedWith(
+                    compareByDescending<VocabularyDeck> { deck ->
+                        transLang.isNotBlank() && deck.translationLanguage.equals(transLang, ignoreCase = true)
+                    }.thenByDescending { deck ->
+                        transLang.isBlank() && deck.translationLanguage.isBlank()
+                    }.thenByDescending { deck ->
+                        variant.isNotBlank() && deck.languageVariant.equals(variant, ignoreCase = true)
+                    }.thenByDescending { deck ->
+                        deck.languageVariant.isBlank()
+                    }.thenByDescending { it.updatedAt }
+                )
+
+            val bucketKey = "${key.langNorm}|${level.code.lowercase(Locale.ROOT)}|${key.customLabelNorm}"
+            val variantSuffix = variant.takeIf { it.isNotBlank() && !it.equals("Neutral", ignoreCase = true) }
+                ?.let { " (${VocabularyLanguageVariants.shortBadge(it)})" }
+                .orEmpty()
+            val primaryTitle = if (transLang.isNotBlank()) {
+                "$lang$variantSuffix -> $transLang • $levelTitle"
+            } else {
+                "$lang$variantSuffix • $levelTitle"
+            }
+            val suggestions = buildList {
+                add(primaryTitle)
+                if (transLang.isNotBlank()) add("$lang -> $transLang ($levelTitle)")
+                add("$lang$variantSuffix • $levelTitle")
+                add("$lang • $levelTitle")
+                add("$levelTitle Core Lexicon")
+            }.distinct()
+
+            VocabularyRouteBucket(
+                bucketKey = bucketKey,
+                language = lang,
+                languageVariant = variant,
+                translationLanguage = transLang,
+                levelCode = level.code,
+                customLevelLabel = customLabel,
+                entries = groupEntries.toList(),
+                candidateDecks = matchingDecks,
+                recommendedDeckId = matchingDecks.firstOrNull()?.id,
+                titleSuggestions = suggestions,
+                defaultNewTitle = primaryTitle
+            )
+        }
+    }
+
+    /**
+     * Runs duplicate & cross-deck detection across all smart-routed buckets together
+     * so each unique word routes cleanly while repeats surface in the Duplicate Review Hub.
+     */
+    fun analyzeSmartRoutedImport(
+        parseResult: VocabularyParseResult,
+        buckets: List<VocabularyRouteBucket>,
+        choices: Map<String, VocabularySmartRouteTargetChoice>,
+        allDecks: List<VocabularyDeck>,
+        checkAcrossSameLanguage: Boolean = true
+    ): VocabularySmartRouteAnalysis {
+        val deckById = allDecks.associateBy { it.id }
+
+        data class ExistingRef(
+            val entry: VocabularyEntry,
+            val deckId: String,
+            val deckTitle: String,
+            val levelTitle: String,
+            val isSameDeck: Boolean
+        )
+
+        val uniqueNew = mutableListOf<VocabularyEntry>()
+        val duplicates = mutableListOf<VocabularyDuplicateItem>()
+        val entryBucketById = mutableMapOf<String, String>()
+        // Track intra-batch unique entries per language so identical words in the same paste are caught cleanly
+        val batchSeenByLang = LinkedHashMap<String, LinkedHashMap<String, Pair<VocabularyEntry, String>>>()
+
+        var itemIdx = 0
+        buckets.forEach { bucket ->
+            val choice = choices[bucket.bucketKey]
+            val targetDeck = choice?.targetDeckId?.let { deckById[it] }
+                ?: bucket.recommendedDeckId?.let { if (choice == null) deckById[it] else null }
+            val resolvedTitle = choice?.customTitle?.trim()?.ifBlank { bucket.defaultNewTitle } ?: bucket.defaultNewTitle
+            val langKey = (choice?.language ?: bucket.language).trim().lowercase(Locale.ROOT).ifBlank { "english" }
+
+            // Build lookup index for this bucket's target deck + same-language decks
+            val existingIndex = LinkedHashMap<String, ExistingRef>()
+            if (targetDeck != null) {
+                targetDeck.entries.forEach { existing ->
+                    val k = existing.normalizedWordKey()
+                    if (k.isNotBlank() && !existingIndex.containsKey(k)) {
+                        existingIndex[k] = ExistingRef(
+                            entry = existing,
+                            deckId = targetDeck.id,
+                            deckTitle = targetDeck.title,
+                            levelTitle = targetDeck.effectiveLevelTitle(),
+                            isSameDeck = true
+                        )
+                    }
+                }
+            }
+            if (checkAcrossSameLanguage) {
+                allDecks
+                    .filter { it.id != targetDeck?.id && it.language.trim().lowercase(Locale.ROOT) == langKey }
+                    .forEach { deck ->
+                        deck.entries.forEach { existing ->
+                            val k = existing.normalizedWordKey()
+                            if (k.isNotBlank() && !existingIndex.containsKey(k)) {
+                                existingIndex[k] = ExistingRef(
+                                    entry = existing,
+                                    deckId = deck.id,
+                                    deckTitle = deck.title,
+                                    levelTitle = deck.effectiveLevelTitle(),
+                                    isSameDeck = false
+                                )
+                            }
+                        }
+                    }
+            }
+
+            val langBatchSeen = batchSeenByLang.getOrPut(langKey) { LinkedHashMap() }
+            bucket.entries.forEach { incoming ->
+                val idx = itemIdx++
+                entryBucketById[incoming.id] = bucket.bucketKey
+                val key = incoming.normalizedWordKey()
+                if (key.isBlank()) return@forEach
+
+                val existingMatch = existingIndex[key]
+                val intraBatchMatch = langBatchSeen[key]
+                when {
+                    existingMatch != null -> {
+                        duplicates.add(
+                            VocabularyDuplicateItem(
+                                id = "dup_${idx}_${incoming.id}",
+                                incoming = incoming,
+                                existing = existingMatch.entry,
+                                existingDeckId = existingMatch.deckId,
+                                existingDeckTitle = existingMatch.deckTitle,
+                                existingLevelTitle = existingMatch.levelTitle,
+                                isSameDeck = existingMatch.isSameDeck,
+                                isIntraBatch = false
+                            )
+                        )
+                    }
+                    intraBatchMatch != null -> {
+                        duplicates.add(
+                            VocabularyDuplicateItem(
+                                id = "batch_${idx}_${incoming.id}",
+                                incoming = incoming,
+                                existing = intraBatchMatch.first,
+                                existingDeckId = targetDeck?.id ?: "__NEW_DECK__",
+                                existingDeckTitle = targetDeck?.title ?: resolvedTitle,
+                                existingLevelTitle = intraBatchMatch.first.effectiveLevelTitle(),
+                                isSameDeck = true,
+                                isIntraBatch = true
+                            )
+                        )
+                    }
+                    else -> {
+                        langBatchSeen[key] = incoming to bucket.bucketKey
+                        uniqueNew.add(incoming)
+                    }
+                }
+            }
+        }
+
+        return VocabularySmartRouteAnalysis(
+            analysis = VocabularyImportAnalysis(
+                uniqueNewEntries = uniqueNew,
+                duplicateItems = duplicates,
+                totalParsedCount = parseResult.entries.size,
+                detectedFormat = parseResult.detectedFormat,
+                warnings = parseResult.warnings
+            ),
+            entryBucketById = entryBucketById
+        )
+    }
+
+    private val UK_SPELLING_CUES = listOf(
+        Regex("""\b(?:colour|flavour|honour|favour|behaviour|neighbour|humour|labour|rumour|candour|splendour)\w*\b"""),
+        Regex("""\b(?:analyse|paralyse|catalyse|organise|realise|recognise|emphasise|minimise|maximise)\w*\b"""),
+        Regex("""\b(?:centre|theatre|metre|litre|fibre|spectre|meagre)\b"""),
+        Regex("""\b(?:programme|catalogue|dialogue|judgement|acknowledgement|defence|offence|licence|practise|travelling|cancelled|fulfil)\b""")
+    )
+
+    private val US_SPELLING_CUES = listOf(
+        Regex("""\b(?:color|flavor|honor|favor|behavior|neighbor|humor|labor|rumor|candor|splendor)\w*\b"""),
+        Regex("""\b(?:analyze|paralyze|catalyze|organize|realize|recognize|emphasize|minimize|maximize)\w*\b"""),
+        Regex("""\b(?:center|theater|meter|liter|fiber|specter|meager)\b"""),
+        Regex("""\b(?:program|catalog|defense|offense|canceled|traveling|judgment|acknowledgment|fulfill)\b""")
+    )
+
     /**
      * Granularly merges only user-selected segments from [incoming] into [existing],
      * preserving existing content and deduplicating sentences/tags automatically.
@@ -1146,9 +1788,18 @@ object VocabularyEngine {
      * that verifies Category/Part-of-Speech accuracy, Proficiency Level (A1-C2/Custom),
      * Meaning & Translation accuracy, Context Examples, and near-duplicates.
      */
-    fun buildVocabularyAuditPrompt(deck: VocabularyDeck): String {
+    fun buildVocabularyAuditPrompt(
+        deck: VocabularyDeck,
+        preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
+    ): String {
         val entries = deck.sortedEntriesAscending()
         val lang = deck.language.ifBlank { "English" }
+        val resolvedVariant = deck.languageVariant.ifBlank {
+            if (VocabularyLanguageVariants.isEnglish(lang)) preferredEnglishVariant else ""
+        }
+        val variantNote = if (resolvedVariant.isNotBlank()) {
+            "Spelling & Pronunciation Origin Standard: ${VocabularyLanguageVariants.displayLabel(resolvedVariant)} (${VocabularyLanguageVariants.promptDirective(lang, resolvedVariant)})"
+        } else ""
         val transNote = if (deck.translationLanguage.isNotBlank()) {
             "Translation Language: ${deck.translationLanguage}"
         } else {
@@ -1160,6 +1811,7 @@ object VocabularyEngine {
             appendLine("Audit the following vocabulary set thoroughly:")
             appendLine("- Set Title: ${deck.title}")
             appendLine("- Target Language: $lang")
+            if (variantNote.isNotBlank()) appendLine("- $variantNote")
             appendLine("- $transNote")
             appendLine("- Target Deck Level: ${deck.effectiveLevelTitle()} | Domain: ${deck.domain}")
             appendLine()
@@ -1167,7 +1819,7 @@ object VocabularyEngine {
             appendLine("1. CATEGORY / WORD CLASS ACCURACY: Confirm exact part of speech / category (noun, verb, adjective, adverb, idiom, phrasal verb, collocation) and flag if misclassified.")
             appendLine("2. PROFICIENCY LEVEL ACCURACY: Confirm whether its assigned level (A1/A2/B1/B2/C1/C2) accurately reflects real usage frequency and difficulty.")
             appendLine("3. MEANING & TRANSLATION ACCURACY: Catch vague, circular, or misleading definitions or inaccurate translations.")
-            appendLine("4. CONTEXT EXAMPLES QUALITY: Verify that example sentences sound natural, match the word's true register, and span distinct contexts.")
+            appendLine("4. CONTEXT EXAMPLES QUALITY: Verify that example sentences sound natural, match the word's true register${if (resolvedVariant.isNotBlank()) " and $resolvedVariant standard" else ""}, and span distinct contexts.")
             appendLine("5. DUPLICATE / NEAR-DUPLICATE ALERT: Flag if two entries repeat the exact same sense unnecessarily.")
             appendLine()
             appendLine("Return ONLY a valid JSON array (no markdown commentary outside the JSON). Each object MUST follow this schema:")

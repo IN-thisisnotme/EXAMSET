@@ -145,6 +145,65 @@ data class VocabularyExample(
     }
 }
 
+object VocabularyLanguageVariants {
+    const val DEFAULT_ENGLISH_VARIANT = "UK"
+    val ENGLISH_VARIANTS = listOf("UK", "US", "Neutral")
+
+    fun isEnglish(language: String): Boolean {
+        val clean = language.trim().lowercase(Locale.ROOT)
+        return clean.isBlank() || clean == "english" || clean == "uk english" || clean == "us english" || clean == "british english" || clean == "american english"
+    }
+
+    fun normalizeVariant(language: String, raw: String?): String {
+        val clean = raw?.trim().orEmpty()
+        if (!isEnglish(language)) {
+            return clean
+        }
+        if (clean.isBlank()) return DEFAULT_ENGLISH_VARIANT
+        val lower = clean.lowercase(Locale.ROOT)
+        return when {
+            lower == "uk" || lower == "gb" || lower.contains("british") || lower.contains("oxford") || lower.contains("england") -> "UK"
+            lower == "us" || lower == "usa" || lower.contains("american") || lower.contains("merriam") -> "US"
+            lower == "neutral" || lower.contains("international") || lower == "any" -> "Neutral"
+            else -> clean
+        }
+    }
+
+    fun shortBadge(variant: String): String {
+        val clean = variant.trim()
+        return when {
+            clean.equals("UK", ignoreCase = true) -> "UK"
+            clean.equals("US", ignoreCase = true) -> "US"
+            clean.equals("Neutral", ignoreCase = true) -> "Neutral"
+            clean.length <= 12 -> clean
+            else -> clean.take(11).trimEnd() + "…"
+        }
+    }
+
+    fun displayLabel(variant: String): String {
+        return when (variant.trim().uppercase(Locale.ROOT)) {
+            "UK" -> "UK (British / Oxford)"
+            "US" -> "US (American)"
+            "NEUTRAL" -> "Neutral / International"
+            "" -> "Default"
+            else -> variant.trim()
+        }
+    }
+
+    fun promptDirective(language: String, variant: String): String {
+        val norm = normalizeVariant(language, variant)
+        if (!isEnglish(language)) {
+            return if (norm.isBlank()) "" else "Follow $norm regional spelling and natural usage conventions for $language."
+        }
+        return when (norm) {
+            "UK" -> "Strictly follow British / Oxford English spelling (e.g., colour, analyse, programme, centre, judgement), British lexical usage, and UK RP/Oxford IPA pronunciation."
+            "US" -> "Strictly follow American English spelling (e.g., color, analyze, program, center, judgment), US lexical usage, and General American IPA pronunciation."
+            "Neutral" -> "Use standard international English; note UK/US spelling variants briefly in usageNote when relevant."
+            else -> "Follow $norm English spelling, lexical usage, and pronunciation norms."
+        }
+    }
+}
+
 data class VocabularyEntry(
     val id: String = UUID.randomUUID().toString(),
     val word: String,
@@ -152,8 +211,11 @@ data class VocabularyEntry(
     val partOfSpeech: String = "",
     val levelCode: String = VocabularyLevel.INTERMEDIATE.code,
     val customLevelLabel: String = "",
+    val language: String = "",
+    val languageVariant: String = "",
     val meaning: String,
     val translation: String = "",
+    val translationLanguage: String = "",
     val examples: List<VocabularyExample> = emptyList(),
     val synonyms: List<String> = emptyList(),
     val antonyms: List<String> = emptyList(),
@@ -189,8 +251,11 @@ data class VocabularyEntry(
         put("partOfSpeech", partOfSpeech.trim())
         put("levelCode", levelCode)
         put("customLevelLabel", customLevelLabel.trim())
+        if (language.isNotBlank()) put("language", language.trim())
+        if (languageVariant.isNotBlank()) put("languageVariant", languageVariant.trim())
         put("meaning", meaning.trim())
         put("translation", translation.trim())
+        if (translationLanguage.isNotBlank()) put("translationLanguage", translationLanguage.trim())
         put("examples", JSONArray().apply { examples.forEach { put(it.toJson()) } })
         put("synonyms", JSONArray().apply { synonyms.forEach { put(it) } })
         put("antonyms", JSONArray().apply { antonyms.forEach { put(it) } })
@@ -235,8 +300,11 @@ data class VocabularyEntry(
                 partOfSpeech = obj.optString("partOfSpeech", "").trim(),
                 levelCode = obj.optString("levelCode", VocabularyLevel.INTERMEDIATE.code).ifBlank { VocabularyLevel.INTERMEDIATE.code },
                 customLevelLabel = obj.optString("customLevelLabel", "").trim(),
+                language = obj.optString("language", "").trim(),
+                languageVariant = obj.optString("languageVariant", "").trim(),
                 meaning = obj.optString("meaning", "").trim(),
                 translation = obj.optString("translation", "").trim(),
+                translationLanguage = obj.optString("translationLanguage", "").trim(),
                 examples = examples,
                 synonyms = parseStringList(obj.optJSONArray("synonyms")),
                 antonyms = parseStringList(obj.optJSONArray("antonyms")),
@@ -264,6 +332,7 @@ data class VocabularyDeck(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val language: String = "English",
+    val languageVariant: String = "",
     val translationLanguage: String = "",
     val levelCode: String = VocabularyLevel.INTERMEDIATE.code,
     val customLevelLabel: String = "",
@@ -280,8 +349,16 @@ data class VocabularyDeck(
 
     fun languageDisplay(): String {
         val src = language.trim().ifBlank { "English" }
+        val variantTag = languageVariant.trim()
+            .takeIf { it.isNotBlank() && !it.equals("Neutral", ignoreCase = true) }
+            ?.let { " · ${VocabularyLanguageVariants.shortBadge(it)}" }
+            .orEmpty()
         val tr = translationLanguage.trim()
-        return if (tr.isNotBlank() && !tr.equals("None", ignoreCase = true)) "$src -> $tr" else src
+        return if (tr.isNotBlank() && !tr.equals("None", ignoreCase = true)) {
+            "$src$variantTag -> $tr"
+        } else {
+            "$src$variantTag"
+        }
     }
 
     /**
@@ -301,6 +378,7 @@ data class VocabularyDeck(
         put("id", id)
         put("title", title.trim())
         put("language", language.trim().ifBlank { "English" })
+        if (languageVariant.isNotBlank()) put("languageVariant", languageVariant.trim())
         put("translationLanguage", translationLanguage.trim())
         put("levelCode", levelCode)
         put("customLevelLabel", customLevelLabel.trim())
@@ -327,6 +405,7 @@ data class VocabularyDeck(
                 id = obj.optString("id", "").ifBlank { UUID.randomUUID().toString() },
                 title = title,
                 language = obj.optString("language", "English").trim().ifBlank { "English" },
+                languageVariant = obj.optString("languageVariant", "").trim(),
                 translationLanguage = obj.optString("translationLanguage", "").trim(),
                 levelCode = obj.optString("levelCode", VocabularyLevel.INTERMEDIATE.code).ifBlank { VocabularyLevel.INTERMEDIATE.code },
                 customLevelLabel = obj.optString("customLevelLabel", "").trim(),

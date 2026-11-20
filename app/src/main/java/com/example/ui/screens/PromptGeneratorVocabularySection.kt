@@ -63,12 +63,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.VocabularyLanguageVariants
 import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
 import com.example.ui.theme.ExamColorPalette
 
 class VocabularyPromptState {
     var language by mutableStateOf("English")
+    var languageVariant by mutableStateOf(VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT)
     var translationLanguage by mutableStateOf("")
     var levelCode by mutableStateOf(VocabularyLevel.INTERMEDIATE.code)
     var customLevelLabel by mutableStateOf("")
@@ -85,6 +87,7 @@ class VocabularyPromptState {
 
     fun toConfig(): VocabularyPromptConfig = VocabularyPromptConfig(
         language = language,
+        languageVariant = languageVariant,
         translationLanguage = translationLanguage,
         levelCode = levelCode,
         customLevelLabel = customLevelLabel,
@@ -101,6 +104,7 @@ class VocabularyPromptState {
     fun applyConfig(config: VocabularyPromptConfig, preserveTopic: Boolean = true) {
         val c = config.normalized()
         language = c.language
+        languageVariant = c.languageVariant
         translationLanguage = c.translationLanguage
         levelCode = c.levelCode
         customLevelLabel = c.customLevelLabel
@@ -117,6 +121,7 @@ class VocabularyPromptState {
 
     fun reset() {
         language = "English"
+        languageVariant = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
         translationLanguage = ""
         levelCode = VocabularyLevel.INTERMEDIATE.code
         customLevelLabel = ""
@@ -134,6 +139,8 @@ class VocabularyPromptState {
 
     fun buildPrompt(existingWordsToAvoid: List<String> = emptyList()): String {
         val lang = language.trim().ifBlank { "English" }
+        val resolvedVariant = VocabularyLanguageVariants.normalizeVariant(lang, languageVariant)
+        val variantDirective = VocabularyLanguageVariants.promptDirective(lang, resolvedVariant)
         val transLang = translationLanguage.trim()
         val hasTranslation = transLang.isNotBlank() && !transLang.equals("None", ignoreCase = true)
         val lvl = VocabularyLevel.fromCode(levelCode)
@@ -150,6 +157,9 @@ class VocabularyPromptState {
             appendLine()
             appendLine("### VOCABULARY SPECIFICATION")
             appendLine("- Target Language: $lang")
+            if (resolvedVariant.isNotBlank()) {
+                appendLine("- Regional Origin / Standard: ${VocabularyLanguageVariants.displayLabel(resolvedVariant)}")
+            }
             appendLine("- Proficiency Level: $levelLabel (CEFR-aligned universal difficulty)")
             appendLine("- Domain / Register: $domainClean")
             appendLine("- Focus Theme / Source Context: $topicLine")
@@ -165,23 +175,29 @@ class VocabularyPromptState {
             appendLine("### STRICT QUALITY & ANTI-REPETITION RULES")
             appendLine("1. ZERO REPETITION: Every entry must be a distinct, unique headword. Never repeat the same word or near-identical inflections.")
             appendLine("2. SORTING: Return the final vocabulary list sorted strictly in ASCENDING alphabetical order (A -> Z).")
-            appendLine("3. CATEGORY / WORD CLASS PRECISION: Accurately label partOfSpeech (noun, verb, adjective, adverb, idiom, phrasal verb, etc.) and ensure the word truly belongs to $levelLabel.")
-            appendLine("4. CONTEXT VARIETY: Each word's $exCount examples must demonstrate genuinely different contexts/registers so the learner understands real usage nuances.")
+            appendLine("3. CATEGORY / WORD CLASS PRECISION: Accurately label partOfSpeech (noun, verb, adjective, adverb, idiom, phrasal verb, etc.) and ensure each word carries its true CEFR level (A1/A2/B1/B2/C1/C2).")
+            if (variantDirective.isNotBlank()) {
+                appendLine("4. ORIGIN & SPELLING STANDARD: $variantDirective")
+                appendLine("5. CONTEXT VARIETY: Each word's $exCount examples must demonstrate genuinely different contexts/registers so the learner understands real usage nuances.")
+            } else {
+                appendLine("4. CONTEXT VARIETY: Each word's $exCount examples must demonstrate genuinely different contexts/registers so the learner understands real usage nuances.")
+            }
+            var nextNum = if (variantDirective.isNotBlank()) 6 else 5
             if (includePronunciation) {
-                appendLine("5. PRONUNCIATION / READING: Include clear IPA or romanization/reading guide (e.g., Furigana/Romaji for Japanese, Pinyin for Chinese, IPA for English/European languages).")
+                appendLine("${nextNum++}. PRONUNCIATION / READING: Include clear IPA or romanization/reading guide (e.g., Furigana/Romaji for Japanese, Pinyin for Chinese, IPA for English/European languages).")
             }
             if (includeSynonymsAndCollocations) {
-                appendLine("6. LEXICAL NETWORK: Include natural synonyms, antonyms (if applicable), and 2–3 high-frequency collocations/phrases.")
+                appendLine("${nextNum++}. LEXICAL NETWORK: Include natural synonyms, antonyms (if applicable), and 2–3 high-frequency collocations/phrases.")
             }
             if (includeUsageNote) {
-                appendLine("7. USAGE & NUANCE NOTE: Add a brief 1-sentence note clarifying register, common learner mistake, or subtle difference from close synonyms.")
+                appendLine("${nextNum++}. USAGE & NUANCE NOTE: Add a brief 1-sentence note clarifying register, common learner mistake, or subtle difference from close synonyms.")
             }
             if (excludeAlreadySavedWords && existingWordsToAvoid.isNotEmpty()) {
                 val capped = existingWordsToAvoid.take(120).joinToString(", ")
-                appendLine("8. EXCLUDE ALREADY SAVED WORDS: Do NOT include any of these already-saved words: $capped")
+                appendLine("${nextNum++}. EXCLUDE ALREADY SAVED WORDS: Do NOT include any of these already-saved words: $capped")
             }
             if (customInstruction.isNotBlank()) {
-                appendLine("9. CUSTOM RULE: ${customInstruction.trim()}")
+                appendLine("${nextNum}. CUSTOM RULE: ${customInstruction.trim()}")
             }
             appendLine()
 
@@ -189,6 +205,8 @@ class VocabularyPromptState {
                 appendLine("### OUTPUT FORMAT: STRUCTURED TEXT (STRICTLY FOLLOW THIS TEMPLATE)")
                 appendLine("Return ONLY the vocabulary blocks below with no greeting or extra commentary. Separate each word with `---`.")
                 appendLine()
+                appendLine("LANGUAGE: $lang")
+                if (resolvedVariant.isNotBlank()) appendLine("VARIANT: $resolvedVariant")
                 appendLine("WORD: [Headword]")
                 if (includePronunciation) appendLine("PRONUNCIATION: [/IPA/ or romanization]")
                 appendLine("POS: [noun | verb | adjective | adverb | idiom | phrasal verb]")
@@ -221,6 +239,8 @@ class VocabularyPromptState {
                 appendLine("[")
                 appendLine("  {")
                 appendLine("    \"word\": \"headword\",")
+                appendLine("    \"language\": \"$lang\",")
+                if (resolvedVariant.isNotBlank()) appendLine("    \"languageVariant\": \"$resolvedVariant\",")
                 appendLine("    \"pronunciation\": \"${if (includePronunciation) "/IPA/ or romanization" else ""}\",")
                 appendLine("    \"partOfSpeech\": \"noun | verb | adjective | adverb | idiom | phrasal verb\",")
                 appendLine("    \"level\": \"${lvl.compactBadge(customLevelLabel)}\",")
@@ -338,7 +358,14 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                     COMMON_VOCAB_LANGUAGES.forEach { lang ->
                         val selected = state.language.equals(lang, ignoreCase = true)
                         Surface(
-                            onClick = { state.language = lang },
+                            onClick = {
+                                state.language = lang
+                                if (VocabularyLanguageVariants.isEnglish(lang) && state.languageVariant.isBlank()) {
+                                    state.languageVariant = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
+                                } else if (!VocabularyLanguageVariants.isEnglish(lang)) {
+                                    state.languageVariant = ""
+                                }
+                            },
                             shape = RoundedCornerShape(8.dp),
                             color = if (selected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.5f),
                             border = BorderStroke(
@@ -354,6 +381,47 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                 color = if (selected) colors.tealDark else colors.inkBold,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                             )
+                        }
+                    }
+                }
+
+                // Origin / Spelling Variant selector (UK Oxford default for English, US / Neutral / custom option)
+                if (VocabularyLanguageVariants.isEnglish(state.language)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(
+                            text = "Origin & Spelling Standard",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.inkMuted
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            VocabularyLanguageVariants.ENGLISH_VARIANTS.forEach { variant ->
+                                val selected = state.languageVariant.equals(variant, ignoreCase = true)
+                                Surface(
+                                    onClick = { state.languageVariant = variant },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (selected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
+                                    border = BorderStroke(
+                                        if (selected) 1.1.dp else 0.7.dp,
+                                        if (selected) colors.teal else colors.border
+                                    ),
+                                    modifier = Modifier.testTag("vocab_origin_chip_${variant.lowercase()}")
+                                ) {
+                                    Text(
+                                        text = VocabularyLanguageVariants.displayLabel(variant),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) colors.tealDark else colors.inkBold,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -736,7 +804,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         )
                     )
 
-                    // Context examples per word selector
+                    // Context examples per word selector (responsive & scrollable at large font scales)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -746,9 +814,15 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                             text = "Context Examples / Word",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold
+                            color = colors.inkBold,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             listOf(1, 2, 3, 4).forEach { count ->
                                 val selected = state.examplesPerWord == count
                                 Surface(
@@ -856,6 +930,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         .fillMaxWidth()
                         .background(colors.surfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
                         .border(0.7.dp, colors.border, RoundedCornerShape(10.dp))
+                        .horizontalScroll(rememberScrollState())
                         .padding(12.dp)
                 ) {
                     Text(
@@ -865,6 +940,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         color = colors.ink,
                         lineHeight = 17.sp,
                         maxLines = 18,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
