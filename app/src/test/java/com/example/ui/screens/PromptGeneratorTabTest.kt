@@ -185,6 +185,7 @@ class PromptGeneratorTabTest {
     }
 
     @Test
+    @Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [34])
     fun promptGeneratorTab_savesPresetClearsWithUndoAndCollapsesSettingsOnSelect() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         app.getSharedPreferences("examset_app_prefs", android.content.Context.MODE_PRIVATE)
