@@ -2909,11 +2909,7 @@ fun InputBottomSheet(
                                     .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                listOf(
-                                    "English", "Hindi", "Bengali", "Marathi", "Telugu",
-                                    "Tamil", "Gujarati", "Urdu", "Kannada", "Malayalam",
-                                    "Odia", "Punjabi", "Sanskrit", "Spanish", "French", "German"
-                                ).forEach { lang ->
+                                com.example.util.PaperLanguageDetector.PRESET_LANGUAGES.forEach { lang ->
                                     val isSelected = promptQuestionLanguage.trim().equals(lang, ignoreCase = true)
                                     Surface(
                                         onClick = { promptQuestionLanguage = lang },

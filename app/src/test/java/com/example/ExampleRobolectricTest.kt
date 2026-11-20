@@ -908,5 +908,349 @@ class ExampleRobolectricTest {
             com.example.util.PaperLanguageDetector.detectLanguages(hindiJson)
         )
     }
+
+    @Test
+    fun `PaperLanguageDetector disambiguates same-script Latin and Devanagari languages and respects Language headers`() {
+        // 1. Explicit Language: headers and JSON metadata override script heuristics
+        assertEquals(
+            listOf("Marathi"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "Language: Marathi\n1. प्रश्न १?"
+            )
+        )
+        assertEquals(
+            listOf("French"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "Language: French\n1. Question un?"
+            )
+        )
+        assertEquals(
+            listOf("English", "Marathi"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "Language: Bilingual (English & Marathi)\n1. Sample question"
+            )
+        )
+        assertEquals(
+            listOf("Spanish"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                """{"language":"Spanish","questions":[{"num":1,"question":"¿Capital?"}]}"""
+            )
+        )
+        // Prompt-template placeholder should NOT trigger explicit override
+        assertEquals(
+            listOf("English"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "Language: [Insert Language]\n1. Which of the following statements is correct about the cell?"
+            )
+        )
+
+        // 2. Devanagari disambiguation (Marathi, Sanskrit, Nepali)
+        val marathiPaper = """
+            1. खालीलपैकी कोणते शहर महाराष्ट्राची राजधानी आहे आणि तेथे मुख्य कार्यालय आहे?
+            (A) पुणे
+            (B) मुंबई
+            (C) नागपूर
+            (D) नाशिक
+            स्पष्टीकरण: मुंबई ही महाराष्ट्राची राजधानी आहे आणि ती आर्थिक केंद्र देखील आहे.
+        """.trimIndent()
+        assertEquals(
+            listOf("Marathi"),
+            com.example.util.PaperLanguageDetector.detectLanguages(marathiPaper)
+        )
+
+        val sanskritPaper = """
+            1. अधोलिखितेषु कः प्रश्नः समीचीनम् अस्ति इति कथम् उक्तम् वर्तते?
+            (A) रामः वनं गच्छति
+            (B) सीता अत्र भवति
+            (C) बालकः पठति
+            (D) गुरुः वदति
+            स्पष्टीकरणम्: अत्र प्रथमः विकल्पः सत्यम् अस्ति यतोहि तस्य प्रयोगः साधुः वर्तते।
+        """.trimIndent()
+        assertEquals(
+            listOf("Sanskrit"),
+            com.example.util.PaperLanguageDetector.detectLanguages(sanskritPaper)
+        )
+
+        val nepaliPaper = """
+            1. निम्नलिखितमध्ये कुन सहर नेपालको राजधानी हो र यसलाई प्रमुख केन्द्र भनिन्छ?
+            (A) पोखरा
+            (B) काठमाडौँ
+            (C) ललितपुर
+            (D) विराटनगर
+            व्याख्या: काठमाडौँ नेपालको राजधानी हो तर अन्य सहरहरू पनि महत्वपूर्ण छन्।
+        """.trimIndent()
+        assertEquals(
+            listOf("Nepali"),
+            com.example.util.PaperLanguageDetector.detectLanguages(nepaliPaper)
+        )
+
+        // 3. Latin disambiguation (French, Spanish, German, bilingual English + French, and English with diacritic names)
+        val frenchPaper = """
+            1. Parmi les propositions suivantes, quelle est la capitale de la France selon la réponse officielle?
+            (A) Lyon
+            (B) Paris
+            (C) Marseille
+            (D) Toulouse
+            Explication: Paris est la capitale dans cette région pour les citoyens.
+        """.trimIndent()
+        assertEquals(
+            listOf("French"),
+            com.example.util.PaperLanguageDetector.detectLanguages(frenchPaper)
+        )
+
+        val spanishPaper = """
+            1. ¿Cuál de las siguientes opciones es correcta según el análisis del texto?
+            (A) Madrid
+            (B) Sevilla
+            (C) Valencia
+            (D) Bilbao
+            Explicación: La respuesta correcta para esta pregunta es Madrid por su historia.
+        """.trimIndent()
+        assertEquals(
+            listOf("Spanish"),
+            com.example.util.PaperLanguageDetector.detectLanguages(spanishPaper)
+        )
+
+        val germanPaper = """
+            1. Welche der folgenden Aussagen über die Hauptstadt ist richtig und wird oft genannt?
+            (A) München
+            (B) Berlin
+            (C) Hamburg
+            (D) Köln
+            Erklärung: Berlin ist die Hauptstadt und nicht nur ein Bundesland für die Bürger.
+        """.trimIndent()
+        assertEquals(
+            listOf("German"),
+            com.example.util.PaperLanguageDetector.detectLanguages(germanPaper)
+        )
+
+        val englishFrenchBilingual = """
+            1. Which of the following statements is the correct answer between these two choices?
+            Parmi les réponses suivantes, quelle est la bonne option dans cette question?
+            (A) Oxygen
+            (B) Nitrogen
+            (C) Carbon
+            (D) Helium
+        """.trimIndent()
+        val engFrResult = com.example.util.PaperLanguageDetector.detectLanguages(englishFrenchBilingual)
+        assertEquals(setOf("English", "French"), engFrResult.toSet())
+        assertEquals(2, engFrResult.size)
+
+        val englishWithDiacritics = """
+            1. Which of the following statements is correct about the Schrödinger equation and Ampère's law?
+            (A) Both describe quantum states only
+            (B) Ampère's law relates magnetic fields to electric current in the circuit
+            (C) Neither is used in physics
+            (D) Only Schrödinger studied electromagnetism
+        """.trimIndent()
+        assertEquals(
+            listOf("English"),
+            com.example.util.PaperLanguageDetector.detectLanguages(englishWithDiacritics)
+        )
+
+        // 4. Short 1-question bilingual paper (< 60 Latin letters) still detects both languages
+        val shortBilingual = """
+            1. What is the capital of India?
+            भारत की राजधानी क्या है?
+            (A) Delhi / दिल्ली
+            (B) Mumbai / मुंबई
+        """.trimIndent()
+        assertEquals(
+            listOf("English", "Hindi"),
+            com.example.util.PaperLanguageDetector.detectLanguages(shortBilingual)
+        )
+    }
+
+    @Test
+    fun `PaperLanguageDetector detects expanded scripts, same-script regional languages, and custom headers`() {
+        // 1. Additional Unicode scripts
+        assertEquals(
+            listOf("Greek"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Ποια είναι η πρωτεύουσα της Ελλάδας; (A) Αθήνα (B) Θεσσαλονίκη"
+            )
+        )
+        assertEquals(
+            listOf("Hebrew"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. מהי בירת ישראל על פי השאלה הזו? (A) ירושלים (B) תל אביב"
+            )
+        )
+        assertEquals(
+            listOf("Thai"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. เมืองหลวงของประเทศไทยคือข้อใดต่อไปนี้? (A) กรุงเทพมหานคร (B) เชียงใหม่"
+            )
+        )
+        assertEquals(
+            listOf("Sinhala"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. ශ්‍රී ලංකාවේ අගනුවර කුමක්ද? (A) කොළඹ (B) මහනුවර"
+            )
+        )
+        assertEquals(
+            listOf("Burmese"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. မြန်မာနိုင်ငံ၏ မြို့တော်မှာ အဘယ်နည်း? (A) နေပြည်တော် (B) ရန်ကုန်"
+            )
+        )
+        assertEquals(
+            listOf("Georgian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. რომელია საქართველოს დედაქალაქი? (A) თბილისი (B) ბათუმი"
+            )
+        )
+        assertEquals(
+            listOf("Armenian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Ո՞րն է Հայաստանի մայրաքաղաքը: (A) Երևան (B) Գյումրի"
+            )
+        )
+        assertEquals(
+            listOf("Amharic"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. የኢትዮጵያ ዋና ከተማ ማን ናት? (A) አዲስ አበባ (B) ባህር ዳር"
+            )
+        )
+        assertEquals(
+            listOf("Santali"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. ᱵᱷᱟᱨᱚᱛ ᱨᱮᱱᱟᱜ ᱨᱟᱡᱽᱫᱷᱟᱱᱤ ᱪᱮᱫ ᱠᱟᱱᱟ? (A) ᱫᱤᱞᱞᱤ (B) ᱨᱟᱺᱪᱤ"
+            )
+        )
+        assertEquals(
+            listOf("Manipuri"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. ꯃꯅꯤꯄꯨꯔꯒꯤ ꯀꯣꯅꯨꯡ ꯀꯔꯤꯅꯣ? (A) ꯏꯝꯐꯥꯜ (B) ꯊꯧꯕꯥꯜ"
+            )
+        )
+
+        // 2. Arabic-script disambiguation (Arabic vs Urdu vs Persian vs Sindhi)
+        assertEquals(
+            listOf("Arabic"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. ما هي الإجابة الصحيحة من بين الخيارات التالية في هذا السؤال؟"
+            )
+        )
+        assertEquals(
+            listOf("Urdu"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. درج ذیل میں سے کون سا جواب درست ہے اور اس کی وضاحت کیا ہے؟"
+            )
+        )
+        assertEquals(
+            listOf("Persian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. کدام گزینه برای این پرسش پاسخ صحیح است و توضیح آن چیست؟"
+            )
+        )
+        assertEquals(
+            listOf("Sindhi"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. سنڌ جي گاديءَ جو هنڌ ڪهڙو شهر آهي ۽ ان جا ٻيا نالا ڇا آهن؟"
+            )
+        )
+
+        // 3. Bengali vs Assamese disambiguation
+        assertEquals(
+            listOf("Bengali"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. নিচের কোনটি সঠিক উত্তর এবং এই প্রশ্নের ব্যাখ্যা কী?"
+            )
+        )
+        assertEquals(
+            listOf("Assamese"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. তলৰ কোনটো শুদ্ধ উত্তৰ আৰু অসমৰ ৰাজধানী ক'ত অৱস্থিত?"
+            )
+        )
+
+        // 4. Cyrillic disambiguation (Russian vs Ukrainian vs Serbian vs Bulgarian)
+        assertEquals(
+            listOf("Russian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Какой из следующих ответов является правильным для этого вопроса?"
+            )
+        )
+        assertEquals(
+            listOf("Ukrainian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Який із наступних варіантів є правильна відповідь для цього питання?"
+            )
+        )
+        assertEquals(
+            listOf("Serbian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Који од следећих одговора је тачан и које је објашњење?"
+            )
+        )
+        assertEquals(
+            listOf("Bulgarian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Кой от следните отговори е вярно твърдение и какво е обяснението?"
+            )
+        )
+
+        // 5. Expanded Devanagari (Maithili, Konkani)
+        assertEquals(
+            listOf("Maithili"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. निम्नलिखितमे ककर उत्तर सही अछि आ एहि प्रश्नक व्याख्या की छथि?"
+            )
+        )
+        assertEquals(
+            listOf("Konkani"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. सकयल दिल्ल्या पर्यायांतलो खंयचो पर्याय बरोबर आसा आनी ताचे कारण कितें?"
+            )
+        )
+
+        // 6. Expanded Latin languages (Turkish, Indonesian, Vietnamese, Dutch, Polish, Swahili)
+        assertEquals(
+            listOf("Turkish"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Aşağıdakilerden hangisi doğru bir açıklama değildir ve bunun için neden nedir?"
+            )
+        )
+        assertEquals(
+            listOf("Indonesian"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Manakah pernyataan berikut yang benar untuk pembahasan jawaban ini?"
+            )
+        )
+        assertEquals(
+            listOf("Vietnamese"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Câu nào sau đây là đáp án đúng và giải thích cho câu hỏi này?"
+            )
+        )
+        assertEquals(
+            listOf("Dutch"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Welke van de volgende uitspraken is juist en wat is het antwoord?"
+            )
+        )
+        assertEquals(
+            listOf("Polish"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Który z poniższych wniosków jest poprawną odpowiedzią oraz jakie jest wyjaśnienie?"
+            )
+        )
+        assertEquals(
+            listOf("Swahili"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "1. Kipi kati ya majibu yafuatayo ni jibu sahihi katika swali hili?"
+            )
+        )
+
+        // 7. Custom unlisted language declared explicitly in Language: header + preset list coverage
+        assertEquals(
+            listOf("Esperanto"),
+            com.example.util.PaperLanguageDetector.detectLanguages(
+                "Language: Esperanto\n1. Kio estas la ĉefurbo?"
+            )
+        )
+        assertTrue(com.example.util.PaperLanguageDetector.PRESET_LANGUAGES.size >= 35)
+    }
 }
 
