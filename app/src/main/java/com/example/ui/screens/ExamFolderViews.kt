@@ -93,6 +93,7 @@ import com.example.model.PaperCategory
 import com.example.ui.LibraryIndexState
 import com.example.ui.theme.ExamTheme
 import com.example.util.ExamNumberGenerator
+import com.example.util.PaperLanguageDetector
 import java.util.Locale
 
 enum class QuickFeatureAction(val label: String) {
@@ -377,6 +378,7 @@ fun RootExamFolderCard(
     totalAvailableSets: Int,
     completedSets: Int,
     monthAttemptedCount: Int,
+    availableLanguages: List<String> = emptyList(),
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDuplicate: () -> Unit,
@@ -437,8 +439,13 @@ fun RootExamFolderCard(
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
+                        val folderLangLabel = when {
+                            availableLanguages.isNotEmpty() -> PaperLanguageDetector.formatAvailableLabel(availableLanguages)
+                            totalAvailableSets == 0 -> "No test sets yet"
+                            else -> "Available in English"
+                        }
                         Text(
-                            text = "Available in English, Hindi",
+                            text = folderLangLabel,
                             fontSize = 11.5.sp,
                             color = colors.inkMuted
                         )
@@ -942,8 +949,11 @@ fun PaperExamCard(
             }
 
             Spacer(modifier = Modifier.height(4.dp))
+            val detectedLanguages = remember(paper.id, paper.updatedAt, paper.rawText, paper.title) {
+                PaperLanguageDetector.detectLanguages(paper.rawText, paper.title)
+            }
             Text(
-                text = "Available in English, Hindi",
+                text = PaperLanguageDetector.formatAvailableLabel(detectedLanguages),
                 fontSize = 11.sp,
                 color = colors.inkMuted.copy(alpha = 0.85f)
             )
@@ -1365,11 +1375,13 @@ fun LazyListScope.renderRootExaminationLibrary(
                 val totalSets = libraryIndex.folderTotalCounts[folder.id] ?: 0
                 val completedSets = libraryIndex.folderCompletedCounts[folder.id] ?: 0
                 val monthCount = libraryIndex.folderMonthlyCounts[folder.id] ?: 0
+                val folderLangs = libraryIndex.folderLanguages[folder.id].orEmpty()
                 RootExamFolderCard(
                     folder = folder,
                     totalAvailableSets = totalSets,
                     completedSets = completedSets,
                     monthAttemptedCount = monthCount,
+                    availableLanguages = folderLangs,
                     onClick = { onOpenFolder(folder.id) },
                     onRename = { onRenameFolder(folder) },
                     onDuplicate = { onDuplicateFolder(folder) },

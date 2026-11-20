@@ -736,5 +736,177 @@ class ExampleRobolectricTest {
         val nextSetOther = com.example.ui.components.computeNextSetForSubject("Maths", papers)
         assertEquals("01", nextSetOther)
     }
+
+    @Test
+    fun `computeNextSetForSubject isolates target folder and prevents cross-folder and title-year mismatches`() {
+        val folders = listOf(
+            com.example.model.FolderItem(id = "upsc", name = "UPSC CSE", color = "#0284C7", parentId = null),
+            com.example.model.FolderItem(id = "upsc-prelims", name = "Prelims", color = "#0284C7", parentId = "upsc"),
+            com.example.model.FolderItem(id = "upsc-mocks", name = "Mock Tests", color = "#0284C7", parentId = "upsc-prelims"),
+            com.example.model.FolderItem(id = "ssc", name = "SSC CGL", color = "#2563EB", parentId = null),
+            com.example.model.FolderItem(id = "ssc-mocks", name = "Mock Tests", color = "#2563EB", parentId = "ssc"),
+            com.example.model.FolderItem(id = "literal-slash", name = "UPSC/Interview", color = "#059669", parentId = null)
+        )
+
+        val papers = listOf(
+            // Two papers in UPSC Mock Tests: one with "Set A" + year 2024 in title, one with "Set02"
+            PaperEntity(
+                id = 1L,
+                title = "UPSC Prelims 2024 Mock",
+                subject = "UPSC CSE > Prelims > Mock Tests",
+                setNumber = "Set A",
+                folderId = "upsc-mocks",
+                questionCount = 10,
+                answerKeyCount = 10,
+                explanationCount = 0,
+                rawText = "1. Q\n(A) 1\nAnswer: A"
+            ),
+            PaperEntity(
+                id = 2L,
+                title = "Prelims 2025 Revision",
+                subject = "Old Subject Name",
+                setNumber = "Set02",
+                folderId = "upsc-mocks",
+                questionCount = 10,
+                answerKeyCount = 10,
+                explanationCount = 0,
+                rawText = "1. Q\n(A) 1\nAnswer: A"
+            ),
+            // Papers in SSC Mock Tests with high set numbers (should NOT leak into UPSC Mock Tests)
+            PaperEntity(
+                id = 3L,
+                title = "SSC CGL Mock",
+                subject = "Mock Tests",
+                setNumber = "08",
+                folderId = "ssc-mocks",
+                questionCount = 10,
+                answerKeyCount = 10,
+                explanationCount = 0,
+                rawText = "1. Q\n(A) 1\nAnswer: A"
+            ),
+            // Unfiled root paper
+            PaperEntity(
+                id = 4L,
+                title = "General Unfiled 2024",
+                subject = "General Studies",
+                setNumber = "03",
+                folderId = null,
+                questionCount = 10,
+                answerKeyCount = 10,
+                explanationCount = 0,
+                rawText = "1. Q\n(A) 1\nAnswer: A"
+            )
+        )
+
+        // Title year "2024" must not produce "2025", and SSC's "08" must not leak into UPSC's folder
+        val nextUpscMock = com.example.ui.components.computeNextSetForSubject(
+            subject = "UPSC CSE > Prelims > Mock Tests",
+            papers = papers,
+            targetFolderId = "upsc-mocks",
+            folders = folders
+        )
+        assertEquals("03", nextUpscMock)
+
+        // Path resolution alone (without passing targetFolderId) resolves 3-level hierarchy accurately
+        val resolvedUpsc = com.example.ui.components.resolveFolderBySubjectPath(
+            "UPSC CSE / Prelims / Mock Tests",
+            folders
+        )
+        assertEquals("upsc-mocks", resolvedUpsc?.id)
+
+        val resolvedLiteral = com.example.ui.components.resolveFolderBySubjectPath(
+            "UPSC//Interview",
+            folders
+        )
+        assertEquals("literal-slash", resolvedLiteral?.id)
+
+        // SSC Mock Tests has 08 -> next should be 09
+        val nextSscMock = com.example.ui.components.computeNextSetForSubject(
+            subject = "SSC CGL > Mock Tests",
+            papers = papers,
+            targetFolderId = null,
+            folders = folders
+        )
+        assertEquals("09", nextSscMock)
+
+        // Empty subject (root unfiled) sees unfiled General Studies Set 03 -> next is 04
+        val nextRoot = com.example.ui.components.computeNextSetForSubject(
+            subject = "",
+            papers = papers,
+            targetFolderId = null,
+            folders = folders
+        )
+        assertEquals("04", nextRoot)
+
+        // Brand-new folder path with no papers starts at 01
+        val nextNewFolder = com.example.ui.components.computeNextSetForSubject(
+            subject = "Physics > Optics",
+            papers = papers,
+            targetFolderId = null,
+            folders = folders
+        )
+        assertEquals("01", nextNewFolder)
+
+        // Custom 3-level folder appears with full breadcrumb path in ExamCatalogueRegistry
+        val searchResults = com.example.util.ExamCatalogueRegistry.searchCatalogue(
+            query = "Mock Tests",
+            customFolders = folders,
+            maxResults = 10
+        )
+        assertTrue(searchResults.any { it.fullPath == "UPSC CSE > Prelims > Mock Tests" })
+        assertTrue(searchResults.any { it.fullPath == "SSC CGL > Mock Tests" })
+    }
+
+    @Test
+    fun `PaperLanguageDetector accurately detects single-language and bilingual question papers`() {
+        val bioLangs = com.example.util.PaperLanguageDetector.detectLanguages(
+            com.example.data.SampleData.SAMPLE_BIOLOGY_ADVANCED,
+            "Advanced Biological Sciences & Genetics Assessment"
+        )
+        assertEquals(listOf("English"), bioLangs)
+        assertEquals(
+            "Available in English",
+            com.example.util.PaperLanguageDetector.formatAvailableLabel(bioLangs)
+        )
+
+        val hindiLangs = com.example.util.PaperLanguageDetector.detectLanguages(
+            com.example.data.SampleData.SAMPLE_HINDI_PAPER,
+            "उत्तराखण्ड एवं भारत सामान्य ज्ञान प्रश्न पत्र"
+        )
+        assertEquals(listOf("Hindi"), hindiLangs)
+        assertEquals(
+            "Available in Hindi",
+            com.example.util.PaperLanguageDetector.formatAvailableLabel(hindiLangs)
+        )
+
+        val koreanLangs = com.example.util.PaperLanguageDetector.detectLanguages(
+            com.example.data.SampleData.SAMPLE_KOREAN_EXAM,
+            "한국어 능력 평가 및 어문 규범 모의고사"
+        )
+        assertEquals(listOf("Korean"), koreanLangs)
+
+        val bilingualText = """
+            1. Which article guarantees the Right to Equality under the Indian Constitution?
+            भारतीय संविधान के किस अनुच्छेद के अंतर्गत समता का अधिकार प्रदान किया गया है?
+            (A) Article 14 / अनुच्छेद 14
+            (B) Article 19 / अनुच्छेद 19
+            (C) Article 21 / अनुच्छेद 21
+            (D) Article 32 / अनुच्छेद 32
+        """.trimIndent()
+        val bilingualLangs = com.example.util.PaperLanguageDetector.detectLanguages(bilingualText)
+        assertEquals(listOf("English", "Hindi"), bilingualLangs)
+        assertEquals(
+            "Available in English, Hindi",
+            com.example.util.PaperLanguageDetector.formatAvailableLabel(bilingualLangs)
+        )
+
+        val hindiJson = """
+            [{"num":1,"question":"भारत की राजधानी क्या है?","options":{"a":"दिल्ली","b":"मुंबई","c":"कोलकाता","d":"चेन्नई"},"correctAnswer":"A","explanation":"नई दिल्ली भारत की राजधानी है।"}]
+        """.trimIndent()
+        assertEquals(
+            listOf("Hindi"),
+            com.example.util.PaperLanguageDetector.detectLanguages(hindiJson)
+        )
+    }
 }
 

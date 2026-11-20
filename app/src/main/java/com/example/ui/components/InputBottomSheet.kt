@@ -163,37 +163,195 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.ui.theme.ExamTheme
 
+private const val LITERAL_SLASH_PLACEHOLDER = "\u0000LITERAL_SLASH\u0000"
+
+internal fun parseSubjectSegments(raw: String): List<String> {
+    val clean = raw.trim()
+    if (clean.isBlank()) return emptyList()
+    return clean.replace("//", LITERAL_SLASH_PLACEHOLDER)
+        .split("/", ">")
+        .map { it.replace(LITERAL_SLASH_PLACEHOLDER, "/").trim() }
+        .filter { it.isNotBlank() }
+}
+
+private fun subjectSegmentsMatch(a: List<String>, b: List<String>): Boolean {
+    if (a.size != b.size) return false
+    return a.zip(b).all { (segA, segB) -> segA.equals(segB, ignoreCase = true) }
+}
+
+internal fun getFolderPathSegments(folderId: String?, folders: List<FolderItem>): List<String> {
+    if (folderId.isNullOrBlank() || folderId == "all" || folders.isEmpty()) return emptyList()
+    val folderById = folders.associateBy { it.id }
+    val chain = mutableListOf<String>()
+    var curr = folderById[folderId]
+    val visited = mutableSetOf<String>()
+    while (curr != null && visited.add(curr.id)) {
+        chain.add(0, curr.name.trim())
+        curr = curr.parentId?.let { folderById[it] }
+    }
+    return chain
+}
+
+fun resolveFolderBySubjectPath(path: String, folders: List<FolderItem>): FolderItem? {
+    val cleanPath = path.trim()
+    if (cleanPath.isBlank() ||
+        cleanPath.equals("General", ignoreCase = true) ||
+        cleanPath.equals("General Studies", ignoreCase = true) ||
+        folders.isEmpty()
+    ) {
+        return null
+    }
+
+    // 1. Direct match against full canonical "Parent > Child" folder paths (preserves literal '/' inside folder names)
+    val canonicalInput = cleanPath.split(">").joinToString(" > ") { it.trim() }
+    val directMatch = folders.find { folder ->
+        getFolderPathSegments(folder.id, folders).joinToString(" > ").equals(canonicalInput, ignoreCase = true)
+    }
+    if (directMatch != null) return directMatch
+
+    // 2. Segment walk supporting '/', '>', and '//'-escaped literal slashes
+    val segments = parseSubjectSegments(cleanPath)
+    if (segments.isEmpty()) return null
+
+    var currentParentId: String? = null
+    var lastFolder: FolderItem? = null
+    for (segment in segments) {
+        val match = folders.find { f ->
+            f.parentId == currentParentId && f.name.equals(segment, ignoreCase = true)
+        } ?: return null
+        lastFolder = match
+        currentParentId = match.id
+    }
+    return lastFolder
+}
+
+internal fun extractSetNumberValue(setNumber: String, title: String = ""): Int? {
+    val trimmedSet = setNumber.trim()
+    if (trimmedSet.isNotBlank()) {
+        val explicitSetNum = Regex("""\b(?:Set|Series|Part)\s*[-:#]?\s*(\d+)\b""", RegexOption.IGNORE_CASE)
+            .find(trimmedSet)?.groupValues?.get(1)?.toIntOrNull()
+        if (explicitSetNum != null) return explicitSetNum
+
+        val anyDigits = Regex("""(\d+)""").find(trimmedSet)?.groupValues?.get(1)?.toIntOrNull()
+        if (anyDigits != null) return anyDigits
+
+        val strippedPrefix = trimmedSet
+            .replace(Regex("""^(?:(?:Set|Series|Part)\s*[:\-]?\s*)+""", RegexOption.IGNORE_CASE), "")
+            .trim()
+        if (strippedPrefix.length == 1) {
+            val ch = strippedPrefix[0].uppercaseChar()
+            if (ch in 'A'..'Z') return ch - 'A' + 1
+        }
+        // Set field already has a non-empty value; do not misread years/numbers in title
+        return null
+    }
+
+    if (title.isBlank()) return null
+    val explicitInTitle = Regex("""\b(?:Set|Series|Part)\s*[-:#]?\s*(\d+)\b""", RegexOption.IGNORE_CASE)
+        .find(title)?.groupValues?.get(1)?.toIntOrNull()
+    if (explicitInTitle != null) return explicitInTitle
+
+    val explicitLetterInTitle = Regex("""\b(?:Set|Series|Part)\s*[-:#]?\s*([A-Z])\b""", RegexOption.IGNORE_CASE)
+        .find(title)?.groupValues?.get(1)?.uppercase()?.firstOrNull()
+    if (explicitLetterInTitle != null && explicitLetterInTitle in 'A'..'Z') {
+        return explicitLetterInTitle - 'A' + 1
+    }
+    return null
+}
+
+internal fun isSetNumberMatch(setA: String, setB: String): Boolean {
+    val a = setA.trim()
+    val b = setB.trim()
+    if (a.isBlank() || b.isBlank()) return false
+    if (a.equals(b, ignoreCase = true)) return true
+    val numA = extractSetNumberValue(a)
+    val numB = extractSetNumberValue(b)
+    return numA != null && numB != null && numA == numB
+}
+
+internal fun paperBelongsToDestination(
+    paper: PaperEntity,
+    subject: String,
+    targetFolderId: String? = null,
+    folders: List<FolderItem> = emptyList()
+): Boolean {
+    val cleanTargetId = targetFolderId?.trim()?.takeIf { it.isNotBlank() && it != "all" }
+    val resolvedFolderId = cleanTargetId ?: if (folders.isNotEmpty()) {
+        resolveFolderBySubjectPath(subject, folders)?.id
+    } else {
+        null
+    }
+
+    val subjectSegs = parseSubjectSegments(subject)
+    val targetPathSegs = if (resolvedFolderId != null && folders.isNotEmpty()) {
+        getFolderPathSegments(resolvedFolderId, folders).ifEmpty { subjectSegs }
+    } else {
+        subjectSegs
+    }
+
+    return when {
+        resolvedFolderId != null -> {
+            if (paper.folderId == resolvedFolderId) {
+                true
+            } else if (paper.folderId.isNullOrBlank()) {
+                targetPathSegs.isNotEmpty() &&
+                    subjectSegmentsMatch(parseSubjectSegments(paper.subject), targetPathSegs)
+            } else {
+                // Paper explicitly lives in a different folder
+                false
+            }
+        }
+        subjectSegs.isNotEmpty() -> {
+            val paperFolderId = paper.folderId?.trim()?.takeIf { it.isNotBlank() && it != "all" }
+            if (paperFolderId != null && folders.isNotEmpty()) {
+                val paperFolderSegs = getFolderPathSegments(paperFolderId, folders)
+                if (paperFolderSegs.isNotEmpty()) {
+                    // Belongs to an existing folder whose path != subjectSegs
+                    subjectSegmentsMatch(paperFolderSegs, subjectSegs)
+                } else {
+                    subjectSegmentsMatch(parseSubjectSegments(paper.subject), subjectSegs)
+                }
+            } else {
+                subjectSegmentsMatch(parseSubjectSegments(paper.subject), subjectSegs)
+            }
+        }
+        else -> {
+            // Unfiled / Root destination
+            val pSub = paper.subject.trim()
+            paper.folderId.isNullOrBlank() && (
+                pSub.isBlank() ||
+                    pSub.equals("General", ignoreCase = true) ||
+                    pSub.equals("General Studies", ignoreCase = true)
+            )
+        }
+    }
+}
+
 fun computeNextSetForSubject(
     subject: String,
     papers: List<PaperEntity>,
-    targetFolderId: String? = null
+    targetFolderId: String? = null,
+    folders: List<FolderItem> = emptyList()
 ): String {
-    val cleanSubject = subject.trim()
     val relevantPapers = papers.filter { p ->
-        val matchesFolder = !targetFolderId.isNullOrBlank() && p.folderId == targetFolderId
-        val matchesSubject = cleanSubject.isNotBlank() && p.subject.trim().equals(cleanSubject, ignoreCase = true)
-        matchesFolder || matchesSubject
+        paperBelongsToDestination(
+            paper = p,
+            subject = subject,
+            targetFolderId = targetFolderId,
+            folders = folders
+        )
     }
     if (relevantPapers.isEmpty()) return "01"
 
     val foundNumbers = relevantPapers.mapNotNull { p ->
-        val trimmed = p.setNumber.trim()
-        val numMatch = Regex("""\b(?:Set|Series)?\s*(\d+)\b""", RegexOption.IGNORE_CASE).find(trimmed)
-            ?: Regex("""\b(?:Set|Series)?\s*(\d+)\b""", RegexOption.IGNORE_CASE).find(p.title)
-        if (numMatch != null) {
-            numMatch.groupValues[1].toIntOrNull()
-        } else {
-            val letterMatch = Regex("""\b(?:Set|Series)?\s*([A-Z])\b""", RegexOption.IGNORE_CASE).find(trimmed)
-            val char = letterMatch?.groupValues?.get(1)?.uppercase()?.firstOrNull()
-            if (char != null && char in 'A'..'Z') {
-                char - 'A' + 1
-            } else null
-        }
+        extractSetNumberValue(p.setNumber, p.title)
     }
 
-    if (foundNumbers.isEmpty()) return "01"
-    val maxNum = foundNumbers.maxOrNull() ?: 0
-    val nextNum = maxNum + 1
+    val nextNum = if (foundNumbers.isNotEmpty()) {
+        (foundNumbers.maxOrNull() ?: 0) + 1
+    } else {
+        relevantPapers.size + 1
+    }
     return String.format(java.util.Locale.US, "%02d", nextNum)
 }
 
@@ -206,6 +364,7 @@ fun computeNextSetForSubject(
 fun InputBottomSheet(
     initialText: String,
     initialSubject: String = "",
+    initialFolderId: String? = null,
     savedPapers: List<PaperEntity> = emptyList(),
     folders: List<FolderItem> = emptyList(),
     onDismiss: () -> Unit,
@@ -215,6 +374,7 @@ fun InputBottomSheet(
         subject: String,
         topic: String,
         setNumber: String,
+        targetFolderId: String?,
         durationMinutes: Int,
         positiveMarks: Double,
         negativeMarks: Double,
@@ -263,10 +423,70 @@ fun InputBottomSheet(
     }
 
     // Categorization & Set No fields
+    val cleanInitialFolderId = initialFolderId?.trim()?.takeIf { it.isNotBlank() && it != "all" }
+    val resolvedInitialSubject = remember(initialSubject, cleanInitialFolderId, folders) {
+        initialSubject.trim().ifBlank {
+            if (cleanInitialFolderId != null) {
+                getFolderPathSegments(cleanInitialFolderId, folders).joinToString(" > ")
+            } else ""
+        }
+    }
+
     var customTitle by remember { mutableStateOf("") }
-    var customSubject by remember(initialSubject) { mutableStateOf(initialSubject) }
+    var customSubject by remember(resolvedInitialSubject, cleanInitialFolderId) {
+        mutableStateOf(resolvedInitialSubject)
+    }
     var customTopic by remember { mutableStateOf("") }
-    var customSetNumber by remember(initialSubject) { mutableStateOf(computeNextSetForSubject(initialSubject, savedPapers)) }
+    var hasManuallyEditedSubject by remember(resolvedInitialSubject, cleanInitialFolderId) {
+        mutableStateOf(false)
+    }
+    var hasManuallyEditedSetNumber by remember(resolvedInitialSubject, cleanInitialFolderId) {
+        mutableStateOf(false)
+    }
+
+    // Always resolve the actual destination folder where this set will be saved
+    val resolvedTargetFolderId by remember(customSubject, folders, cleanInitialFolderId, resolvedInitialSubject) {
+        derivedStateOf {
+            val curSegs = parseSubjectSegments(customSubject)
+            val initSegs = parseSubjectSegments(resolvedInitialSubject)
+            if (cleanInitialFolderId != null && curSegs.isNotEmpty() && subjectSegmentsMatch(curSegs, initSegs)) {
+                cleanInitialFolderId
+            } else if (curSegs.isNotEmpty()) {
+                resolveFolderBySubjectPath(customSubject, folders)?.id
+            } else {
+                null
+            }
+        }
+    }
+
+    val recommendedSetNumber by remember(customSubject, savedPapers, resolvedTargetFolderId, folders) {
+        derivedStateOf {
+            computeNextSetForSubject(
+                subject = customSubject,
+                papers = savedPapers,
+                targetFolderId = resolvedTargetFolderId,
+                folders = folders
+            )
+        }
+    }
+
+    var customSetNumber by remember(resolvedInitialSubject, cleanInitialFolderId) {
+        mutableStateOf(
+            computeNextSetForSubject(
+                subject = resolvedInitialSubject,
+                papers = savedPapers,
+                targetFolderId = cleanInitialFolderId ?: resolveFolderBySubjectPath(resolvedInitialSubject, folders)?.id,
+                folders = folders
+            )
+        )
+    }
+
+    LaunchedEffect(recommendedSetNumber, hasManuallyEditedSetNumber) {
+        if (!hasManuallyEditedSetNumber) {
+            customSetNumber = recommendedSetNumber
+        }
+    }
+
     var selectedCategory by remember { mutableStateOf(PaperCategory.AUTO) }
     var customDurationMinutesStr by remember { mutableStateOf("60") }
     var customPositiveMarksStr by remember { mutableStateOf("4.0") }
@@ -312,34 +532,22 @@ fun InputBottomSheet(
         }
     }
 
-    val existingSubjectFolders = remember(savedPapers) {
-        savedPapers.map { it.subject.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sortedWith(String.CASE_INSENSITIVE_ORDER)
-    }
-
-    // Auto-fill suggested metadata when text changes if fields are currently empty
+    // Auto-fill suggested metadata when text changes if fields are currently empty.
+    // Never override folder-derived Set Number with stale/default metadata from pasted text.
     LaunchedEffect(parsedPreview) {
         parsedPreview?.let { preview ->
             if (customTitle.isBlank() && preview.metadata.title != "MCQ Practice Set") {
                 customTitle = preview.metadata.title
             }
-            if (customSubject.isBlank() && preview.metadata.subject != "General Studies") {
+            if (customSubject.isBlank() &&
+                !hasManuallyEditedSubject &&
+                cleanInitialFolderId == null &&
+                preview.metadata.subject != "General Studies"
+            ) {
                 customSubject = preview.metadata.subject
-                customSetNumber = computeNextSetForSubject(preview.metadata.subject, savedPapers)
             }
             if (customTopic.isBlank() && preview.metadata.topic.isNotBlank()) {
                 customTopic = preview.metadata.topic
-            }
-            if ((customSetNumber == "01" || customSetNumber == "Set 1" || customSetNumber == "Set A") && preview.metadata.setNumber.isNotBlank()) {
-                val digits = preview.metadata.setNumber.filter { it.isDigit() }
-                customSetNumber = if (digits.isNotBlank() && digits.length <= 4) {
-                    val n = digits.toIntOrNull() ?: 1
-                    String.format(java.util.Locale.US, "%02d", n)
-                } else {
-                    preview.metadata.setNumber
-                }
             }
         }
     }
@@ -424,10 +632,19 @@ fun InputBottomSheet(
         }
     }
 
-    val isSetDuplicate = remember(savedPapers, customSubject, customSetNumber) {
-        savedPapers.any {
-            it.subject.trim().equals(customSubject.trim(), ignoreCase = true) &&
-                it.setNumber.trim().equals(customSetNumber.trim(), ignoreCase = true)
+    val existingPapersInDestination = remember(savedPapers, customSubject, resolvedTargetFolderId, folders) {
+        savedPapers.filter { p ->
+            paperBelongsToDestination(
+                paper = p,
+                subject = customSubject,
+                targetFolderId = resolvedTargetFolderId,
+                folders = folders
+            )
+        }
+    }
+    val isSetDuplicate = remember(existingPapersInDestination, customSetNumber) {
+        existingPapersInDestination.any { p ->
+            isSetNumberMatch(p.setNumber, customSetNumber)
         }
     }
     val canGenerate = textInput.isNotBlank() && !isSetDuplicate
@@ -808,18 +1025,24 @@ fun InputBottomSheet(
                                             if (canGenerate) {
                                                 keyboardController?.hide()
                                                 focusManager.clearFocus(force = true)
-                                                val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(customSubject)
+                                                val cleanSubject = if (customSubject.contains("//")) {
+                                                    customSubject.trim()
+                                                } else {
+                                                    ExamCatalogueRegistry.normalizeFolderPath(customSubject)
+                                                }
                                                 val parsedDuration = customDurationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
                                                 val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
                                                 val parsedNegMarks = customNegativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
                                                 val parsedUnkMarks = customUnattendedMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 0.0
+                                                val effectiveSet = customSetNumber.trim().ifBlank { recommendedSetNumber }
 
                                                 onGenerate(
                                                     textInput,
                                                     customTitle,
                                                     cleanSubject,
                                                     customTopic,
-                                                    customSetNumber,
+                                                    effectiveSet,
+                                                    resolvedTargetFolderId,
                                                     parsedDuration,
                                                     parsedPosMarks,
                                                     parsedNegMarks,
@@ -1195,8 +1418,13 @@ fun InputBottomSheet(
             )
 
             // Categorization, Set No & Exam Parameters Section (Collapsible Summary Bar)
-            val summarySubject = customSubject.trim().ifBlank { "Auto Subject" }
-            val summarySet = customSetNumber.trim().ifBlank { "01" }
+            val resolvedFolderDisplayPath = remember(resolvedTargetFolderId, folders) {
+                resolvedTargetFolderId?.let { id ->
+                    getFolderPathSegments(id, folders).joinToString(" > ")
+                }?.takeIf { it.isNotBlank() }
+            }
+            val summarySubject = resolvedFolderDisplayPath ?: customSubject.trim().ifBlank { "Root / General" }
+            val summarySet = customSetNumber.trim().ifBlank { recommendedSetNumber }
             val summaryDuration = customDurationMinutesStr.ifBlank { "60" }
             val summaryPos = customPositiveMarksStr.ifBlank { "4.0" }
             val summaryNeg = customNegativeMarksStr.ifBlank { "1.0" }
@@ -1295,11 +1523,9 @@ fun InputBottomSheet(
                                 OutlinedTextField(
                                     value = customSubject,
                                     onValueChange = { newSub ->
-                                        val normalized = newSub.replace("/", " > ")
+                                        hasManuallyEditedSubject = true
+                                        val normalized = if (newSub.contains("//")) newSub else newSub.replace("/", " > ")
                                         customSubject = normalized
-                                        if (existingSubjectFolders.any { it.equals(normalized.trim(), ignoreCase = true) }) {
-                                            customSetNumber = computeNextSetForSubject(normalized, savedPapers)
-                                        }
                                     },
                                     label = { Text("Subject / Exam Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     placeholder = { Text("e.g. UPSC CSE > Prelims", fontSize = 11.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -1359,9 +1585,17 @@ fun InputBottomSheet(
                                                 }
                                             },
                                             onClick = {
+                                                hasManuallyEditedSubject = true
                                                 customSubject = entry.fullPath
-                                                val leaf = entry.leafFolder
-                                                customSetNumber = computeNextSetForSubject(leaf, savedPapers)
+                                                if (!hasManuallyEditedSetNumber) {
+                                                    val nextFolderId = resolveFolderBySubjectPath(entry.fullPath, folders)?.id
+                                                    customSetNumber = computeNextSetForSubject(
+                                                        subject = entry.fullPath,
+                                                        papers = savedPapers,
+                                                        targetFolderId = nextFolderId,
+                                                        folders = folders
+                                                    )
+                                                }
                                                 isSubjectDropdownOpen = false
                                             }
                                         )
@@ -1384,9 +1618,17 @@ fun InputBottomSheet(
                                             color = if (isMatch) colors.tealLight else colors.surfaceVariant,
                                             border = BorderStroke(0.7.dp, if (isMatch) colors.teal else colors.border),
                                             modifier = Modifier.clickable {
+                                                hasManuallyEditedSubject = true
                                                 customSubject = entry.fullPath
-                                                val leaf = entry.leafFolder
-                                                customSetNumber = computeNextSetForSubject(leaf, savedPapers)
+                                                if (!hasManuallyEditedSetNumber) {
+                                                    val nextFolderId = resolveFolderBySubjectPath(entry.fullPath, folders)?.id
+                                                    customSetNumber = computeNextSetForSubject(
+                                                        subject = entry.fullPath,
+                                                        papers = savedPapers,
+                                                        targetFolderId = nextFolderId,
+                                                        folders = folders
+                                                    )
+                                                }
                                             }
                                         ) {
                                             Row(
@@ -1440,7 +1682,11 @@ fun InputBottomSheet(
 
                                 OutlinedTextField(
                                     value = customSetNumber,
-                                    onValueChange = { customSetNumber = it },
+                                    onValueChange = { newVal ->
+                                        customSetNumber = newVal
+                                        hasManuallyEditedSetNumber = newVal.isNotBlank() &&
+                                            !isSetNumberMatch(newVal, recommendedSetNumber)
+                                    },
                                     label = { Text("Set", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     singleLine = true,
                                     colors = fieldColors,
@@ -1486,15 +1732,11 @@ fun InputBottomSheet(
                                 }
                             }
 
-                            if (customSubject.isNotBlank()) {
+                            if (customSubject.isNotBlank() || resolvedTargetFolderId != null || existingPapersInDestination.isNotEmpty() || isSetDuplicate || hasManuallyEditedSetNumber) {
                                 Spacer(modifier = Modifier.height(6.dp))
-                                val isExistingFolder = existingSubjectFolders.any { it.equals(customSubject.trim(), ignoreCase = true) }
-                                val existingCount = savedPapers.count { it.subject.trim().equals(customSubject.trim(), ignoreCase = true) }
-                                
-                                val isSetDuplicate = savedPapers.any {
-                                    it.subject.trim().equals(customSubject.trim(), ignoreCase = true) &&
-                                    it.setNumber.trim().equals(customSetNumber.trim(), ignoreCase = true)
-                                }
+                                val isExistingFolder = resolvedTargetFolderId != null || existingPapersInDestination.isNotEmpty()
+                                val existingCount = existingPapersInDestination.size
+                                val destLabel = resolvedFolderDisplayPath ?: customSubject.trim().ifBlank { "Root / General" }
 
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
@@ -1504,27 +1746,55 @@ fun InputBottomSheet(
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Icon(
-                                            imageVector = if (isSetDuplicate) Icons.Default.Warning else Icons.Default.Folder,
-                                            contentDescription = null,
-                                            tint = if (isSetDuplicate) colors.red else colors.teal,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isSetDuplicate) {
-                                                "Warning: $customSetNumber already exists in $customSubject. Please change the set number."
-                                            } else if (isExistingFolder) {
-                                                "Subject Folder: $customSubject ($existingCount sets) • Auto-assigned: $customSetNumber"
-                                            } else {
-                                                "New Subject Folder: $customSubject • Starting: $customSetNumber"
-                                            },
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (isSetDuplicate) colors.red else colors.inkBold
-                                        )
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isSetDuplicate) Icons.Default.Warning else Icons.Default.Folder,
+                                                contentDescription = null,
+                                                tint = if (isSetDuplicate) colors.red else colors.teal,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isSetDuplicate) {
+                                                    "Set $summarySet already exists in $destLabel. Use Set $recommendedSetNumber or change set number."
+                                                } else if (isExistingFolder) {
+                                                    "Saving to: $destLabel ($existingCount sets) • Set: $summarySet"
+                                                } else {
+                                                    "New Folder: $destLabel • Starting Set: $summarySet"
+                                                },
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (isSetDuplicate) colors.red else colors.inkBold
+                                            )
+                                        }
+                                        if (hasManuallyEditedSetNumber || isSetDuplicate) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = colors.teal.copy(alpha = 0.14f),
+                                                border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.5f)),
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        hasManuallyEditedSetNumber = false
+                                                        customSetNumber = recommendedSetNumber
+                                                    }
+                                                    .testTag("auto_set_reset_button")
+                                            ) {
+                                                Text(
+                                                    text = "Auto ($recommendedSetNumber)",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.tealDark,
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 

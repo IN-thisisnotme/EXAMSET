@@ -275,10 +275,17 @@ object ExamCatalogueRegistry {
     ): List<ExamCatalogueEntry> {
         val q = query.trim().lowercase()
 
-        // 1. Build custom entries from user-created folders and their hierarchies
+        // 1. Build custom entries from user-created folders and their full multi-level hierarchies
+        val folderById = customFolders.associateBy { it.id }
         val customEntries = customFolders.map { f ->
-            val parentName = if (f.parentId != null) customFolders.find { it.id == f.parentId }?.name else null
-            val fullPath = if (parentName != null) "$parentName > ${f.name}" else f.name
+            val chain = mutableListOf<String>()
+            var curr: FolderItem? = f
+            val visited = mutableSetOf<String>()
+            while (curr != null && visited.add(curr.id)) {
+                chain.add(0, curr.name.trim())
+                curr = curr.parentId?.let { folderById[it] }
+            }
+            val fullPath = chain.joinToString(" > ")
             ExamCatalogueEntry(
                 category = "Custom Folder",
                 fullPath = fullPath,

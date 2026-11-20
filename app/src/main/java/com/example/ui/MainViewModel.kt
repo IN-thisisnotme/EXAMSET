@@ -46,12 +46,17 @@ import com.example.model.QuestionPaper
 import com.example.model.RemoteCloudBackupFile
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
+import com.example.ui.components.computeNextSetForSubject
+import com.example.ui.components.isSetNumberMatch
+import com.example.ui.components.paperBelongsToDestination
+import com.example.ui.components.resolveFolderBySubjectPath
 import com.example.util.CloudBackupClients
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
 import com.example.util.ExamJsonHelper
 import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
+import com.example.util.PaperLanguageDetector
 import com.example.util.PsychometricEngine
 import com.example.util.StudyNoteParser
 import com.example.util.TrustedTimeManager
@@ -101,6 +106,7 @@ data class LibraryIndexState(
     val folderCompletedCounts: Map<String, Int> = emptyMap(),
     val folderMonthlyCounts: Map<String, Int> = emptyMap(),
     val folderNotesCounts: Map<String, Int> = emptyMap(),
+    val folderLanguages: Map<String, List<String>> = emptyMap(),
     val suggestedNextPaper: PaperEntity? = null,
     val attemptedPapers: List<PaperEntity> = emptyList(),
     val weakAccuracyPapers: List<PaperEntity> = emptyList(),
@@ -256,6 +262,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val completedCounts = mutableMapOf<String, Int>()
         val monthlyCounts = mutableMapOf<String, Int>()
         val notesCounts = mutableMapOf<String, Int>()
+        val folderLangs = mutableMapOf<String, List<String>>()
+
+        val paperLanguagesById = papers.associate { p ->
+            p.id to PaperLanguageDetector.detectLanguages(p.rawText, p.title)
+        }
 
         for (folder in folderList) {
             val desc = mutableSetOf(folder.id)
@@ -278,6 +289,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             completedCounts[folder.id] = allInSubtree.count { it.id in completedIds }
             monthlyCounts[folder.id] = allInSubtree.count { it.updatedAt >= oneMonthAgo }
             notesCounts[folder.id] = allNotesInSubtree
+            folderLangs[folder.id] = allInSubtree
+                .flatMap { paperLanguagesById[it.id].orEmpty() }
+                .distinct()
         }
 
         val suggested = papers.firstOrNull { it.id in inProgressIds }
@@ -306,6 +320,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             folderCompletedCounts = completedCounts,
             folderMonthlyCounts = monthlyCounts,
             folderNotesCounts = notesCounts,
+            folderLanguages = folderLangs,
             suggestedNextPaper = suggested,
             attemptedPapers = attempted,
             weakAccuracyPapers = weakPapers,
@@ -1131,9 +1146,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val cleanBooklet = bookletNumber?.filter { it.isDigit() }?.take(7)?.ifBlank { null }
             ?: active.metadata.bookletNumber.ifBlank { ExamNumberGenerator.generateBookletNumber() }
 
-        val resolvedFolder = if (cleanSubject.contains("/") || cleanSubject.contains(">")) {
-            resolveOrCreateFolderPath(cleanSubject)
-        } else null
+        val resolvedFolder = findFolderByPath(cleanSubject)
+            ?: if (cleanSubject.replace("//", "\u0000").let { it.contains("/") || it.contains(">") }) {
+                resolveOrCreateFolderPath(cleanSubject)
+            } else null
         val targetFolderId = resolvedFolder?.id ?: active.metadata.folderId
 
         val finalDuration = durationMinutes ?: active.metadata.durationMinutes
@@ -1222,15 +1238,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val finalRoll = if (!customRollNumber.isNullOrBlank()) customRollNumber.trim() else parsed.metadata.rollNumber
             val finalBooklet = if (!customBookletNumber.isNullOrBlank()) customBookletNumber.trim() else parsed.metadata.bookletNumber
-            val finalSubject = if (!customSubject.isNullOrBlank()) customSubject.trim() else parsed.metadata.subject
+            val rawSubject = if (!customSubject.isNullOrBlank()) customSubject.trim() else parsed.metadata.subject
 
-            // Automatically resolve slash-separated folder hierarchies (e.g. UPSC CSE / Prelims / GS 1)
+            // Automatically resolve single-level or multi-level folder hierarchies (e.g. UPSC CSE > Prelims > GS 1)
             val effectiveFolderId: String? = if (!customFolderId.isNullOrBlank()) {
                 customFolderId.trim()
-            } else if (finalSubject.isNotBlank() && (finalSubject.contains("/") || finalSubject.contains(">"))) {
-                resolveOrCreateFolderPath(finalSubject)?.id ?: parsed.metadata.folderId
+            } else if (rawSubject.isNotBlank() &&
+                !rawSubject.equals("General", ignoreCase = true) &&
+                !rawSubject.equals("General Studies", ignoreCase = true)
+            ) {
+                val placeholder = "\u0000LITERAL_SLASH\u0000"
+                val normalizedCheck = rawSubject.replace("//", placeholder)
+                findFolderByPath(rawSubject)?.id ?: if (normalizedCheck.contains("/") || normalizedCheck.contains(">")) {
+                    resolveOrCreateFolderPath(rawSubject)?.id ?: parsed.metadata.folderId
+                } else {
+                    parsed.metadata.folderId
+                }
             } else {
                 parsed.metadata.folderId
+            }
+
+            val resolvedFolderPath = effectiveFolderId?.let { id ->
+                if (_folders.value.any { it.id == id }) getFullFolderPath(id) else null
+            }
+            val finalSubject = if (customSubject.isNullOrBlank() && !resolvedFolderPath.isNullOrBlank()) {
+                resolvedFolderPath
+            } else {
+                rawSubject
+            }
+
+            val existing = paperDao.findPaperByRawText(text.trim())
+            val allExistingPapers = if (existing == null && customSetNumber.isNullOrBlank()) {
+                paperDao.getAllPapers().first()
+            } else {
+                emptyList()
+            }
+            val initialFormattedSet = formattedSet.ifBlank { "01" }
+            val resolvedSetForNewPaper = if (existing == null && customSetNumber.isNullOrBlank()) {
+                val destPapers = allExistingPapers.filter { p ->
+                    paperBelongsToDestination(
+                        paper = p,
+                        subject = finalSubject,
+                        targetFolderId = effectiveFolderId,
+                        folders = _folders.value
+                    )
+                }
+                val hasCollision = destPapers.any { isSetNumberMatch(it.setNumber, initialFormattedSet) }
+                if (hasCollision || (initialFormattedSet == "01" && destPapers.isNotEmpty())) {
+                    computeNextSetForSubject(
+                        subject = finalSubject,
+                        papers = allExistingPapers,
+                        targetFolderId = effectiveFolderId,
+                        folders = _folders.value
+                    )
+                } else {
+                    initialFormattedSet
+                }
+            } else {
+                initialFormattedSet
             }
 
             val effectiveDuration = customDurationMinutes ?: _examConfig.value.durationMinutes.takeIf { it > 0 } ?: 60
@@ -1247,7 +1312,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     title = effectiveTitle,
                     subject = finalSubject,
                     topic = effectiveTopic,
-                    setNumber = formattedSet,
+                    setNumber = resolvedSetForNewPaper,
                     questionCount = parsed.questions.size
                 ).code
             }
@@ -1256,7 +1321,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 title = effectiveTitle,
                 subject = finalSubject,
                 topic = effectiveTopic,
-                setNumber = formattedSet.ifBlank { "01" },
+                setNumber = resolvedSetForNewPaper,
                 folderId = effectiveFolderId,
                 manualCategory = resolvedCategory,
                 rollNumber = finalRoll,
@@ -1275,7 +1340,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val existing = paperDao.findPaperByRawText(text.trim())
             val entityId: Long = if (existing != null) {
                 // When an existing set is re-saved or moved to another folder, preserve its existing set number
                 // so it remains tightly coupled to booklet and roll numbers
@@ -1546,7 +1610,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customTitle: String? = null,
         customSubject: String? = null,
         customTopic: String? = null,
-        customSetNumber: String? = null
+        customSetNumber: String? = null,
+        customFolderId: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -1563,7 +1628,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             customTitle = customTitle,
                             customSubject = customSubject,
                             customTopic = customTopic,
-                            customSetNumber = customSetNumber
+                            customSetNumber = customSetNumber,
+                            customFolderId = customFolderId
                         )
                     }
                 } else {
@@ -3830,6 +3896,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         return uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
             ?: "ExamSet_Live_Sync.examset.zip"
+    }
+
+    fun findFolderByPath(path: String): FolderItem? {
+        return resolveFolderBySubjectPath(path, _folders.value)
     }
 
     /**

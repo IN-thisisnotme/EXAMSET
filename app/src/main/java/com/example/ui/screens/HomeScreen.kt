@@ -199,6 +199,7 @@ fun HomeScreen(
 
     var showInputSheet by remember { mutableStateOf(false) }
     var creationTargetFolderId by remember { mutableStateOf<String?>(null) }
+    var pendingFileTargetFolderId by remember { mutableStateOf<String?>(null) }
     var showPrintDialog by remember { mutableStateOf(false) }
     var showOmrScannerDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
@@ -272,8 +273,10 @@ fun HomeScreen(
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
+        val targetFolder = pendingFileTargetFolderId
+        pendingFileTargetFolderId = null
         if (uri != null) {
-            viewModel.loadFromUri(uri)
+            viewModel.loadFromUri(uri, customFolderId = targetFolder)
         }
     }
 
@@ -731,7 +734,12 @@ fun HomeScreen(
             floatingActionButton = {
                 if (!isFullScreenTestActive && selectedTab == 0) {
                     FloatingActionButton(
-                        onClick = { showInputSheet = true },
+                        onClick = {
+                            creationTargetFolderId = lastActiveFolderId.takeIf { id ->
+                                id != "all" && folders.any { it.id == id }
+                            }
+                            showInputSheet = true
+                        },
                         containerColor = colors.navyBanner,
                         contentColor = colors.navyBannerText,
                         shape = CircleShape,
@@ -1251,17 +1259,20 @@ fun HomeScreen(
         enter = slideInVertically(animationSpec = tween(240), initialOffsetY = { it / 8 }) + fadeIn(animationSpec = tween(200)),
         exit = slideOutVertically(animationSpec = tween(200), targetOffsetY = { it / 8 }) + fadeOut(animationSpec = tween(160))
     ) {
+        val activeTargetFolderId = creationTargetFolderId?.takeIf { id ->
+            id != "all" && folders.any { it.id == id }
+        }
         InputBottomSheet(
             initialText = "",
-            initialSubject = creationTargetFolderId?.let { viewModel.getFullFolderPath(it) } ?: "",
+            initialSubject = activeTargetFolderId?.let { viewModel.getFullFolderPath(it) } ?: "",
+            initialFolderId = activeTargetFolderId,
             savedPapers = savedPapers,
             folders = folders,
             onDismiss = {
                 showInputSheet = false
                 creationTargetFolderId = null
             },
-            onGenerate = { text, title, subject, topic, setNumber, duration, posMarks, negMarks, unkMarks, manualCategory ->
-                val targetFolder = creationTargetFolderId
+            onGenerate = { text, title, subject, topic, setNumber, targetFolderId, duration, posMarks, negMarks, unkMarks, manualCategory ->
                 creationTargetFolderId = null
                 viewModel.parseAndSetPaper(
                     text = text,
@@ -1269,7 +1280,7 @@ fun HomeScreen(
                     customSubject = subject,
                     customTopic = topic,
                     customSetNumber = setNumber,
-                    customFolderId = targetFolder,
+                    customFolderId = targetFolderId,
                     customDurationMinutes = duration,
                     customPositiveMarks = posMarks,
                     customNegativeMarks = negMarks,
@@ -1278,6 +1289,7 @@ fun HomeScreen(
                 )
             },
             onPickFile = {
+                pendingFileTargetFolderId = activeTargetFolderId
                 filePickerLauncher.launch(arrayOf("text/plain", "text/markdown", "*/*"))
                 showInputSheet = false
                 creationTargetFolderId = null
