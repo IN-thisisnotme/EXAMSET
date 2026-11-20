@@ -1203,6 +1203,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         backfillLegacyPaperNumbers()
         com.example.util.TrustedTimeManager.registerNetworkObserver(application)
         com.example.util.TrustedTimeManager.syncWithNetworkAsync(viewModelScope)
+        viewModelScope.launch {
+            var wasSynced = com.example.util.TrustedTimeManager.isNetworkTimeSynced.value
+            com.example.util.TrustedTimeManager.isNetworkTimeSynced.collect { synced ->
+                if (synced && !wasSynced) {
+                    refreshActiveWordOfTheDay()
+                }
+                wasSynced = synced
+            }
+        }
     }
 
     private fun backfillLegacyPaperNumbers() {

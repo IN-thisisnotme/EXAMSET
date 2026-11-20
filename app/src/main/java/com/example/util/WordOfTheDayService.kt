@@ -214,8 +214,17 @@ object WordOfTheDayService {
         val allStates = loadLanguageStateMap(prefs).toMutableMap()
         val existingState = allStates[normLangKey] ?: LanguageWordOfTheDayState(languageKey = normLangKey)
 
-        val todayUtc = utcDateKey(nowMillis)
-        val dateLabel = formattedUtcDateLabel(nowMillis)
+        val rawTodayUtc = utcDateKey(nowMillis)
+        val todayUtc = if (existingState.activeUtcDateKey.isNotBlank() && rawTodayUtc < existingState.activeUtcDateKey) {
+            existingState.activeUtcDateKey
+        } else {
+            rawTodayUtc
+        }
+        val dateLabel = if (todayUtc == rawTodayUtc) {
+            formattedUtcDateLabel(nowMillis)
+        } else {
+            formatUtcDateKeyForDisplay(todayUtc)
+        }
         val candidateByKey = candidates.associateBy { it.wordKey }
         val isEnglish = VocabularyLanguageVariants.isEnglish(cleanLanguage)
         val activeVariant = if (isEnglish) {

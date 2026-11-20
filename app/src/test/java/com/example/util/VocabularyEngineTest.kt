@@ -861,6 +861,94 @@ class VocabularyEngineTest {
     }
 
     @Test
+    fun trustedTimeManager_persistsSameBootOffsetAndEnforcesMonotonicFloorAcrossReboots() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val prefs = ExamSetPreferences(app)
+
+        try {
+            TrustedTimeManager.resetForTesting(app)
+            val futureNetworkEpoch = System.currentTimeMillis() + 5 * 86_400_000L
+            val bootElapsedAtSync = 10_000L
+            val bootCount = 42
+
+            TrustedTimeManager.recordVerifiedNetworkEpoch(
+                estimatedEpochMillis = futureNetworkEpoch,
+                elapsedAtSyncMillis = bootElapsedAtSync,
+                bootCountOverride = bootCount
+            )
+            assertTrue(TrustedTimeManager.isNetworkTimeLocked())
+
+            // Simulate process kill & offline relaunch during the SAME device boot (elapsedRealtime advanced)
+            TrustedTimeManager.resetForTesting(clearPrefsContext = null)
+            assertFalse(TrustedTimeManager.isNetworkTimeLocked())
+
+            val elapsedLaterSameBoot = 70_000L
+            TrustedTimeManager.restoreFromPreferences(
+                context = app,
+                elapsedNowOverride = elapsedLaterSameBoot,
+                bootCountOverride = bootCount
+            )
+            assertTrue(TrustedTimeManager.isNetworkTimeLocked())
+            assertTrue(TrustedTimeManager.getTrustedTimeMillis() >= futureNetworkEpoch + 60_000L)
+
+            // Simulate device REBOOT (bootCount incremented, elapsedRealtime reset) while offline with older system clock
+            TrustedTimeManager.resetForTesting(clearPrefsContext = null)
+            TrustedTimeManager.restoreFromPreferences(
+                context = app,
+                elapsedNowOverride = 2_000L,
+                bootCountOverride = bootCount + 1
+            )
+            assertFalse(TrustedTimeManager.isNetworkTimeLocked())
+            // Monotonic floor still prevents falling back behind the last known trusted UTC timestamp
+            assertTrue(TrustedTimeManager.getTrustedTimeMillis() >= futureNetworkEpoch + 60_000L)
+
+            // Verify WordOfTheDayService refuses to regress UTC date backward on clock rollback
+            val deck = VocabularyDeck(
+                id = "en_floor",
+                title = "Floor Check",
+                language = "English",
+                levelCode = "B1",
+                entries = (1..10).map { idx ->
+                    VocabularyEntry(
+                        id = "fl_$idx",
+                        word = "Word${idx.toString().padStart(2, '0')}",
+                        levelCode = "B1",
+                        language = "English",
+                        meaning = "Def $idx"
+                    )
+                }
+            )
+            val lockedDayMillis = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.parse("2026-11-20T12:00:00Z")!!.time
+
+            val initial = WordOfTheDayService.resolveForLanguage(
+                prefs = prefs,
+                decks = listOf(deck),
+                language = "English",
+                nowMillis = lockedDayMillis
+            ) as WordOfTheDayUiState.Ready
+            assertEquals("2026-11-20", initial.utcDateKey)
+
+            val rolledBackMillis = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.parse("2024-01-01T12:00:00Z")!!.time
+
+            val afterRollback = WordOfTheDayService.resolveForLanguage(
+                prefs = prefs,
+                decks = listOf(deck),
+                language = "English",
+                nowMillis = rolledBackMillis
+            ) as WordOfTheDayUiState.Ready
+            assertEquals("2026-11-20", afterRollback.utcDateKey)
+            assertEquals(initial.entry.word, afterRollback.entry.word)
+        } finally {
+            TrustedTimeManager.resetForTesting(app)
+        }
+    }
+
+    @Test
     fun parseVocabularyInput_overridesMismatchedScriptTagAndParsesBilingualTags() {
         val mismatchedJson = """
             [
