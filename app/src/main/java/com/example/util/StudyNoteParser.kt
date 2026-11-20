@@ -520,7 +520,14 @@ object StudyNoteParser {
         paper: QuestionPaper,
         incorrectNums: Set<Int>,
         unattendedNums: Set<Int>,
-        answers: Map<Int, String>
+        answers: Map<Int, String>,
+        rollNumber: String? = null,
+        bookletNumber: String? = null,
+        bookletCode: String? = null,
+        attemptId: Long? = null,
+        attemptTimestamp: Long? = null,
+        score: Double? = null,
+        totalMarks: Double? = null
     ): String {
         val targetQuestions = paper.questions.filter {
             it.num in incorrectNums || it.num in unattendedNums
@@ -529,14 +536,43 @@ object StudyNoteParser {
             return "## ${paper.metadata.title}\n> All Questions Mastered: No incorrect or skipped items in this test attempt."
         }
 
+        val resolvedRoll = rollNumber?.takeIf { it.isNotBlank() }
+            ?: paper.metadata.rollNumber.takeIf { it.isNotBlank() }
+            ?: "UNASSIGNED"
+        val resolvedBooklet = bookletNumber?.takeIf { it.isNotBlank() }
+            ?: paper.metadata.bookletNumber.takeIf { it.isNotBlank() }
+            ?: "0000001"
+        val resolvedCode = bookletCode?.takeIf { it.isNotBlank() }
+            ?: paper.metadata.setNumber.takeIf { it.isNotBlank() }
+            ?: "Set A"
+
+        val dateStamp = if (attemptTimestamp != null && attemptTimestamp > 0L) {
+            java.text.SimpleDateFormat("MMM dd, yyyy • HH:mm", java.util.Locale.US).format(java.util.Date(attemptTimestamp))
+        } else {
+            java.text.SimpleDateFormat("MMM dd, yyyy • HH:mm", java.util.Locale.US).format(java.util.Date())
+        }
+
+        val attemptLabel = if (attemptId != null && attemptId > 0L) " • Attempt #$attemptId" else ""
+        val scoreLabel = if (score != null) {
+            val maxStr = if (totalMarks != null && totalMarks > 0.0) String.format(java.util.Locale.US, " / %.2f", totalMarks) else ""
+            " • Score: " + String.format(java.util.Locale.US, "%.2f", score) + maxStr
+        } else ""
+
         return buildString {
             appendLine("## Weak-Area Remediation: ${paper.metadata.title}")
-            appendLine("> Summary: ${incorrectNums.size} Incorrect • ${unattendedNums.size} Skipped • Subject: ${paper.metadata.subject}")
+            appendLine("> **Review Identification:** Roll No: `$resolvedRoll` • Booklet No: `$resolvedBooklet` • Series: `$resolvedCode`$attemptLabel • Evaluated: $dateStamp")
+            appendLine("> **Diagnostic Summary:** ${incorrectNums.size} Incorrect • ${unattendedNums.size} Skipped • Subject: ${paper.metadata.subject}$scoreLabel")
             appendLine()
 
             var seq = 1
             targetQuestions.forEach { q ->
-                val statusTag = if (q.num in incorrectNums) "Incorrect (Marked ${answers[q.num] ?: "-"})" else "Skipped"
+                val markedAns = answers[q.num]?.trim().orEmpty()
+                val statusTag = if (q.num in incorrectNums) {
+                    val markedDisplay = if (markedAns.isNotBlank()) "Candidate Marked: $markedAns" else "Incorrect"
+                    "Incorrect ($markedDisplay)"
+                } else {
+                    "Skipped"
+                }
                 val correctLetter = q.correctAnswer?.uppercase()
                 val correctOptionText = when (correctLetter) {
                     "A" -> q.options.a
@@ -574,6 +610,156 @@ object StudyNoteParser {
             }
         }.trim()
     }
+
+    /**
+     * Compiles a unique, deduplicated Master Active Recall Knowledge Set for an entire Subject or Course
+     * from all available study materials:
+     * - Multiple Question Papers (explanations, formulas, question concepts, and options)
+     * - Historical Weak-Area / Mistake logs
+     * - Existing Study Notes and One-Liners
+     */
+    fun compileSubjectActiveRecallSet(
+        subjectName: String,
+        papers: List<QuestionPaper>,
+        existingNotes: List<StudyNoteEntity>,
+        courseOrFolderTitle: String? = null
+    ): String {
+        val cleanSubject = subjectName.trim().ifBlank { courseOrFolderTitle?.trim().orEmpty() }.ifBlank { "General Studies" }
+        val dateStamp = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.US).format(java.util.Date())
+
+        val deduplicatedCards = mutableListOf<CompiledActiveRecallItem>()
+        val seenConceptKeys = mutableSetOf<String>()
+
+        fun normalizeKey(text: String): String {
+            return text.lowercase()
+                .replace(Regex("""[^a-z0-9]"""), "")
+                .take(60)
+        }
+
+        // 1. Ingest from Question Papers (MCQs with rich explanations, formulas, and high-yield questions)
+        papers.forEach { paper ->
+            paper.questions.forEach { q ->
+                val cleanStem = q.question.replace(Regex("""\s+"""), " ").trim()
+                if (cleanStem.isBlank()) return@forEach
+                val key = normalizeKey(cleanStem)
+                if (key.length >= 6 && !seenConceptKeys.add(key)) {
+                    // Duplicate concept already captured
+                    return@forEach
+                }
+
+                val correctOpt = when (q.correctAnswer?.uppercase()) {
+                    "A" -> q.options.a
+                    "B" -> q.options.b
+                    "C" -> q.options.c
+                    "D" -> q.options.d
+                    "E" -> q.options.e
+                    else -> ""
+                }.trim()
+
+                val takeaway = q.explanation?.trim().orEmpty()
+                val formula = q.formula?.trim().orEmpty()
+                val ansLine = if (q.correctAnswer != null) {
+                    if (correctOpt.isNotBlank()) "(${q.correctAnswer.uppercase()}) $correctOpt" else q.correctAnswer.uppercase()
+                } else ""
+
+                deduplicatedCards.add(
+                    CompiledActiveRecallItem(
+                        prompt = cleanStem,
+                        recallAnswer = ansLine,
+                        keyTakeaway = takeaway,
+                        formula = formula,
+                        source = "${paper.metadata.title.take(30)} • Q${q.num}",
+                        topic = paper.metadata.topic.takeIf { it.isNotBlank() } ?: cleanSubject
+                    )
+                )
+            }
+        }
+
+        // 2. Ingest from Existing Notes & Study Materials (One-liners, Markdown bullet notes, cards)
+        existingNotes.forEach { note ->
+            val parsedBlocks = parseBlocks(note.rawContent, note.parsedFormatRule())
+            parsedBlocks.forEach { block ->
+                when (block) {
+                    is StudyNoteBlock.OneLiner -> {
+                        val key = normalizeKey(block.leadTerm)
+                        if (key.length >= 4 && seenConceptKeys.add(key)) {
+                            deduplicatedCards.add(
+                                CompiledActiveRecallItem(
+                                    prompt = block.leadTerm,
+                                    recallAnswer = block.detail,
+                                    keyTakeaway = "",
+                                    formula = "",
+                                    source = note.title.take(30),
+                                    topic = note.subject.ifBlank { cleanSubject }
+                                )
+                            )
+                        }
+                    }
+                    is StudyNoteBlock.MultiLinerCard -> {
+                        val key = normalizeKey(block.title)
+                        if (key.length >= 6 && seenConceptKeys.add(key)) {
+                            deduplicatedCards.add(
+                                CompiledActiveRecallItem(
+                                    prompt = block.title,
+                                    recallAnswer = block.correctAnswer.ifBlank { block.paragraphs.firstOrNull().orEmpty() },
+                                    keyTakeaway = block.keyTakeaway,
+                                    formula = block.formula,
+                                    source = note.title.take(30),
+                                    topic = note.subject.ifBlank { cleanSubject }
+                                )
+                            )
+                        }
+                    }
+                    else -> { /* Skip headings and tables from raw ingestion */ }
+                }
+            }
+        }
+
+        if (deduplicatedCards.isEmpty()) {
+            return "## Master Active Recall: $cleanSubject\n> Compiled Course Study Set • Generated on $dateStamp\n> No question items or study notes found for this subject."
+        }
+
+        // Group by topic or present in sequential high-yield order
+        return buildString {
+            appendLine("## Master Active Recall: $cleanSubject")
+            appendLine("> **Course Compilation:** Compiled from ${papers.size} Question Sets and ${existingNotes.size} Study Notes")
+            appendLine("> **Total Active Recall Cards:** ${deduplicatedCards.size} unique high-yield cards (deduplicated) • Compiled on $dateStamp")
+            appendLine()
+
+            val byTopic = deduplicatedCards.groupBy { it.topic.ifBlank { cleanSubject } }
+            var cardSeq = 1
+
+            byTopic.forEach { (topicName, items) ->
+                appendLine("### Topic: $topicName")
+                appendLine()
+                items.forEach { card ->
+                    appendLine("${cardSeq++}. **${card.prompt}**")
+                    if (card.recallAnswer.isNotBlank()) {
+                        appendLine("  - Correct Answer: ${card.recallAnswer}")
+                    }
+                    if (card.formula.isNotBlank()) {
+                        appendLine("  - Formula: ${card.formula}")
+                    }
+                    if (card.keyTakeaway.isNotBlank()) {
+                        appendLine("  - Key Takeaway: ${card.keyTakeaway}")
+                    }
+                    if (card.source.isNotBlank()) {
+                        appendLine("  - Source Material: ${card.source}")
+                    }
+                    appendLine()
+                }
+            }
+        }.trim()
+    }
+
+    private data class CompiledActiveRecallItem(
+        val prompt: String,
+        val recallAnswer: String,
+        val keyTakeaway: String,
+        val formula: String,
+        val source: String,
+        val topic: String
+    )
 
     fun convertNoteBlocksToMcqDraft(note: StudyNoteEntity): String {
         val blocks = parseBlocks(note.rawContent, note.parsedFormatRule())

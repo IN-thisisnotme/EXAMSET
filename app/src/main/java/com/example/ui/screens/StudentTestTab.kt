@@ -2930,6 +2930,7 @@ private fun ExamResultAndReviewView(
     var solutionsMode by remember { mutableStateOf(ReviewSolutionsMode.LIST) }
     var focusedQuestionIdx by remember { mutableIntStateOf(0) }
     var showPaletteDialog by remember { mutableStateOf(false) }
+    var isSavedToKnowledge by remember { mutableStateOf(false) }
 
     // Official one-time evaluation
     val officialAnswers = if (submittedAnswers.isNotEmpty()) submittedAnswers else answers
@@ -3599,26 +3600,39 @@ private fun ExamResultAndReviewView(
                                         if (onSaveWeakAreasToKnowledgeSet != null && (persistentIncorrect.isNotEmpty() || persistentUnattended.isNotEmpty())) {
                                             OutlinedButton(
                                                 onClick = {
-                                                    onSaveWeakAreasToKnowledgeSet(
-                                                        paper,
-                                                        persistentIncorrect,
-                                                        persistentUnattended,
-                                                        officialAnswers
-                                                    )
+                                                    if (!isSavedToKnowledge) {
+                                                        isSavedToKnowledge = true
+                                                        onSaveWeakAreasToKnowledgeSet(
+                                                            paper,
+                                                            persistentIncorrect,
+                                                            persistentUnattended,
+                                                            officialAnswers
+                                                        )
+                                                    }
                                                 },
                                                 shape = RoundedCornerShape(10.dp),
-                                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.7f)),
+                                                border = BorderStroke(1.dp, if (isSavedToKnowledge) colors.green.copy(alpha = 0.8f) else colors.teal.copy(alpha = 0.7f)),
                                                 colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = if (colors.isDark) colors.teal else colors.tealDark
+                                                    contentColor = if (isSavedToKnowledge) colors.green else (if (colors.isDark) colors.teal else colors.tealDark)
                                                 ),
                                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                                                 modifier = Modifier
                                                     .heightIn(min = 44.dp)
                                                     .testTag("save_weak_areas_knowledge_button")
                                             ) {
-                                                Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(
+                                                    if (isSavedToKnowledge) Icons.Default.Check else Icons.AutoMirrored.Filled.MenuBook,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Save Missed to Knowledge Set", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                                Text(
+                                                    if (isSavedToKnowledge) "Saved to Knowledge Studio ✓" else "Save Missed to Knowledge Set",
+                                                    fontSize = 12.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
                                             }
                                         }
                                     }
@@ -4175,11 +4189,12 @@ private fun ExamResultAndReviewView(
                                 )
                                 if (onSaveWeakAreasToKnowledgeSet != null && (persistentIncorrect.isNotEmpty() || persistentUnattended.isNotEmpty())) {
                                     DiagnosticActionRow(
-                                        title = "Save Missed to Knowledge Studio",
-                                        subtitle = "Convert ${persistentIncorrect.size + persistentUnattended.size} missed items into Active Recall cards",
-                                        icon = Icons.AutoMirrored.Filled.MenuBook,
+                                        title = if (isSavedToKnowledge) "Missed Questions Saved ✓" else "Save Missed to Knowledge Studio",
+                                        subtitle = if (isSavedToKnowledge) "Active Recall cards saved and uniquely identified in Knowledge Studio" else "Convert ${persistentIncorrect.size + persistentUnattended.size} missed items into Active Recall cards",
+                                        icon = if (isSavedToKnowledge) Icons.Default.Check else Icons.AutoMirrored.Filled.MenuBook,
                                         tint = colors.green,
                                         onClick = {
+                                            isSavedToKnowledge = true
                                             onSaveWeakAreasToKnowledgeSet(
                                                 paper,
                                                 persistentIncorrect,

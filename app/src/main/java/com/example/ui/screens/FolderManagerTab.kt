@@ -1297,7 +1297,12 @@ fun FolderManagerTab(
                             )
                         },
                         onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
-                        linkedPaperTitles = linkedPaperTitles
+                        linkedPaperTitles = linkedPaperTitles,
+                        onCompileCourseActiveRecall = {
+                            val targetFId = if (activeFolderId == "all") null else activeFolderId
+                            val targetSub = currentFolder?.name.orEmpty()
+                            viewModel.compileActiveRecallSetForSubjectOrFolder(targetFId, targetSub)
+                        }
                     )
                 }
             }

@@ -197,4 +197,108 @@ class StudyNoteParserTest {
         assertEquals("Skipped", legacyCard?.statusTag)
         assertTrue(legacyCard?.correctAnswer?.contains("(C) 2") == true)
     }
+
+    @Test
+    fun `buildWeakAreaNoteContent formats candidate roll, booklet and attempt identification uniquely`() {
+        val paper = QuestionPaper(
+            metadata = PaperMetadata(
+                title = "Thermodynamics Quiz",
+                subject = "Mechanical Engineering",
+                rollNumber = "2026100123",
+                bookletNumber = "0005432",
+                setNumber = "Set B"
+            ),
+            questions = listOf(
+                McqQuestion(
+                    num = 1,
+                    question = "What is the efficiency of a Carnot engine operating between 300K and 600K?",
+                    options = QuestionOptions("25%", "50%", "75%", "100%"),
+                    correctAnswer = "B",
+                    explanation = "Carnot efficiency = 1 - (Tc/Th) = 1 - 300/600 = 0.50 (50%)."
+                )
+            )
+        )
+
+        val noteText = StudyNoteParser.buildWeakAreaNoteContent(
+            paper = paper,
+            incorrectNums = setOf(1),
+            unattendedNums = emptySet(),
+            answers = mapOf(1 to "C"),
+            rollNumber = "2026100123",
+            bookletNumber = "0005432",
+            bookletCode = "Set B",
+            attemptId = 42L,
+            attemptTimestamp = 1700000000000L,
+            score = 0.0,
+            totalMarks = 4.0
+        )
+
+        assertTrue(noteText.contains("Roll No: `2026100123`"))
+        assertTrue(noteText.contains("Booklet No: `0005432`"))
+        assertTrue(noteText.contains("Series: `Set B`"))
+        assertTrue(noteText.contains("Attempt #42"))
+        assertTrue(noteText.contains("Score: 0.00 / 4.00"))
+        assertTrue(noteText.contains("Candidate Marked: C"))
+        assertTrue(noteText.contains("(B) 50%"))
+    }
+
+    @Test
+    fun `compileSubjectActiveRecallSet aggregates from multiple papers and notes with smart deduplication`() {
+        val paper1 = QuestionPaper(
+            metadata = PaperMetadata(title = "Polity Test 1", subject = "Indian Polity"),
+            questions = listOf(
+                McqQuestion(
+                    num = 1,
+                    question = "Which article guarantees Right to Constitutional Remedies?",
+                    options = QuestionOptions("Article 19", "Article 21", "Article 32", "Article 226"),
+                    correctAnswer = "C",
+                    explanation = "Dr. Ambedkar called Article 32 the heart and soul of the Constitution."
+                )
+            )
+        )
+        val paper2 = QuestionPaper(
+            metadata = PaperMetadata(title = "Polity Test 2", subject = "Indian Polity"),
+            questions = listOf(
+                // Identical stem to verify deduplication
+                McqQuestion(
+                    num = 1,
+                    question = "Which article guarantees Right to Constitutional Remedies?",
+                    options = QuestionOptions("Article 19", "Article 21", "Article 32", "Article 226"),
+                    correctAnswer = "C",
+                    explanation = "Article 32 provides writs."
+                ),
+                // Unique question
+                McqQuestion(
+                    num = 2,
+                    question = "Which schedule contains the Union, State, and Concurrent Lists?",
+                    options = QuestionOptions("5th", "6th", "7th", "8th"),
+                    correctAnswer = "C",
+                    explanation = "The Seventh Schedule delineates the distribution of legislative powers."
+                )
+            )
+        )
+        val existingNote = StudyNoteEntity(
+            title = "Polity Key Facts",
+            subject = "Indian Polity",
+            rawContent = """
+                1. **Article 21** -> Protection of life and personal liberty
+            """.trimIndent()
+        )
+
+        val compiled = StudyNoteParser.compileSubjectActiveRecallSet(
+            subjectName = "Indian Polity",
+            papers = listOf(paper1, paper2),
+            existingNotes = listOf(existingNote)
+        )
+
+        // Verifies master heading
+        assertTrue(compiled.contains("## Master Active Recall: Indian Polity"))
+        // Verifies cards included
+        assertTrue(compiled.contains("Right to Constitutional Remedies"))
+        assertTrue(compiled.contains("Seventh Schedule"))
+        assertTrue(compiled.contains("Article 21"))
+        // Verifies deduplication: only 1 instance of Article 32 / Constitutional remedies card
+        val occurrences = compiled.split("Right to Constitutional Remedies").size - 1
+        assertEquals(1, occurrences)
+    }
 }

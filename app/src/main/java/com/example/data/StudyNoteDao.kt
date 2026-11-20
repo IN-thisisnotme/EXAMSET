@@ -22,6 +22,12 @@ interface StudyNoteDao {
     @Query("SELECT * FROM study_notes WHERE linkedPaperId = :paperId ORDER BY updatedAt DESC")
     fun getNotesLinkedToPaper(paperId: Long): Flow<List<StudyNoteEntity>>
 
+    @Query("SELECT * FROM study_notes WHERE linkedPaperId = :paperId")
+    suspend fun getNotesLinkedToPaperOnce(paperId: Long): List<StudyNoteEntity>
+
+    @Query("SELECT * FROM study_notes WHERE folderId = :folderId")
+    suspend fun getNotesForFolderOnce(folderId: String): List<StudyNoteEntity>
+
     @Query("SELECT * FROM study_notes WHERE id = :id LIMIT 1")
     suspend fun getStudyNoteById(id: Long): StudyNoteEntity?
 

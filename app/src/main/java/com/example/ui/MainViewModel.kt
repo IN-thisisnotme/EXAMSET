@@ -1177,7 +1177,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _timeRemainingSeconds.value = finalDuration * 60L
         }
 
+        val oldTitle = active.metadata.title
         schedulePaperAutoSave(updatedPaper)
+        val linkedId = _currentPaperEntityId.value ?: (if (active.id > 0L) active.id else null)
+        if (linkedId != null && oldTitle.isNotBlank() && oldTitle != cleanTitle) {
+            syncLinkedKnowledgeSetTitles(linkedId, oldTitle, cleanTitle)
+        }
         _statusMessage.value = "Updated: $cleanTitle ($cleanSet)"
     }
 
@@ -1294,6 +1299,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     updatedAt = System.currentTimeMillis()
                 )
                 paperDao.updatePaper(updated)
+                if (existing.title.isNotBlank() && existing.title != finalMetadata.title) {
+                    syncLinkedKnowledgeSetTitles(existing.id, existing.title, finalMetadata.title)
+                }
                 existing.id
             } else if (finalPaper.questions.isNotEmpty()) {
                 val newEntity = PaperEntity(
@@ -2856,34 +2864,218 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         paper: QuestionPaper,
         incorrectNums: Set<Int>,
         unattendedNums: Set<Int>,
-        answers: Map<Int, String>
+        answers: Map<Int, String>,
+        rollNumber: String? = null,
+        bookletNumber: String? = null,
+        bookletCode: String? = null,
+        attemptId: Long? = null
     ) {
-        val content = StudyNoteParser.buildWeakAreaNoteContent(
-            paper = paper,
-            incorrectNums = incorrectNums,
-            unattendedNums = unattendedNums,
-            answers = answers
-        )
         val linkedId = if (paper.id > 0L) paper.id else _currentPaperEntityId.value
-        val noteTitle = "Weak Areas: ${paper.metadata.title}".take(64)
-        saveStudyNote(
-            title = noteTitle,
-            subject = paper.metadata.subject,
-            sourceAi = "Test Review",
-            rawContent = content,
-            folderId = paper.metadata.folderId,
-            collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
-            customLabel = "Weak Areas",
-            linkedPaperId = linkedId,
-            formatRule = KnowledgeFormatRule(
-                collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
-                customCollectionLabel = "Weak Areas",
-                preserveNestedBullets = true
-            ),
-            onSaved = { newId ->
-                openKnowledgeReader(newId)
+        val currentAttempt = (attemptId ?: _currentAttemptId.value)?.let { aId ->
+            _attempts.value.find { it.id == aId }
+        }
+
+        val resolvedRoll = rollNumber?.takeIf { it.isNotBlank() }
+            ?: currentAttempt?.getCandidateRollNumber()?.takeIf { it.isNotBlank() }
+            ?: _examConfig.value.rollNumber.takeIf { it.isNotBlank() }
+            ?: paper.metadata.rollNumber.takeIf { it.isNotBlank() }
+            ?: "UNASSIGNED"
+
+        val resolvedBooklet = bookletNumber?.takeIf { it.isNotBlank() }
+            ?: currentAttempt?.getCandidateBookletNumber()?.takeIf { it.isNotBlank() }
+            ?: _examConfig.value.bookletNumber.takeIf { it.isNotBlank() }
+            ?: paper.metadata.bookletNumber.takeIf { it.isNotBlank() }
+            ?: "0000001"
+
+        val resolvedCode = bookletCode?.takeIf { it.isNotBlank() }
+            ?: currentAttempt?.getCandidateBookletCode()?.takeIf { it.isNotBlank() }
+            ?: _examConfig.value.seriesCode.takeIf { it.isNotBlank() }
+            ?: paper.metadata.setNumber.takeIf { it.isNotBlank() }
+            ?: "Set A"
+
+        val resolvedAttemptId = attemptId ?: _currentAttemptId.value
+        val attemptSuffix = if (resolvedAttemptId != null && resolvedAttemptId > 0L) " #$resolvedAttemptId" else ""
+
+        val noteTitle = "Weak Areas: ${paper.metadata.title} (Roll $resolvedRoll • Bklt $resolvedBooklet • Set $resolvedCode$attemptSuffix)".take(96)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val existingNotes = if (linkedId != null && linkedId > 0L) {
+                studyNoteDao.getNotesLinkedToPaperOnce(linkedId)
+            } else emptyList()
+
+            // Look for existing weak area note for this candidate / attempt to prevent duplication
+            val existingNote = existingNotes.find { note ->
+                note.collectionType == KnowledgeCollectionType.WEAK_AREA_REVIEW.code &&
+                (note.title == noteTitle ||
+                 (note.rawContent.contains("Roll No: `$resolvedRoll`") && note.rawContent.contains("Booklet No: `$resolvedBooklet`")))
             }
-        )
+
+            val content = StudyNoteParser.buildWeakAreaNoteContent(
+                paper = paper,
+                incorrectNums = incorrectNums,
+                unattendedNums = unattendedNums,
+                answers = answers,
+                rollNumber = resolvedRoll,
+                bookletNumber = resolvedBooklet,
+                bookletCode = resolvedCode,
+                attemptId = resolvedAttemptId,
+                attemptTimestamp = currentAttempt?.submittedAt ?: currentAttempt?.createdAt,
+                score = currentAttempt?.score,
+                totalMarks = (paper.questions.size * (paper.metadata.positiveMarks.takeIf { it > 0 } ?: 4.0))
+            )
+
+            val targetId = existingNote?.id ?: 0L
+            withContext(Dispatchers.Main) {
+                saveStudyNote(
+                    id = targetId,
+                    title = noteTitle,
+                    subject = paper.metadata.subject,
+                    sourceAi = "Test Review",
+                    rawContent = content,
+                    folderId = paper.metadata.folderId,
+                    collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
+                    customLabel = "Weak Areas",
+                    linkedPaperId = linkedId,
+                    formatRule = KnowledgeFormatRule(
+                        collectionType = KnowledgeCollectionType.WEAK_AREA_REVIEW,
+                        customCollectionLabel = "Weak Areas",
+                        preserveNestedBullets = true
+                    ),
+                    onSaved = { newId ->
+                        val action = if (targetId > 0L) "Updated existing" else "Created unique"
+                        _statusMessage.value = "$action Weak Areas Knowledge Set: $noteTitle"
+                        openKnowledgeReader(newId)
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Synchronizes Knowledge Set titles and content headers when a Question Set is renamed or updated.
+     */
+    fun syncLinkedKnowledgeSetTitles(paperId: Long, oldTitle: String, newTitle: String) {
+        if (paperId <= 0L || oldTitle.isBlank() || newTitle.isBlank() || oldTitle == newTitle) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val linkedNotes = studyNoteDao.getNotesLinkedToPaperOnce(paperId)
+            if (linkedNotes.isEmpty()) return@launch
+
+            linkedNotes.forEach { note ->
+                val updatedTitle = if (note.title.contains(oldTitle, ignoreCase = true)) {
+                    note.title.replace(oldTitle, newTitle, ignoreCase = true)
+                } else if (note.collectionType == KnowledgeCollectionType.WEAK_AREA_REVIEW.code) {
+                    note.title.replaceFirst(Regex("""^Weak Areas:\s*[^(\[]+"""), "Weak Areas: $newTitle ")
+                } else {
+                    note.title
+                }
+
+                val updatedRaw = if (note.rawContent.contains(oldTitle, ignoreCase = true)) {
+                    note.rawContent.replace(oldTitle, newTitle, ignoreCase = true)
+                } else {
+                    note.rawContent
+                }
+
+                if (updatedTitle != note.title || updatedRaw != note.rawContent) {
+                    studyNoteDao.updateStudyNote(
+                        note.copy(
+                            title = updatedTitle.take(120),
+                            rawContent = updatedRaw,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Compiles a unique, master Active Recall Knowledge Set for a given Subject or Course Folder
+     * aggregating all question papers (stems, explanations, formulas, answer keys) and study notes in that course.
+     */
+    fun compileActiveRecallSetForSubjectOrFolder(folderId: String?, subjectName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allPapers = paperDao.getAllPapersOnce()
+            val coursePapersEntities = allPapers.filter { p ->
+                if (!folderId.isNullOrBlank() && folderId != "all") {
+                    p.folderId == folderId || (subjectName.isNotBlank() && p.subject.equals(subjectName, ignoreCase = true))
+                } else if (subjectName.isNotBlank() && subjectName != "All") {
+                    p.subject.equals(subjectName, ignoreCase = true)
+                } else {
+                    true
+                }
+            }
+
+            val targetFolderId = if (!folderId.isNullOrBlank() && folderId != "all") folderId else null
+            val resolvedSubject = subjectName.trim().ifBlank {
+                coursePapersEntities.firstOrNull()?.subject ?: "General Studies"
+            }
+
+            val courseNotes = if (!targetFolderId.isNullOrBlank()) {
+                studyNoteDao.getNotesForFolderOnce(targetFolderId)
+            } else {
+                studyNoteDao.getAllStudyNotesOnce().filter { it.subject.equals(resolvedSubject, ignoreCase = true) }
+            }
+
+            if (coursePapersEntities.isEmpty() && courseNotes.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "No study material found in $resolvedSubject to compile."
+                }
+                return@launch
+            }
+
+            val parsedPapers = coursePapersEntities.map { entity ->
+                buildQuestionPaperForExport(entity)
+            }
+
+            val compiledContent = StudyNoteParser.compileSubjectActiveRecallSet(
+                subjectName = resolvedSubject,
+                papers = parsedPapers,
+                existingNotes = courseNotes,
+                courseOrFolderTitle = resolvedSubject
+            )
+
+            val masterTitle = "Master Active Recall: $resolvedSubject".take(80)
+
+            val existingMasterNote = courseNotes.find { note ->
+                note.title.startsWith("Master Active Recall: $resolvedSubject", ignoreCase = true) ||
+                (note.folderId == targetFolderId && note.title.startsWith("Master Active Recall", ignoreCase = true))
+            }
+
+            val targetNoteId = existingMasterNote?.id ?: 0L
+            val now = System.currentTimeMillis()
+
+            val finalNoteId = if (existingMasterNote != null) {
+                studyNoteDao.updateStudyNote(
+                    existingMasterNote.copy(
+                        title = masterTitle,
+                        subject = resolvedSubject,
+                        rawContent = compiledContent,
+                        updatedAt = now
+                    )
+                )
+                existingMasterNote.id
+            } else {
+                studyNoteDao.insertStudyNote(
+                    StudyNoteEntity(
+                        folderId = targetFolderId,
+                        title = masterTitle,
+                        subject = resolvedSubject,
+                        sourceAi = "Course Compiler",
+                        rawContent = compiledContent,
+                        collectionType = KnowledgeCollectionType.MULTI_LINER.code,
+                        customLabel = "Course Master",
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
+            }
+
+            withContext(Dispatchers.Main) {
+                val action = if (targetNoteId > 0L) "Updated" else "Compiled"
+                _statusMessage.value = "$action Master Active Recall for $resolvedSubject (${parsedPapers.size} Sets, ${courseNotes.size} Notes)"
+                openKnowledgeReader(finalNoteId)
+            }
+        }
     }
 
     fun openMcqDraftFromKnowledgeSet(note: StudyNoteEntity) {
@@ -3950,8 +4142,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }.map { it.num }.toSet()
         _unattendedQuestionLog.value = unattendedSet
 
+        val finalRoll = _examConfig.value.rollNumber.takeIf { it.isNotBlank() }
+            ?: paper.metadata.rollNumber.takeIf { it.isNotBlank() }
+            ?: ExamNumberGenerator.generateRollNumber()
+        val finalBooklet = _examConfig.value.bookletNumber.takeIf { it.isNotBlank() }
+            ?: paper.metadata.bookletNumber.takeIf { it.isNotBlank() }
+            ?: ExamNumberGenerator.generateBookletNumber()
+        val finalCode = _examConfig.value.seriesCode.takeIf { it.isNotBlank() }
+            ?: paper.metadata.setNumber.takeIf { it.isNotBlank() }
+            ?: "Set A"
+
         viewModelScope.launch(Dispatchers.IO) {
-            val answersJson = AttemptEntity.buildAnswersJson(answersSnapshot)
+            val answersJson = AttemptEntity.buildAnswersJson(
+                map = answersSnapshot,
+                rollNumber = finalRoll,
+                bookletNumber = finalBooklet,
+                bookletCode = finalCode
+            )
             val trustedSubmissionTime = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val updatedAttempt = if (attemptId != null) {
                 paperDao.getAttemptById(attemptId)?.copy(

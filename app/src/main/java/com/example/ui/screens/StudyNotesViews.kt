@@ -97,7 +97,8 @@ fun StudyNotesSectionItems(
     onOpenNote: (StudyNoteEntity) -> Unit,
     onEditNote: (StudyNoteEntity) -> Unit,
     onDeleteNote: (StudyNoteEntity) -> Unit,
-    linkedPaperTitles: Map<Long, String> = emptyMap()
+    linkedPaperTitles: Map<Long, String> = emptyMap(),
+    onCompileCourseActiveRecall: (() -> Unit)? = null
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
@@ -149,6 +150,37 @@ fun StudyNotesSectionItems(
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("New Set", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (onCompileCourseActiveRecall != null) {
+            androidx.compose.material3.FilledTonalButton(
+                onClick = onCompileCourseActiveRecall,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = colors.teal.copy(alpha = 0.14f),
+                    contentColor = if (colors.isDark) colors.teal else colors.tealDark
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp)
+                    .testTag("compile_course_active_recall_button")
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                    tint = if (colors.isDark) colors.teal else colors.tealDark
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "⚡ Compile Course Active Recall Set (From Question Sets & Notes)",
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
         }
 
