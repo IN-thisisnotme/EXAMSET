@@ -606,128 +606,258 @@ class VocabularyEngineTest {
     }
 
     @Test
-    fun wordOfTheDayService_parsesUkAndUsPhoneticsAndConfigDefaultsToUk() {
-        val sampleApiJson = """
-            [
-              {
-                "word": "candor",
-                "phonetic": "/ˈkændər/",
-                "phonetics": [
-                  { "text": "/ˈkændə(r)/", "audio": "https://api.dictionaryapi.dev/media/pronunciations/en/candor-uk.mp3" },
-                  { "text": "/ˈkændɚ/", "audio": "https://api.dictionaryapi.dev/media/pronunciations/en/candor-us.mp3" }
-                ],
-                "meanings": [
-                  {
-                    "partOfSpeech": "noun",
-                    "definitions": [
-                      {
-                        "definition": "The quality of being open and honest in expression; frankness.",
-                        "example": "She spoke with remarkable candour about the challenges."
-                      }
-                    ],
-                    "synonyms": ["frankness", "openness"],
-                    "antonyms": ["dishonesty"]
-                  }
-                ]
-              }
-            ]
-        """.trimIndent()
-
-        val ukEntry = WordOfTheDayService.parseDictionaryApiJson(sampleApiJson, "candour", "UK")
-        assertNotNull(ukEntry)
-        assertEquals("Candour", ukEntry?.word)
-        assertEquals("/ˈkændə(r)/", ukEntry?.pronunciation)
-        assertEquals("UK", ukEntry?.languageVariant)
-
-        val usEntry = WordOfTheDayService.parseDictionaryApiJson(sampleApiJson, "candor", "US")
-        assertNotNull(usEntry)
-        assertEquals("Candor", usEntry?.word)
-        assertEquals("/ˈkændɚ/", usEntry?.pronunciation)
-        assertEquals("US", usEntry?.languageVariant)
-
-        // Default prompt config origin is UK (Oxford) and round-trips through JSON cleanly
-        val defaultCfg = VocabularyPromptConfig()
-        assertEquals("UK", defaultCfg.languageVariant)
-        val roundTripped = VocabularyPromptConfig.fromJson(defaultCfg.copy(languageVariant = "US").toJson())
-        assertEquals("US", roundTripped.languageVariant)
-
-        // Preferences default to UK & persist Word of the Day cache round-trip
+    fun wordOfTheDayService_enforcesThresholdLanguageIsolationUtcRolloverAndFullCycleHistory() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         val prefs = ExamSetPreferences(app)
+
+        // Prompt config and preferences still default to UK English variant
+        val defaultCfg = VocabularyPromptConfig()
+        assertEquals("UK", defaultCfg.languageVariant)
         assertEquals("UK", prefs.getPreferredEnglishVariant())
         prefs.setPreferredEnglishVariant("US")
         assertEquals("US", prefs.getPreferredEnglishVariant())
 
-        // Cached entry resolves immediately via loadDailyWord
-        val today = WordOfTheDayService.todayDateKey()
-        prefs.saveWordOfTheDayCacheJson(
-            org.json.JSONObject().apply {
-                put("dateKey", today)
-                put("variant", "US")
-                put("offset", 0)
-                put("entry", usEntry!!.toJson())
-            }.toString()
+        // Helper to build N unique entries for a language
+        fun makeEntries(prefix: String, count: Int, levelCode: String = "B1", lang: String = "English"): List<VocabularyEntry> =
+            (1..count).map { idx ->
+                VocabularyEntry(
+                    id = "${lang}_${prefix}_$idx",
+                    word = "${prefix}${idx.toString().padStart(2, '0')}",
+                    partOfSpeech = "Noun",
+                    levelCode = levelCode,
+                    language = lang,
+                    meaning = "Meaning for $prefix$idx"
+                )
+            }
+
+        // Below threshold (< 10 unique words) -> Hidden
+        val smallEnglishDeck = VocabularyDeck(
+            id = "en_b1",
+            title = "English B1 Core",
+            language = "English",
+            levelCode = "B1",
+            entries = makeEntries("Alpha", 9, levelCode = "B1", lang = "English")
         )
-        val loaded = runBlocking {
-            WordOfTheDayService.loadDailyWord(
+        val hiddenState = WordOfTheDayService.resolveForLanguage(
+            prefs = prefs,
+            decks = listOf(smallEnglishDeck),
+            language = "English",
+            nowMillis = 1795132799000L // 2026-11-19T23:59:59Z
+        )
+        assertTrue(hiddenState is WordOfTheDayUiState.Hidden)
+        assertEquals(9, (hiddenState as WordOfTheDayUiState.Hidden).currentUniqueWords)
+        assertEquals(WordOfTheDayService.MIN_WORDS_THRESHOLD, hiddenState.minThreshold)
+
+        // Cross threshold with 10 unique words across two levels (A1 and B1) + an isolated Hindi deck
+        val a1Deck = VocabularyDeck(
+            id = "en_a1",
+            title = "English A1 Basics",
+            language = "English",
+            levelCode = "A1",
+            entries = makeEntries("Basic", 2, levelCode = "A1", lang = "English")
+        )
+        val b1Deck = VocabularyDeck(
+            id = "en_b1_full",
+            title = "English B1 Core",
+            language = "English",
+            levelCode = "B1",
+            entries = makeEntries("Alpha", 8, levelCode = "B1", lang = "English")
+        )
+        val hindiDeck = VocabularyDeck(
+            id = "hi_a1",
+            title = "Hindi Foundation",
+            language = "Hindi",
+            levelCode = "A1",
+            entries = makeEntries("संकल्प", 10, levelCode = "A1", lang = "Hindi")
+        )
+        val allDecks = listOf(b1Deck, a1Deck, hindiDeck)
+
+        val day1BeforeMidnight = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.parse("2026-11-20T23:59:50Z")!!.time
+
+        val day1Morning = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.parse("2026-11-20T06:00:00Z")!!.time
+
+        val day2AfterMidnightUtc = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.parse("2026-11-21T00:00:05Z")!!.time
+
+        // Day 1 Morning: Systematic order picks A1 Basic01 first (not random, not Hindi)
+        val enDay1Morning = WordOfTheDayService.resolveForLanguage(
+            prefs = prefs,
+            decks = allDecks,
+            language = "English",
+            nowMillis = day1Morning
+        ) as WordOfTheDayUiState.Ready
+        assertEquals("2026-11-20", enDay1Morning.utcDateKey)
+        assertEquals("Basic01", enDay1Morning.entry.word)
+        assertEquals("en_a1", enDay1Morning.sourceDeckId)
+        assertEquals(1, enDay1Morning.seenInCycleCount)
+        assertEquals(10, enDay1Morning.uniqueWordCount)
+
+        // Same UTC day right before midnight (23:59:50 UTC) -> locked to same word
+        val enDay1Night = WordOfTheDayService.resolveForLanguage(
+            prefs = prefs,
+            decks = allDecks,
+            language = "English",
+            nowMillis = day1BeforeMidnight
+        ) as WordOfTheDayUiState.Ready
+        assertEquals("Basic01", enDay1Night.entry.word)
+
+        // Crossing 00:00 UTC -> advances systematically to Basic02 and appends to history
+        val enDay2 = WordOfTheDayService.resolveForLanguage(
+            prefs = prefs,
+            decks = allDecks,
+            language = "English",
+            nowMillis = day2AfterMidnightUtc
+        ) as WordOfTheDayUiState.Ready
+        assertEquals("2026-11-21", enDay2.utcDateKey)
+        assertEquals("Basic02", enDay2.entry.word)
+        assertEquals(2, enDay2.seenInCycleCount)
+        assertEquals(listOf("Basic02", "Basic01"), enDay2.history.map { it.word })
+
+        // Hindi folder has completely independent WOTD state and history
+        val hiDay2 = WordOfTheDayService.resolveForLanguage(
+            prefs = prefs,
+            decks = allDecks,
+            language = "Hindi",
+            nowMillis = day2AfterMidnightUtc
+        ) as WordOfTheDayUiState.Ready
+        assertEquals("Hindi", hiDay2.language)
+        assertEquals("संकल्प01", hiDay2.entry.word)
+        assertEquals("", hiDay2.variant)
+        assertEquals(1, hiDay2.history.size)
+
+        // Complete the remaining 8 English words via cycleNext -> zero skipped words across 10-word cycle
+        val seenWords = mutableListOf(enDay1Morning.entry.word, enDay2.entry.word)
+        repeat(8) { idx ->
+            val stepped = WordOfTheDayService.resolveForLanguage(
                 prefs = prefs,
-                decks = emptyList(),
-                variant = "US",
-                offset = 0,
-                forceRefresh = false
-            )
+                decks = allDecks,
+                language = "English",
+                cycleNext = true,
+                nowMillis = day2AfterMidnightUtc + (idx + 1) * 1000L
+            ) as WordOfTheDayUiState.Ready
+            seenWords.add(stepped.entry.word)
         }
-        assertTrue(loaded is WordOfTheDayUiState.Ready)
-        assertEquals("Candor", (loaded as WordOfTheDayUiState.Ready).entry.word)
+        assertEquals(10, seenWords.distinct().size)
+
+        // 11th word wraps cleanly into Cycle 2 without repeating the 10th word immediately
+        val cycle2First = WordOfTheDayService.resolveForLanguage(
+            prefs = prefs,
+            decks = allDecks,
+            language = "English",
+            cycleNext = true,
+            nowMillis = day2AfterMidnightUtc + 20_000L
+        ) as WordOfTheDayUiState.Ready
+        assertEquals(2, cycle2First.cycleNumber)
+        assertEquals(1, cycle2First.seenInCycleCount)
+        assertTrue(cycle2First.entry.word != seenWords.last())
+        assertTrue(WordOfTheDayService.getLanguageHistory(prefs, "English").size >= 11)
     }
 
     @Test
-    fun wordOfTheDayService_curatedOfflineDictionaryWorksWithoutNetworkAndMeetsMinimumCount() {
-        assertTrue(WordOfTheDayService.offlineDictionarySize >= 60)
-
+    fun mixedVocabularyCompilation_buildsHierarchyAndSyncsRatingsBookmarksAndDeletes() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
-        val prefs = ExamSetPreferences(app)
+        val vm = MainViewModel(app)
 
-        val ukState = runBlocking {
-            WordOfTheDayService.loadDailyWord(
-                prefs = prefs,
-                decks = emptyList(),
-                variant = "UK",
-                offset = 0,
-                forceRefresh = true,
-                allowNetworkLookup = false
-            )
-        }
-        assertTrue(ukState is WordOfTheDayUiState.Ready)
-        val ready = ukState as WordOfTheDayUiState.Ready
-        assertEquals(WordOfTheDaySource.CURATED_DICTIONARY, ready.source)
-        assertEquals("UK", ready.variant)
-        assertEquals(null, ready.existingDeckId)
-        assertTrue(ready.entry.word.isNotBlank())
-        assertTrue(ready.entry.pronunciation.isNotBlank())
-        assertTrue(ready.entry.partOfSpeech.isNotBlank())
-        assertTrue(ready.entry.meaning.isNotBlank())
-        assertTrue(ready.entry.examples.isNotEmpty())
-        assertTrue(ready.entry.synonyms.isNotEmpty())
+        val a1Deck = vm.commitVocabularyImport(
+            targetDeckId = null,
+            title = "English A1 Core",
+            language = "English",
+            translationLanguage = "",
+            levelCode = "A1",
+            customLevelLabel = "",
+            domain = "Everyday",
+            analysis = VocabularyEngine.analyzeVocabularyImport(
+                parseResult = VocabularyParseResult(
+                    entries = listOf(
+                        VocabularyEntry(id = "e_a1_1", word = "Candid", meaning = "Truthful and straightforward.", levelCode = "A1"),
+                        VocabularyEntry(id = "e_a1_2", word = "Serene", meaning = "Calm and peaceful.", levelCode = "A1")
+                    ),
+                    detectedFormat = VocabularyInputFormat.JSON
+                ),
+                targetDeck = null,
+                targetLanguage = "English",
+                allDecks = emptyList()
+            ),
+            decisions = emptyMap(),
+            languageVariant = "UK"
+        )
 
-        // Cycling offsets returns distinct curated words
-        val cycledWords = (0..5).map { idx ->
-            WordOfTheDayService.curatedOfflineEntryFor(variant = "UK", offset = idx).word
-        }.distinct()
-        assertEquals(6, cycledWords.size)
+        val c1Deck = vm.commitVocabularyImport(
+            targetDeckId = null,
+            title = "English C1 Academic",
+            language = "English",
+            translationLanguage = "",
+            levelCode = "C1",
+            customLevelLabel = "",
+            domain = "Academic",
+            analysis = VocabularyEngine.analyzeVocabularyImport(
+                parseResult = VocabularyParseResult(
+                    entries = listOf(
+                        VocabularyEntry(id = "e_c1_1", word = "Cogent", meaning = "Clear, logical, and convincing.", levelCode = "C1"),
+                        VocabularyEntry(id = "e_c1_dup", word = "Candid", meaning = "Duplicate across levels.", levelCode = "C1")
+                    ),
+                    detectedFormat = VocabularyInputFormat.JSON
+                ),
+                targetDeck = null,
+                targetLanguage = "English",
+                allDecks = emptyList()
+            ),
+            decisions = emptyMap(),
+            languageVariant = "UK"
+        )
 
-        // Verify UK vs US spelling difference in curated dictionary (e.g. Candour / Candor)
-        val candourOffset = (0 until WordOfTheDayService.offlineDictionarySize).first { idx ->
-            WordOfTheDayService.candidateWordFor(variant = "UK", offset = idx) == "candour"
-        }
-        val ukCandour = WordOfTheDayService.curatedOfflineEntryFor(variant = "UK", offset = candourOffset)
-        val usCandor = WordOfTheDayService.curatedOfflineEntryFor(variant = "US", offset = candourOffset)
-        assertEquals("Candour", ukCandour.word)
-        assertEquals("Candor", usCandor.word)
-        assertEquals("UK", ukCandour.languageVariant)
-        assertEquals("US", usCandor.languageVariant)
+        val langSummaries = VocabularyEngine.buildLanguageFolderSummaries(
+            decks = vm.vocabularyDecks.value,
+            srsByDeck = vm.vocabularySrsByDeck.value
+        )
+        assertEquals(1, langSummaries.size)
+        assertEquals("English", langSummaries.single().language)
+        assertEquals(2, langSummaries.single().levelCount)
+        assertEquals(3, langSummaries.single().uniqueWords)
+
+        val levelSummaries = VocabularyEngine.buildLevelFolderSummaries(
+            language = "English",
+            decks = vm.vocabularyDecks.value,
+            srsByDeck = vm.vocabularySrsByDeck.value
+        )
+        assertEquals(listOf("A1", "C1"), levelSummaries.map { it.levelCode })
+
+        val compiled = VocabularyEngine.compileMixedVocabularyDeck(
+            language = "English",
+            decks = vm.vocabularyDecks.value,
+            srsByDeck = vm.vocabularySrsByDeck.value
+        )
+        assertEquals(3, compiled.virtualDeck.entries.size)
+        assertEquals(listOf("Candid", "Cogent", "Serene"), compiled.virtualDeck.entries.map { it.word })
+
+        // Write-back SRS rating & bookmark via originDeckId updates the real underlying decks
+        val cogentEntry = compiled.virtualDeck.entries.first { it.word == "Cogent" }
+        val cogentOriginDeckId = compiled.sourceByEntryId[cogentEntry.id]!!.originDeckId
+        assertEquals(c1Deck.id, cogentOriginDeckId)
+
+        vm.rateVocabularyEntry(cogentOriginDeckId, cogentEntry.id, SrsRating.GOOD)
+        vm.toggleVocabularyEntryBookmark(cogentOriginDeckId, cogentEntry.id)
+
+        val updatedCompiled = VocabularyEngine.compileMixedVocabularyDeck(
+            language = "English",
+            decks = vm.vocabularyDecks.value,
+            srsByDeck = vm.vocabularySrsByDeck.value
+        )
+        assertNotNull(updatedCompiled.srsByEntryId[cogentEntry.id])
+        assertTrue(updatedCompiled.virtualDeck.entries.first { it.id == cogentEntry.id }.isBookmarked)
+        assertTrue(vm.vocabularyDecks.value.first { it.id == c1Deck.id }.entries.first { it.id == cogentEntry.id }.isBookmarked)
+
+        // Resetting SRS for the language clears both A1 and C1 SRS maps
+        vm.rateVocabularyEntry(a1Deck.id, "e_a1_1", SrsRating.EASY)
+        vm.resetVocabularyLanguageSrs("English")
+        assertTrue(vm.vocabularySrsByDeck.value.isEmpty())
     }
 
     @Test

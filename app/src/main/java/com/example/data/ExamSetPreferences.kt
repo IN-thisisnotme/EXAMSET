@@ -397,6 +397,14 @@ class ExamSetPreferences(context: Context) {
         prefs.edit().putString(KEY_WORD_OF_THE_DAY_CACHE, rawJson).apply()
     }
 
+    fun getLanguageWordOfTheDayStatesJson(): String? {
+        return prefs.getString(KEY_WORD_OF_THE_DAY_LANGUAGE_STATES, null)?.ifBlank { null }
+    }
+
+    fun saveLanguageWordOfTheDayStatesJson(rawJson: String) {
+        prefs.edit().putString(KEY_WORD_OF_THE_DAY_LANGUAGE_STATES, rawJson).apply()
+    }
+
     fun getActivePromptPresetId(mode: com.example.model.PromptPresetMode): String? {
         return prefs.getString("$KEY_ACTIVE_PROMPT_PRESET_PREFIX${mode.code}", null)?.ifBlank { null }
     }
@@ -430,6 +438,7 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_VOCABULARY_SRS = "key_vocabulary_srs_v1"
         private const val KEY_PREFERRED_ENGLISH_VARIANT = "key_vocab_preferred_english_variant_v1"
         private const val KEY_WORD_OF_THE_DAY_CACHE = "key_vocab_wotd_cache_v1"
+        private const val KEY_WORD_OF_THE_DAY_LANGUAGE_STATES = "key_vocab_wotd_lang_states_v1"
         private const val KEY_ACTIVE_PROMPT_PRESET_PREFIX = "key_active_prompt_preset_"
     }
 }

@@ -1467,8 +1467,12 @@ fun HomeScreen(
                 viewModel.selectTab(5)
             },
             onChangeEnglishVariant = { variant -> viewModel.setPreferredEnglishVariant(variant) },
-            onRefreshWordOfTheDay = { cycleNext -> viewModel.loadWordOfTheDay(forceRefresh = true, cycleNext = cycleNext) },
-            onSaveWordOfTheDay = { entry -> viewModel.saveWordOfTheDayToHub(entry) },
+            onActiveLanguageChanged = { language ->
+                viewModel.loadWordOfTheDayForLanguage(language = language, cycleNext = false)
+            },
+            onCycleNextWordOfTheDay = { language ->
+                viewModel.loadWordOfTheDayForLanguage(language = language, cycleNext = true)
+            },
             onCommitImport = { targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions, langVariant ->
                 viewModel.commitVocabularyImport(
                     targetDeckId = targetId,
@@ -1499,7 +1503,11 @@ fun HomeScreen(
             onDeleteEntry = { deckId, entryId -> viewModel.deleteVocabularyEntry(deckId, entryId) },
             onRateEntry = { deckId, entryId, rating -> viewModel.rateVocabularyEntry(deckId, entryId, rating) },
             onResetDeckSrs = { deckId -> viewModel.resetVocabularyDeckSrs(deckId) },
-            onApplyAuditFixes = { deckId, findings -> viewModel.applyVocabularyAuditFixes(deckId, findings) }
+            onResetLanguageSrs = { language -> viewModel.resetVocabularyLanguageSrs(language) },
+            onApplyAuditFixes = { deckId, findings -> viewModel.applyVocabularyAuditFixes(deckId, findings) },
+            onApplyMixedAuditFixes = { originByEntryId, findings ->
+                viewModel.applyMixedVocabularyAuditFixes(originByEntryId, findings)
+            }
         )
     }
 

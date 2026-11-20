@@ -164,13 +164,15 @@ fun VocabularyRecallView(
                         shape = RoundedCornerShape(8.dp),
                         color = colors.tealLight,
                         border = BorderStroke(0.9.dp, colors.teal.copy(alpha = 0.5f)),
-                        modifier = Modifier.testTag("vocab_recall_direction_toggle")
+                        modifier = Modifier
+                            .heightIn(min = 44.dp)
+                            .testTag("vocab_recall_direction_toggle")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.tealDark, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = colors.tealDark, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = direction.label,
@@ -186,28 +188,35 @@ fun VocabularyRecallView(
                         shape = RoundedCornerShape(8.dp),
                         color = if (cramAll) colors.amberLight else colors.surfaceVariant.copy(alpha = 0.5f),
                         border = BorderStroke(0.8.dp, if (cramAll) colors.amber else colors.border),
-                        modifier = Modifier.testTag("vocab_recall_cram_toggle")
+                        modifier = Modifier
+                            .heightIn(min = 44.dp)
+                            .testTag("vocab_recall_cram_toggle")
                     ) {
-                        Text(
-                            text = if (cramAll) "Mode: All (${deck.entries.size})" else "Mode: Due & New (${stats.actionableCount})",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (cramAll) colors.amber else colors.inkBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-                        )
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = if (cramAll) "Mode: All (${deck.entries.size})" else "Mode: Due & New (${stats.actionableCount})",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (cramAll) colors.amber else colors.inkBold
+                            )
+                        }
                     }
 
                     Surface(
                         onClick = { shuffled = !shuffled },
                         shape = RoundedCornerShape(8.dp),
                         color = if (shuffled) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.45f),
-                        border = BorderStroke(0.8.dp, if (shuffled) colors.teal else colors.border)
+                        border = BorderStroke(0.8.dp, if (shuffled) colors.teal else colors.border),
+                        modifier = Modifier.heightIn(min = 44.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Shuffle, contentDescription = "Shuffle recall queue", tint = if (shuffled) colors.tealDark else colors.inkMuted, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.Shuffle, contentDescription = "Shuffle recall queue", tint = if (shuffled) colors.tealDark else colors.inkMuted, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (shuffled) "Shuffled" else "A -> Z",
@@ -223,13 +232,14 @@ fun VocabularyRecallView(
                             onClick = { showResetConfirm = true },
                             shape = RoundedCornerShape(8.dp),
                             color = colors.surfaceVariant.copy(alpha = 0.45f),
-                            border = BorderStroke(0.8.dp, colors.border)
+                            border = BorderStroke(0.8.dp, colors.border),
+                            modifier = Modifier.heightIn(min = 44.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Reset spaced repetition", tint = colors.inkMuted, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Refresh, contentDescription = "Reset spaced repetition", tint = colors.inkMuted, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Reset", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.inkMuted)
                             }
@@ -712,7 +722,8 @@ fun VocabularyRecallView(
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = fg,
-                                    maxLines = 1,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center
                                 )
                                 Text(

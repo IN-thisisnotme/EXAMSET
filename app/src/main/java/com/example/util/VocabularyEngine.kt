@@ -1,13 +1,17 @@
 package com.example.util
 
+import com.example.model.CompiledMixedVocabularyDeck
 import com.example.model.DeckSrsStats
 import com.example.model.FlashcardSrsState
 import com.example.model.FlashcardSrsStatus
+import com.example.model.VocabularyCompiledSource
 import com.example.model.VocabularyDeck
 import com.example.model.VocabularyEntry
 import com.example.model.VocabularyExample
-import com.example.model.VocabularyLevel
+import com.example.model.VocabularyLanguageFolderSummary
 import com.example.model.VocabularyLanguageVariants
+import com.example.model.VocabularyLevel
+import com.example.model.VocabularyLevelFolderSummary
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -1937,6 +1941,217 @@ object VocabularyEngine {
             usageNote = finding.suggestedUsageNote?.takeIf { it.isNotBlank() } ?: entry.usageNote,
             examples = finding.suggestedExamples?.takeIf { it.isNotEmpty() } ?: entry.examples,
             updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    fun mixedVirtualDeckId(language: String): String {
+        val clean = language.trim().lowercase(Locale.ROOT).ifBlank { "english" }
+        return "mixed_vocab_$clean"
+    }
+
+    fun buildLanguageFolderSummaries(
+        decks: List<VocabularyDeck>,
+        srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
+        nowMillis: Long = System.currentTimeMillis(),
+        wotdThreshold: Int = 10
+    ): List<VocabularyLanguageFolderSummary> {
+        if (decks.isEmpty()) return emptyList()
+        val grouped = decks.groupBy { deck ->
+            deck.language.trim().ifBlank { "English" }.lowercase(Locale.ROOT)
+        }
+        return grouped.values.map { langDecks ->
+            val displayLanguage = langDecks
+                .map { it.language.trim().ifBlank { "English" } }
+                .groupingBy { it }
+                .eachCount()
+                .maxByOrNull { it.value }?.key ?: "English"
+            val compiled = compileMixedVocabularyDeck(displayLanguage, langDecks, srsByDeck)
+            val compiledStats = computeDeckSrsStats(compiled.virtualDeck, compiled.srsByEntryId, nowMillis)
+            val distinctLevels = langDecks.map { d ->
+                val lvl = d.resolvedLevel()
+                if (lvl == VocabularyLevel.CUSTOM && d.customLevelLabel.isNotBlank()) {
+                    "CUSTOM:${d.customLevelLabel.trim().lowercase(Locale.ROOT)}"
+                } else {
+                    lvl.code
+                }
+            }.distinct().size
+
+            VocabularyLanguageFolderSummary(
+                language = displayLanguage,
+                deckCount = langDecks.size,
+                levelCount = distinctLevels,
+                totalWords = langDecks.sumOf { it.entries.size },
+                uniqueWords = compiled.virtualDeck.entries.size,
+                dueCount = compiledStats.dueCount,
+                masteredCount = compiledStats.masteredCount,
+                wotdUnlocked = compiled.virtualDeck.entries.size >= wotdThreshold
+            )
+        }.sortedBy { it.language.lowercase(Locale.ROOT) }
+    }
+
+    fun buildLevelFolderSummaries(
+        language: String,
+        decks: List<VocabularyDeck>,
+        srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): List<VocabularyLevelFolderSummary> {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val langDecks = decks.filter { it.language.trim().ifBlank { "English" }.equals(cleanLang, ignoreCase = true) }
+        if (langDecks.isEmpty()) return emptyList()
+
+        val grouped = langDecks.groupBy { d ->
+            val lvl = d.resolvedLevel()
+            if (lvl == VocabularyLevel.CUSTOM && d.customLevelLabel.isNotBlank()) {
+                "CUSTOM:${d.customLevelLabel.trim().lowercase(Locale.ROOT)}"
+            } else {
+                lvl.code
+            }
+        }
+
+        return grouped.values.map { levelDecks ->
+            val rep = levelDecks.first()
+            val lvl = rep.resolvedLevel()
+            val customLabel = if (lvl == VocabularyLevel.CUSTOM) {
+                levelDecks.firstOrNull { it.customLevelLabel.isNotBlank() }?.customLevelLabel.orEmpty()
+            } else ""
+            val uniqueMap = linkedMapOf<String, Pair<VocabularyEntry, FlashcardSrsState?>>()
+            levelDecks.sortedByDescending { it.updatedAt }.forEach { deck ->
+                val deckSrs = srsByDeck[deck.id].orEmpty()
+                deck.entries.forEach { entry ->
+                    val key = entry.normalizedWordKey().ifBlank { entry.id }
+                    if (!uniqueMap.containsKey(key)) {
+                        uniqueMap[key] = entry to deckSrs[entry.id]
+                    }
+                }
+            }
+            val virtualForStats = VocabularyDeck(
+                id = "lvl_${cleanLang}_${lvl.code}",
+                title = lvl.displayTitle(customLabel),
+                language = cleanLang,
+                levelCode = lvl.code,
+                customLevelLabel = customLabel,
+                entries = uniqueMap.values.map { it.first }
+            )
+            val combinedSrs = uniqueMap.values.mapNotNull { (entry, state) ->
+                state?.let { entry.id to it }
+            }.toMap()
+            val stats = computeDeckSrsStats(virtualForStats, combinedSrs, nowMillis)
+
+            VocabularyLevelFolderSummary(
+                language = cleanLang,
+                levelCode = lvl.code,
+                customLevelLabel = customLabel,
+                levelTitle = lvl.displayTitle(customLabel),
+                compactBadge = lvl.compactBadge(customLabel),
+                sortRank = lvl.sortRank,
+                deckCount = levelDecks.size,
+                totalWords = levelDecks.sumOf { it.entries.size },
+                uniqueWords = uniqueMap.size,
+                dueCount = stats.dueCount,
+                masteredCount = stats.masteredCount
+            )
+        }.sortedWith(
+            compareBy<VocabularyLevelFolderSummary>(
+                { it.sortRank },
+                { it.customLevelLabel.lowercase(Locale.ROOT) },
+                { it.levelTitle.lowercase(Locale.ROOT) }
+            )
+        )
+    }
+
+    /**
+     * Compiles all vocabulary across every level subfolder of [language] into one
+     * deduplicated, live-synced Mixed Vocabulary deck while preserving each entry's
+     * origin deck ID for write-back SRS rating, bookmarking, deletion, and auditing.
+     */
+    fun compileMixedVocabularyDeck(
+        language: String,
+        decks: List<VocabularyDeck>,
+        srsByDeck: Map<String, Map<String, FlashcardSrsState>>
+    ): CompiledMixedVocabularyDeck {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val langDecks = decks
+            .filter { it.language.trim().ifBlank { "English" }.equals(cleanLang, ignoreCase = true) }
+            .sortedWith(
+                compareBy<VocabularyDeck>(
+                    { it.resolvedLevel().sortRank },
+                    { -it.updatedAt },
+                    { it.title.lowercase(Locale.ROOT) }
+                )
+            )
+
+        val dedupedByKey = linkedMapOf<String, Pair<VocabularyEntry, VocabularyCompiledSource>>()
+        val srsByEntryId = mutableMapOf<String, FlashcardSrsState>()
+        val levelKeys = mutableSetOf<String>()
+
+        langDecks.forEach { deck ->
+            val deckLevel = deck.resolvedLevel()
+            val levelKey = if (deckLevel == VocabularyLevel.CUSTOM && deck.customLevelLabel.isNotBlank()) {
+                "CUSTOM:${deck.customLevelLabel.trim().lowercase(Locale.ROOT)}"
+            } else {
+                deckLevel.code
+            }
+            if (deck.entries.isNotEmpty()) {
+                levelKeys.add(levelKey)
+            }
+            val deckSrs = srsByDeck[deck.id].orEmpty()
+            deck.entries.forEach { entry ->
+                val wordKey = entry.normalizedWordKey().ifBlank { entry.id }
+                val existing = dedupedByKey[wordKey]
+                if (existing == null) {
+                    dedupedByKey[wordKey] = entry to VocabularyCompiledSource(
+                        originDeckId = deck.id,
+                        originDeckTitle = deck.title,
+                        originLevelCode = deck.levelCode,
+                        originCustomLevelLabel = deck.customLevelLabel
+                    )
+                    deckSrs[entry.id]?.let { srsByEntryId[entry.id] = it }
+                } else {
+                    // Preserve whichever entry has richer content or existing SRS progress
+                    val existingSrs = srsByEntryId[existing.first.id]
+                    val incomingSrs = deckSrs[entry.id]
+                    if (existingSrs == null && incomingSrs != null) {
+                        srsByEntryId[existing.first.id] = incomingSrs
+                    }
+                }
+            }
+        }
+
+        val sortedEntries = dedupedByKey.values
+            .map { it.first }
+            .sortedWith(
+                compareBy<VocabularyEntry>(
+                    { it.word.trim().lowercase(Locale.ROOT) },
+                    { it.partOfSpeech.trim().lowercase(Locale.ROOT) },
+                    { it.createdAt }
+                )
+            )
+        val sourceMap = dedupedByKey.values.associate { (entry, src) -> entry.id to src }
+        val dominantVariant = langDecks
+            .mapNotNull { it.languageVariant.trim().ifBlank { null } }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }?.key.orEmpty()
+
+        val virtualDeck = VocabularyDeck(
+            id = mixedVirtualDeckId(cleanLang),
+            title = "$cleanLang • Mixed Vocabulary",
+            language = cleanLang,
+            languageVariant = dominantVariant,
+            translationLanguage = "",
+            levelCode = VocabularyLevel.MIXED.code,
+            customLevelLabel = "",
+            domain = "${levelKeys.size.coerceAtLeast(1)} Level(s) Compiled",
+            entries = sortedEntries
+        )
+
+        return CompiledMixedVocabularyDeck(
+            language = cleanLang,
+            virtualDeck = virtualDeck,
+            sourceByEntryId = sourceMap,
+            srsByEntryId = srsByEntryId,
+            compiledLevelCount = levelKeys.size,
+            compiledDeckCount = langDecks.count { it.entries.isNotEmpty() }
         )
     }
 }

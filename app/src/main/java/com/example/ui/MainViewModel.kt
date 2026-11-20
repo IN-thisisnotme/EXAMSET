@@ -260,9 +260,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _preferredEnglishVariant = MutableStateFlow(appPreferences.getPreferredEnglishVariant())
     val preferredEnglishVariant: StateFlow<String> = _preferredEnglishVariant.asStateFlow()
 
-    private var wotdOffset = 0
+    private var activeWotdLanguage: String? = null
     private val _wordOfTheDayState = MutableStateFlow<WordOfTheDayUiState>(
-        WordOfTheDayUiState.Loading(_preferredEnglishVariant.value)
+        WordOfTheDayUiState.Hidden(language = "", currentUniqueWords = 0)
     )
     val wordOfTheDayState: StateFlow<WordOfTheDayUiState> = _wordOfTheDayState.asStateFlow()
 
@@ -272,9 +272,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     fun openVocabularyHub(languageFilter: String? = null) {
-        vocabularyHubInitialLanguage = languageFilter?.trim()?.ifBlank { null }
+        val cleanLang = languageFilter?.trim()?.ifBlank { null }?.takeUnless { it.equals("All", ignoreCase = true) }
+        vocabularyHubInitialLanguage = cleanLang
         showVocabularyHub = true
-        loadWordOfTheDay(forceRefresh = false, cycleNext = false)
+        loadWordOfTheDayForLanguage(cleanLang, cycleNext = false)
     }
 
     fun closeVocabularyHub() {
@@ -290,76 +291,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             vocabularyPromptState.languageVariant = norm
             appPreferences.saveVocabularyPromptDraft(vocabularyPromptState.toConfig())
         }
-        loadWordOfTheDay(forceRefresh = false, cycleNext = false)
+        refreshActiveWordOfTheDay()
     }
 
-    fun loadWordOfTheDay(forceRefresh: Boolean = false, cycleNext: Boolean = false) {
-        if (cycleNext) wotdOffset += 1
-        val variant = _preferredEnglishVariant.value
-        _wordOfTheDayState.value = WordOfTheDayUiState.Loading(variant)
-        viewModelScope.launch {
-            _wordOfTheDayState.value = WordOfTheDayService.loadDailyWord(
-                prefs = appPreferences,
-                decks = _vocabularyDecks.value,
-                variant = variant,
-                offset = wotdOffset,
-                forceRefresh = forceRefresh
-            )
-        }
+    fun loadWordOfTheDayForLanguage(language: String?, cycleNext: Boolean = false) {
+        val cleanLang = language?.trim()?.ifBlank { null }?.takeUnless { it.equals("All", ignoreCase = true) }
+        activeWotdLanguage = cleanLang
+        _wordOfTheDayState.value = WordOfTheDayService.resolveForLanguage(
+            prefs = appPreferences,
+            decks = _vocabularyDecks.value,
+            language = cleanLang,
+            preferredEnglishVariant = _preferredEnglishVariant.value,
+            cycleNext = cycleNext
+        )
     }
 
-    fun saveWordOfTheDayToHub(entry: VocabularyEntry): VocabularyDeck {
-        val normVariant = _preferredEnglishVariant.value
-        val existingKey = entry.normalizedWordKey()
-        val alreadyDeck = _vocabularyDecks.value.firstOrNull { deck ->
-            deck.entries.any { it.normalizedWordKey() == existingKey }
+    private fun refreshActiveWordOfTheDay() {
+        val lang = activeWotdLanguage
+        if (lang == null) {
+            _wordOfTheDayState.value = WordOfTheDayUiState.Hidden(language = "", currentUniqueWords = 0)
+            return
         }
-        if (alreadyDeck != null) {
-            _statusMessage.value = "\"${entry.word}\" is already saved in \"${alreadyDeck.title}\""
-            return alreadyDeck
-        }
-
-        val matchingLevelDeck = _vocabularyDecks.value
-            .filter {
-                VocabularyLanguageVariants.isEnglish(it.language) &&
-                    it.levelCode.equals(entry.levelCode, ignoreCase = true)
-            }
-            .sortedByDescending { it.languageVariant.equals(normVariant, ignoreCase = true) }
-            .firstOrNull()
-
-        val parse = com.example.util.VocabularyParseResult(
-            entries = listOf(entry.copy(language = "English", languageVariant = normVariant)),
-            detectedFormat = com.example.util.VocabularyInputFormat.JSON,
-            detectedLanguages = listOf("English"),
-            detectedVariant = normVariant
+        _wordOfTheDayState.value = WordOfTheDayService.resolveForLanguage(
+            prefs = appPreferences,
+            decks = _vocabularyDecks.value,
+            language = lang,
+            preferredEnglishVariant = _preferredEnglishVariant.value,
+            cycleNext = false
         )
-        val analysis = VocabularyEngine.analyzeVocabularyImport(
-            parseResult = parse,
-            targetDeck = matchingLevelDeck,
-            targetLanguage = "English",
-            allDecks = _vocabularyDecks.value,
-            checkAcrossSameLanguage = true
-        )
-        val savedDeck = commitVocabularyImport(
-            targetDeckId = matchingLevelDeck?.id,
-            title = matchingLevelDeck?.title ?: "English ($normVariant) • ${VocabularyLevel.fromCode(entry.levelCode).displayTitle()}",
-            language = "English",
-            languageVariant = normVariant,
-            translationLanguage = "",
-            levelCode = entry.levelCode,
-            customLevelLabel = entry.customLevelLabel,
-            domain = "General",
-            analysis = analysis,
-            decisions = emptyMap()
-        )
-        val currentWotd = _wordOfTheDayState.value
-        if (currentWotd is WordOfTheDayUiState.Ready && currentWotd.entry.normalizedWordKey() == existingKey) {
-            _wordOfTheDayState.value = currentWotd.copy(
-                existingDeckId = savedDeck.id,
-                existingDeckTitle = savedDeck.title
-            )
-        }
-        return savedDeck
     }
 
     fun existingVocabularyWordsForLanguage(language: String): List<String> {
@@ -468,6 +427,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         _vocabularyDecks.value = decksMutable
         appPreferences.saveVocabularyDecks(decksMutable)
+        refreshActiveWordOfTheDay()
         _statusMessage.value = "Saved \"${updatedTargetDeck.title}\" (${updatedTargetDeck.entries.size} words)"
         return updatedTargetDeck
     }
@@ -612,6 +572,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         _vocabularyDecks.value = decksMutable
         appPreferences.saveVocabularyDecks(decksMutable)
+        refreshActiveWordOfTheDay()
         val totalAdded = addedEntriesByDeckId.values.sumOf { it.size }
         _statusMessage.value = "Routed $totalAdded word(s) across ${touchedDecks.size} set(s)"
         return touchedDecks
@@ -645,6 +606,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         _vocabularyDecks.value = updated
         appPreferences.saveVocabularyDecks(updated)
+        refreshActiveWordOfTheDay()
     }
 
     fun deleteVocabularyDeck(deckId: String) {
@@ -654,6 +616,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updatedSrs = _vocabularySrsByDeck.value.toMutableMap().apply { remove(deckId) }
         _vocabularySrsByDeck.value = updatedSrs
         appPreferences.saveAllVocabularySrsMaps(updatedSrs)
+        refreshActiveWordOfTheDay()
     }
 
     fun toggleVocabularyEntryBookmark(deckId: String, entryId: String) {
@@ -685,6 +648,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _vocabularySrsByDeck.value = allSrs
             appPreferences.saveAllVocabularySrsMaps(allSrs)
         }
+        refreshActiveWordOfTheDay()
     }
 
     fun rateVocabularyEntry(deckId: String, entryId: String, rating: SrsRating) {
@@ -710,6 +674,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.saveAllVocabularySrsMaps(allSrs)
     }
 
+    fun resetVocabularyLanguageSrs(language: String) {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val langDeckIds = _vocabularyDecks.value
+            .filter { it.language.trim().ifBlank { "English" }.equals(cleanLang, ignoreCase = true) }
+            .map { it.id }
+            .toSet()
+        if (langDeckIds.isEmpty()) return
+        val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+        langDeckIds.forEach { allSrs.remove(it) }
+        _vocabularySrsByDeck.value = allSrs
+        appPreferences.saveAllVocabularySrsMaps(allSrs)
+        _statusMessage.value = "Reset spaced repetition progress for $cleanLang"
+    }
+
     fun applyVocabularyAuditFixes(deckId: String, findings: List<VocabularyAuditFinding>) {
         if (findings.isEmpty()) return
         val findingByEntryId = findings.associateBy { it.entryId }
@@ -725,6 +703,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         _vocabularyDecks.value = updated
         appPreferences.saveVocabularyDecks(updated)
+        refreshActiveWordOfTheDay()
+        _statusMessage.value = "Applied ${findings.size} vocabulary audit fix(es)"
+    }
+
+    fun applyMixedVocabularyAuditFixes(
+        originDeckIdByEntryId: Map<String, String>,
+        findings: List<VocabularyAuditFinding>
+    ) {
+        if (findings.isEmpty()) return
+        val findingsByDeck = findings.groupBy { finding ->
+            originDeckIdByEntryId[finding.entryId] ?: ""
+        }.filterKeys { it.isNotBlank() }
+        if (findingsByDeck.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val updated = _vocabularyDecks.value.map { deck ->
+            val deckFindings = findingsByDeck[deck.id] ?: return@map deck
+            val findingByEntryId = deckFindings.associateBy { it.entryId }
+            deck.copy(
+                entries = deck.entries.map { entry ->
+                    val f = findingByEntryId[entry.id]
+                    if (f != null) VocabularyEngine.applyAuditFinding(entry, f) else entry
+                },
+                updatedAt = now
+            )
+        }
+        _vocabularyDecks.value = updated
+        appPreferences.saveVocabularyDecks(updated)
+        refreshActiveWordOfTheDay()
         _statusMessage.value = "Applied ${findings.size} vocabulary audit fix(es)"
     }
 

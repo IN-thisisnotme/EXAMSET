@@ -440,3 +440,44 @@ enum class VocabularyRecallDirection(val label: String, val subtitle: String) {
     WORD_TO_MEANING("Word -> Meaning", "Recognition recall"),
     MEANING_TO_WORD("Meaning -> Word", "Active production")
 }
+
+data class VocabularyCompiledSource(
+    val originDeckId: String,
+    val originDeckTitle: String,
+    val originLevelCode: String,
+    val originCustomLevelLabel: String
+)
+
+data class CompiledMixedVocabularyDeck(
+    val language: String,
+    val virtualDeck: VocabularyDeck,
+    val sourceByEntryId: Map<String, VocabularyCompiledSource>,
+    val srsByEntryId: Map<String, FlashcardSrsState>,
+    val compiledLevelCount: Int,
+    val compiledDeckCount: Int
+)
+
+data class VocabularyLevelFolderSummary(
+    val language: String,
+    val levelCode: String,
+    val customLevelLabel: String,
+    val levelTitle: String,
+    val compactBadge: String,
+    val sortRank: Int,
+    val deckCount: Int,
+    val totalWords: Int,
+    val uniqueWords: Int,
+    val dueCount: Int,
+    val masteredCount: Int
+)
+
+data class VocabularyLanguageFolderSummary(
+    val language: String,
+    val deckCount: Int,
+    val levelCount: Int,
+    val totalWords: Int,
+    val uniqueWords: Int,
+    val dueCount: Int,
+    val masteredCount: Int,
+    val wotdUnlocked: Boolean
+)
