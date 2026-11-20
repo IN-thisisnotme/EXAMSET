@@ -130,12 +130,18 @@ import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
 import com.example.model.KnowledgeFormatRule
 import com.example.model.KnowledgeLayerOrder
+import com.example.model.KnowledgePromptConfig
 import com.example.model.KnowledgeTransformAction
+import com.example.model.PromptPreset
+import com.example.model.PromptPresetMode
 import com.example.model.SrsRating
 import com.example.ui.KnowledgeEditorDraft
 import com.example.ui.components.LatexText
 import com.example.ui.components.MathFormulaParser
 import com.example.ui.components.MathFormulaView
+import com.example.ui.components.PromptPresetBar
+import com.example.ui.components.PromptPresetOverlays
+import com.example.ui.components.rememberPromptPresetDialogState
 import com.example.ui.theme.ExamTheme
 import com.example.util.StudyNoteBlock
 import com.example.util.StudyNoteParser
@@ -195,7 +201,17 @@ fun KnowledgeStudioEditorScreen(
         linkedPaperId: Long?,
         formatRule: KnowledgeFormatRule
     ) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    promptPresets: List<PromptPreset> = emptyList(),
+    activeKnowledgePresetId: String? = null,
+    onSelectKnowledgePreset: (PromptPreset) -> Unit = {},
+    onSaveNewKnowledgePreset: (String, KnowledgePromptConfig) -> Unit = { _, _ -> },
+    onUpdateKnowledgePreset: (String, String?, KnowledgePromptConfig) -> Unit = { _, _, _ -> },
+    onRenamePromptPreset: (String, String) -> Unit = { _, _ -> },
+    onDuplicatePromptPreset: (String) -> Unit = {},
+    onTogglePinPromptPreset: (String) -> Unit = {},
+    onDeletePromptPreset: (String) -> Unit = {},
+    onClearKnowledgePreset: () -> Unit = {}
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
@@ -240,6 +256,10 @@ fun KnowledgeStudioEditorScreen(
 
     var activeEditorTab by remember(draft) { mutableIntStateOf(0) } // 0: Paste / Input, 1: AI Prompt Generator
     var promptCopied by remember(draft) { mutableStateOf(false) }
+    var showKnowledgePromptAdvanced by remember(draft) { mutableStateOf(true) }
+    var localActivePresetId by remember(draft, activeKnowledgePresetId) { mutableStateOf(activeKnowledgePresetId) }
+    var clearedPromptUndo by remember(draft) { mutableStateOf<Triple<KnowledgePromptConfig, String, String?>?>(null) }
+    val knowledgePresetDialogState = rememberPromptPresetDialogState()
     var showMetadataPanel by remember(draft) { mutableStateOf(false) }
     var isPreviewMode by remember(draft) {
         mutableStateOf((initialNote?.rawContent ?: draft.prefillContent).isNotBlank())
@@ -1087,7 +1107,11 @@ fun KnowledgeStudioEditorScreen(
                                     OutlinedButton(
                                         onClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            clearedPromptUndo = Triple(promptState.toConfig(), promptState.topic, localActivePresetId)
                                             promptState.reset()
+                                            localActivePresetId = null
+                                            onClearKnowledgePreset()
+                                            showKnowledgePromptAdvanced = true
                                             promptCopied = false
                                         },
                                         shape = RoundedCornerShape(8.dp),
@@ -1100,6 +1124,78 @@ fun KnowledgeStudioEditorScreen(
                                     }
                                 }
                             }
+                        }
+
+                        item(key = "knowledge_sheet_presets_bar") {
+                            val currentCfg = promptState.toConfig()
+                            val activePreset = promptPresets.firstOrNull {
+                                it.id == localActivePresetId && it.mode == PromptPresetMode.KNOWLEDGE_SET
+                            }
+                            val isModified = activePreset != null && activePreset.knowledgeConfig?.normalized() != currentCfg
+                            val matchingPreset = promptPresets.firstOrNull {
+                                it.mode == PromptPresetMode.KNOWLEDGE_SET && it.knowledgeConfig?.normalized() == currentCfg
+                            }
+                            PromptPresetBar(
+                                mode = PromptPresetMode.KNOWLEDGE_SET,
+                                presets = promptPresets,
+                                activePreset = activePreset,
+                                isModified = isModified,
+                                suggestedPresetName = currentCfg.suggestName(),
+                                matchingConfigPreset = matchingPreset,
+                                canUndoClear = clearedPromptUndo != null,
+                                showAdvancedSettings = showKnowledgePromptAdvanced,
+                                onToggleAdvancedSettings = { showKnowledgePromptAdvanced = !showKnowledgePromptAdvanced },
+                                onSelectPreset = { preset ->
+                                    preset.knowledgeConfig?.let { cfg ->
+                                        promptState.applyConfig(cfg, preserveTopic = true)
+                                    }
+                                    localActivePresetId = preset.id
+                                    clearedPromptUndo = null
+                                    showKnowledgePromptAdvanced = false
+                                    onSelectKnowledgePreset(preset)
+                                    promptCopied = false
+                                    Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+                                },
+                                onSaveNewPreset = { name ->
+                                    onSaveNewKnowledgePreset(name, currentCfg)
+                                    Toast.makeText(context, "Saved preset \"$name\"", Toast.LENGTH_SHORT).show()
+                                },
+                                onUpdateExistingPreset = { presetId, newName ->
+                                    onUpdateKnowledgePreset(presetId, newName, currentCfg)
+                                    Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
+                                },
+                                onRenamePreset = { presetId, newName ->
+                                    onRenamePromptPreset(presetId, newName)
+                                    Toast.makeText(context, "Renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
+                                },
+                                onDuplicatePreset = { presetId ->
+                                    onDuplicatePromptPreset(presetId)
+                                    Toast.makeText(context, "Preset duplicated", Toast.LENGTH_SHORT).show()
+                                },
+                                onTogglePinPreset = onTogglePinPromptPreset,
+                                onDeletePreset = { presetId ->
+                                    if (localActivePresetId == presetId) localActivePresetId = null
+                                    onDeletePromptPreset(presetId)
+                                    Toast.makeText(context, "Preset deleted", Toast.LENGTH_SHORT).show()
+                                },
+                                onClearForm = {
+                                    clearedPromptUndo = Triple(currentCfg, promptState.topic, localActivePresetId)
+                                    promptState.reset()
+                                    localActivePresetId = null
+                                    onClearKnowledgePreset()
+                                    showKnowledgePromptAdvanced = true
+                                    promptCopied = false
+                                },
+                                onUndoClear = {
+                                    clearedPromptUndo?.let { (cfg, prevTopic, prevId) ->
+                                        promptState.applyConfig(cfg, preserveTopic = false)
+                                        promptState.topic = prevTopic
+                                        localActivePresetId = prevId
+                                        clearedPromptUndo = null
+                                    }
+                                },
+                                externalDialogState = knowledgePresetDialogState
+                            )
                         }
 
                         knowledgePromptBuilderItems(
@@ -1117,9 +1213,75 @@ fun KnowledgeStudioEditorScreen(
                                 Toast.makeText(context, "Knowledge prompt copied!", Toast.LENGTH_SHORT).show()
                             },
                             onOpenKnowledgeStudio = { _, _, _, _ -> switchToInputTab() },
-                            showFooterButtons = false
+                            showFooterButtons = false,
+                            showAdvancedSettings = showKnowledgePromptAdvanced,
+                            onToggleAdvancedSettings = { showKnowledgePromptAdvanced = !showKnowledgePromptAdvanced }
                         )
                     }
+
+                    val sheetCurrentCfg = promptState.toConfig()
+                    val sheetActivePreset = promptPresets.firstOrNull {
+                        it.id == localActivePresetId && it.mode == PromptPresetMode.KNOWLEDGE_SET
+                    }
+                    val sheetIsModified = sheetActivePreset != null && sheetActivePreset.knowledgeConfig?.normalized() != sheetCurrentCfg
+                    val sheetMatchingPreset = promptPresets.firstOrNull {
+                        it.mode == PromptPresetMode.KNOWLEDGE_SET && it.knowledgeConfig?.normalized() == sheetCurrentCfg
+                    }
+                    PromptPresetOverlays(
+                        dialogState = knowledgePresetDialogState,
+                        mode = PromptPresetMode.KNOWLEDGE_SET,
+                        presets = promptPresets,
+                        activePreset = sheetActivePreset,
+                        isModified = sheetIsModified,
+                        suggestedPresetName = sheetCurrentCfg.suggestName(),
+                        matchingConfigPreset = sheetMatchingPreset,
+                        onSelectPreset = { preset ->
+                            preset.knowledgeConfig?.let { cfg ->
+                                promptState.applyConfig(cfg, preserveTopic = true)
+                            }
+                            localActivePresetId = preset.id
+                            clearedPromptUndo = null
+                            showKnowledgePromptAdvanced = false
+                            onSelectKnowledgePreset(preset)
+                            promptCopied = false
+                            Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+                        },
+                        onSaveNewPreset = { name ->
+                            onSaveNewKnowledgePreset(name, sheetCurrentCfg)
+                            Toast.makeText(context, "Saved preset \"$name\"", Toast.LENGTH_SHORT).show()
+                        },
+                        onUpdateExistingPreset = { presetId, newName ->
+                            onUpdateKnowledgePreset(presetId, newName, sheetCurrentCfg)
+                            Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
+                        },
+                        onRenamePreset = { presetId, newName ->
+                            onRenamePromptPreset(presetId, newName)
+                            Toast.makeText(context, "Renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
+                        },
+                        onDuplicatePreset = { presetId ->
+                            onDuplicatePromptPreset(presetId)
+                            Toast.makeText(context, "Preset duplicated", Toast.LENGTH_SHORT).show()
+                        },
+                        onTogglePinPreset = onTogglePinPromptPreset,
+                        onDeletePreset = { presetId ->
+                            if (localActivePresetId == presetId) localActivePresetId = null
+                            onDeletePromptPreset(presetId)
+                            Toast.makeText(context, "Preset deleted", Toast.LENGTH_SHORT).show()
+                        },
+                        onQuickCopyPreset = { preset ->
+                            preset.knowledgeConfig?.let { cfg ->
+                                promptState.applyConfig(cfg, preserveTopic = true)
+                            }
+                            localActivePresetId = preset.id
+                            clearedPromptUndo = null
+                            showKnowledgePromptAdvanced = false
+                            onSelectKnowledgePreset(preset)
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clipboard?.setPrimaryClip(ClipData.newPlainText(preset.name, promptState.buildPrompt()))
+                            promptCopied = true
+                            Toast.makeText(context, "Copied prompt from \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
             }
         }

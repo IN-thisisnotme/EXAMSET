@@ -218,6 +218,77 @@ class ExamSetPreferences(context: Context) {
         }
     }
 
+    fun getPromptPresets(): List<com.example.model.PromptPreset> {
+        val raw = prefs.getString(KEY_PROMPT_PRESETS, null)
+        return com.example.model.PromptPreset.deserializeList(raw)
+    }
+
+    fun savePromptPresets(presets: List<com.example.model.PromptPreset>) {
+        prefs.edit().putString(KEY_PROMPT_PRESETS, com.example.model.PromptPreset.serializeList(presets)).apply()
+    }
+
+    fun getPromptPresetsRawJson(): String {
+        return prefs.getString(KEY_PROMPT_PRESETS, "[]") ?: "[]"
+    }
+
+    fun getQuestionPromptDraft(): com.example.model.QuestionPromptConfig? {
+        val raw = prefs.getString(KEY_QUESTION_PROMPT_DRAFT, null) ?: return null
+        return runCatching {
+            com.example.model.QuestionPromptConfig.fromJson(JSONObject(raw))
+        }.getOrNull()
+    }
+
+    fun saveQuestionPromptDraft(config: com.example.model.QuestionPromptConfig) {
+        prefs.edit().putString(KEY_QUESTION_PROMPT_DRAFT, config.toJson().toString()).apply()
+    }
+
+    fun clearQuestionPromptDraft() {
+        prefs.edit().remove(KEY_QUESTION_PROMPT_DRAFT).apply()
+    }
+
+    fun getKnowledgePromptDraft(): com.example.model.KnowledgePromptConfig? {
+        val raw = prefs.getString(KEY_KNOWLEDGE_PROMPT_DRAFT, null) ?: return null
+        return runCatching {
+            com.example.model.KnowledgePromptConfig.fromJson(JSONObject(raw))
+        }.getOrNull()
+    }
+
+    fun saveKnowledgePromptDraft(config: com.example.model.KnowledgePromptConfig) {
+        prefs.edit().putString(KEY_KNOWLEDGE_PROMPT_DRAFT, config.toJson().toString()).apply()
+    }
+
+    fun clearKnowledgePromptDraft() {
+        prefs.edit().remove(KEY_KNOWLEDGE_PROMPT_DRAFT).apply()
+    }
+
+    fun getFlashcardPromptDraft(): com.example.model.FlashcardPromptConfig? {
+        val raw = prefs.getString(KEY_FLASHCARD_PROMPT_DRAFT, null) ?: return null
+        return runCatching {
+            com.example.model.FlashcardPromptConfig.fromJson(JSONObject(raw))
+        }.getOrNull()
+    }
+
+    fun saveFlashcardPromptDraft(config: com.example.model.FlashcardPromptConfig) {
+        prefs.edit().putString(KEY_FLASHCARD_PROMPT_DRAFT, config.toJson().toString()).apply()
+    }
+
+    fun clearFlashcardPromptDraft() {
+        prefs.edit().remove(KEY_FLASHCARD_PROMPT_DRAFT).apply()
+    }
+
+    fun getActivePromptPresetId(mode: com.example.model.PromptPresetMode): String? {
+        return prefs.getString("$KEY_ACTIVE_PROMPT_PRESET_PREFIX${mode.code}", null)?.ifBlank { null }
+    }
+
+    fun setActivePromptPresetId(mode: com.example.model.PromptPresetMode, presetId: String?) {
+        val key = "$KEY_ACTIVE_PROMPT_PRESET_PREFIX${mode.code}"
+        if (presetId.isNullOrBlank()) {
+            prefs.edit().remove(key).apply()
+        } else {
+            prefs.edit().putString(key, presetId).apply()
+        }
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -229,5 +300,10 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_SHUFFLE_OPTIONS = "key_shuffle_options"
         private const val KEY_LAST_ACTIVE_FOLDER_ID = "key_last_active_folder_id"
         private const val KEY_SRS_PREFIX = "key_flashcard_srs_"
+        private const val KEY_PROMPT_PRESETS = "key_prompt_presets_v1"
+        private const val KEY_QUESTION_PROMPT_DRAFT = "key_prompt_draft_question_v1"
+        private const val KEY_KNOWLEDGE_PROMPT_DRAFT = "key_prompt_draft_knowledge_v1"
+        private const val KEY_FLASHCARD_PROMPT_DRAFT = "key_prompt_draft_flashcard_v1"
+        private const val KEY_ACTIVE_PROMPT_PRESET_PREFIX = "key_active_prompt_preset_"
     }
 }

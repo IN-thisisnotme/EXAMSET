@@ -64,10 +64,15 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.IconButton
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
 import com.example.model.KnowledgeFormatRule
 import com.example.model.KnowledgeLayerOrder
+import com.example.model.KnowledgePromptConfig
 import com.example.ui.theme.ExamColorPalette
 import com.example.util.PaperLanguageDetector
 import com.example.util.StudyNoteParser
@@ -120,6 +125,44 @@ class KnowledgePromptState {
         )
     }
 
+    fun toConfig(): KnowledgePromptConfig = KnowledgePromptConfig(
+        examTarget = examTarget,
+        subject = subject,
+        collectionType = collectionType,
+        customCollectionLabel = customCollectionLabel,
+        itemCount = itemCount.toInt(),
+        depth = depth,
+        layerOrder = layerOrder,
+        language = language,
+        includeBilingualTerms = includeBilingualTerms,
+        preserveNestedBullets = preserveNestedBullets,
+        includeLatexMath = includeLatexMath,
+        includeCallouts = includeCallouts,
+        includeComparisonTable = includeComparisonTable,
+        includePyqTags = includePyqTags,
+        customInstruction = customInstruction
+    ).normalized()
+
+    fun applyConfig(config: KnowledgePromptConfig, preserveTopic: Boolean = true) {
+        val c = config.normalized()
+        examTarget = c.examTarget
+        subject = c.subject
+        if (!preserveTopic) topic = ""
+        collectionType = c.collectionType
+        customCollectionLabel = c.customCollectionLabel
+        itemCount = c.itemCount.toFloat()
+        depth = c.depth
+        layerOrder = c.layerOrder
+        language = c.language
+        includeBilingualTerms = c.includeBilingualTerms
+        preserveNestedBullets = c.preserveNestedBullets
+        includeLatexMath = c.includeLatexMath
+        includeCallouts = c.includeCallouts
+        includeComparisonTable = c.includeComparisonTable
+        includePyqTags = c.includePyqTags
+        customInstruction = c.customInstruction
+    }
+
     fun reset() {
         examTarget = ""
         subject = ""
@@ -150,7 +193,9 @@ fun LazyListScope.knowledgePromptBuilderItems(
     copied: Boolean,
     onCopyPrompt: () -> Unit,
     onOpenKnowledgeStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit,
-    showFooterButtons: Boolean = true
+    showFooterButtons: Boolean = true,
+    showAdvancedSettings: Boolean = true,
+    onToggleAdvancedSettings: (() -> Unit)? = null
 ) {
     val countInt = state.itemCount.toInt()
     val compiledPrompt = state.buildPrompt()
@@ -299,6 +344,21 @@ fun LazyListScope.knowledgePromptBuilderItems(
                     label = { Text("Chapter / Focus Topic", fontSize = 12.sp) },
                     placeholder = { Text("e.g. Fundamental Rights, Thermodynamics Laws", fontSize = 12.sp) },
                     singleLine = true,
+                    trailingIcon = if (state.topic.isNotEmpty()) {
+                        {
+                            IconButton(
+                                onClick = { state.topic = "" },
+                                modifier = Modifier.testTag("knowledge_prompt_clear_topic_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear topic",
+                                    tint = colors.inkMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    } else null,
                     shape = RoundedCornerShape(8.dp),
                     colors = fieldColors,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -310,6 +370,69 @@ fun LazyListScope.knowledgePromptBuilderItems(
         }
     }
 
+    if (!showAdvancedSettings && onToggleAdvancedSettings != null) {
+        item(key = "knowledge_collapsed_settings_summary") {
+            val summaryChips = state.toConfig().specChips()
+            Surface(
+                onClick = onToggleAdvancedSettings,
+                shape = RoundedCornerShape(12.dp),
+                color = colors.surface,
+                border = BorderStroke(0.8.dp, colors.border),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("knowledge_expand_settings_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = null,
+                        tint = colors.teal,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Format, Depth & Parser Rules",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.inkBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = (listOf(state.toConfig().formatBadge()) + summaryChips.take(3)).joinToString(" · "),
+                            fontSize = 11.sp,
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Customize",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.teal
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = "Expand knowledge settings",
+                            tint = colors.teal,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAdvancedSettings) {
     // 2. Collection Format, Item Volume, Depth & Layer Order
     item(key = "knowledge_collection_format") {
         Card(
@@ -818,6 +941,7 @@ fun LazyListScope.knowledgePromptBuilderItems(
             }
         }
     }
+    } // end showAdvancedSettings
 
     // 5. Constructed Knowledge Prompt Preview & CTAs
     item(key = "knowledge_constructed_prompt") {

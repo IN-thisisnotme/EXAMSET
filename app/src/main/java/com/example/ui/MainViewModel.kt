@@ -36,17 +36,22 @@ import com.example.model.ExamConfig
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.model.FlashcardPromptConfig
 import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeFormatRule
+import com.example.model.KnowledgePromptConfig
 import com.example.model.LinkedCloudFileStatus
 import com.example.model.McqQuestion
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.model.ParseResult
+import com.example.model.PromptPreset
+import com.example.model.PromptPresetMode
 import com.example.model.QuestionOptions
 import com.example.model.QuestionPaper
+import com.example.model.QuestionPromptConfig
 import com.example.model.RemoteCloudBackupFile
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
@@ -186,11 +191,223 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _autoBackupSchedule = MutableStateFlow(cloudAuthStore.getAutoBackupSchedule())
     val autoBackupSchedule: StateFlow<AutoBackupSchedule> = _autoBackupSchedule.asStateFlow()
 
-    // Hoisted AI Prompt Builder state so user inputs persist across tab switches
+    // Hoisted AI Prompt Builder state + saved presets (persisted safely in ExamSetPreferences)
     var promptBuilderMode by mutableStateOf(PromptBuilderMode.QUESTION_SET)
-    val questionPromptState = QuestionPromptState()
-    val knowledgePromptState = KnowledgePromptState()
-    val flashcardPromptState = FlashcardPromptState()
+
+    private val _promptPresets = MutableStateFlow(appPreferences.getPromptPresets())
+    val promptPresets: StateFlow<List<PromptPreset>> = _promptPresets.asStateFlow()
+
+    var activeQuestionPresetId by mutableStateOf<String?>(
+        appPreferences.getActivePromptPresetId(PromptPresetMode.QUESTION_SET)?.takeIf { savedId ->
+            _promptPresets.value.any { it.id == savedId && it.mode == PromptPresetMode.QUESTION_SET }
+        }
+    )
+    var activeKnowledgePresetId by mutableStateOf<String?>(
+        appPreferences.getActivePromptPresetId(PromptPresetMode.KNOWLEDGE_SET)?.takeIf { savedId ->
+            _promptPresets.value.any { it.id == savedId && it.mode == PromptPresetMode.KNOWLEDGE_SET }
+        }
+    )
+    var activeFlashcardPresetId by mutableStateOf<String?>(
+        appPreferences.getActivePromptPresetId(PromptPresetMode.FLASHCARD_SET)?.takeIf { savedId ->
+            _promptPresets.value.any { it.id == savedId && it.mode == PromptPresetMode.FLASHCARD_SET }
+        }
+    )
+
+    val questionPromptState = QuestionPromptState().apply {
+        appPreferences.getQuestionPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
+    }
+    val knowledgePromptState = KnowledgePromptState().apply {
+        appPreferences.getKnowledgePromptDraft()?.let { applyConfig(it, preserveTopic = false) }
+    }
+    val flashcardPromptState = FlashcardPromptState().apply {
+        appPreferences.getFlashcardPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
+    }
+
+    fun getActivePromptPreset(mode: PromptPresetMode): PromptPreset? {
+        val id = when (mode) {
+            PromptPresetMode.QUESTION_SET -> activeQuestionPresetId
+            PromptPresetMode.KNOWLEDGE_SET -> activeKnowledgePresetId
+            PromptPresetMode.FLASHCARD_SET -> activeFlashcardPresetId
+        } ?: return null
+        return _promptPresets.value.firstOrNull { it.id == id && it.mode == mode }
+    }
+
+    fun setActivePromptPresetId(mode: PromptPresetMode, presetId: String?) {
+        when (mode) {
+            PromptPresetMode.QUESTION_SET -> activeQuestionPresetId = presetId
+            PromptPresetMode.KNOWLEDGE_SET -> activeKnowledgePresetId = presetId
+            PromptPresetMode.FLASHCARD_SET -> activeFlashcardPresetId = presetId
+        }
+        appPreferences.setActivePromptPresetId(mode, presetId)
+    }
+
+    fun persistPromptDraft(mode: PromptPresetMode) {
+        when (mode) {
+            PromptPresetMode.QUESTION_SET -> appPreferences.saveQuestionPromptDraft(questionPromptState.toConfig())
+            PromptPresetMode.KNOWLEDGE_SET -> appPreferences.saveKnowledgePromptDraft(knowledgePromptState.toConfig())
+            PromptPresetMode.FLASHCARD_SET -> appPreferences.saveFlashcardPromptDraft(flashcardPromptState.toConfig())
+        }
+    }
+
+    fun selectPromptPreset(preset: PromptPreset, applyToMainBuilder: Boolean = true) {
+        val now = System.currentTimeMillis()
+        val updatedList = _promptPresets.value.map {
+            if (it.id == preset.id) it.copy(lastUsedAt = now) else it
+        }
+        _promptPresets.value = updatedList
+        appPreferences.savePromptPresets(updatedList)
+        setActivePromptPresetId(preset.mode, preset.id)
+        if (applyToMainBuilder) {
+            when (preset.mode) {
+                PromptPresetMode.QUESTION_SET -> preset.questionConfig?.let {
+                    questionPromptState.applyConfig(it, preserveTopic = true)
+                    appPreferences.saveQuestionPromptDraft(questionPromptState.toConfig())
+                }
+                PromptPresetMode.KNOWLEDGE_SET -> preset.knowledgeConfig?.let {
+                    knowledgePromptState.applyConfig(it, preserveTopic = true)
+                    appPreferences.saveKnowledgePromptDraft(knowledgePromptState.toConfig())
+                }
+                PromptPresetMode.FLASHCARD_SET -> preset.flashcardConfig?.let {
+                    flashcardPromptState.applyConfig(it, preserveTopic = true)
+                    appPreferences.saveFlashcardPromptDraft(flashcardPromptState.toConfig())
+                }
+            }
+        }
+    }
+
+    fun saveNewPromptPreset(
+        mode: PromptPresetMode,
+        rawName: String,
+        questionConfig: QuestionPromptConfig? = null,
+        knowledgeConfig: KnowledgePromptConfig? = null,
+        flashcardConfig: FlashcardPromptConfig? = null
+    ): PromptPreset {
+        val existingNames = _promptPresets.value.filter { it.mode == mode }.map { it.name }
+        val resolvedName = PromptPreset.uniqueName(rawName, existingNames)
+        val now = System.currentTimeMillis()
+        val newPreset = PromptPreset(
+            name = resolvedName,
+            mode = mode,
+            createdAt = now,
+            updatedAt = now,
+            lastUsedAt = now,
+            questionConfig = if (mode == PromptPresetMode.QUESTION_SET) {
+                (questionConfig ?: questionPromptState.toConfig()).normalized()
+            } else null,
+            knowledgeConfig = if (mode == PromptPresetMode.KNOWLEDGE_SET) {
+                (knowledgeConfig ?: knowledgePromptState.toConfig()).normalized()
+            } else null,
+            flashcardConfig = if (mode == PromptPresetMode.FLASHCARD_SET) {
+                (flashcardConfig ?: flashcardPromptState.toConfig()).normalized()
+            } else null
+        )
+        val updated = _promptPresets.value + newPreset
+        _promptPresets.value = updated
+        appPreferences.savePromptPresets(updated)
+        setActivePromptPresetId(mode, newPreset.id)
+        return newPreset
+    }
+
+    fun updatePromptPreset(
+        presetId: String,
+        newName: String? = null,
+        questionConfig: QuestionPromptConfig? = null,
+        knowledgeConfig: KnowledgePromptConfig? = null,
+        flashcardConfig: FlashcardPromptConfig? = null
+    ) {
+        val now = System.currentTimeMillis()
+        var targetMode: PromptPresetMode? = null
+        val updated = _promptPresets.value.map { existing ->
+            if (existing.id != presetId) {
+                existing
+            } else {
+                targetMode = existing.mode
+                existing.copy(
+                    name = newName?.trim()?.takeIf { it.isNotBlank() } ?: existing.name,
+                    updatedAt = now,
+                    lastUsedAt = now,
+                    questionConfig = if (existing.mode == PromptPresetMode.QUESTION_SET) {
+                        (questionConfig ?: existing.questionConfig ?: questionPromptState.toConfig()).normalized()
+                    } else existing.questionConfig,
+                    knowledgeConfig = if (existing.mode == PromptPresetMode.KNOWLEDGE_SET) {
+                        (knowledgeConfig ?: existing.knowledgeConfig ?: knowledgePromptState.toConfig()).normalized()
+                    } else existing.knowledgeConfig,
+                    flashcardConfig = if (existing.mode == PromptPresetMode.FLASHCARD_SET) {
+                        (flashcardConfig ?: existing.flashcardConfig ?: flashcardPromptState.toConfig()).normalized()
+                    } else existing.flashcardConfig
+                )
+            }
+        }
+        _promptPresets.value = updated
+        appPreferences.savePromptPresets(updated)
+        targetMode?.let { setActivePromptPresetId(it, presetId) }
+    }
+
+    fun renamePromptPreset(presetId: String, newName: String) {
+        val clean = newName.trim()
+        if (clean.isBlank()) return
+        val now = System.currentTimeMillis()
+        val updated = _promptPresets.value.map { preset ->
+            if (preset.id == presetId) preset.copy(name = clean, updatedAt = now) else preset
+        }
+        _promptPresets.value = updated
+        appPreferences.savePromptPresets(updated)
+    }
+
+    fun duplicatePromptPreset(presetId: String): PromptPreset? {
+        val source = _promptPresets.value.firstOrNull { it.id == presetId } ?: return null
+        val existingNames = _promptPresets.value.filter { it.mode == source.mode }.map { it.name }
+        val copyName = PromptPreset.uniqueName(source.name, existingNames, suffixWord = "Copy")
+        val now = System.currentTimeMillis()
+        val duplicated = source.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            name = copyName,
+            isPinned = false,
+            createdAt = now,
+            updatedAt = now,
+            lastUsedAt = now
+        )
+        val updated = _promptPresets.value + duplicated
+        _promptPresets.value = updated
+        appPreferences.savePromptPresets(updated)
+        return duplicated
+    }
+
+    fun togglePinPromptPreset(presetId: String) {
+        val updated = _promptPresets.value.map { preset ->
+            if (preset.id == presetId) preset.copy(isPinned = !preset.isPinned) else preset
+        }
+        _promptPresets.value = updated
+        appPreferences.savePromptPresets(updated)
+    }
+
+    fun deletePromptPreset(presetId: String) {
+        val target = _promptPresets.value.firstOrNull { it.id == presetId } ?: return
+        val updated = _promptPresets.value.filterNot { it.id == presetId }
+        _promptPresets.value = updated
+        appPreferences.savePromptPresets(updated)
+        if (getActivePromptPreset(target.mode) == null) {
+            setActivePromptPresetId(target.mode, null)
+        }
+    }
+
+    fun clearPromptModeState(mode: PromptPresetMode) {
+        setActivePromptPresetId(mode, null)
+        when (mode) {
+            PromptPresetMode.QUESTION_SET -> {
+                questionPromptState.reset()
+                appPreferences.clearQuestionPromptDraft()
+            }
+            PromptPresetMode.KNOWLEDGE_SET -> {
+                knowledgePromptState.reset()
+                appPreferences.clearKnowledgePromptDraft()
+            }
+            PromptPresetMode.FLASHCARD_SET -> {
+                flashcardPromptState.reset()
+                appPreferences.clearFlashcardPromptDraft()
+            }
+        }
+    }
 
     // Spaced Repetition (SM-2) progress keyed by StudyNoteEntity.id -> blockIndex
     private val _flashcardSrsByNote = MutableStateFlow(appPreferences.getAllFlashcardSrsMaps())
@@ -3716,8 +3933,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     mode = mode
                 )
                 val refreshedFolders = appPreferences.getCustomFolders()
+                val refreshedPresets = appPreferences.getPromptPresets()
                 withContext(Dispatchers.Main) {
                     _folders.value = refreshedFolders
+                    _promptPresets.value = refreshedPresets
                     _themeMode.value = themePreferences.getThemeMode()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()

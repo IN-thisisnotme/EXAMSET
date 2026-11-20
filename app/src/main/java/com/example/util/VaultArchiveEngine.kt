@@ -782,6 +782,7 @@ object VaultArchiveEngine {
             put("fontScaleMode", appPrefs.getFontScaleMode().name)
             put("shuffleOptions", appPrefs.getShuffleOptions())
             put("themeMode", themePrefs.getThemeMode().name)
+            put("promptPresetsJson", appPrefs.getPromptPresetsRawJson())
         }.toString()
     }
 
@@ -800,6 +801,21 @@ object VaultArchiveEngine {
                 appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
                 appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
                 themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
+            }
+            val incomingPresetsRaw = obj.optString("promptPresetsJson", "")
+            if (incomingPresetsRaw.isNotBlank()) {
+                val incomingPresets = com.example.model.PromptPreset.deserializeList(incomingPresetsRaw)
+                if (overwriteAll) {
+                    appPrefs.savePromptPresets(incomingPresets)
+                } else if (incomingPresets.isNotEmpty()) {
+                    val existing = appPrefs.getPromptPresets().associateBy { it.id }.toMutableMap()
+                    incomingPresets.forEach { preset ->
+                        if (!existing.containsKey(preset.id)) {
+                            existing[preset.id] = preset
+                        }
+                    }
+                    appPrefs.savePromptPresets(existing.values.toList())
+                }
             }
         }
     }

@@ -6,6 +6,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
+import com.example.model.PromptPresetMode
+import com.example.model.QuestionPromptConfig
+
 enum class PromptBuilderMode(
     val title: String,
     val subtitle: String,
@@ -13,7 +16,13 @@ enum class PromptBuilderMode(
 ) {
     QUESTION_SET("Question Set", "MCQs & Keys", "prompt_mode_question_set"),
     KNOWLEDGE_SET("Knowledge Set", "Notes & Codex", "prompt_mode_knowledge_set"),
-    FLASHCARD_SET("Flashcard Set", "SM-2 Decks", "prompt_mode_flashcard_set")
+    FLASHCARD_SET("Flashcard Set", "SM-2 Decks", "prompt_mode_flashcard_set");
+
+    fun toPresetMode(): PromptPresetMode = when (this) {
+        QUESTION_SET -> PromptPresetMode.QUESTION_SET
+        KNOWLEDGE_SET -> PromptPresetMode.KNOWLEDGE_SET
+        FLASHCARD_SET -> PromptPresetMode.FLASHCARD_SET
+    }
 }
 
 class QuestionPromptState {
@@ -33,6 +42,44 @@ class QuestionPromptState {
     var targetOutputFormat by mutableStateOf("Strict JSON")
     var promptDensity by mutableStateOf("Concise")
     var enableQuantityCorrectionRule by mutableStateOf(false)
+
+    fun toConfig(): QuestionPromptConfig = QuestionPromptConfig(
+        examType = examType,
+        subject = subject,
+        questionCount = questionCount.toInt(),
+        difficulty = difficulty,
+        questionType = questionType,
+        questionLanguage = questionLanguage,
+        explanationChoice = explanationChoice,
+        customExplanationLanguage = customExplanationLanguage,
+        optionCount = optionCount,
+        explainAllFourOptions = explainAllFourOptions,
+        includeFormulasAndDiagrams = includeFormulasAndDiagrams,
+        promptPhasingStyle = promptPhasingStyle,
+        targetOutputFormat = targetOutputFormat,
+        promptDensity = promptDensity,
+        enableQuantityCorrectionRule = enableQuantityCorrectionRule
+    ).normalized()
+
+    fun applyConfig(config: QuestionPromptConfig, preserveTopic: Boolean = true) {
+        val c = config.normalized()
+        examType = c.examType
+        subject = c.subject
+        if (!preserveTopic) topic = ""
+        questionCount = c.questionCount.toFloat()
+        difficulty = c.difficulty
+        questionType = c.questionType
+        questionLanguage = c.questionLanguage
+        explanationChoice = c.explanationChoice
+        customExplanationLanguage = c.customExplanationLanguage
+        optionCount = c.optionCount
+        explainAllFourOptions = c.explainAllFourOptions
+        includeFormulasAndDiagrams = c.includeFormulasAndDiagrams
+        promptPhasingStyle = c.promptPhasingStyle
+        targetOutputFormat = c.targetOutputFormat
+        promptDensity = c.promptDensity
+        enableQuantityCorrectionRule = c.enableQuantityCorrectionRule
+    }
 
     fun reset() {
         examType = ""

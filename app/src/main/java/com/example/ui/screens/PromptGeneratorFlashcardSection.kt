@@ -64,6 +64,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.IconButton
+import com.example.model.FlashcardPromptConfig
 import com.example.model.FlashcardPromptStyle
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
@@ -131,6 +136,40 @@ class FlashcardPromptState {
         )
     }
 
+    fun toConfig(): FlashcardPromptConfig = FlashcardPromptConfig(
+        examTarget = examTarget,
+        subject = subject,
+        cardStyle = cardStyle,
+        cardCount = cardCount.toInt(),
+        depth = depth,
+        language = language,
+        includeBilingualTerms = includeBilingualTerms,
+        atomicSrsMode = atomicSrsMode,
+        includeMnemonics = includeMnemonics,
+        includeExamples = includeExamples,
+        includeLatexMath = includeLatexMath,
+        includeExamTraps = includeExamTraps,
+        customInstruction = customInstruction
+    ).normalized()
+
+    fun applyConfig(config: FlashcardPromptConfig, preserveTopic: Boolean = true) {
+        val c = config.normalized()
+        examTarget = c.examTarget
+        subject = c.subject
+        if (!preserveTopic) topic = ""
+        cardStyle = c.cardStyle
+        cardCount = c.cardCount.toFloat()
+        depth = c.depth
+        language = c.language
+        includeBilingualTerms = c.includeBilingualTerms
+        atomicSrsMode = c.atomicSrsMode
+        includeMnemonics = c.includeMnemonics
+        includeExamples = c.includeExamples
+        includeLatexMath = c.includeLatexMath
+        includeExamTraps = c.includeExamTraps
+        customInstruction = c.customInstruction
+    }
+
     fun reset() {
         examTarget = ""
         subject = ""
@@ -158,7 +197,9 @@ fun LazyListScope.flashcardPromptBuilderItems(
     haptic: HapticFeedback,
     copied: Boolean,
     onCopyPrompt: () -> Unit,
-    onOpenFlashcardStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit
+    onOpenFlashcardStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit,
+    showAdvancedSettings: Boolean = true,
+    onToggleAdvancedSettings: (() -> Unit)? = null
 ) {
     val countInt = state.cardCount.toInt()
     val compiledPrompt = state.buildPrompt()
@@ -257,6 +298,21 @@ fun LazyListScope.flashcardPromptBuilderItems(
                     label = { Text("Deck Topic / Chapter", fontSize = 12.sp) },
                     placeholder = { Text("e.g. Buffers & Acid-Base Equilibria, Fundamental Writs", fontSize = 12.sp) },
                     singleLine = true,
+                    trailingIcon = if (state.topic.isNotEmpty()) {
+                        {
+                            IconButton(
+                                onClick = { state.topic = "" },
+                                modifier = Modifier.testTag("flashcard_prompt_clear_topic_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear topic",
+                                    tint = colors.inkMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    } else null,
                     shape = RoundedCornerShape(8.dp),
                     colors = fieldColors,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -268,6 +324,69 @@ fun LazyListScope.flashcardPromptBuilderItems(
         }
     }
 
+    if (!showAdvancedSettings && onToggleAdvancedSettings != null) {
+        item(key = "flashcard_collapsed_settings_summary") {
+            val summaryChips = state.toConfig().specChips()
+            Surface(
+                onClick = onToggleAdvancedSettings,
+                shape = RoundedCornerShape(12.dp),
+                color = colors.surface,
+                border = BorderStroke(0.8.dp, colors.border),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("flashcard_expand_settings_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = null,
+                        tint = colors.teal,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Deck Style, Volume & SRS Rules",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.inkBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = (listOf(state.toConfig().formatBadge()) + summaryChips.take(3)).joinToString(" · "),
+                            fontSize = 11.sp,
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Customize",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.teal
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = "Expand flashcard settings",
+                            tint = colors.teal,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAdvancedSettings) {
     // 2. Card Pattern, Volume & Depth
     item(key = "flashcard_pattern_volume") {
         Card(
@@ -668,6 +787,7 @@ fun LazyListScope.flashcardPromptBuilderItems(
             }
         }
     }
+    } // end showAdvancedSettings
 
     // 5. Constructed Flashcard Prompt Preview & CTAs
     item(key = "flashcard_constructed_prompt") {

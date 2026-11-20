@@ -77,11 +77,24 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.MainViewModel
-import com.example.ui.theme.ExamTheme
-
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.collectAsState
+import com.example.model.FlashcardPromptConfig
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeFormatRule
+import com.example.model.KnowledgePromptConfig
+import com.example.model.PromptPreset
+import com.example.model.PromptPresetMode
+import com.example.model.QuestionPromptConfig
+import com.example.ui.MainViewModel
+import com.example.ui.components.PromptPresetBar
+import com.example.ui.components.PromptPresetOverlays
+import com.example.ui.components.rememberPromptPresetDialogState
+import com.example.ui.theme.ExamTheme
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -99,8 +112,121 @@ fun PromptGeneratorTab(
     val qState = viewModel.questionPromptState
     val knowledgeState = viewModel.knowledgePromptState
     val flashcardState = viewModel.flashcardPromptState
+    val promptPresets by viewModel.promptPresets.collectAsState()
 
     var copied by remember { mutableStateOf(false) }
+    val presetDialogState = rememberPromptPresetDialogState()
+
+    // Collapsible advanced settings per mode (defaults expanded; auto-compacts when a preset is selected)
+    var showQuestionAdvanced by remember { mutableStateOf(true) }
+    var showKnowledgeAdvanced by remember { mutableStateOf(true) }
+    var showFlashcardAdvanced by remember { mutableStateOf(true) }
+
+    // Undo snapshots for Clear so users never fear resetting for another exam
+    var clearedQuestionUndo by remember { mutableStateOf<Triple<QuestionPromptConfig, String, String?>?>(null) }
+    var clearedKnowledgeUndo by remember { mutableStateOf<Triple<KnowledgePromptConfig, String, String?>?>(null) }
+    var clearedFlashcardUndo by remember { mutableStateOf<Triple<FlashcardPromptConfig, String, String?>?>(null) }
+
+    val qConfig = qState.toConfig()
+    val kConfig = knowledgeState.toConfig()
+    val fConfig = flashcardState.toConfig()
+
+    // Auto-remember last used configuration safely across restarts (debounced)
+    LaunchedEffect(qConfig) {
+        delay(250)
+        if (qConfig != QuestionPromptConfig()) {
+            viewModel.persistPromptDraft(PromptPresetMode.QUESTION_SET)
+        }
+    }
+    LaunchedEffect(kConfig) {
+        delay(250)
+        if (kConfig != KnowledgePromptConfig()) {
+            viewModel.persistPromptDraft(PromptPresetMode.KNOWLEDGE_SET)
+        }
+    }
+    LaunchedEffect(fConfig) {
+        delay(250)
+        if (fConfig != FlashcardPromptConfig()) {
+            viewModel.persistPromptDraft(PromptPresetMode.FLASHCARD_SET)
+        }
+    }
+
+    val activePresetMode = activeMode.toPresetMode()
+    val activePreset = viewModel.getActivePromptPreset(activePresetMode)
+    val isCurrentPresetModified = remember(activePreset, activeMode, qConfig, kConfig, fConfig) {
+        if (activePreset == null) {
+            false
+        } else {
+            when (activeMode) {
+                PromptBuilderMode.QUESTION_SET -> activePreset.questionConfig?.normalized() != qConfig
+                PromptBuilderMode.KNOWLEDGE_SET -> activePreset.knowledgeConfig?.normalized() != kConfig
+                PromptBuilderMode.FLASHCARD_SET -> activePreset.flashcardConfig?.normalized() != fConfig
+            }
+        }
+    }
+    val suggestedPresetName = remember(activeMode, qConfig, kConfig, fConfig) {
+        when (activeMode) {
+            PromptBuilderMode.QUESTION_SET -> qConfig.suggestName()
+            PromptBuilderMode.KNOWLEDGE_SET -> kConfig.suggestName()
+            PromptBuilderMode.FLASHCARD_SET -> fConfig.suggestName()
+        }
+    }
+    val matchingConfigPreset = remember(promptPresets, activeMode, qConfig, kConfig, fConfig) {
+        promptPresets.firstOrNull { preset ->
+            preset.mode == activePresetMode && when (activeMode) {
+                PromptBuilderMode.QUESTION_SET -> preset.questionConfig?.normalized() == qConfig
+                PromptBuilderMode.KNOWLEDGE_SET -> preset.knowledgeConfig?.normalized() == kConfig
+                PromptBuilderMode.FLASHCARD_SET -> preset.flashcardConfig?.normalized() == fConfig
+            }
+        }
+    }
+
+    val clearCurrentMode: () -> Unit = {
+        when (activeMode) {
+            PromptBuilderMode.QUESTION_SET -> {
+                clearedQuestionUndo = Triple(qConfig, qState.topic, viewModel.activeQuestionPresetId)
+                viewModel.clearPromptModeState(PromptPresetMode.QUESTION_SET)
+                showQuestionAdvanced = true
+            }
+            PromptBuilderMode.KNOWLEDGE_SET -> {
+                clearedKnowledgeUndo = Triple(kConfig, knowledgeState.topic, viewModel.activeKnowledgePresetId)
+                viewModel.clearPromptModeState(PromptPresetMode.KNOWLEDGE_SET)
+                showKnowledgeAdvanced = true
+            }
+            PromptBuilderMode.FLASHCARD_SET -> {
+                clearedFlashcardUndo = Triple(fConfig, flashcardState.topic, viewModel.activeFlashcardPresetId)
+                viewModel.clearPromptModeState(PromptPresetMode.FLASHCARD_SET)
+                showFlashcardAdvanced = true
+            }
+        }
+        copied = false
+    }
+
+    val undoClearCurrentMode: () -> Unit = {
+        when (activeMode) {
+            PromptBuilderMode.QUESTION_SET -> clearedQuestionUndo?.let { (cfg, prevTopic, prevId) ->
+                qState.applyConfig(cfg, preserveTopic = false)
+                qState.topic = prevTopic
+                viewModel.setActivePromptPresetId(PromptPresetMode.QUESTION_SET, prevId)
+                viewModel.persistPromptDraft(PromptPresetMode.QUESTION_SET)
+                clearedQuestionUndo = null
+            }
+            PromptBuilderMode.KNOWLEDGE_SET -> clearedKnowledgeUndo?.let { (cfg, prevTopic, prevId) ->
+                knowledgeState.applyConfig(cfg, preserveTopic = false)
+                knowledgeState.topic = prevTopic
+                viewModel.setActivePromptPresetId(PromptPresetMode.KNOWLEDGE_SET, prevId)
+                viewModel.persistPromptDraft(PromptPresetMode.KNOWLEDGE_SET)
+                clearedKnowledgeUndo = null
+            }
+            PromptBuilderMode.FLASHCARD_SET -> clearedFlashcardUndo?.let { (cfg, prevTopic, prevId) ->
+                flashcardState.applyConfig(cfg, preserveTopic = false)
+                flashcardState.topic = prevTopic
+                viewModel.setActivePromptPresetId(PromptPresetMode.FLASHCARD_SET, prevId)
+                viewModel.persistPromptDraft(PromptPresetMode.FLASHCARD_SET)
+                clearedFlashcardUndo = null
+            }
+        }
+    }
 
     val countInt = qState.questionCount.toInt()
 
@@ -135,6 +261,7 @@ fun PromptGeneratorTab(
         qState.targetOutputFormat, qState.promptDensity, qState.optionCount
     ) {
         derivedStateOf {
+            val countInt = qState.questionCount.toInt()
             val qLang = qState.questionLanguage.trim().ifBlank { "English" }
             val targetExam = qState.examType.trim().ifBlank { "Competitive Examination" }
             val targetSubject = buildString {
@@ -620,12 +747,7 @@ fun PromptGeneratorTab(
                         OutlinedButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                when (activeMode) {
-                                    PromptBuilderMode.QUESTION_SET -> qState.reset()
-                                    PromptBuilderMode.KNOWLEDGE_SET -> knowledgeState.reset()
-                                    PromptBuilderMode.FLASHCARD_SET -> flashcardState.reset()
-                                }
-                                copied = false
+                                clearCurrentMode()
                             },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
@@ -654,6 +776,96 @@ fun PromptGeneratorTab(
             }
         }
 
+        // 1b. Saved Prompt Presets Bar (Dropdown + Save/Update + Clear + Collapse)
+        item(key = "saved_prompt_presets_bar") {
+            val activeShowAdvanced = when (activeMode) {
+                PromptBuilderMode.QUESTION_SET -> showQuestionAdvanced
+                PromptBuilderMode.KNOWLEDGE_SET -> showKnowledgeAdvanced
+                PromptBuilderMode.FLASHCARD_SET -> showFlashcardAdvanced
+            }
+            val canUndo = when (activeMode) {
+                PromptBuilderMode.QUESTION_SET -> clearedQuestionUndo != null
+                PromptBuilderMode.KNOWLEDGE_SET -> clearedKnowledgeUndo != null
+                PromptBuilderMode.FLASHCARD_SET -> clearedFlashcardUndo != null
+            }
+            PromptPresetBar(
+                mode = activePresetMode,
+                presets = promptPresets,
+                activePreset = activePreset,
+                isModified = isCurrentPresetModified,
+                suggestedPresetName = suggestedPresetName,
+                matchingConfigPreset = matchingConfigPreset,
+                canUndoClear = canUndo,
+                showAdvancedSettings = activeShowAdvanced,
+                onToggleAdvancedSettings = {
+                    when (activeMode) {
+                        PromptBuilderMode.QUESTION_SET -> showQuestionAdvanced = !showQuestionAdvanced
+                        PromptBuilderMode.KNOWLEDGE_SET -> showKnowledgeAdvanced = !showKnowledgeAdvanced
+                        PromptBuilderMode.FLASHCARD_SET -> showFlashcardAdvanced = !showFlashcardAdvanced
+                    }
+                },
+                onSelectPreset = { preset ->
+                    viewModel.selectPromptPreset(preset, applyToMainBuilder = true)
+                    when (preset.mode) {
+                        PromptPresetMode.QUESTION_SET -> {
+                            clearedQuestionUndo = null
+                            showQuestionAdvanced = false
+                        }
+                        PromptPresetMode.KNOWLEDGE_SET -> {
+                            clearedKnowledgeUndo = null
+                            showKnowledgeAdvanced = false
+                        }
+                        PromptPresetMode.FLASHCARD_SET -> {
+                            clearedFlashcardUndo = null
+                            showFlashcardAdvanced = false
+                        }
+                    }
+                    copied = false
+                    Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+                },
+                onSaveNewPreset = { presetName ->
+                    val saved = viewModel.saveNewPromptPreset(
+                        mode = activePresetMode,
+                        rawName = presetName,
+                        questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
+                        knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
+                        flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+                    )
+                    Toast.makeText(context, "Saved preset \"${saved.name}\"", Toast.LENGTH_SHORT).show()
+                },
+                onUpdateExistingPreset = { presetId, newName ->
+                    viewModel.updatePromptPreset(
+                        presetId = presetId,
+                        newName = newName,
+                        questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
+                        knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
+                        flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+                    )
+                    Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
+                },
+                onRenamePreset = { presetId, newName ->
+                    viewModel.renamePromptPreset(presetId, newName)
+                    Toast.makeText(context, "Renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
+                },
+                onDuplicatePreset = { presetId ->
+                    val copy = viewModel.duplicatePromptPreset(presetId)
+                    if (copy != null) {
+                        Toast.makeText(context, "Duplicated as \"${copy.name}\"", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onTogglePinPreset = { presetId ->
+                    viewModel.togglePinPromptPreset(presetId)
+                },
+                onDeletePreset = { presetId ->
+                    viewModel.deletePromptPreset(presetId)
+                    Toast.makeText(context, "Preset deleted", Toast.LENGTH_SHORT).show()
+                },
+                onClearForm = clearCurrentMode,
+                onUndoClear = undoClearCurrentMode,
+                externalDialogState = presetDialogState
+            )
+        }
+
         when (activeMode) {
             PromptBuilderMode.KNOWLEDGE_SET -> {
                 knowledgePromptBuilderItems(
@@ -664,7 +876,9 @@ fun PromptGeneratorTab(
                     haptic = haptic,
                     copied = copied,
                     onCopyPrompt = copyAction,
-                    onOpenKnowledgeStudio = onOpenKnowledgeStudio
+                    onOpenKnowledgeStudio = onOpenKnowledgeStudio,
+                    showAdvancedSettings = showKnowledgeAdvanced,
+                    onToggleAdvancedSettings = { showKnowledgeAdvanced = !showKnowledgeAdvanced }
                 )
             }
             PromptBuilderMode.FLASHCARD_SET -> {
@@ -676,7 +890,9 @@ fun PromptGeneratorTab(
                     haptic = haptic,
                     copied = copied,
                     onCopyPrompt = copyAction,
-                    onOpenFlashcardStudio = onOpenKnowledgeStudio
+                    onOpenFlashcardStudio = onOpenKnowledgeStudio,
+                    showAdvancedSettings = showFlashcardAdvanced,
+                    onToggleAdvancedSettings = { showFlashcardAdvanced = !showFlashcardAdvanced }
                 )
             }
             PromptBuilderMode.QUESTION_SET -> {
@@ -824,6 +1040,21 @@ fun PromptGeneratorTab(
                         label = { Text("Focus Topic (Optional)", fontSize = 12.sp) },
                         placeholder = { Text("e.g. Thermodynamics, Ecology & Climate Change", fontSize = 12.sp) },
                         singleLine = true,
+                        trailingIcon = if (qState.topic.isNotEmpty()) {
+                            {
+                                IconButton(
+                                    onClick = { qState.topic = "" },
+                                    modifier = Modifier.testTag("prompt_clear_topic_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear topic",
+                                        tint = colors.inkMuted,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        } else null,
                         shape = RoundedCornerShape(8.dp),
                         colors = fieldColors,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -835,6 +1066,69 @@ fun PromptGeneratorTab(
             }
         }
 
+        if (!showQuestionAdvanced) {
+            item(key = "question_collapsed_settings_summary") {
+                val summaryChips = qConfig.specChips()
+                Surface(
+                    onClick = { showQuestionAdvanced = true },
+                    shape = RoundedCornerShape(12.dp),
+                    color = colors.surface,
+                    border = BorderStroke(0.8.dp, colors.border),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("question_expand_settings_card")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = colors.teal,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Volume, Language & Output Format",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = (listOf(qConfig.formatBadge()) + summaryChips.take(3)).joinToString(" · "),
+                                fontSize = 11.sp,
+                                color = colors.inkMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Customize",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.teal
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.ExpandMore,
+                                contentDescription = "Expand question settings",
+                                tint = colors.teal,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showQuestionAdvanced) {
         // 3. Card 2: Question Volume, Difficulty, Format & Option Count
         item(key = "question_volume_format") {
             Card(
@@ -1830,6 +2124,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                 }
             }
         }
+        } // end showQuestionAdvanced
 
         // 6. Card 5: Live Generated Prompt Card
         item(key = "constructed_prompt") {
@@ -1964,4 +2259,97 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
             }
         }
     }
+
+    // Overlays hosted cleanly outside LazyColumn so IME / scrolling never interrupts dialogs or sheets
+    PromptPresetOverlays(
+        dialogState = presetDialogState,
+        mode = activePresetMode,
+        presets = promptPresets,
+        activePreset = activePreset,
+        isModified = isCurrentPresetModified,
+        suggestedPresetName = suggestedPresetName,
+        matchingConfigPreset = matchingConfigPreset,
+        onSelectPreset = { preset ->
+            viewModel.selectPromptPreset(preset, applyToMainBuilder = true)
+            when (preset.mode) {
+                PromptPresetMode.QUESTION_SET -> {
+                    clearedQuestionUndo = null
+                    showQuestionAdvanced = false
+                }
+                PromptPresetMode.KNOWLEDGE_SET -> {
+                    clearedKnowledgeUndo = null
+                    showKnowledgeAdvanced = false
+                }
+                PromptPresetMode.FLASHCARD_SET -> {
+                    clearedFlashcardUndo = null
+                    showFlashcardAdvanced = false
+                }
+            }
+            copied = false
+            Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+        },
+        onSaveNewPreset = { presetName ->
+            val saved = viewModel.saveNewPromptPreset(
+                mode = activePresetMode,
+                rawName = presetName,
+                questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
+                knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
+                flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+            )
+            Toast.makeText(context, "Saved preset \"${saved.name}\"", Toast.LENGTH_SHORT).show()
+        },
+        onUpdateExistingPreset = { presetId, newName ->
+            viewModel.updatePromptPreset(
+                presetId = presetId,
+                newName = newName,
+                questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
+                knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
+                flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+            )
+            Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
+        },
+        onRenamePreset = { presetId, newName ->
+            viewModel.renamePromptPreset(presetId, newName)
+            Toast.makeText(context, "Renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
+        },
+        onDuplicatePreset = { presetId ->
+            val copy = viewModel.duplicatePromptPreset(presetId)
+            if (copy != null) {
+                Toast.makeText(context, "Duplicated as \"${copy.name}\"", Toast.LENGTH_SHORT).show()
+            }
+        },
+        onTogglePinPreset = { presetId ->
+            viewModel.togglePinPromptPreset(presetId)
+        },
+        onDeletePreset = { presetId ->
+            viewModel.deletePromptPreset(presetId)
+            Toast.makeText(context, "Preset deleted", Toast.LENGTH_SHORT).show()
+        },
+        onQuickCopyPreset = { preset ->
+            viewModel.selectPromptPreset(preset, applyToMainBuilder = true)
+            when (preset.mode) {
+                PromptPresetMode.QUESTION_SET -> {
+                    clearedQuestionUndo = null
+                    showQuestionAdvanced = false
+                }
+                PromptPresetMode.KNOWLEDGE_SET -> {
+                    clearedKnowledgeUndo = null
+                    showKnowledgeAdvanced = false
+                }
+                PromptPresetMode.FLASHCARD_SET -> {
+                    clearedFlashcardUndo = null
+                    showFlashcardAdvanced = false
+                }
+            }
+            val promptToCopy = when (preset.mode) {
+                PromptPresetMode.QUESTION_SET -> generatedPrompt
+                PromptPresetMode.KNOWLEDGE_SET -> knowledgeState.buildPrompt()
+                PromptPresetMode.FLASHCARD_SET -> flashcardState.buildPrompt()
+            }
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText(preset.name, promptToCopy))
+            copied = true
+            Toast.makeText(context, "Copied prompt from \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+        }
+    )
 }

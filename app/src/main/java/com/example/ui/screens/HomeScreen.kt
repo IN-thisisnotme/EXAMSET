@@ -184,6 +184,7 @@ fun HomeScreen(
     val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
     val fontScaleMode by viewModel.fontScaleMode.collectAsState()
     val studyNotes by viewModel.studyNotes.collectAsState()
+    val promptPresets by viewModel.promptPresets.collectAsState()
     val flashcardSrsByNote by viewModel.flashcardSrsByNote.collectAsState()
     val knowledgeEditorDraft by viewModel.knowledgeEditorDraft.collectAsState()
     val activeKnowledgeReaderNoteId by viewModel.activeKnowledgeReaderNoteId.collectAsState()
@@ -1311,7 +1312,25 @@ fun HomeScreen(
                 showInputSheet = false
                 creationTargetFolderId = null
                 viewModel.selectTab(5)
-            }
+            },
+            promptPresets = promptPresets,
+            activeQuestionPresetId = viewModel.activeQuestionPresetId,
+            onSelectQuestionPreset = { preset -> viewModel.selectPromptPreset(preset, applyToMainBuilder = true) },
+            onSaveNewQuestionPreset = { name, cfg ->
+                viewModel.saveNewPromptPreset(
+                    mode = com.example.model.PromptPresetMode.QUESTION_SET,
+                    rawName = name,
+                    questionConfig = cfg
+                )
+            },
+            onUpdateQuestionPreset = { id, newName, cfg ->
+                viewModel.updatePromptPreset(presetId = id, newName = newName, questionConfig = cfg)
+            },
+            onRenamePromptPreset = { id, newName -> viewModel.renamePromptPreset(id, newName) },
+            onDuplicatePromptPreset = { id -> viewModel.duplicatePromptPreset(id) },
+            onTogglePinPromptPreset = { id -> viewModel.togglePinPromptPreset(id) },
+            onDeletePromptPreset = { id -> viewModel.deletePromptPreset(id) },
+            onClearQuestionPreset = { viewModel.setActivePromptPresetId(com.example.model.PromptPresetMode.QUESTION_SET, null) }
         )
     }
 
@@ -1447,7 +1466,25 @@ fun HomeScreen(
                     formatRule = formatRule
                 )
             },
-            onDismiss = { viewModel.closeKnowledgeEditor() }
+            onDismiss = { viewModel.closeKnowledgeEditor() },
+            promptPresets = promptPresets,
+            activeKnowledgePresetId = viewModel.activeKnowledgePresetId,
+            onSelectKnowledgePreset = { preset -> viewModel.selectPromptPreset(preset, applyToMainBuilder = true) },
+            onSaveNewKnowledgePreset = { name, cfg ->
+                viewModel.saveNewPromptPreset(
+                    mode = com.example.model.PromptPresetMode.KNOWLEDGE_SET,
+                    rawName = name,
+                    knowledgeConfig = cfg
+                )
+            },
+            onUpdateKnowledgePreset = { id, newName, cfg ->
+                viewModel.updatePromptPreset(presetId = id, newName = newName, knowledgeConfig = cfg)
+            },
+            onRenamePromptPreset = { id, newName -> viewModel.renamePromptPreset(id, newName) },
+            onDuplicatePromptPreset = { id -> viewModel.duplicatePromptPreset(id) },
+            onTogglePinPromptPreset = { id -> viewModel.togglePinPromptPreset(id) },
+            onDeletePromptPreset = { id -> viewModel.deletePromptPreset(id) },
+            onClearKnowledgePreset = { viewModel.setActivePromptPresetId(com.example.model.PromptPresetMode.KNOWLEDGE_SET, null) }
         )
     }
 

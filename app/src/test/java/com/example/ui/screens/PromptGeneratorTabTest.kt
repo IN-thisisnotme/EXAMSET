@@ -183,5 +183,52 @@ class PromptGeneratorTabTest {
         assertEquals(KnowledgeCollectionType.FLASHCARDS, capturedType)
         assertEquals(KnowledgeCollectionType.FLASHCARDS, capturedRule?.collectionType)
     }
+
+    @Test
+    fun promptGeneratorTab_savesPresetClearsWithUndoAndCollapsesSettingsOnSelect() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val viewModel = MainViewModel(app)
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                PromptGeneratorTab(
+                    viewModel = viewModel,
+                    onNavigateToCreator = {}
+                )
+            }
+        }
+
+        // Fill exam & subject then save a preset
+        composeTestRule.onNodeWithTag("prompt_exam_input").performScrollTo().performTextInput("UPSC Prelims")
+        composeTestRule.onNodeWithTag("prompt_subject_input").performScrollTo().performTextInput("Polity")
+        composeTestRule.onNodeWithTag("prompt_preset_save_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("prompt_preset_dialog_confirm_save").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(1, viewModel.promptPresets.value.size)
+
+        // Clear resets fields & shows Undo banner without deleting saved preset
+        composeTestRule.onNodeWithTag("prompt_preset_clear_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        assertEquals("", viewModel.questionPromptState.examType)
+        assertEquals(1, viewModel.promptPresets.value.size)
+        composeTestRule.onNodeWithTag("prompt_preset_undo_clear_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+        assertEquals("UPSC Prelims", viewModel.questionPromptState.examType)
+
+        // Open preset dropdown sheet & select saved preset -> auto-compacts advanced settings
+        val savedId = viewModel.promptPresets.value.first().id
+        composeTestRule.onNodeWithTag("prompt_preset_dropdown_trigger").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("prompt_preset_item_$savedId").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("question_expand_settings_card").performScrollTo().assertIsDisplayed()
+    }
 }
 

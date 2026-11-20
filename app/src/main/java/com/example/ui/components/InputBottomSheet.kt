@@ -145,6 +145,9 @@ import android.widget.Toast
 import com.example.model.ExamConfig
 import com.example.model.FolderItem
 import com.example.model.PaperCategory
+import com.example.model.PromptPreset
+import com.example.model.PromptPresetMode
+import com.example.model.QuestionPromptConfig
 import com.example.util.ExamCatalogueRegistry
 import com.example.data.PaperEntity
 import com.example.model.QuestionPaper
@@ -384,7 +387,17 @@ fun InputBottomSheet(
     onGenerateConfig: ((ExamConfig) -> Unit)? = null,
     onPickFile: () -> Unit,
     onLoadSample: (Int) -> Unit,
-    onOpenPromptBuilder: (() -> Unit)? = null
+    onOpenPromptBuilder: (() -> Unit)? = null,
+    promptPresets: List<PromptPreset> = emptyList(),
+    activeQuestionPresetId: String? = null,
+    onSelectQuestionPreset: (PromptPreset) -> Unit = {},
+    onSaveNewQuestionPreset: (String, QuestionPromptConfig) -> Unit = { _, _ -> },
+    onUpdateQuestionPreset: (String, String?, QuestionPromptConfig) -> Unit = { _, _, _ -> },
+    onRenamePromptPreset: (String, String) -> Unit = { _, _ -> },
+    onDuplicatePromptPreset: (String) -> Unit = {},
+    onTogglePinPromptPreset: (String) -> Unit = {},
+    onDeletePromptPreset: (String) -> Unit = {},
+    onClearQuestionPreset: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val colors = ExamTheme.colors
@@ -511,6 +524,38 @@ fun InputBottomSheet(
     var promptIncludeFormulasAndDiagrams by remember { mutableStateOf(true) }
     // Format & Quantity Correction Rule (Disabled by default: Unrestricted Full Stream)
     var promptEnableQuantityCorrectionRule by remember { mutableStateOf(false) }
+    var localActiveQuestionPresetId by remember(activeQuestionPresetId) { mutableStateOf(activeQuestionPresetId) }
+    var clearedSheetPromptUndo by remember { mutableStateOf<Triple<QuestionPromptConfig, String, String?>?>(null) }
+
+    fun currentSheetQuestionConfig(): QuestionPromptConfig = QuestionPromptConfig(
+        examType = promptExam,
+        subject = promptSubject,
+        questionCount = promptMcqCount.toIntOrNull()?.coerceIn(5, 200) ?: 20,
+        difficulty = promptDifficulty,
+        questionType = promptQuestionType,
+        questionLanguage = promptQuestionLanguage,
+        explanationChoice = promptExplanationChoice,
+        customExplanationLanguage = promptCustomExplanationLanguage,
+        explainAllFourOptions = promptExplainAllFourOptions,
+        includeFormulasAndDiagrams = promptIncludeFormulasAndDiagrams,
+        enableQuantityCorrectionRule = promptEnableQuantityCorrectionRule
+    ).normalized()
+
+    fun applySheetQuestionConfig(cfg: QuestionPromptConfig, preserveTopic: Boolean = true) {
+        val c = cfg.normalized()
+        promptExam = c.examType
+        promptSubject = c.subject
+        if (!preserveTopic) promptTopic = ""
+        promptMcqCount = c.questionCount.toString()
+        promptDifficulty = c.difficulty
+        promptQuestionType = c.questionType
+        promptQuestionLanguage = c.questionLanguage
+        promptExplanationChoice = c.explanationChoice
+        promptCustomExplanationLanguage = c.customExplanationLanguage
+        promptExplainAllFourOptions = c.explainAllFourOptions
+        promptIncludeFormulasAndDiagrams = c.includeFormulasAndDiagrams
+        promptEnableQuantityCorrectionRule = c.enableQuantityCorrectionRule
+    }
 
     val effectivePromptExplanationLanguage by remember(promptQuestionLanguage, promptExplanationChoice, promptCustomExplanationLanguage) {
         derivedStateOf {
@@ -2618,7 +2663,94 @@ fun InputBottomSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Saved Question Presets Bar (Shared across AI Prompt Studio & Create Question Set)
+                val sheetCurrentConfig = currentSheetQuestionConfig()
+                val sheetActivePreset = promptPresets.firstOrNull {
+                    it.id == localActiveQuestionPresetId && it.mode == PromptPresetMode.QUESTION_SET
+                }
+                val sheetIsModified = sheetActivePreset != null && sheetActivePreset.questionConfig?.let { saved ->
+                    saved.copy(
+                        optionCount = sheetCurrentConfig.optionCount,
+                        promptPhasingStyle = sheetCurrentConfig.promptPhasingStyle,
+                        targetOutputFormat = sheetCurrentConfig.targetOutputFormat,
+                        promptDensity = sheetCurrentConfig.promptDensity
+                    ).normalized() != sheetCurrentConfig
+                } == true
+                val sheetMatchingPreset = promptPresets.firstOrNull { preset ->
+                    preset.mode == PromptPresetMode.QUESTION_SET && preset.questionConfig?.let { saved ->
+                        saved.copy(
+                            optionCount = sheetCurrentConfig.optionCount,
+                            promptPhasingStyle = sheetCurrentConfig.promptPhasingStyle,
+                            targetOutputFormat = sheetCurrentConfig.targetOutputFormat,
+                            promptDensity = sheetCurrentConfig.promptDensity
+                        ).normalized() == sheetCurrentConfig
+                    } == true
+                }
+                PromptPresetBar(
+                    mode = PromptPresetMode.QUESTION_SET,
+                    presets = promptPresets,
+                    activePreset = sheetActivePreset,
+                    isModified = sheetIsModified,
+                    suggestedPresetName = sheetCurrentConfig.suggestName(),
+                    matchingConfigPreset = sheetMatchingPreset,
+                    canUndoClear = clearedSheetPromptUndo != null,
+                    onSelectPreset = { preset ->
+                        preset.questionConfig?.let { applySheetQuestionConfig(it, preserveTopic = true) }
+                        localActiveQuestionPresetId = preset.id
+                        clearedSheetPromptUndo = null
+                        onSelectQuestionPreset(preset)
+                        Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
+                    },
+                    onSaveNewPreset = { name ->
+                        onSaveNewQuestionPreset(name, sheetCurrentConfig)
+                        Toast.makeText(context, "Saved preset \"$name\"", Toast.LENGTH_SHORT).show()
+                    },
+                    onUpdateExistingPreset = { presetId, newName ->
+                        val existing = promptPresets.firstOrNull { it.id == presetId }?.questionConfig
+                        val merged = if (existing != null) {
+                            sheetCurrentConfig.copy(
+                                optionCount = existing.optionCount,
+                                promptPhasingStyle = existing.promptPhasingStyle,
+                                targetOutputFormat = existing.targetOutputFormat,
+                                promptDensity = existing.promptDensity
+                            )
+                        } else sheetCurrentConfig
+                        onUpdateQuestionPreset(presetId, newName, merged)
+                        Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
+                    },
+                    onRenamePreset = { presetId, newName ->
+                        onRenamePromptPreset(presetId, newName)
+                        Toast.makeText(context, "Renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
+                    },
+                    onDuplicatePreset = { presetId ->
+                        onDuplicatePromptPreset(presetId)
+                        Toast.makeText(context, "Preset duplicated", Toast.LENGTH_SHORT).show()
+                    },
+                    onTogglePinPreset = onTogglePinPromptPreset,
+                    onDeletePreset = { presetId ->
+                        if (localActiveQuestionPresetId == presetId) localActiveQuestionPresetId = null
+                        onDeletePromptPreset(presetId)
+                        Toast.makeText(context, "Preset deleted", Toast.LENGTH_SHORT).show()
+                    },
+                    onClearForm = {
+                        clearedSheetPromptUndo = Triple(sheetCurrentConfig, promptTopic, localActiveQuestionPresetId)
+                        applySheetQuestionConfig(QuestionPromptConfig(), preserveTopic = false)
+                        localActiveQuestionPresetId = null
+                        onClearQuestionPreset()
+                    },
+                    onUndoClear = {
+                        clearedSheetPromptUndo?.let { (cfg, prevTopic, prevId) ->
+                            applySheetQuestionConfig(cfg, preserveTopic = false)
+                            promptTopic = prevTopic
+                            localActiveQuestionPresetId = prevId
+                            clearedSheetPromptUndo = null
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // SECTION 1: EXAMINATION & TOPIC PARAMETERS CARD (Matching Tools Tab styling)
                 Card(
