@@ -35,11 +35,14 @@ data class BackupCounts(
     val notesCount: Int = 0,
     val foldersCount: Int = 0,
     val attemptsCount: Int = 0,
-    val analyticsDaysCount: Int = 0
+    val analyticsDaysCount: Int = 0,
+    val vocabDecksCount: Int = 0,
+    val vocabWordsCount: Int = 0,
+    val promptPresetsCount: Int = 0
 )
 
 data class BackupManifest(
-    val schemaVersion: Int = 3,
+    val schemaVersion: Int = 4,
     val appVersion: String = "1.0",
     val createdAt: Long = System.currentTimeMillis(),
     val deviceName: String = "",

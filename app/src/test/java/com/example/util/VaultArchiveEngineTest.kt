@@ -11,8 +11,16 @@ import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
+import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
+import com.example.model.PromptPreset
+import com.example.model.PromptPresetMode
 import com.example.model.RestoreMode
+import com.example.model.SrsRating
+import com.example.model.VocabularyDeck
+import com.example.model.VocabularyEntry
+import com.example.model.VocabularyLevel
+import com.example.model.VocabularyPromptConfig
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -105,7 +113,7 @@ class VaultArchiveEngineTest {
             )
         )
 
-        db.studyNoteDao().insertStudyNote(
+        val noteId = db.studyNoteDao().insertStudyNote(
             StudyNoteEntity(
                 folderId = folder.id,
                 title = "Kinematics Multi-Liners",
@@ -119,6 +127,78 @@ class VaultArchiveEngineTest {
                 syncUid = "uid-kinematics-1"
             )
         )
+        appPrefs.saveFlashcardSrsMap(
+            noteId,
+            mapOf(
+                0 to FlashcardSrsState(
+                    blockIndex = 0,
+                    repetitions = 3,
+                    easeFactor = 2.6f,
+                    intervalDays = 6,
+                    dueAtMillis = 1_790_000_000_000L,
+                    lastReviewedAtMillis = 1_789_000_000_000L,
+                    lapses = 0,
+                    lastRating = SrsRating.GOOD,
+                    reviewCount = 4,
+                    correctCount = 4
+                )
+            )
+        )
+
+        val vocabDeck = VocabularyDeck(
+            id = "deck_en_c1",
+            title = "English • C1",
+            language = "English",
+            languageVariant = "UK",
+            levelCode = VocabularyLevel.ADVANCED.code,
+            entries = listOf(
+                VocabularyEntry(
+                    id = "word_ephemeral",
+                    word = "Ephemeral",
+                    meaning = "Lasting for a very short time",
+                    levelCode = VocabularyLevel.ADVANCED.code,
+                    language = "English",
+                    isBookmarked = true
+                ),
+                VocabularyEntry(
+                    id = "word_lucid",
+                    word = "Lucid",
+                    meaning = "Expressed clearly and easy to understand",
+                    levelCode = VocabularyLevel.ADVANCED.code,
+                    language = "English"
+                )
+            )
+        )
+        appPrefs.saveVocabularyDecks(listOf(vocabDeck))
+        appPrefs.saveAllVocabularySrsMaps(
+            mapOf(
+                vocabDeck.id to mapOf(
+                    "word_ephemeral" to FlashcardSrsState(
+                        blockIndex = 0,
+                        repetitions = 2,
+                        easeFactor = 2.5f,
+                        intervalDays = 4,
+                        dueAtMillis = 1_790_100_000_000L,
+                        lastReviewedAtMillis = 1_789_500_000_000L,
+                        reviewCount = 3,
+                        correctCount = 3,
+                        lastRating = SrsRating.EASY
+                    )
+                )
+            )
+        )
+        appPrefs.savePromptPresets(
+            listOf(
+                PromptPreset(
+                    id = "preset_vocab_1",
+                    name = "Daily C1 Vocab",
+                    mode = PromptPresetMode.VOCABULARY,
+                    vocabularyConfig = VocabularyPromptConfig(language = "English", wordCount = 15)
+                )
+            )
+        )
+        appPrefs.setPreferredEnglishVariant("UK")
+        appPrefs.setVocabularyReminderEnabled(true)
 
         val archiveFile = File(tempDir, "test_backup.examset.zip")
         val manifest = VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
@@ -129,8 +209,12 @@ class VaultArchiveEngineTest {
         assertEquals(1, manifest.counts.foldersCount)
         assertEquals(1, manifest.counts.attemptsCount)
         assertEquals(1, manifest.counts.analyticsDaysCount)
+        assertEquals(1, manifest.counts.vocabDecksCount)
+        assertEquals(2, manifest.counts.vocabWordsCount)
+        assertEquals(1, manifest.counts.promptPresetsCount)
         assertTrue(manifest.entryChecksumsSha256.containsKey("papers.ndjson"))
         assertTrue(manifest.entryChecksumsSha256.containsKey("notes.ndjson"))
+        assertTrue(manifest.entryChecksumsSha256.containsKey("vocabulary.json"))
 
         // Inspect archive integrity
         val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
@@ -138,13 +222,20 @@ class VaultArchiveEngineTest {
         assertTrue("Manifest SHA-256 verification must pass", preview.checksumVerified)
         assertEquals(1, preview.manifest.counts.papersCount)
         assertEquals(1, preview.manifest.counts.notesCount)
+        assertEquals(1, preview.manifest.counts.vocabDecksCount)
+        assertEquals(2, preview.manifest.counts.vocabWordsCount)
 
-        // Clear and restore with FULL_REPLACE
+        // Clear all local state and restore with FULL_REPLACE
         db.paperDao().deleteAllAttempts()
         db.paperDao().deleteAllPapers()
         db.studyNoteDao().deleteAllStudyNotes()
         db.paperDao().deleteAllDailyAnalytics()
         appPrefs.saveCustomFolders(emptyList())
+        appPrefs.saveVocabularyDecks(emptyList())
+        appPrefs.saveAllVocabularySrsMaps(emptyMap())
+        appPrefs.savePromptPresets(emptyList())
+        appPrefs.clearFlashcardSrsMap(noteId)
+        appPrefs.setVocabularyReminderEnabled(false)
 
         val restoredCounts = VaultArchiveEngine.restoreFromPreview(
             context = context,
@@ -156,11 +247,16 @@ class VaultArchiveEngineTest {
         )
         assertEquals(1, restoredCounts.papersCount)
         assertEquals(1, restoredCounts.notesCount)
+        assertEquals(1, restoredCounts.vocabDecksCount)
+        assertEquals(2, restoredCounts.vocabWordsCount)
 
         val restoredPapers = db.paperDao().getAllPapersOnce()
         val restoredNotes = db.studyNoteDao().getAllStudyNotesOnce()
         val restoredAttempts = db.paperDao().getAllAttemptsOnce()
         val restoredFolders = appPrefs.getCustomFolders()
+        val restoredVocabDecks = appPrefs.getVocabularyDecks()
+        val restoredVocabSrs = appPrefs.getAllVocabularySrsMaps()
+        val restoredFlashcardSrs = appPrefs.getFlashcardSrsMap(restoredNotes.first().id)
 
         assertEquals(1, restoredPapers.size)
         assertEquals("Mechanics Mock 1", restoredPapers.first().title)
@@ -173,6 +269,13 @@ class VaultArchiveEngineTest {
         assertEquals(1, restoredFolders.size)
         assertEquals("Physics Vault", restoredFolders.first().name)
         assertNotNull(db.paperDao().getDailyAnalytics("2026-11-14"))
+        assertEquals(1, restoredVocabDecks.size)
+        assertEquals(2, restoredVocabDecks.first().entries.size)
+        assertEquals("UK", appPrefs.getPreferredEnglishVariant())
+        assertTrue(appPrefs.isVocabularyReminderEnabled())
+        assertEquals(3, restoredVocabSrs["deck_en_c1"]?.get("word_ephemeral")?.reviewCount)
+        assertEquals(4, restoredFlashcardSrs[0]?.reviewCount)
+        assertEquals(1, appPrefs.getPromptPresets().size)
 
         // Verify SMART_MERGE does not duplicate already present records
         VaultArchiveEngine.restoreFromPreview(
@@ -186,6 +289,68 @@ class VaultArchiveEngineTest {
         assertEquals(1, db.paperDao().getAllPapersOnce().size)
         assertEquals(1, db.studyNoteDao().getAllStudyNotesOnce().size)
         assertEquals(1, db.paperDao().getAllAttemptsOnce().size)
+        assertEquals(1, appPrefs.getVocabularyDecks().size)
+        assertEquals(2, appPrefs.getVocabularyDecks().first().entries.size)
+    }
+
+    @Test
+    fun `smartMergeVocabularyDecks merges new words into existing canonical level deck cleanly`() = runBlocking {
+        // Vault contains English C1 with "Aberration" + "Ephemeral" under a different UUID
+        val incomingDeck = VocabularyDeck(
+            id = "other_device_c1",
+            title = "English • C1",
+            language = "English",
+            levelCode = VocabularyLevel.ADVANCED.code,
+            entries = listOf(
+                VocabularyEntry(id = "inc_1", word = "Aberration", meaning = "A departure from normal"),
+                VocabularyEntry(id = "inc_2", word = "Ephemeral", meaning = "Short-lived", updatedAt = 2000L)
+            )
+        )
+        appPrefs.saveVocabularyDecks(listOf(incomingDeck))
+        appPrefs.saveAllVocabularySrsMaps(
+            mapOf(
+                incomingDeck.id to mapOf(
+                    "inc_1" to FlashcardSrsState(blockIndex = 0, repetitions = 2, reviewCount = 2, lastReviewedAtMillis = 1500L)
+                )
+            )
+        )
+        val archiveFile = File(tempDir, "vocab_merge.examset.zip")
+        VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+        val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
+
+        // Local device has English C1 with "Ephemeral" + "Lucid" under local deck ID
+        val localDeck = VocabularyDeck(
+            id = "local_device_c1",
+            title = "English • C1",
+            language = "English",
+            levelCode = VocabularyLevel.ADVANCED.code,
+            entries = listOf(
+                VocabularyEntry(id = "loc_ephemeral", word = "Ephemeral", meaning = "Brief", isBookmarked = true, updatedAt = 1000L),
+                VocabularyEntry(id = "loc_lucid", word = "Lucid", meaning = "Clear")
+            )
+        )
+        appPrefs.saveVocabularyDecks(listOf(localDeck))
+        appPrefs.saveAllVocabularySrsMaps(emptyMap())
+
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE
+        )
+
+        val mergedDecks = appPrefs.getVocabularyDecks()
+        assertEquals("Same (language, level) deck must consolidate instead of duplicating", 1, mergedDecks.size)
+        val mergedWords = mergedDecks.first().entries.map { it.word }
+        assertEquals(listOf("Aberration", "Ephemeral", "Lucid"), mergedWords)
+        assertTrue(
+            "Local bookmark on merged entry must be preserved",
+            mergedDecks.first().entries.first { it.word == "Ephemeral" }.isBookmarked
+        )
+        val mergedSrs = appPrefs.getAllVocabularySrsMaps()
+        assertEquals(2, mergedSrs["local_device_c1"]?.get("inc_1")?.reviewCount)
     }
 
     @Test

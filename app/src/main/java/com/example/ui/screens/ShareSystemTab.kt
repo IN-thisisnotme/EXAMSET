@@ -9,11 +9,10 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
@@ -66,7 +66,6 @@ import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ShareSystemTab(
     viewModel: MainViewModel,
@@ -226,15 +225,14 @@ fun ShareSystemTab(
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.align(Alignment.CenterVertically)
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Inventory2, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
@@ -242,14 +240,15 @@ fun ShareSystemTab(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkMuted,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.tealLight,
-                            border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.35f)),
-                            modifier = Modifier.align(Alignment.CenterVertically)
+                            border = BorderStroke(0.6.dp, colors.teal.copy(alpha = 0.35f))
                         ) {
                             Text(
                                 text = "${savedPapers.size} Saved Sets",
@@ -387,11 +386,13 @@ fun ShareSystemTab(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Core Identifier Badges
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        // Core Identifier Badges (Horizontally Scrollable)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -403,6 +404,8 @@ fun ShareSystemTab(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.teal,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -417,6 +420,8 @@ fun ShareSystemTab(
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = colors.inkBold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -435,6 +440,8 @@ fun ShareSystemTab(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = rollFg,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -448,6 +455,8 @@ fun ShareSystemTab(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = bookletFg,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -455,10 +464,12 @@ fun ShareSystemTab(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Copy JSON
                             Button(
@@ -564,10 +575,12 @@ fun ShareSystemTab(
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "CONCURRENT BATCH IMPORT",
@@ -575,7 +588,8 @@ fun ShareSystemTab(
                             fontWeight = FontWeight.Bold,
                             color = colors.inkMuted,
                             letterSpacing = 0.5.sp,
-                            modifier = Modifier.align(Alignment.CenterVertically)
+                            maxLines = 1,
+                            softWrap = false
                         )
 
                         OutlinedButton(
@@ -584,9 +598,7 @@ fun ShareSystemTab(
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .align(Alignment.CenterVertically)
-                                .heightIn(min = 40.dp)
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -681,10 +693,12 @@ fun ShareSystemTab(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
                             onClick = {
@@ -774,10 +788,12 @@ fun ShareSystemTab(
                 border = BorderStroke(0.8.dp, colors.border)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "PSYCHOMETRIC & ITEM ANALYSIS (CTT)",
@@ -785,12 +801,12 @@ fun ShareSystemTab(
                             fontWeight = FontWeight.Bold,
                             color = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
                             letterSpacing = 0.5.sp,
-                            modifier = Modifier.align(Alignment.CenterVertically)
+                            maxLines = 1,
+                            softWrap = false
                         )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = colors.badgeSuccessBg,
-                            modifier = Modifier.align(Alignment.CenterVertically)
+                            color = colors.badgeSuccessBg
                         ) {
                             Text(
                                 text = "CALIBRATION READY",
@@ -831,10 +847,12 @@ fun ShareSystemTab(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
                             onClick = {

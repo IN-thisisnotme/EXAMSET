@@ -170,19 +170,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isCardBoxed: StateFlow<Boolean> = _isCardBoxed.asStateFlow()
 
     val savedPapers: StateFlow<List<PaperEntity>> = paperDao.getAllPapers()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allAttempts: StateFlow<List<AttemptEntity>> = paperDao.getAllAttempts()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val studyNotes: StateFlow<List<StudyNoteEntity>> = studyNoteDao.getAllStudyNotes()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allDailyAnalytics: StateFlow<List<DailyStudyAnalyticsEntity>> = paperDao.getAllDailyAnalytics()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val backupSnapshots: StateFlow<List<BackupSnapshotEntity>> = backupSnapshotDao.getAllSnapshots()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _backupOpState = MutableStateFlow<BackupOperationState>(BackupOperationState.Idle)
     val backupOpState: StateFlow<BackupOperationState> = _backupOpState.asStateFlow()
@@ -4279,7 +4279,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     prefix = "vault"
                 )
                 cloudAuthStore.setLastLocalSnapshotAt(snapshot.createdAt)
-                _backupOpState.value = BackupOperationState.Success("Snapshot saved: ${snapshot.fileName} (${snapshot.papersCount} sets, ${snapshot.notesCount} knowledge sets)")
+                _backupOpState.value = BackupOperationState.Success(
+                    "Snapshot saved: ${snapshot.fileName} (${snapshot.details})"
+                )
             } catch (e: Exception) {
                 _backupOpState.value = BackupOperationState.Error("Snapshot failed: ${e.localizedMessage}")
             }
@@ -4327,11 +4329,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         attemptsCount = manifest.counts.attemptsCount,
                         sizeBytes = tempFile.length(),
                         status = "VERIFIED",
-                        details = "Saved via System / Cloud Storage Picker"
+                        details = VaultArchiveEngine.buildSnapshotDetails(manifest.counts, "System / Cloud Picker")
                     )
                 )
                 runCatching { tempFile.delete() }
-                _backupOpState.value = BackupOperationState.Success("Vault exported cleanly (${manifest.counts.papersCount} sets, ${manifest.counts.notesCount} knowledge sets)")
+                _backupOpState.value = BackupOperationState.Success(
+                    "Vault exported (${VaultArchiveEngine.formatCountsSummary(manifest.counts)})"
+                )
             } catch (e: Exception) {
                 _backupOpState.value = BackupOperationState.Error("Export failed: ${e.localizedMessage}")
             }
@@ -4393,7 +4397,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     themePrefs = themePreferences,
                     destinationFile = file
                 )
-                val subject = "ExamSet Vault Backup (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Knowledge Sets)"
+                val subject = "ExamSet Vault Backup (${VaultArchiveEngine.formatCountsSummary(manifest.counts)})"
                 withContext(Dispatchers.Main) {
                     _backupOpState.value = BackupOperationState.Idle
                     launchShareFileIntent(
@@ -4683,15 +4687,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val refreshedPresets = appPreferences.getPromptPresets()
                 val refreshedVocabDecks = appPreferences.getVocabularyDecks()
                 val refreshedVocabSrs = appPreferences.getAllVocabularySrsMaps()
+                val refreshedFlashcardSrs = appPreferences.getAllFlashcardSrsMaps()
                 val refreshedVariant = appPreferences.getPreferredEnglishVariant()
                 val refreshedReminder = appPreferences.isVocabularyReminderEnabled()
+                val refreshedQDraft = appPreferences.getQuestionPromptDraft()
+                val refreshedKDraft = appPreferences.getKnowledgePromptDraft()
+                val refreshedFDraft = appPreferences.getFlashcardPromptDraft()
+                val refreshedVDraft = appPreferences.getVocabularyPromptDraft()
                 withContext(Dispatchers.Main) {
                     _folders.value = refreshedFolders
                     _promptPresets.value = refreshedPresets
                     _vocabularyDecks.value = refreshedVocabDecks
                     _vocabularySrsByDeck.value = refreshedVocabSrs
+                    _flashcardSrsByNote.value = refreshedFlashcardSrs
                     _preferredEnglishVariant.value = refreshedVariant
                     _vocabularyReminderEnabled.value = refreshedReminder
+                    refreshedQDraft?.let { questionPromptState.applyConfig(it, preserveTopic = false) }
+                    refreshedKDraft?.let { knowledgePromptState.applyConfig(it, preserveTopic = false) }
+                    refreshedFDraft?.let { flashcardPromptState.applyConfig(it, preserveTopic = false) }
+                    refreshedVDraft?.let { vocabularyPromptState.applyConfig(it, preserveTopic = false) }
                     com.example.util.VocabularyDailyReminderWorker.syncSchedule(getApplication(), refreshedReminder)
                     refreshActiveWordOfTheDay()
                     _themeMode.value = themePreferences.getThemeMode()
@@ -4700,7 +4714,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
                     _restorePreview.value = null
                     _backupOpState.value = BackupOperationState.Success(
-                        "Restored ${restored.papersCount} question sets & ${restored.notesCount} knowledge sets!"
+                        "Restored ${VaultArchiveEngine.formatCountsSummary(restored)}!"
                     )
                     _statusMessage.value = "Vault restore complete!"
                 }
@@ -4744,7 +4758,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             attemptsCount = snapshot.attemptsCount,
                             sizeBytes = remote.sizeBytes,
                             status = "UPLOADED",
-                            details = "Synced to ${provider.displayName}"
+                            details = snapshot.details
                         )
                     )
                     _backupOpState.value = BackupOperationState.Success("Uploaded to ${provider.displayName}: ${remote.name}")
@@ -4914,12 +4928,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     attemptsCount = manifest.counts.attemptsCount,
                     sizeBytes = tempFile.length(),
                     status = "SYNCED",
-                    details = "Synced to linked cloud file ($displayName)"
+                    details = VaultArchiveEngine.buildSnapshotDetails(manifest.counts, displayName)
                 )
             )
             refreshCloudAccountStatuses()
             _backupOpState.value = BackupOperationState.Success(
-                "Synced $displayName (${manifest.counts.papersCount} sets, ${manifest.counts.notesCount} knowledge sets)"
+                "Synced $displayName (${VaultArchiveEngine.formatCountsSummary(manifest.counts)})"
             )
         } finally {
             runCatching { tempFile.delete() }

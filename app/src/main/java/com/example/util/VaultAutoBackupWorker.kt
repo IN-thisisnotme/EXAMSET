@@ -66,7 +66,7 @@ class VaultAutoBackupWorker(
                             attemptsCount = snapshot.attemptsCount,
                             sizeBytes = file.length(),
                             status = "UPLOADED",
-                            details = "Auto-synced to linked cloud file"
+                            details = snapshot.details
                         )
                     )
                 }.onFailure { err ->
@@ -92,7 +92,7 @@ class VaultAutoBackupWorker(
                                 attemptsCount = snapshot.attemptsCount,
                                 sizeBytes = remote.sizeBytes,
                                 status = "UPLOADED",
-                                details = "Auto-synced to ${provider.displayName}"
+                                details = snapshot.details
                             )
                         )
                     }

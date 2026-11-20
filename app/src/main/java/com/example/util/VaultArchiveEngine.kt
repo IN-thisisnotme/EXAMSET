@@ -17,9 +17,14 @@ import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
 import com.example.model.BackupCounts
 import com.example.model.BackupManifest
+import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
+import com.example.model.SrsRating
+import com.example.model.VocabularyDeck
+import com.example.model.VocabularyEntry
+import com.example.model.VocabularyLevel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -51,7 +56,26 @@ object VaultArchiveEngine {
     private const val ENTRY_NOTES = "notes.ndjson"
     private const val ENTRY_ATTEMPTS = "attempts.ndjson"
     private const val ENTRY_ANALYTICS = "analytics.json"
+    private const val ENTRY_VOCABULARY = "vocabulary.json"
     private const val ENTRY_PREFERENCES = "preferences.json"
+
+    fun formatCountsSummary(counts: BackupCounts): String {
+        val parts = mutableListOf(
+            "${counts.papersCount} sets",
+            "${counts.notesCount} knowledge"
+        )
+        if (counts.vocabDecksCount > 0 || counts.vocabWordsCount > 0) {
+            parts += "${counts.vocabDecksCount} vocab (${counts.vocabWordsCount} words)"
+        } else {
+            parts += "0 vocab"
+        }
+        return parts.joinToString(" • ")
+    }
+
+    fun buildSnapshotDetails(counts: BackupCounts, originNote: String = ""): String {
+        val base = "${formatCountsSummary(counts)} • ${counts.attemptsCount} attempts"
+        return if (originNote.isBlank()) base else "$base • $originNote"
+    }
 
     fun getVaultDir(context: Context): File {
         return File(context.filesDir, VAULT_DIR_NAME).apply { if (!exists()) mkdirs() }
@@ -86,9 +110,16 @@ object VaultArchiveEngine {
         onProgress("Collecting library metadata…", 0.1f)
         val folders = appPrefs.getCustomFolders()
         val papers = paperDao.getAllPapersOnce()
-        val notes = noteDao.getAllStudyNotesOnce()
+        val rawNotes = noteDao.getAllStudyNotesOnce()
+        val notes = rawNotes.map { note ->
+            if (note.syncUid.isNotBlank()) note else note.copy(syncUid = UUID.randomUUID().toString())
+        }
         val attempts = paperDao.getAllAttemptsOnce()
         val analytics = paperDao.getAllDailyAnalyticsOnce()
+        val vocabDecks = appPrefs.getVocabularyDecks()
+        val vocabWordsCount = vocabDecks.sumOf { it.entries.size }
+        val promptPresets = appPrefs.getPromptPresets()
+        val noteUidById = notes.associate { it.id to it.syncUid }
 
         val checksums = linkedMapOf<String, String>()
         val createdAt = System.currentTimeMillis()
@@ -97,49 +128,60 @@ object VaultArchiveEngine {
             notesCount = notes.size,
             foldersCount = folders.size,
             attemptsCount = attempts.size,
-            analyticsDaysCount = analytics.size
+            analyticsDaysCount = analytics.size,
+            vocabDecksCount = vocabDecks.size,
+            vocabWordsCount = vocabWordsCount,
+            promptPresetsCount = promptPresets.size
         )
 
         ZipOutputStream(BufferedOutputStream(FileOutputStream(destinationFile))).use { zos ->
             zos.setLevel(6)
 
             // 1. Folders
-            onProgress("Packing ${folders.size} folders…", 0.25f)
+            onProgress("Packing ${folders.size} folders…", 0.2f)
             val foldersJson = serializeFoldersJson(folders)
             checksums[ENTRY_FOLDERS] = writeStringEntryWithSha256(zos, ENTRY_FOLDERS, foldersJson)
 
             // 2. Question Sets (NDJSON streaming line-by-line)
-            onProgress("Streaming ${papers.size} question sets…", 0.45f)
+            onProgress("Streaming ${papers.size} question sets…", 0.35f)
             checksums[ENTRY_PAPERS] = writeNdjsonEntryWithSha256(zos, ENTRY_PAPERS) { writeLine ->
                 papers.forEach { paper -> writeLine(serializePaper(paper).toString()) }
             }
 
             // 3. Knowledge Sets / Study Notes (NDJSON streaming)
-            onProgress("Streaming ${notes.size} knowledge sets…", 0.65f)
+            onProgress("Streaming ${notes.size} knowledge sets…", 0.55f)
             checksums[ENTRY_NOTES] = writeNdjsonEntryWithSha256(zos, ENTRY_NOTES) { writeLine ->
                 notes.forEach { note -> writeLine(serializeStudyNote(note).toString()) }
             }
 
             // 4. Test Attempts (NDJSON streaming)
-            onProgress("Streaming ${attempts.size} test attempts…", 0.80f)
+            onProgress("Streaming ${attempts.size} test attempts…", 0.7f)
             checksums[ENTRY_ATTEMPTS] = writeNdjsonEntryWithSha256(zos, ENTRY_ATTEMPTS) { writeLine ->
                 attempts.forEach { attempt -> writeLine(serializeAttempt(attempt).toString()) }
             }
 
             // 5. Daily Analytics
-            onProgress("Packing daily study analytics…", 0.90f)
+            onProgress("Packing daily study analytics…", 0.8f)
             checksums[ENTRY_ANALYTICS] = writeStringEntryWithSha256(zos, ENTRY_ANALYTICS, serializeAnalyticsJson(analytics))
 
-            // 6. Preferences
+            // 6. Dedicated Vocabulary Archive (decks, entries, SM-2 SRS, WOTD, variants)
+            onProgress("Packing ${vocabDecks.size} vocabulary sets ($vocabWordsCount words)…", 0.9f)
+            checksums[ENTRY_VOCABULARY] = writeStringEntryWithSha256(
+                zos,
+                ENTRY_VOCABULARY,
+                serializeVocabularyArchiveJson(appPrefs, vocabDecks)
+            )
+
+            // 7. Preferences, Flashcard SRS, Prompt Presets & Drafts (+ legacy vocab keys for compatibility)
             checksums[ENTRY_PREFERENCES] = writeStringEntryWithSha256(
                 zos,
                 ENTRY_PREFERENCES,
-                serializePreferencesJson(appPrefs, themePrefs)
+                serializePreferencesJson(appPrefs, themePrefs, noteUidById)
             )
 
-            // 7. Manifest (always written last with entry checksums)
+            // 8. Manifest (always written last with entry checksums)
             val manifest = BackupManifest(
-                schemaVersion = 3,
+                schemaVersion = 4,
                 appVersion = "1.0",
                 createdAt = createdAt,
                 deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
@@ -177,7 +219,7 @@ object VaultArchiveEngine {
             attemptsCount = manifest.counts.attemptsCount,
             sizeBytes = file.length(),
             status = "VERIFIED",
-            details = "${manifest.counts.papersCount} sets • ${manifest.counts.notesCount} knowledge sets • ${manifest.counts.attemptsCount} attempts",
+            details = buildSnapshotDetails(manifest.counts),
             createdAt = manifest.createdAt
         )
         db.backupSnapshotDao().insertSnapshot(snapshot)
@@ -253,9 +295,48 @@ object VaultArchiveEngine {
 
             val verified = mismatchCount == 0 && checkedEntries.isNotEmpty()
             val details = if (verified) {
-                "Verified ${checkedEntries.size} encrypted/checksummed entries (SHA-256 OK)"
+                "Verified ${checkedEntries.size} checksummed entries (SHA-256 OK)"
             } else {
                 "Warning: $mismatchCount archive entry checksum mismatch(es) detected!"
+            }
+
+            // Backfill vocabulary & preset counts when inspecting legacy v3 vaults without those fields in manifest
+            val enrichedCounts = if (manifest.counts.vocabDecksCount == 0 && manifest.counts.promptPresetsCount == 0) {
+                val vocabEntry = zip.getEntry(ENTRY_VOCABULARY)
+                val prefsEntry = zip.getEntry(ENTRY_PREFERENCES)
+                var detectedDecks = manifest.counts.vocabDecksCount
+                var detectedWords = manifest.counts.vocabWordsCount
+                var detectedPresets = manifest.counts.promptPresetsCount
+                if (vocabEntry != null) {
+                    runCatching {
+                        val vObj = JSONObject(zip.getInputStream(vocabEntry).bufferedReader(Charsets.UTF_8).readText())
+                        val decks = VocabularyDeck.deserializeList(vObj.optString("vocabularyDecksJson", ""))
+                        detectedDecks = decks.size
+                        detectedWords = decks.sumOf { it.entries.size }
+                    }
+                }
+                if (prefsEntry != null) {
+                    runCatching {
+                        val pObj = JSONObject(zip.getInputStream(prefsEntry).bufferedReader(Charsets.UTF_8).readText())
+                        if (detectedDecks == 0) {
+                            val decks = VocabularyDeck.deserializeList(pObj.optString("vocabularyDecksJson", ""))
+                            detectedDecks = decks.size
+                            detectedWords = decks.sumOf { it.entries.size }
+                        }
+                        if (detectedPresets == 0) {
+                            detectedPresets = com.example.model.PromptPreset.deserializeList(
+                                pObj.optString("promptPresetsJson", "")
+                            ).size
+                        }
+                    }
+                }
+                manifest.counts.copy(
+                    vocabDecksCount = detectedDecks,
+                    vocabWordsCount = detectedWords,
+                    promptPresetsCount = detectedPresets
+                )
+            } else {
+                manifest.counts
             }
 
             return RestorePreview(
@@ -263,7 +344,7 @@ object VaultArchiveEngine {
                 isLegacyJson = false,
                 checksumVerified = verified,
                 checksumDetails = details,
-                manifest = manifest,
+                manifest = manifest.copy(counts = enrichedCounts),
                 tempFile = file
             )
         }
@@ -365,6 +446,10 @@ object VaultArchiveEngine {
                 parseAnalyticsJson(zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText())
             }.orEmpty()
 
+            val vocabArchiveJson = zip.getEntry(ENTRY_VOCABULARY)?.let { entry ->
+                zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText()
+            }
+
             val prefsJson = zip.getEntry(ENTRY_PREFERENCES)?.let { entry ->
                 zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText()
             }
@@ -387,6 +472,7 @@ object VaultArchiveEngine {
             appPrefs.saveCustomFolders(mergedFolders)
 
             val paperIdMap = mutableMapOf<Long, Long>()
+            val restoredNoteIdByUid = mutableMapOf<String, Long>()
 
             db.withTransaction {
                 if (mode == RestoreMode.FULL_REPLACE) {
@@ -429,7 +515,7 @@ object VaultArchiveEngine {
                             }
                     } else null
 
-                    if (existingNote != null) {
+                    val finalNoteId = if (existingNote != null) {
                         if (n.updatedAt > existingNote.updatedAt) {
                             noteDao.updateStudyNote(
                                 n.copy(
@@ -439,6 +525,7 @@ object VaultArchiveEngine {
                                 )
                             )
                         }
+                        existingNote.id
                     } else {
                         noteDao.insertStudyNote(
                             n.copy(
@@ -448,6 +535,7 @@ object VaultArchiveEngine {
                             )
                         )
                     }
+                    restoredNoteIdByUid[cleanUid] = finalNoteId
                 }
 
                 for (att in attempts) {
@@ -469,16 +557,32 @@ object VaultArchiveEngine {
                 }
             }
 
+            val overwriteAll = mode == RestoreMode.FULL_REPLACE
             if (!prefsJson.isNullOrBlank()) {
-                applyPreferencesJson(prefsJson, appPrefs, themePrefs, overwriteAll = mode == RestoreMode.FULL_REPLACE)
+                applyPreferencesJson(
+                    json = prefsJson,
+                    appPrefs = appPrefs,
+                    themePrefs = themePrefs,
+                    overwriteAll = overwriteAll,
+                    restoredNoteIdByUid = restoredNoteIdByUid,
+                    skipVocabularyIfDedicatedEntry = !vocabArchiveJson.isNullOrBlank()
+                )
+            }
+            if (!vocabArchiveJson.isNullOrBlank()) {
+                applyVocabularyArchiveJson(vocabArchiveJson, appPrefs, overwriteAll)
             }
 
+            val currentDecks = appPrefs.getVocabularyDecks()
+            val currentPresets = appPrefs.getPromptPresets()
             return BackupCounts(
                 papersCount = papers.size,
                 notesCount = notes.size,
                 foldersCount = folders.size,
                 attemptsCount = attempts.size,
-                analyticsDaysCount = analytics.size
+                analyticsDaysCount = analytics.size,
+                vocabDecksCount = preview.manifest.counts.vocabDecksCount.takeIf { it > 0 } ?: currentDecks.size,
+                vocabWordsCount = preview.manifest.counts.vocabWordsCount.takeIf { it > 0 } ?: currentDecks.sumOf { it.entries.size },
+                promptPresetsCount = preview.manifest.counts.promptPresetsCount.takeIf { it > 0 } ?: currentPresets.size
             )
         }
     }
@@ -553,6 +657,9 @@ object VaultArchiveEngine {
                 put("foldersCount", m.counts.foldersCount)
                 put("attemptsCount", m.counts.attemptsCount)
                 put("analyticsDaysCount", m.counts.analyticsDaysCount)
+                put("vocabDecksCount", m.counts.vocabDecksCount)
+                put("vocabWordsCount", m.counts.vocabWordsCount)
+                put("promptPresetsCount", m.counts.promptPresetsCount)
             })
             val cs = JSONObject()
             m.entryChecksumsSha256.forEach { (k, v) -> cs.put(k, v) }
@@ -576,7 +683,10 @@ object VaultArchiveEngine {
                 notesCount = c.optInt("notesCount", 0),
                 foldersCount = c.optInt("foldersCount", 0),
                 attemptsCount = c.optInt("attemptsCount", 0),
-                analyticsDaysCount = c.optInt("analyticsDaysCount", 0)
+                analyticsDaysCount = c.optInt("analyticsDaysCount", 0),
+                vocabDecksCount = c.optInt("vocabDecksCount", 0),
+                vocabWordsCount = c.optInt("vocabWordsCount", 0),
+                promptPresetsCount = c.optInt("promptPresetsCount", 0)
             ),
             entryChecksumsSha256 = checksums
         )
@@ -776,13 +886,74 @@ object VaultArchiveEngine {
         }
     }
 
-    private fun serializePreferencesJson(appPrefs: ExamSetPreferences, themePrefs: ThemePreferences): String {
+    private fun serializeVocabularyArchiveJson(
+        appPrefs: ExamSetPreferences,
+        decks: List<VocabularyDeck>
+    ): String {
+        return JSONObject().apply {
+            put("schemaVersion", 1)
+            put("vocabDecksCount", decks.size)
+            put("vocabWordsCount", decks.sumOf { it.entries.size })
+            put("vocabularyDecksJson", VocabularyDeck.serializeList(decks))
+            put("vocabularySrsJson", appPrefs.getVocabularySrsRawJson())
+            put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
+            put("languageWordOfTheDayStatesJson", appPrefs.getLanguageWordOfTheDayStatesJson() ?: "{}")
+            put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
+        }.toString()
+    }
+
+    private fun applyVocabularyArchiveJson(
+        json: String,
+        appPrefs: ExamSetPreferences,
+        overwriteAll: Boolean
+    ) {
+        runCatching {
+            val obj = JSONObject(json)
+            applyVocabularyFields(obj, appPrefs, overwriteAll)
+        }
+    }
+
+    private fun serializePreferencesJson(
+        appPrefs: ExamSetPreferences,
+        themePrefs: ThemePreferences,
+        noteUidById: Map<Long, String>
+    ): String {
+        val allFlashcardSrs = appPrefs.getAllFlashcardSrsMaps()
+        val srsByUidObj = JSONObject()
+        allFlashcardSrs.forEach { (noteId, cardMap) ->
+            val uid = noteUidById[noteId]
+            if (!uid.isNullOrBlank() && cardMap.isNotEmpty()) {
+                val arr = JSONArray()
+                cardMap.values.forEach { st ->
+                    arr.put(JSONObject().apply {
+                        put("blockIndex", st.blockIndex)
+                        put("repetitions", st.repetitions)
+                        put("easeFactor", st.easeFactor.toDouble())
+                        put("intervalDays", st.intervalDays)
+                        put("dueAtMillis", st.dueAtMillis)
+                        put("lastReviewedAtMillis", st.lastReviewedAtMillis)
+                        put("lapses", st.lapses)
+                        put("lastRating", st.lastRating?.name ?: "")
+                        put("reviewCount", st.reviewCount)
+                        put("correctCount", st.correctCount)
+                    })
+                }
+                srsByUidObj.put(uid, arr)
+            }
+        }
+
         return JSONObject().apply {
             put("dailyGoalMinutes", appPrefs.getDailyGoalMinutes())
             put("fontScaleMode", appPrefs.getFontScaleMode().name)
             put("shuffleOptions", appPrefs.getShuffleOptions())
             put("themeMode", themePrefs.getThemeMode().name)
             put("promptPresetsJson", appPrefs.getPromptPresetsRawJson())
+            appPrefs.getQuestionPromptDraft()?.let { put("questionPromptDraft", it.toJson().toString()) }
+            appPrefs.getKnowledgePromptDraft()?.let { put("knowledgePromptDraft", it.toJson().toString()) }
+            appPrefs.getFlashcardPromptDraft()?.let { put("flashcardPromptDraft", it.toJson().toString()) }
+            appPrefs.getVocabularyPromptDraft()?.let { put("vocabularyPromptDraft", it.toJson().toString()) }
+            put("flashcardSrsByNoteUid", srsByUidObj)
+            // Keep vocabulary keys in preferences.json too for seamless downgrade compatibility
             put("vocabularyDecksJson", appPrefs.getVocabularyDecksRawJson())
             put("vocabularySrsJson", appPrefs.getVocabularySrsRawJson())
             put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
@@ -795,7 +966,9 @@ object VaultArchiveEngine {
         json: String,
         appPrefs: ExamSetPreferences,
         themePrefs: ThemePreferences,
-        overwriteAll: Boolean
+        overwriteAll: Boolean,
+        restoredNoteIdByUid: Map<String, Long> = emptyMap(),
+        skipVocabularyIfDedicatedEntry: Boolean = false
     ) {
         runCatching {
             val obj = JSONObject(json)
@@ -806,12 +979,25 @@ object VaultArchiveEngine {
                 appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
                 appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
                 themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
-                val incomingVariant = obj.optString("preferredEnglishVariant", "")
-                if (incomingVariant.isNotBlank()) {
-                    appPrefs.setPreferredEnglishVariant(incomingVariant)
+                obj.optString("questionPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
+                    runCatching {
+                        appPrefs.saveQuestionPromptDraft(com.example.model.QuestionPromptConfig.fromJson(JSONObject(raw)))
+                    }
                 }
-                if (obj.has("vocabReminderEnabled")) {
-                    appPrefs.setVocabularyReminderEnabled(obj.optBoolean("vocabReminderEnabled", false))
+                obj.optString("knowledgePromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
+                    runCatching {
+                        appPrefs.saveKnowledgePromptDraft(com.example.model.KnowledgePromptConfig.fromJson(JSONObject(raw)))
+                    }
+                }
+                obj.optString("flashcardPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
+                    runCatching {
+                        appPrefs.saveFlashcardPromptDraft(com.example.model.FlashcardPromptConfig.fromJson(JSONObject(raw)))
+                    }
+                }
+                obj.optString("vocabularyPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
+                    runCatching {
+                        appPrefs.saveVocabularyPromptDraft(com.example.model.VocabularyPromptConfig.fromJson(JSONObject(raw)))
+                    }
                 }
             }
             val incomingPresetsRaw = obj.optString("promptPresetsJson", "")
@@ -829,49 +1015,236 @@ object VaultArchiveEngine {
                     appPrefs.savePromptPresets(existing.values.toList())
                 }
             }
-            val incomingVocabDecksRaw = obj.optString("vocabularyDecksJson", "")
-            if (incomingVocabDecksRaw.isNotBlank()) {
-                val incomingDecks = com.example.model.VocabularyDeck.deserializeList(incomingVocabDecksRaw)
-                if (overwriteAll) {
-                    appPrefs.saveVocabularyDecks(incomingDecks)
-                } else if (incomingDecks.isNotEmpty()) {
-                    val existing = appPrefs.getVocabularyDecks().associateBy { it.id }.toMutableMap()
-                    incomingDecks.forEach { deck ->
-                        if (!existing.containsKey(deck.id)) {
-                            existing[deck.id] = deck
-                        }
-                    }
-                    appPrefs.saveVocabularyDecks(existing.values.toList())
+
+            // Restore Knowledge Set Flashcard SM-2 SRS mapped by syncUid -> local Room noteId
+            if (overwriteAll) {
+                appPrefs.getAllFlashcardSrsMaps().keys.forEach { oldNoteId ->
+                    appPrefs.clearFlashcardSrsMap(oldNoteId)
                 }
             }
-            val incomingVocabSrsRaw = obj.optString("vocabularySrsJson", "")
-            if (incomingVocabSrsRaw.isNotBlank()) {
-                val incomingSrs = appPrefs.parseVocabSrsRootJson(incomingVocabSrsRaw)
-                if (overwriteAll) {
-                    appPrefs.saveAllVocabularySrsMaps(incomingSrs)
-                } else if (incomingSrs.isNotEmpty()) {
-                    val merged = appPrefs.getAllVocabularySrsMaps().mapValues { it.value.toMutableMap() }.toMutableMap()
-                    incomingSrs.forEach { (deckId, entryMap) ->
-                        val target = merged.getOrPut(deckId) { mutableMapOf() }
-                        entryMap.forEach { (entryId, st) ->
-                            if (!target.containsKey(entryId)) target[entryId] = st
+            val srsByUidObj = obj.optJSONObject("flashcardSrsByNoteUid")
+            if (srsByUidObj != null && restoredNoteIdByUid.isNotEmpty()) {
+                val keys = srsByUidObj.keys()
+                while (keys.hasNext()) {
+                    val uid = keys.next()
+                    val targetNoteId = restoredNoteIdByUid[uid] ?: continue
+                    val arr = srsByUidObj.optJSONArray(uid) ?: continue
+                    val incomingMap = mutableMapOf<Int, FlashcardSrsState>()
+                    for (i in 0 until arr.length()) {
+                        val stObj = arr.optJSONObject(i) ?: continue
+                        val idx = stObj.optInt("blockIndex", -1)
+                        if (idx < 0) continue
+                        val ratingName = stObj.optString("lastRating", "")
+                        val rating = runCatching {
+                            if (ratingName.isNotBlank()) SrsRating.valueOf(ratingName) else null
+                        }.getOrNull()
+                        incomingMap[idx] = FlashcardSrsState(
+                            blockIndex = idx,
+                            repetitions = stObj.optInt("repetitions", 0),
+                            easeFactor = stObj.optDouble("easeFactor", 2.5).toFloat().coerceIn(1.3f, 3.0f),
+                            intervalDays = stObj.optInt("intervalDays", 0),
+                            dueAtMillis = stObj.optLong("dueAtMillis", 0L),
+                            lastReviewedAtMillis = stObj.optLong("lastReviewedAtMillis", 0L),
+                            lapses = stObj.optInt("lapses", 0),
+                            lastRating = rating,
+                            reviewCount = stObj.optInt("reviewCount", 0),
+                            correctCount = stObj.optInt("correctCount", 0)
+                        )
+                    }
+                    if (incomingMap.isNotEmpty()) {
+                        if (overwriteAll) {
+                            appPrefs.saveFlashcardSrsMap(targetNoteId, incomingMap)
+                        } else {
+                            val existingMap = appPrefs.getFlashcardSrsMap(targetNoteId).toMutableMap()
+                            incomingMap.forEach { (idx, incomingSt) ->
+                                val curSt = existingMap[idx]
+                                if (curSt == null || isIncomingSrsNewer(curSt, incomingSt)) {
+                                    existingMap[idx] = incomingSt
+                                }
+                            }
+                            appPrefs.saveFlashcardSrsMap(targetNoteId, existingMap)
                         }
                     }
-                    appPrefs.saveAllVocabularySrsMaps(merged)
                 }
             }
-            val incomingWotdStatesRaw = obj.optString("languageWordOfTheDayStatesJson", "")
-            if (incomingWotdStatesRaw.isNotBlank()) {
-                if (overwriteAll) {
-                    appPrefs.saveLanguageWordOfTheDayStatesJson(incomingWotdStatesRaw)
-                } else {
-                    val mergedWotd = WordOfTheDayService.mergePersistedLanguageStatesJson(
-                        existingRaw = appPrefs.getLanguageWordOfTheDayStatesJson(),
-                        incomingRaw = incomingWotdStatesRaw
-                    )
-                    appPrefs.saveLanguageWordOfTheDayStatesJson(mergedWotd)
-                }
+
+            if (!skipVocabularyIfDedicatedEntry) {
+                applyVocabularyFields(obj, appPrefs, overwriteAll)
             }
         }
+    }
+
+    private fun applyVocabularyFields(
+        obj: JSONObject,
+        appPrefs: ExamSetPreferences,
+        overwriteAll: Boolean
+    ) {
+        if (overwriteAll || appPrefs.getPreferredEnglishVariant().isBlank()) {
+            val incomingVariant = obj.optString("preferredEnglishVariant", "")
+            if (incomingVariant.isNotBlank()) {
+                appPrefs.setPreferredEnglishVariant(incomingVariant)
+            }
+        }
+        if (overwriteAll && obj.has("vocabReminderEnabled")) {
+            appPrefs.setVocabularyReminderEnabled(obj.optBoolean("vocabReminderEnabled", false))
+        }
+
+        val deckIdRemap = mutableMapOf<String, String>()
+        val entryIdRemap = mutableMapOf<String, String>()
+
+        val incomingVocabDecksRaw = obj.optString("vocabularyDecksJson", "")
+        if (incomingVocabDecksRaw.isNotBlank()) {
+            val incomingDecks = VocabularyDeck.deserializeList(incomingVocabDecksRaw)
+            if (overwriteAll) {
+                appPrefs.saveVocabularyDecks(incomingDecks)
+            } else if (incomingDecks.isNotEmpty()) {
+                val mergedDecks = mergeVocabularyDecksForRestore(
+                    existingDecks = appPrefs.getVocabularyDecks(),
+                    incomingDecks = incomingDecks,
+                    deckIdRemap = deckIdRemap,
+                    entryIdRemap = entryIdRemap
+                )
+                appPrefs.saveVocabularyDecks(mergedDecks)
+            }
+        }
+
+        val incomingVocabSrsRaw = obj.optString("vocabularySrsJson", "")
+        if (incomingVocabSrsRaw.isNotBlank()) {
+            val incomingSrs = appPrefs.parseVocabSrsRootJson(incomingVocabSrsRaw)
+            if (overwriteAll) {
+                appPrefs.saveAllVocabularySrsMaps(incomingSrs)
+            } else if (incomingSrs.isNotEmpty()) {
+                val merged = appPrefs.getAllVocabularySrsMaps()
+                    .mapValues { it.value.toMutableMap() }
+                    .toMutableMap()
+                incomingSrs.forEach { (rawDeckId, entryMap) ->
+                    val resolvedDeckId = deckIdRemap[rawDeckId] ?: rawDeckId
+                    val target = merged.getOrPut(resolvedDeckId) { mutableMapOf() }
+                    entryMap.forEach { (rawEntryId, incomingSt) ->
+                        val resolvedEntryId = entryIdRemap[rawEntryId] ?: rawEntryId
+                        val currentSt = target[resolvedEntryId]
+                        if (currentSt == null || isIncomingSrsNewer(currentSt, incomingSt)) {
+                            target[resolvedEntryId] = incomingSt
+                        }
+                    }
+                }
+                appPrefs.saveAllVocabularySrsMaps(merged)
+            }
+        }
+
+        val incomingWotdStatesRaw = obj.optString("languageWordOfTheDayStatesJson", "")
+        if (incomingWotdStatesRaw.isNotBlank()) {
+            if (overwriteAll) {
+                appPrefs.saveLanguageWordOfTheDayStatesJson(incomingWotdStatesRaw)
+            } else {
+                val mergedWotd = WordOfTheDayService.mergePersistedLanguageStatesJson(
+                    existingRaw = appPrefs.getLanguageWordOfTheDayStatesJson(),
+                    incomingRaw = incomingWotdStatesRaw
+                )
+                appPrefs.saveLanguageWordOfTheDayStatesJson(mergedWotd)
+            }
+        }
+    }
+
+    private fun mergeVocabularyDecksForRestore(
+        existingDecks: List<VocabularyDeck>,
+        incomingDecks: List<VocabularyDeck>,
+        deckIdRemap: MutableMap<String, String>,
+        entryIdRemap: MutableMap<String, String>
+    ): List<VocabularyDeck> {
+        val result = existingDecks.toMutableList()
+        for (incoming in incomingDecks) {
+            val incomingBucketKey = canonicalDeckBucketKey(incoming)
+            val matchIdx = result.indexOfFirst { existing ->
+                existing.id == incoming.id || canonicalDeckBucketKey(existing) == incomingBucketKey
+            }
+            if (matchIdx < 0) {
+                result.add(incoming)
+                deckIdRemap[incoming.id] = incoming.id
+            } else {
+                val existing = result[matchIdx]
+                deckIdRemap[incoming.id] = existing.id
+                val existingEntries = existing.entries.toMutableList()
+                val idxByWordKey = mutableMapOf<String, Int>()
+                existingEntries.forEachIndexed { idx, e ->
+                    val key = e.normalizedWordKey().ifBlank { e.id }
+                    idxByWordKey.putIfAbsent(key, idx)
+                }
+
+                for (incEntry in incoming.entries) {
+                    val wordKey = incEntry.normalizedWordKey().ifBlank { incEntry.id }
+                    val existingEntryIdx = idxByWordKey[wordKey]
+                        ?: existingEntries.indexOfFirst { it.id == incEntry.id }.takeIf { it >= 0 }
+                    if (existingEntryIdx == null) {
+                        existingEntries.add(incEntry)
+                        idxByWordKey[wordKey] = existingEntries.lastIndex
+                    } else {
+                        val curEntry = existingEntries[existingEntryIdx]
+                        entryIdRemap[incEntry.id] = curEntry.id
+                        existingEntries[existingEntryIdx] = mergeVocabularyEntryForRestore(curEntry, incEntry)
+                    }
+                }
+
+                val sortedEntries = existingEntries.sortedWith(
+                    compareBy<VocabularyEntry>(
+                        { it.word.trim().lowercase(Locale.ROOT) },
+                        { it.partOfSpeech.trim().lowercase(Locale.ROOT) },
+                        { it.createdAt }
+                    )
+                )
+                result[matchIdx] = existing.copy(
+                    translationLanguage = existing.translationLanguage.ifBlank { incoming.translationLanguage },
+                    languageVariant = existing.languageVariant.ifBlank { incoming.languageVariant },
+                    domain = existing.domain.ifBlank { incoming.domain },
+                    entries = sortedEntries,
+                    updatedAt = maxOf(existing.updatedAt, incoming.updatedAt)
+                )
+            }
+        }
+        return result
+    }
+
+    private fun mergeVocabularyEntryForRestore(
+        existing: VocabularyEntry,
+        incoming: VocabularyEntry
+    ): VocabularyEntry {
+        val preferIncoming = incoming.updatedAt > existing.updatedAt
+        val mergedExamples = (existing.examples + incoming.examples)
+            .distinctBy { it.normalizedSentenceKey().ifBlank { it.sentence.trim() } }
+        val mergedSynonyms = (existing.synonyms + incoming.synonyms)
+            .map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase(Locale.ROOT) }
+        val mergedAntonyms = (existing.antonyms + incoming.antonyms)
+            .map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase(Locale.ROOT) }
+        val mergedCollocations = (existing.collocations + incoming.collocations)
+            .map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase(Locale.ROOT) }
+
+        return existing.copy(
+            pronunciation = if (preferIncoming && incoming.pronunciation.isNotBlank()) incoming.pronunciation else existing.pronunciation.ifBlank { incoming.pronunciation },
+            partOfSpeech = if (preferIncoming && incoming.partOfSpeech.isNotBlank()) incoming.partOfSpeech else existing.partOfSpeech.ifBlank { incoming.partOfSpeech },
+            meaning = if (preferIncoming && incoming.meaning.isNotBlank()) incoming.meaning else existing.meaning.ifBlank { incoming.meaning },
+            translation = if (preferIncoming && incoming.translation.isNotBlank()) incoming.translation else existing.translation.ifBlank { incoming.translation },
+            translationLanguage = existing.translationLanguage.ifBlank { incoming.translationLanguage },
+            usageNote = if (preferIncoming && incoming.usageNote.isNotBlank()) incoming.usageNote else existing.usageNote.ifBlank { incoming.usageNote },
+            examples = mergedExamples,
+            synonyms = mergedSynonyms,
+            antonyms = mergedAntonyms,
+            collocations = mergedCollocations,
+            isBookmarked = existing.isBookmarked || incoming.isBookmarked,
+            updatedAt = maxOf(existing.updatedAt, incoming.updatedAt)
+        )
+    }
+
+    private fun canonicalDeckBucketKey(deck: VocabularyDeck): String {
+        val lang = deck.language.trim().ifBlank { "English" }.lowercase(Locale.ROOT)
+        val level = deck.resolvedLevel()
+        val custom = if (level == VocabularyLevel.CUSTOM) deck.customLevelLabel.trim().lowercase(Locale.ROOT) else ""
+        return "$lang|${level.code}|$custom"
+    }
+
+    private fun isIncomingSrsNewer(existing: FlashcardSrsState, incoming: FlashcardSrsState): Boolean {
+        if (incoming.reviewCount != existing.reviewCount) {
+            return incoming.reviewCount > existing.reviewCount
+        }
+        return incoming.lastReviewedAtMillis > existing.lastReviewedAtMillis
     }
 }

@@ -9,22 +9,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -101,7 +99,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BackupVaultCenterSection(
     viewModel: MainViewModel
@@ -113,6 +110,9 @@ fun BackupVaultCenterSection(
     val studyNotes by viewModel.studyNotes.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val allAttempts by viewModel.allAttempts.collectAsState()
+    val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
+    val promptPresets by viewModel.promptPresets.collectAsState()
+    val totalVocabWords = remember(vocabularyDecks) { vocabularyDecks.sumOf { it.entries.size } }
     val backupSnapshots by viewModel.backupSnapshots.collectAsState()
     val backupOpState by viewModel.backupOpState.collectAsState()
     val restorePreview by viewModel.restorePreview.collectAsState()
@@ -197,29 +197,48 @@ fun BackupVaultCenterSection(
                                 text = "ExamSet Backup Vault (.examset.zip)",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.navyBannerText
+                                color = colors.navyBannerText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = "Streaming archive • SHA-256 verified • Zero crash limit",
-                                fontSize = 11.sp,
-                                color = colors.navyBannerText.copy(alpha = 0.8f)
-                            )
+                            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                Text(
+                                    text = "Streaming archive • SHA-256 verified • Zero crash limit",
+                                    fontSize = 11.sp,
+                                    color = colors.navyBannerText.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                     Icon(Icons.Default.Shield, contentDescription = "Verified Archive", tint = Color(0xFF5EEAD4), modifier = Modifier.size(18.dp))
                 }
 
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // 4-Pillar Library Coverage Summary
-                    FlowRow(
+                    // Horizontally Scrollable Library Coverage Summary (includes Question Sets, Knowledge, Vocabulary, Folders, Attempts, Presets)
+                    LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        VaultStatPill(label = "${savedPapers.size} Question Sets", color = Color(0xFF2563EB))
-                        VaultStatPill(label = "${studyNotes.size} Knowledge Sets", color = colors.teal)
-                        VaultStatPill(label = "${folders.size} Folders", color = Color(0xFF7C3AED))
-                        VaultStatPill(label = "${allAttempts.size} Attempts", color = colors.green)
+                        item {
+                            VaultStatPill(label = "${savedPapers.size} Question Sets", color = Color(0xFF2563EB))
+                        }
+                        item {
+                            VaultStatPill(label = "${studyNotes.size} Knowledge Sets", color = colors.teal)
+                        }
+                        item {
+                            VaultStatPill(label = "${vocabularyDecks.size} Vocab ($totalVocabWords Words)", color = Color(0xFF0284C7))
+                        }
+                        item {
+                            VaultStatPill(label = "${folders.size} Folders", color = Color(0xFF7C3AED))
+                        }
+                        item {
+                            VaultStatPill(label = "${allAttempts.size} Attempts", color = colors.green)
+                        }
+                        item {
+                            VaultStatPill(label = "${promptPresets.size} Presets", color = Color(0xFFD97706))
+                        }
                     }
 
                     // Live Operation Banner
@@ -290,65 +309,53 @@ fun BackupVaultCenterSection(
                         }
                     }
 
-                    // Primary Vault Actions
+                    // Primary Vault Actions (Single-Line Horizontally Scrollable Strip)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(IntrinsicSize.Max),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
                             onClick = { viewModel.createLocalVaultSnapshot() },
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("create_vault_snapshot_button")
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Create Local Vault", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Create Local Vault", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
 
                         Button(
                             onClick = { exportVaultLauncher.launch(VaultArchiveEngine.defaultVaultFileName()) },
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = Color.White),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("export_vault_saf_button")
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Save to Drive / Files", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Save to Drive / Files", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
-                    }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Max),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
                         OutlinedButton(
                             onClick = { viewModel.shareVaultArchive(context) },
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("share_vault_zip_button")
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Share .zip File", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Share .zip File", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
 
                         OutlinedButton(
@@ -356,16 +363,14 @@ fun BackupVaultCenterSection(
                                 importVaultLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream", "*/*"))
                             },
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
                                 .heightIn(min = 48.dp)
                                 .testTag("restore_vault_picker_button")
                         ) {
                             Icon(Icons.Default.Restore, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Restore Vault / JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Restore Vault / JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -379,10 +384,12 @@ fun BackupVaultCenterSection(
             border = BorderStroke(0.8.dp, colors.border)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "ONLINE CLOUD SYNC",
@@ -391,8 +398,7 @@ fun BackupVaultCenterSection(
                         color = colors.inkMuted,
                         letterSpacing = 0.5.sp,
                         maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.align(Alignment.CenterVertically)
+                        softWrap = false
                     )
                     Surface(
                         onClick = { viewModel.refreshNetworkTimeSync() },
@@ -402,9 +408,7 @@ fun BackupVaultCenterSection(
                             0.6.dp,
                             if (isNetworkTimeSynced) colors.green.copy(alpha = 0.45f) else colors.amber.copy(alpha = 0.45f)
                         ),
-                        modifier = Modifier
-                            .align(Alignment.CenterVertically)
-                            .testTag("refresh_network_time_button")
+                        modifier = Modifier.testTag("refresh_network_time_button")
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
@@ -511,15 +515,25 @@ fun BackupVaultCenterSection(
                     letterSpacing = 0.5.sp
                 )
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     AutoBackupSchedule.entries.forEach { schedule ->
                         FilterChip(
                             selected = autoBackupSchedule == schedule,
                             onClick = { viewModel.setAutoBackupSchedule(schedule) },
-                            label = { Text(schedule.label, fontSize = 11.sp) },
+                            label = {
+                                Text(
+                                    text = schedule.label,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = colors.tealLight,
                                 selectedLabelColor = colors.tealDark
@@ -561,12 +575,13 @@ private fun VaultStatPill(label: String, color: Color) {
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = color,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
         )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LinkedCloudFileSyncCard(
     status: LinkedCloudFileStatus,
@@ -650,9 +665,12 @@ private fun LinkedCloudFileSyncCard(
                     Text("Link Cloud File (Drive / OneDrive / Files)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
-                FlowRow(
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
                         onClick = onSyncNow,
@@ -664,7 +682,7 @@ private fun LinkedCloudFileSyncCard(
                     ) {
                         Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(5.dp))
-                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
                     OutlinedButton(
                         onClick = onRestore,
@@ -675,20 +693,20 @@ private fun LinkedCloudFileSyncCard(
                     ) {
                         Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(5.dp))
-                        Text("Restore", fontSize = 12.sp)
+                        Text("Restore", fontSize = 12.sp, maxLines = 1, softWrap = false)
                     }
                     OutlinedButton(
                         onClick = onLinkFile,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Change File", fontSize = 12.sp)
+                        Text("Change File", fontSize = 12.sp, maxLines = 1, softWrap = false)
                     }
                     TextButton(
                         onClick = onUnlink,
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Unlink", fontSize = 12.sp, color = colors.red)
+                        Text("Unlink", fontSize = 12.sp, color = colors.red, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -696,7 +714,6 @@ private fun LinkedCloudFileSyncCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CloudProviderSyncCard(
     status: CloudAccountStatus,
@@ -761,9 +778,12 @@ private fun CloudProviderSyncCard(
                 Text(status.lastError, fontSize = 10.5.sp, color = colors.red)
             }
 
-            FlowRow(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 if (!status.isConnected) {
                     OutlinedButton(
@@ -771,7 +791,7 @@ private fun CloudProviderSyncCard(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text("Client ID", fontSize = 12.sp)
+                        Text("Client ID", fontSize = 12.sp, maxLines = 1, softWrap = false)
                     }
                     Button(
                         onClick = if (status.hasClientIdConfigured) onConnect else onConfigureClientId,
@@ -779,7 +799,13 @@ private fun CloudProviderSyncCard(
                         colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
                         modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text(if (status.hasClientIdConfigured) "Connect Account" else "Setup & Connect", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (status.hasClientIdConfigured) "Connect Account" else "Setup & Connect",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 } else {
                     Button(
@@ -790,7 +816,7 @@ private fun CloudProviderSyncCard(
                     ) {
                         Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(5.dp))
-                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                     }
                     OutlinedButton(
                         onClick = onBrowseBackups,
@@ -799,10 +825,10 @@ private fun CloudProviderSyncCard(
                     ) {
                         Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(5.dp))
-                        Text("List Backups", fontSize = 12.sp)
+                        Text("List Backups", fontSize = 12.sp, maxLines = 1, softWrap = false)
                     }
                     TextButton(onClick = onDisconnect, modifier = Modifier.heightIn(min = 48.dp)) {
-                        Text("Disconnect", fontSize = 12.sp, color = colors.red)
+                        Text("Disconnect", fontSize = 12.sp, color = colors.red, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -878,12 +904,27 @@ private fun SnapshotHistoryRow(
                     Text(dateStr, fontSize = 10.5.sp, color = colors.inkMuted)
                 }
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${snapshot.papersCount} sets • ${snapshot.notesCount} knowledge • ${formatBytes(snapshot.sizeBytes)}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkBold
-                )
+                val statsSummary = remember(snapshot.details, snapshot.papersCount, snapshot.notesCount, snapshot.sizeBytes) {
+                    if (snapshot.details.contains("vocab", ignoreCase = true)) {
+                        "${snapshot.details} • ${formatBytes(snapshot.sizeBytes)}"
+                    } else {
+                        "${snapshot.papersCount} sets • ${snapshot.notesCount} knowledge • ${formatBytes(snapshot.sizeBytes)}"
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = statsSummary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.inkBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
                 if (snapshot.checksumSha256.isNotBlank()) {
                     Text(
                         text = "SHA-256: ${snapshot.checksumSha256.take(12)}…",
@@ -897,9 +938,9 @@ private fun SnapshotHistoryRow(
                 OutlinedButton(
                     onClick = onRestore,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.heightIn(min = 38.dp)
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text("Restore", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Restore", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                 }
             }
             IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
@@ -953,8 +994,9 @@ fun RestorePreviewDialog(
                     Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("Contents Verified:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
                         Text("• ${counts.papersCount} Question Sets", fontSize = 12.sp, color = colors.inkBold)
-                        Text("• ${counts.notesCount} Knowledge Sets", fontSize = 12.sp, color = colors.inkBold)
-                        Text("• ${counts.foldersCount} Folders", fontSize = 12.sp, color = colors.inkBold)
+                        Text("• ${counts.notesCount} Knowledge Sets (+ Flashcard SRS)", fontSize = 12.sp, color = colors.inkBold)
+                        Text("• ${counts.vocabDecksCount} Vocabulary Sets (${counts.vocabWordsCount} Words + SRS & WOTD)", fontSize = 12.sp, color = colors.inkBold)
+                        Text("• ${counts.foldersCount} Folders • ${counts.promptPresetsCount} AI Presets", fontSize = 12.sp, color = colors.inkBold)
                         Text("• ${counts.attemptsCount} Test Attempts • ${counts.analyticsDaysCount} Study Days", fontSize = 12.sp, color = colors.inkBold)
                     }
                 }
