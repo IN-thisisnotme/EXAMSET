@@ -26,6 +26,12 @@ enum class KnowledgeCollectionType(
         shortBadge = "CODEX",
         description = "Deep multi-layer topic breakdown for thorough study"
     ),
+    LONG_ANSWER(
+        code = "LONG_ANSWER",
+        label = "Long-Form / Mains Q&A",
+        shortBadge = "LONG Q&A",
+        description = "Multi-paragraph UPSC Mains & subjective answers with LaTeX, tables & citations"
+    ),
     COMPARISON_TABLE(
         code = "COMPARISON_TABLE",
         label = "Comparison Matrix",

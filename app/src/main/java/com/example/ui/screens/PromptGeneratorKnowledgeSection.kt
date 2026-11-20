@@ -364,6 +364,8 @@ fun LazyListScope.knowledgePromptBuilderItems(
                                         state.includeComparisonTable = true
                                     } else if (type == KnowledgeCollectionType.FORMULA_SHEET) {
                                         state.includeLatexMath = true
+                                    } else if (type == KnowledgeCollectionType.LONG_ANSWER && state.itemCount > 10f) {
+                                        state.itemCount = 5f
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
@@ -410,7 +412,7 @@ fun LazyListScope.knowledgePromptBuilderItems(
 
                 // Item Count Selector & Slider
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val presetCounts = listOf(10, 15, 25, 40, 60)
+                    val presetCounts = listOf(1, 5, 10, 15, 25, 40, 60)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -454,7 +456,7 @@ fun LazyListScope.knowledgePromptBuilderItems(
                                 border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
                             ) {
                                 Text(
-                                    text = "$cnt Items",
+                                    text = if (cnt == 1) "1 Item" else "$cnt Items",
                                     fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) Color.White else colors.inkBold,
@@ -467,10 +469,14 @@ fun LazyListScope.knowledgePromptBuilderItems(
                     Slider(
                         value = state.itemCount,
                         onValueChange = { newVal ->
-                            val snapped = (newVal / 5f).roundToInt() * 5f
-                            state.itemCount = snapped.coerceIn(10f, 80f)
+                            val snapped = if (newVal < 5f) {
+                                newVal.roundToInt().toFloat().coerceIn(1f, 4f)
+                            } else {
+                                ((newVal / 5f).roundToInt() * 5f).coerceIn(5f, 80f)
+                            }
+                            state.itemCount = snapped
                         },
-                        valueRange = 10f..80f,
+                        valueRange = 1f..80f,
                         colors = SliderDefaults.colors(
                             thumbColor = colors.teal,
                             activeTrackColor = colors.teal,
@@ -772,7 +778,7 @@ fun LazyListScope.knowledgePromptBuilderItems(
                 )
                 KnowledgeRuleCheckRow(
                     title = "LaTeX Math & Chemical Equations",
-                    subtitle = "Renders inline \$...\$ formulas visually inside Reader",
+                    subtitle = "Renders inline \$...\$, display \$\$...\$\$, matrices, roots & \\ce{...} in Reader & PDF",
                     checked = state.includeLatexMath,
                     onCheckedChange = { state.includeLatexMath = it },
                     colors = colors

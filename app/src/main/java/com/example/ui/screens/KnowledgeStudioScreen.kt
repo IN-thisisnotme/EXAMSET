@@ -132,6 +132,8 @@ import com.example.model.KnowledgeLayerOrder
 import com.example.model.KnowledgeTransformAction
 import com.example.ui.KnowledgeEditorDraft
 import com.example.ui.components.LatexText
+import com.example.ui.components.MathFormulaParser
+import com.example.ui.components.MathFormulaView
 import com.example.ui.theme.ExamTheme
 import com.example.util.StudyNoteBlock
 import com.example.util.StudyNoteParser
@@ -979,7 +981,7 @@ fun KnowledgeStudioEditorScreen(
                                     onValueChange = { rawContent = it },
                                     placeholder = {
                                         Text(
-                                            text = "Write or paste any study format here...\n\nSupports:\n• Crisp One-Liners: `1. **Article 32** -> Constitutional Remedies`\n• Multi-Liner Cards with 2-space indented `- sub-points`, `Formula:`, `Example:`\n• Backwards ChatGPT outputs (`Detail -> **Term**` — use Fix Backwards ChatGPT chip above)\n• Markdown comparison tables & `> Exam Tip:` callouts",
+                                            text = "Write or paste any study format here...\n\nSupports:\n• Long-Form UPSC Mains Q&A (`Q1: ...` / `A: ...` with multiple paragraphs, **bold** sections & bullets)\n• Crisp One-Liners (`1. **Article 32** -> Constitutional Remedies`) & Multi-Liner Cards\n• Inline `\$...\$` & display `\$\$...\$\$` LaTeX math, matrices & `\\ce{...}` chemistry\n• Markdown comparison tables & `> Exam Tip:` callouts",
                                             fontSize = 12.5.sp,
                                             color = colors.inkMuted,
                                             lineHeight = 18.sp
@@ -2631,6 +2633,25 @@ fun KnowledgeBlockItemView(
                                             )
                                         }
                                     }
+                                    val answerWordCount = remember(block) {
+                                        val combined = buildString {
+                                            block.paragraphs.forEach { append(it).append(' ') }
+                                            block.nestedBullets.forEach { append(it.second).append(' ') }
+                                            append(block.keyTakeaway)
+                                        }.trim()
+                                        if (combined.isBlank()) 0 else combined.split(Regex("""\s+""")).size
+                                    }
+                                    if (answerWordCount >= 80) {
+                                        Surface(shape = RoundedCornerShape(5.dp), color = colors.surfaceVariant) {
+                                            Text(
+                                                text = "~$answerWordCount words",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = colors.inkMuted,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
@@ -2647,7 +2668,7 @@ fun KnowledgeBlockItemView(
                                 // Reverse / Clue-First Prompt Header
                                 val reverseClue = when {
                                     block.correctAnswer.isNotBlank() && block.keyTakeaway.isNotBlank() ->
-                                        "Answer: ${block.correctAnswer}\nTakeaway: ${block.keyTakeaway.take(180)}${if (block.keyTakeaway.length > 180) "…" else ""}"
+                                        "Answer: ${block.correctAnswer}\nTakeaway: ${block.keyTakeaway.take(320)}${if (block.keyTakeaway.length > 320) "…" else ""}"
                                     block.correctAnswer.isNotBlank() -> "Answer: ${block.correctAnswer}"
                                     block.paragraphs.isNotEmpty() -> block.paragraphs.first()
                                     block.nestedBullets.isNotEmpty() -> block.nestedBullets.joinToString("\n• ", prefix = "• ") { it.second }
@@ -2919,13 +2940,45 @@ fun KnowledgeBlockItemView(
                                 }
                             }
 
-                            block.paragraphs.forEach { para ->
-                                LatexText(
-                                    text = para,
-                                    fontSize = 13.sp,
-                                    color = colors.ink,
-                                    modifier = Modifier.padding(top = 3.dp)
-                                )
+                            block.paragraphs.forEachIndexed { pIdx, para ->
+                                val trimmedPara = para.trim()
+                                val isDisplayMathPara = (trimmedPara.startsWith("$$") && trimmedPara.endsWith("$$")) ||
+                                    (trimmedPara.startsWith("\\[") && trimmedPara.endsWith("\\]"))
+                                if (isDisplayMathPara) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colors.blueLight.copy(alpha = 0.7f),
+                                        border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.3f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = if (pIdx == 0) 2.dp else 6.dp)
+                                    ) {
+                                        Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                            if (MathFormulaParser.has2DMath(trimmedPara)) {
+                                                MathFormulaView(
+                                                    formula = trimmedPara,
+                                                    color = colors.tealDark,
+                                                    fontSize = 14.sp
+                                                )
+                                            } else {
+                                                LatexText(
+                                                    text = trimmedPara,
+                                                    fontSize = 13.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colors.tealDark
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    LatexText(
+                                        text = para,
+                                        fontSize = 13.sp,
+                                        color = colors.ink,
+                                        lineHeight = 20.sp,
+                                        modifier = Modifier.padding(top = if (pIdx == 0) 3.dp else 7.dp)
+                                    )
+                                }
                             }
 
                             if (block.formula.isNotBlank()) {
@@ -2944,12 +2997,20 @@ fun KnowledgeBlockItemView(
                                             color = colors.tealDark
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
-                                        LatexText(
-                                            text = block.formula,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.tealDark
-                                        )
+                                        if (MathFormulaParser.has2DMath(block.formula)) {
+                                            MathFormulaView(
+                                                formula = block.formula,
+                                                color = colors.tealDark,
+                                                fontSize = 14.sp
+                                            )
+                                        } else {
+                                            LatexText(
+                                                text = block.formula,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.tealDark
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -3009,6 +3070,7 @@ fun KnowledgeBlockItemView(
                                                 text = bulletText,
                                                 fontSize = 12.5.sp,
                                                 color = colors.ink,
+                                                lineHeight = 19.sp,
                                                 modifier = Modifier.weight(1f)
                                             )
                                         }

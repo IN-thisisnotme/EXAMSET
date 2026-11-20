@@ -409,6 +409,103 @@ class StudyNoteParserTest {
         assertTrue(!weakSample.contains("> Exam Tip:"))
         assertTrue(weakSample.contains("[PYQ Focus]"))
     }
+
+    @Test
+    fun `parseBlocks keeps multi-paragraph UPSC Mains answers and display LaTeX inside a single MultiLinerCard`() {
+        val raw = """
+            ## Indian Economy & Fiscal Policy
+            Q1: Examine the role of fiscal consolidation under the FRBM framework in sustaining high capital expenditure.
+            A: **Introduction:** Fiscal consolidation anchors macroeconomic stability by moderating sovereign debt-to-GDP ratios.
+
+            **Multi-Dimensional Analysis:**
+            When inflation (${'$'}\pi${'$'}) rises and ${'$'}r > g${'$'} widens, debt sustainability weakens rapidly.
+              - **Capital Multiplier:** Public CapEx crowds in private investment over medium horizons.
+              - **Escape Clause:** Allows controlled deviation during structural shocks.
+
+            ${'$'}${'$'}
+            \frac{\Delta b}{b} = (r - g) - \frac{pb}{b}
+            ${'$'}${'$'}
+
+            **Way Forward:** Pair transparent medium-term debt targets with outcome-budgeted infrastructure spending.
+
+            Q2: What is the significance of Cooperative Federalism in GST governance?
+            A: The GST Council institutionalizes shared fiscal sovereignty between the Union and States.
+        """.trimIndent()
+
+        val rule = KnowledgeFormatRule(collectionType = KnowledgeCollectionType.LONG_ANSWER)
+        val blocks = StudyNoteParser.parseBlocks(raw, rule)
+        val cards = blocks.filterIsInstance<StudyNoteBlock.MultiLinerCard>()
+
+        assertEquals(2, cards.size)
+        val q1 = cards[0]
+        assertTrue(q1.title.contains("FRBM framework"))
+        assertEquals("Long Q&A", q1.badge)
+        assertTrue("Expected Introduction paragraph", q1.paragraphs.any { it.contains("Introduction:") })
+        assertTrue("Expected prose with inline LaTeX kept in paragraphs", q1.paragraphs.any { it.contains("\\pi") && it.contains("r > g") })
+        assertTrue("Expected Way Forward paragraph in same card", q1.paragraphs.any { it.contains("Way Forward:") })
+        assertTrue("Expected nested bullets preserved", q1.nestedBullets.size == 2)
+        assertTrue("Expected display LaTeX preserved in formula", q1.formula.contains("\\frac{\\Delta b}{b}"))
+
+        val q2 = cards[1]
+        assertTrue(q2.title.contains("Cooperative Federalism"))
+        assertTrue(q2.paragraphs.any { it.contains("GST Council") })
+    }
+
+    @Test
+    fun `parseBlocks groups numbered LONG_ANSWER multi-paragraph sections and generates rich LaTeX HTML`() {
+        val raw = """
+            1. **Discuss the doctrine of Basic Structure** -> Evolved in Kesavananda Bharati (1973) to safeguard constitutional identity.
+
+              - Introduction: Limits Parliament's amending power under Article 368.
+              - Explanation: Judicial review remains an inviolable pillar.
+              - Explanation: Subsequent rulings like Minerva Mills reinforced harmony between FRs and DPSPs.
+
+            The constitutional balance ensures ${'$'}\text{Part III} \leftrightarrow \text{Part IV}${'$'} without legislative absolutism.
+        """.trimIndent()
+
+        val rule = KnowledgeFormatRule(collectionType = KnowledgeCollectionType.LONG_ANSWER)
+        val blocks = StudyNoteParser.parseBlocks(raw, rule)
+        val cards = blocks.filterIsInstance<StudyNoteBlock.MultiLinerCard>()
+        assertEquals(1, cards.size)
+        val card = cards.first()
+        assertEquals("Long-Form Q&A", card.questionType)
+        assertTrue(card.keyTakeaway.contains("Minerva Mills"))
+        assertTrue(card.keyTakeaway.contains("Judicial review"))
+        assertTrue(card.paragraphs.any { it.contains("constitutional balance") })
+
+        val prompt = StudyNoteParser.compilePrompt(
+            topic = "Centre-State Relations",
+            collectionType = KnowledgeCollectionType.LONG_ANSWER,
+            rule = rule.copy(depth = KnowledgeDepth.BALANCED),
+            examTarget = "UPSC Civil Services",
+            itemCount = 3
+        )
+        assertTrue(prompt.contains("Generate exactly 3 full-length subjective / UPSC Mains"))
+        assertTrue(prompt.contains("~250-word UPSC Mains"))
+        assertTrue(prompt.contains("\$\$...\$\$"))
+
+        val htmlSource = """
+            Q1: **Discuss the doctrine of Basic Structure**
+            A: **Constitutional Identity:** Evolved in Kesavananda Bharati (1973) to safeguard core federalism.
+
+            The constitutional balance ensures ${'$'}\text{Part III} \leftrightarrow \text{Part IV}${'$'} without legislative absolutism.
+
+            ${'$'}${'$'}
+            \text{Basic Structure} = \text{Supremacy of Constitution}
+            ${'$'}${'$'}
+        """.trimIndent()
+        val note = StudyNoteEntity(
+            title = "UPSC Polity Mains",
+            subject = "Polity",
+            collectionType = KnowledgeCollectionType.LONG_ANSWER.code,
+            rawContent = htmlSource
+        )
+        val html = StudyNoteParser.generatePrintableHtml(note)
+        assertTrue(html.contains("Long-Form / Mains Q&amp;A"))
+        assertTrue(html.contains("<strong>"))
+        assertTrue(html.contains("Part III ↔ Part IV"))
+        assertTrue(html.contains("<div class='formula'>"))
+    }
 }
 
 
