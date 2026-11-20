@@ -2515,11 +2515,10 @@ fun InputBottomSheet(
                             Spacer(modifier = Modifier.height(4.dp))
 
                             // Preset Count Chips (5, 10, 25, 50, 100, 180) - synchronized with Tools Tab
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 presetCounts.forEach { cnt ->
                                     val isSelected = parsedCount == cnt
@@ -2542,7 +2541,7 @@ fun InputBottomSheet(
 
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            // Slider strictly aligned to multiples of 5 from 5 to 200 with 38 steps
+                            // Slider strictly aligned to multiples of 5 from 5 to 200
                             Slider(
                                 value = parsedCount.toFloat().coerceIn(5f, 200f),
                                 onValueChange = { newVal ->
@@ -2551,7 +2550,6 @@ fun InputBottomSheet(
                                     promptMcqCount = clamped.toString()
                                 },
                                 valueRange = 5f..200f,
-                                steps = 38,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -2674,11 +2672,7 @@ fun InputBottomSheet(
                                 "Bilingual (Eng & $activeQLang)"
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
                                     "Explanation Language",
                                     fontSize = 11.5.sp,
@@ -2686,20 +2680,19 @@ fun InputBottomSheet(
                                     color = colors.inkBold
                                 )
                                 Text(
-                                    "Current: $effectivePromptExplanationLanguage",
-                                    fontSize = 10.sp,
-                                    color = colors.muted,
-                                    maxLines = 1
+                                    "Active: $effectivePromptExplanationLanguage",
+                                    fontSize = 10.5.sp,
+                                    color = colors.teal,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val explanationOptions = listOf(
                                     "Same as Question" to "Same as Question",
@@ -2869,8 +2862,8 @@ fun InputBottomSheet(
                         // Format & Quantity Truncation Guard
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (promptEnableQuantityCorrectionRule) androidx.compose.ui.graphics.Color(0xFFEFF6FF) else colors.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(0.8.dp, if (promptEnableQuantityCorrectionRule) androidx.compose.ui.graphics.Color(0xFF93C5FD) else colors.border),
+                            color = if (promptEnableQuantityCorrectionRule) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(0.8.dp, if (promptEnableQuantityCorrectionRule) colors.teal else colors.border),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
