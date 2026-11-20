@@ -89,6 +89,7 @@ import com.example.model.KnowledgePromptConfig
 import com.example.model.PromptPreset
 import com.example.model.PromptPresetMode
 import com.example.model.QuestionPromptConfig
+import com.example.model.VocabularyPromptConfig
 import com.example.ui.MainViewModel
 import com.example.ui.components.PromptPresetBar
 import com.example.ui.components.PromptPresetOverlays
@@ -102,6 +103,7 @@ fun PromptGeneratorTab(
     viewModel: MainViewModel,
     onNavigateToCreator: () -> Unit,
     onOpenKnowledgeStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit = { _, _, _, _ -> },
+    onOpenVocabularyHub: (languageFilter: String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -112,7 +114,9 @@ fun PromptGeneratorTab(
     val qState = viewModel.questionPromptState
     val knowledgeState = viewModel.knowledgePromptState
     val flashcardState = viewModel.flashcardPromptState
+    val vocabState = viewModel.vocabularyPromptState
     val promptPresets by viewModel.promptPresets.collectAsState()
+    val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
 
     var copied by remember { mutableStateOf(false) }
     val presetDialogState = rememberPromptPresetDialogState()
@@ -121,15 +125,18 @@ fun PromptGeneratorTab(
     var showQuestionAdvanced by remember { mutableStateOf(true) }
     var showKnowledgeAdvanced by remember { mutableStateOf(true) }
     var showFlashcardAdvanced by remember { mutableStateOf(true) }
+    var showVocabAdvanced by remember { mutableStateOf(true) }
 
     // Undo snapshots for Clear so users never fear resetting for another exam
     var clearedQuestionUndo by remember { mutableStateOf<Triple<QuestionPromptConfig, String, String?>?>(null) }
     var clearedKnowledgeUndo by remember { mutableStateOf<Triple<KnowledgePromptConfig, String, String?>?>(null) }
     var clearedFlashcardUndo by remember { mutableStateOf<Triple<FlashcardPromptConfig, String, String?>?>(null) }
+    var clearedVocabUndo by remember { mutableStateOf<Triple<VocabularyPromptConfig, String, String?>?>(null) }
 
     val qConfig = qState.toConfig()
     val kConfig = knowledgeState.toConfig()
     val fConfig = flashcardState.toConfig()
+    val vConfig = vocabState.toConfig()
 
     // Auto-remember last used configuration safely across restarts (debounced)
     LaunchedEffect(qConfig) {
@@ -150,10 +157,16 @@ fun PromptGeneratorTab(
             viewModel.persistPromptDraft(PromptPresetMode.FLASHCARD_SET)
         }
     }
+    LaunchedEffect(vConfig) {
+        delay(250)
+        if (vConfig != VocabularyPromptConfig()) {
+            viewModel.persistPromptDraft(PromptPresetMode.VOCABULARY)
+        }
+    }
 
     val activePresetMode = activeMode.toPresetMode()
     val activePreset = viewModel.getActivePromptPreset(activePresetMode)
-    val isCurrentPresetModified = remember(activePreset, activeMode, qConfig, kConfig, fConfig) {
+    val isCurrentPresetModified = remember(activePreset, activeMode, qConfig, kConfig, fConfig, vConfig) {
         if (activePreset == null) {
             false
         } else {
@@ -161,22 +174,25 @@ fun PromptGeneratorTab(
                 PromptBuilderMode.QUESTION_SET -> activePreset.questionConfig?.normalized() != qConfig
                 PromptBuilderMode.KNOWLEDGE_SET -> activePreset.knowledgeConfig?.normalized() != kConfig
                 PromptBuilderMode.FLASHCARD_SET -> activePreset.flashcardConfig?.normalized() != fConfig
+                PromptBuilderMode.VOCABULARY -> activePreset.vocabularyConfig?.normalized() != vConfig
             }
         }
     }
-    val suggestedPresetName = remember(activeMode, qConfig, kConfig, fConfig) {
+    val suggestedPresetName = remember(activeMode, qConfig, kConfig, fConfig, vConfig) {
         when (activeMode) {
             PromptBuilderMode.QUESTION_SET -> qConfig.suggestName()
             PromptBuilderMode.KNOWLEDGE_SET -> kConfig.suggestName()
             PromptBuilderMode.FLASHCARD_SET -> fConfig.suggestName()
+            PromptBuilderMode.VOCABULARY -> vConfig.suggestName()
         }
     }
-    val matchingConfigPreset = remember(promptPresets, activeMode, qConfig, kConfig, fConfig) {
+    val matchingConfigPreset = remember(promptPresets, activeMode, qConfig, kConfig, fConfig, vConfig) {
         promptPresets.firstOrNull { preset ->
             preset.mode == activePresetMode && when (activeMode) {
                 PromptBuilderMode.QUESTION_SET -> preset.questionConfig?.normalized() == qConfig
                 PromptBuilderMode.KNOWLEDGE_SET -> preset.knowledgeConfig?.normalized() == kConfig
                 PromptBuilderMode.FLASHCARD_SET -> preset.flashcardConfig?.normalized() == fConfig
+                PromptBuilderMode.VOCABULARY -> preset.vocabularyConfig?.normalized() == vConfig
             }
         }
     }
@@ -197,6 +213,11 @@ fun PromptGeneratorTab(
                 clearedFlashcardUndo = Triple(fConfig, flashcardState.topic, viewModel.activeFlashcardPresetId)
                 viewModel.clearPromptModeState(PromptPresetMode.FLASHCARD_SET)
                 showFlashcardAdvanced = true
+            }
+            PromptBuilderMode.VOCABULARY -> {
+                clearedVocabUndo = Triple(vConfig, vocabState.topic, viewModel.activeVocabularyPresetId)
+                viewModel.clearPromptModeState(PromptPresetMode.VOCABULARY)
+                showVocabAdvanced = true
             }
         }
         copied = false
@@ -224,6 +245,13 @@ fun PromptGeneratorTab(
                 viewModel.setActivePromptPresetId(PromptPresetMode.FLASHCARD_SET, prevId)
                 viewModel.persistPromptDraft(PromptPresetMode.FLASHCARD_SET)
                 clearedFlashcardUndo = null
+            }
+            PromptBuilderMode.VOCABULARY -> clearedVocabUndo?.let { (cfg, prevTopic, prevId) ->
+                vocabState.applyConfig(cfg, preserveTopic = false)
+                vocabState.topic = prevTopic
+                viewModel.setActivePromptPresetId(PromptPresetMode.VOCABULARY, prevId)
+                viewModel.persistPromptDraft(PromptPresetMode.VOCABULARY)
+                clearedVocabUndo = null
             }
         }
     }
@@ -568,10 +596,20 @@ fun PromptGeneratorTab(
         }
     }
 
+    val existingVocabWordsForLang = remember(vocabularyDecks, vocabState.language) {
+        viewModel.existingVocabularyWordsForLanguage(vocabState.language)
+    }
+    val generatedVocabPrompt = remember(
+        vConfig, vocabState.topic, vocabState.excludeAlreadySavedWords, existingVocabWordsForLang
+    ) {
+        vocabState.buildPrompt(existingVocabWordsForLang)
+    }
+
     val activePrompt = when (activeMode) {
         PromptBuilderMode.QUESTION_SET -> generatedPrompt
         PromptBuilderMode.KNOWLEDGE_SET -> knowledgeState.buildPrompt()
         PromptBuilderMode.FLASHCARD_SET -> flashcardState.buildPrompt()
+        PromptBuilderMode.VOCABULARY -> generatedVocabPrompt
     }
 
     LaunchedEffect(activePrompt) {
@@ -585,11 +623,13 @@ fun PromptGeneratorTab(
             PromptBuilderMode.QUESTION_SET -> "AI Exam Prompt"
             PromptBuilderMode.KNOWLEDGE_SET -> "AI Knowledge Prompt"
             PromptBuilderMode.FLASHCARD_SET -> "AI Flashcard Prompt"
+            PromptBuilderMode.VOCABULARY -> "AI Vocabulary Prompt"
         }
         val toastText = when (activeMode) {
             PromptBuilderMode.QUESTION_SET -> "Prompt copied to clipboard"
             PromptBuilderMode.KNOWLEDGE_SET -> "Knowledge prompt copied to clipboard"
             PromptBuilderMode.FLASHCARD_SET -> "Flashcard prompt copied to clipboard"
+            PromptBuilderMode.VOCABULARY -> "Vocabulary prompt copied to clipboard"
         }
         val clip = ClipData.newPlainText(label, activePrompt)
         clipboard.setPrimaryClip(clip)
@@ -608,8 +648,9 @@ fun PromptGeneratorTab(
         unfocusedContainerColor = colors.surfaceVariant.copy(alpha = 0.15f)
     )
 
+    Box(modifier = modifier.fillMaxSize()) {
     LazyColumn(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp)
             .testTag("prompt_lazy_column"),
@@ -665,48 +706,55 @@ fun PromptGeneratorTab(
                         }
                     }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Max),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        PromptBuilderMode.entries.forEach { mode ->
-                            val isSelected = activeMode == mode
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    viewModel.promptBuilderMode = mode
-                                    copied = false
-                                },
+                        PromptBuilderMode.entries.chunked(2).forEach { rowModes ->
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .heightIn(min = 48.dp)
-                                    .testTag(mode.testTag),
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
-                                border = BorderStroke(
-                                    if (isSelected) 1.4.dp else 0.6.dp,
-                                    if (isSelected) colors.teal else colors.border
-                                )
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Max),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                                    Text(
-                                        text = mode.title,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) colors.teal else colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = mode.subtitle,
-                                        fontSize = 9.5.sp,
-                                        color = if (isSelected) colors.tealDark else colors.inkMuted,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                rowModes.forEach { mode ->
+                                    val isSelected = activeMode == mode
+                                    Surface(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            viewModel.promptBuilderMode = mode
+                                            copied = false
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .heightIn(min = 48.dp)
+                                            .testTag(mode.testTag),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                                        border = BorderStroke(
+                                            if (isSelected) 1.4.dp else 0.6.dp,
+                                            if (isSelected) colors.teal else colors.border
+                                        )
+                                    ) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                            Text(
+                                                text = mode.title,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) colors.teal else colors.inkBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = mode.subtitle,
+                                                fontSize = 10.sp,
+                                                color = if (isSelected) colors.tealDark else colors.inkMuted,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -782,11 +830,13 @@ fun PromptGeneratorTab(
                 PromptBuilderMode.QUESTION_SET -> showQuestionAdvanced
                 PromptBuilderMode.KNOWLEDGE_SET -> showKnowledgeAdvanced
                 PromptBuilderMode.FLASHCARD_SET -> showFlashcardAdvanced
+                PromptBuilderMode.VOCABULARY -> showVocabAdvanced
             }
             val canUndo = when (activeMode) {
                 PromptBuilderMode.QUESTION_SET -> clearedQuestionUndo != null
                 PromptBuilderMode.KNOWLEDGE_SET -> clearedKnowledgeUndo != null
                 PromptBuilderMode.FLASHCARD_SET -> clearedFlashcardUndo != null
+                PromptBuilderMode.VOCABULARY -> clearedVocabUndo != null
             }
             PromptPresetBar(
                 mode = activePresetMode,
@@ -802,6 +852,7 @@ fun PromptGeneratorTab(
                         PromptBuilderMode.QUESTION_SET -> showQuestionAdvanced = !showQuestionAdvanced
                         PromptBuilderMode.KNOWLEDGE_SET -> showKnowledgeAdvanced = !showKnowledgeAdvanced
                         PromptBuilderMode.FLASHCARD_SET -> showFlashcardAdvanced = !showFlashcardAdvanced
+                        PromptBuilderMode.VOCABULARY -> showVocabAdvanced = !showVocabAdvanced
                     }
                 },
                 onSelectPreset = { preset ->
@@ -819,6 +870,10 @@ fun PromptGeneratorTab(
                             clearedFlashcardUndo = null
                             showFlashcardAdvanced = false
                         }
+                        PromptPresetMode.VOCABULARY -> {
+                            clearedVocabUndo = null
+                            showVocabAdvanced = false
+                        }
                     }
                     copied = false
                     Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
@@ -829,7 +884,8 @@ fun PromptGeneratorTab(
                         rawName = presetName,
                         questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
                         knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
-                        flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+                        flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null,
+                        vocabularyConfig = if (activePresetMode == PromptPresetMode.VOCABULARY) vConfig else null
                     )
                     Toast.makeText(context, "Saved preset \"${saved.name}\"", Toast.LENGTH_SHORT).show()
                 },
@@ -839,7 +895,8 @@ fun PromptGeneratorTab(
                         newName = newName,
                         questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
                         knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
-                        flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+                        flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null,
+                        vocabularyConfig = if (activePresetMode == PromptPresetMode.VOCABULARY) vConfig else null
                     )
                     Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
                 },
@@ -893,6 +950,19 @@ fun PromptGeneratorTab(
                     onOpenFlashcardStudio = onOpenKnowledgeStudio,
                     showAdvancedSettings = showFlashcardAdvanced,
                     onToggleAdvancedSettings = { showFlashcardAdvanced = !showFlashcardAdvanced }
+                )
+            }
+            PromptBuilderMode.VOCABULARY -> {
+                vocabularyPromptGeneratorItems(
+                    state = vocabState,
+                    colors = colors,
+                    generatedPrompt = generatedVocabPrompt,
+                    copied = copied,
+                    existingLanguageWordCount = existingVocabWordsForLang.size,
+                    showAdvancedSettings = showVocabAdvanced,
+                    onExpandAdvancedSettings = { showVocabAdvanced = true },
+                    onCopyPrompt = copyAction,
+                    onOpenVocabularyHub = { onOpenVocabularyHub(vocabState.language) }
                 )
             }
             PromptBuilderMode.QUESTION_SET -> {
@@ -2284,6 +2354,10 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                     clearedFlashcardUndo = null
                     showFlashcardAdvanced = false
                 }
+                PromptPresetMode.VOCABULARY -> {
+                    clearedVocabUndo = null
+                    showVocabAdvanced = false
+                }
             }
             copied = false
             Toast.makeText(context, "Loaded preset \"${preset.name}\"", Toast.LENGTH_SHORT).show()
@@ -2294,7 +2368,8 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                 rawName = presetName,
                 questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
                 knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
-                flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+                flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null,
+                vocabularyConfig = if (activePresetMode == PromptPresetMode.VOCABULARY) vConfig else null
             )
             Toast.makeText(context, "Saved preset \"${saved.name}\"", Toast.LENGTH_SHORT).show()
         },
@@ -2304,7 +2379,8 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                 newName = newName,
                 questionConfig = if (activePresetMode == PromptPresetMode.QUESTION_SET) qConfig else null,
                 knowledgeConfig = if (activePresetMode == PromptPresetMode.KNOWLEDGE_SET) kConfig else null,
-                flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null
+                flashcardConfig = if (activePresetMode == PromptPresetMode.FLASHCARD_SET) fConfig else null,
+                vocabularyConfig = if (activePresetMode == PromptPresetMode.VOCABULARY) vConfig else null
             )
             Toast.makeText(context, "Preset updated", Toast.LENGTH_SHORT).show()
         },
@@ -2340,11 +2416,16 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                     clearedFlashcardUndo = null
                     showFlashcardAdvanced = false
                 }
+                PromptPresetMode.VOCABULARY -> {
+                    clearedVocabUndo = null
+                    showVocabAdvanced = false
+                }
             }
             val promptToCopy = when (preset.mode) {
                 PromptPresetMode.QUESTION_SET -> generatedPrompt
                 PromptPresetMode.KNOWLEDGE_SET -> knowledgeState.buildPrompt()
                 PromptPresetMode.FLASHCARD_SET -> flashcardState.buildPrompt()
+                PromptPresetMode.VOCABULARY -> vocabState.buildPrompt(viewModel.existingVocabularyWordsForLanguage(vocabState.language))
             }
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText(preset.name, promptToCopy))
@@ -2352,4 +2433,5 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
             Toast.makeText(context, "Copied prompt from \"${preset.name}\"", Toast.LENGTH_SHORT).show()
         }
     )
+    }
 }

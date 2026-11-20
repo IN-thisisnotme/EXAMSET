@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -185,7 +186,6 @@ class PromptGeneratorTabTest {
     }
 
     @Test
-    @Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [34])
     fun promptGeneratorTab_savesPresetClearsWithUndoAndCollapsesSettingsOnSelect() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         app.getSharedPreferences("examset_app_prefs", android.content.Context.MODE_PRIVATE)
@@ -229,7 +229,49 @@ class PromptGeneratorTabTest {
         composeTestRule.onNodeWithTag("prompt_preset_item_$savedId").performClick()
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithTag("question_expand_settings_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("prompt_lazy_column")
+            .performScrollToNode(hasTestTag("question_expand_settings_card"))
+        composeTestRule.onNodeWithTag("question_expand_settings_card").assertIsDisplayed()
+    }
+
+    @Test
+    fun promptGeneratorTab_vocabularyModeRendersControlsAndOpensHub() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val viewModel = MainViewModel(app)
+
+        var hubOpened = false
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = false) {
+                PromptGeneratorTab(
+                    viewModel = viewModel,
+                    onNavigateToCreator = {},
+                    onOpenVocabularyHub = { hubOpened = true }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("prompt_mode_vocabulary").performClick()
+        composeTestRule.waitForIdle()
+
+        val list = composeTestRule.onNodeWithTag("prompt_lazy_column")
+        list.performScrollToNode(hasText("LANGUAGE & FOCUS THEME"))
+        composeTestRule.onNodeWithText("LANGUAGE & FOCUS THEME").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("vocab_prompt_topic_input").performScrollTo().performTextInput("Editorial Verbs")
+        list.performScrollToNode(hasText("PROFICIENCY LEVEL & REGISTER"))
+        composeTestRule.onNodeWithTag("vocab_level_c1").performScrollTo().performClick()
+
+        list.performScrollToNode(hasText("CONSTRUCTED VOCABULARY PROMPT"))
+        composeTestRule.onNodeWithText("CONSTRUCTED VOCABULARY PROMPT").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("vocab_prompt_open_hub_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(true, hubOpened)
     }
 }
 

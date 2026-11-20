@@ -77,7 +77,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.window.DialogProperties
 import com.example.model.PromptPreset
 import com.example.model.PromptPresetMode
 import com.example.ui.theme.ExamColorPalette
@@ -569,6 +571,11 @@ fun PromptPresetOverlays(
     dialogState.deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { dialogState.deleteTarget = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .widthIn(max = 460.dp),
             containerColor = colors.surface,
             titleContentColor = colors.inkBold,
             textContentColor = colors.ink,
@@ -1076,6 +1083,11 @@ private fun SavePromptPresetDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .widthIn(max = 460.dp),
         containerColor = colors.surface,
         titleContentColor = colors.inkBold,
         textContentColor = colors.ink,
@@ -1273,6 +1285,11 @@ private fun RenamePromptPresetDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .widthIn(max = 460.dp),
         containerColor = colors.surface,
         titleContentColor = colors.inkBold,
         textContentColor = colors.ink,

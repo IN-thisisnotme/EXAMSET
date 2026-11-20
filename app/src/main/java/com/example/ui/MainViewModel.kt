@@ -56,6 +56,9 @@ import com.example.model.RemoteCloudBackupFile
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
 import com.example.model.SrsRating
+import com.example.model.VocabularyDeck
+import com.example.model.VocabularyEntry
+import com.example.model.VocabularyPromptConfig
 import com.example.ui.components.computeNextSetForSubject
 import com.example.ui.components.isSetNumberMatch
 import com.example.ui.components.paperBelongsToDestination
@@ -64,6 +67,7 @@ import com.example.ui.screens.FlashcardPromptState
 import com.example.ui.screens.KnowledgePromptState
 import com.example.ui.screens.PromptBuilderMode
 import com.example.ui.screens.QuestionPromptState
+import com.example.ui.screens.VocabularyPromptState
 import com.example.util.CloudBackupClients
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
@@ -73,6 +77,11 @@ import com.example.util.OmrVisionProcessor
 import com.example.util.PaperLanguageDetector
 import com.example.util.PsychometricEngine
 import com.example.util.SpacedRepetitionEngine
+import com.example.util.VocabularyAuditFinding
+import com.example.util.VocabularyDuplicateAction
+import com.example.util.VocabularyEngine
+import com.example.util.VocabularyImportAnalysis
+import com.example.util.VocabularyMergeDecision
 import com.example.util.StudyNoteParser
 import com.example.util.TrustedTimeManager
 import com.example.util.VaultArchiveEngine
@@ -212,6 +221,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _promptPresets.value.any { it.id == savedId && it.mode == PromptPresetMode.FLASHCARD_SET }
         }
     )
+    var activeVocabularyPresetId by mutableStateOf<String?>(
+        appPreferences.getActivePromptPresetId(PromptPresetMode.VOCABULARY)?.takeIf { savedId ->
+            _promptPresets.value.any { it.id == savedId && it.mode == PromptPresetMode.VOCABULARY }
+        }
+    )
 
     val questionPromptState = QuestionPromptState().apply {
         appPreferences.getQuestionPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
@@ -222,12 +236,249 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val flashcardPromptState = FlashcardPromptState().apply {
         appPreferences.getFlashcardPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
     }
+    val vocabularyPromptState = VocabularyPromptState().apply {
+        appPreferences.getVocabularyPromptDraft()?.let { applyConfig(it, preserveTopic = false) }
+    }
+
+    // Dedicated Vocabulary Hub state (completely separate from Knowledge Sets)
+    private val _vocabularyDecks = MutableStateFlow(appPreferences.getVocabularyDecks())
+    val vocabularyDecks: StateFlow<List<VocabularyDeck>> = _vocabularyDecks.asStateFlow()
+
+    private val _vocabularySrsByDeck = MutableStateFlow(appPreferences.getAllVocabularySrsMaps())
+    val vocabularySrsByDeck: StateFlow<Map<String, Map<String, FlashcardSrsState>>> = _vocabularySrsByDeck.asStateFlow()
+
+    var showVocabularyHub by mutableStateOf(false)
+        private set
+    var vocabularyHubInitialLanguage by mutableStateOf<String?>(null)
+        private set
+
+    fun openVocabularyHub(languageFilter: String? = null) {
+        vocabularyHubInitialLanguage = languageFilter?.trim()?.ifBlank { null }
+        showVocabularyHub = true
+    }
+
+    fun closeVocabularyHub() {
+        showVocabularyHub = false
+    }
+
+    fun existingVocabularyWordsForLanguage(language: String): List<String> {
+        val clean = language.trim().lowercase().ifBlank { "english" }
+        return _vocabularyDecks.value
+            .filter { it.language.trim().lowercase() == clean }
+            .flatMap { it.entries }
+            .map { it.word.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .sortedBy { it.lowercase() }
+    }
+
+    fun commitVocabularyImport(
+        targetDeckId: String?,
+        title: String,
+        language: String,
+        translationLanguage: String,
+        levelCode: String,
+        customLevelLabel: String,
+        domain: String,
+        analysis: VocabularyImportAnalysis,
+        decisions: Map<String, VocabularyMergeDecision>
+    ): VocabularyDeck {
+        val now = System.currentTimeMillis()
+        val decksMutable = _vocabularyDecks.value.toMutableList()
+
+        // Ensure target deck exists
+        val resolvedTargetId: String
+        var targetIndex = if (targetDeckId != null) decksMutable.indexOfFirst { it.id == targetDeckId } else -1
+        if (targetIndex < 0) {
+            val newDeck = VocabularyDeck(
+                title = title.trim().ifBlank { "$language Vocabulary" },
+                language = language.trim().ifBlank { "English" },
+                translationLanguage = translationLanguage.trim(),
+                levelCode = levelCode,
+                customLevelLabel = customLevelLabel.trim(),
+                domain = domain.trim().ifBlank { "General" },
+                entries = emptyList(),
+                createdAt = now,
+                updatedAt = now
+            )
+            decksMutable.add(0, newDeck)
+            targetIndex = 0
+            resolvedTargetId = newDeck.id
+        } else {
+            resolvedTargetId = decksMutable[targetIndex].id
+        }
+
+        // 1. Add all unique new entries to target deck
+        val newEntriesToAdd = analysis.uniqueNewEntries.toMutableList()
+
+        // 2. Apply user's audit-style decisions for each duplicate item
+        analysis.duplicateItems.forEach { dup ->
+            val decision = decisions[dup.id] ?: VocabularyMergeDecision(action = VocabularyDuplicateAction.SKIP)
+            when (decision.action) {
+                VocabularyDuplicateAction.SKIP -> Unit
+                VocabularyDuplicateAction.KEEP_SEPARATE -> {
+                    newEntriesToAdd.add(dup.incoming.copy(id = java.util.UUID.randomUUID().toString(), createdAt = now, updatedAt = now))
+                }
+                VocabularyDuplicateAction.MERGE_SEGMENTS,
+                VocabularyDuplicateAction.REPLACE_EXISTING -> {
+                    if (dup.isIntraBatch) {
+                        val batchIdx = newEntriesToAdd.indexOfFirst { it.id == dup.existing.id }
+                        if (batchIdx >= 0) {
+                            newEntriesToAdd[batchIdx] = VocabularyEngine.mergeVocabularyEntry(
+                                existing = newEntriesToAdd[batchIdx],
+                                incoming = dup.incoming,
+                                decision = decision
+                            )
+                        }
+                    } else {
+                        val hostIdx = decksMutable.indexOfFirst { it.id == dup.existingDeckId }
+                        if (hostIdx >= 0) {
+                            val hostDeck = decksMutable[hostIdx]
+                            val updatedEntries = hostDeck.entries.map { existingEntry ->
+                                if (existingEntry.id == dup.existing.id) {
+                                    VocabularyEngine.mergeVocabularyEntry(existingEntry, dup.incoming, decision)
+                                } else existingEntry
+                            }
+                            decksMutable[hostIdx] = hostDeck.copy(entries = updatedEntries, updatedAt = now)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Re-locate target index safely and append sorted unique entries
+        val finalTargetIdx = decksMutable.indexOfFirst { it.id == resolvedTargetId }
+        val updatedTargetDeck = decksMutable[finalTargetIdx].let { deck ->
+            val combined = (deck.entries + newEntriesToAdd).sortedWith(
+                compareBy<VocabularyEntry>(
+                    { it.word.trim().lowercase() },
+                    { it.partOfSpeech.trim().lowercase() }
+                )
+            )
+            deck.copy(entries = combined, updatedAt = now)
+        }
+        decksMutable[finalTargetIdx] = updatedTargetDeck
+
+        _vocabularyDecks.value = decksMutable
+        appPreferences.saveVocabularyDecks(decksMutable)
+        _statusMessage.value = "Saved \"${updatedTargetDeck.title}\" (${updatedTargetDeck.entries.size} words)"
+        return updatedTargetDeck
+    }
+
+    fun renameVocabularyDeck(
+        deckId: String,
+        newTitle: String,
+        language: String,
+        translationLanguage: String,
+        levelCode: String,
+        customLevelLabel: String
+    ) {
+        val cleanTitle = newTitle.trim()
+        if (cleanTitle.isBlank()) return
+        val now = System.currentTimeMillis()
+        val updated = _vocabularyDecks.value.map { deck ->
+            if (deck.id == deckId) {
+                deck.copy(
+                    title = cleanTitle,
+                    language = language.trim().ifBlank { deck.language },
+                    translationLanguage = translationLanguage.trim(),
+                    levelCode = levelCode,
+                    customLevelLabel = customLevelLabel.trim(),
+                    updatedAt = now
+                )
+            } else deck
+        }
+        _vocabularyDecks.value = updated
+        appPreferences.saveVocabularyDecks(updated)
+    }
+
+    fun deleteVocabularyDeck(deckId: String) {
+        val updated = _vocabularyDecks.value.filterNot { it.id == deckId }
+        _vocabularyDecks.value = updated
+        appPreferences.saveVocabularyDecks(updated)
+        val updatedSrs = _vocabularySrsByDeck.value.toMutableMap().apply { remove(deckId) }
+        _vocabularySrsByDeck.value = updatedSrs
+        appPreferences.saveAllVocabularySrsMaps(updatedSrs)
+    }
+
+    fun toggleVocabularyEntryBookmark(deckId: String, entryId: String) {
+        val updated = _vocabularyDecks.value.map { deck ->
+            if (deck.id != deckId) deck else deck.copy(
+                entries = deck.entries.map { e ->
+                    if (e.id == entryId) e.copy(isBookmarked = !e.isBookmarked) else e
+                },
+                updatedAt = System.currentTimeMillis()
+            )
+        }
+        _vocabularyDecks.value = updated
+        appPreferences.saveVocabularyDecks(updated)
+    }
+
+    fun deleteVocabularyEntry(deckId: String, entryId: String) {
+        val updated = _vocabularyDecks.value.map { deck ->
+            if (deck.id != deckId) deck else deck.copy(
+                entries = deck.entries.filterNot { it.id == entryId },
+                updatedAt = System.currentTimeMillis()
+            )
+        }
+        _vocabularyDecks.value = updated
+        appPreferences.saveVocabularyDecks(updated)
+        val deckSrs = _vocabularySrsByDeck.value[deckId]?.toMutableMap()
+        if (deckSrs != null && deckSrs.remove(entryId) != null) {
+            val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+            if (deckSrs.isEmpty()) allSrs.remove(deckId) else allSrs[deckId] = deckSrs
+            _vocabularySrsByDeck.value = allSrs
+            appPreferences.saveAllVocabularySrsMaps(allSrs)
+        }
+    }
+
+    fun rateVocabularyEntry(deckId: String, entryId: String, rating: SrsRating) {
+        val now = System.currentTimeMillis()
+        val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+        val deckSrs = (allSrs[deckId] ?: emptyMap()).toMutableMap()
+        val nextState = SpacedRepetitionEngine.computeNextState(
+            current = deckSrs[entryId],
+            blockIndex = 0,
+            rating = rating,
+            nowMillis = now
+        )
+        deckSrs[entryId] = nextState
+        allSrs[deckId] = deckSrs
+        _vocabularySrsByDeck.value = allSrs
+        appPreferences.saveAllVocabularySrsMaps(allSrs)
+    }
+
+    fun resetVocabularyDeckSrs(deckId: String) {
+        val allSrs = _vocabularySrsByDeck.value.toMutableMap()
+        allSrs.remove(deckId)
+        _vocabularySrsByDeck.value = allSrs
+        appPreferences.saveAllVocabularySrsMaps(allSrs)
+    }
+
+    fun applyVocabularyAuditFixes(deckId: String, findings: List<VocabularyAuditFinding>) {
+        if (findings.isEmpty()) return
+        val findingByEntryId = findings.associateBy { it.entryId }
+        val now = System.currentTimeMillis()
+        val updated = _vocabularyDecks.value.map { deck ->
+            if (deck.id != deckId) deck else deck.copy(
+                entries = deck.entries.map { entry ->
+                    val f = findingByEntryId[entry.id]
+                    if (f != null) VocabularyEngine.applyAuditFinding(entry, f) else entry
+                },
+                updatedAt = now
+            )
+        }
+        _vocabularyDecks.value = updated
+        appPreferences.saveVocabularyDecks(updated)
+        _statusMessage.value = "Applied ${findings.size} vocabulary audit fix(es)"
+    }
 
     fun getActivePromptPreset(mode: PromptPresetMode): PromptPreset? {
         val id = when (mode) {
             PromptPresetMode.QUESTION_SET -> activeQuestionPresetId
             PromptPresetMode.KNOWLEDGE_SET -> activeKnowledgePresetId
             PromptPresetMode.FLASHCARD_SET -> activeFlashcardPresetId
+            PromptPresetMode.VOCABULARY -> activeVocabularyPresetId
         } ?: return null
         return _promptPresets.value.firstOrNull { it.id == id && it.mode == mode }
     }
@@ -237,6 +488,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             PromptPresetMode.QUESTION_SET -> activeQuestionPresetId = presetId
             PromptPresetMode.KNOWLEDGE_SET -> activeKnowledgePresetId = presetId
             PromptPresetMode.FLASHCARD_SET -> activeFlashcardPresetId = presetId
+            PromptPresetMode.VOCABULARY -> activeVocabularyPresetId = presetId
         }
         appPreferences.setActivePromptPresetId(mode, presetId)
     }
@@ -246,6 +498,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             PromptPresetMode.QUESTION_SET -> appPreferences.saveQuestionPromptDraft(questionPromptState.toConfig())
             PromptPresetMode.KNOWLEDGE_SET -> appPreferences.saveKnowledgePromptDraft(knowledgePromptState.toConfig())
             PromptPresetMode.FLASHCARD_SET -> appPreferences.saveFlashcardPromptDraft(flashcardPromptState.toConfig())
+            PromptPresetMode.VOCABULARY -> appPreferences.saveVocabularyPromptDraft(vocabularyPromptState.toConfig())
         }
     }
 
@@ -271,6 +524,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     flashcardPromptState.applyConfig(it, preserveTopic = true)
                     appPreferences.saveFlashcardPromptDraft(flashcardPromptState.toConfig())
                 }
+                PromptPresetMode.VOCABULARY -> preset.vocabularyConfig?.let {
+                    vocabularyPromptState.applyConfig(it, preserveTopic = true)
+                    appPreferences.saveVocabularyPromptDraft(vocabularyPromptState.toConfig())
+                }
             }
         }
     }
@@ -280,7 +537,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         rawName: String,
         questionConfig: QuestionPromptConfig? = null,
         knowledgeConfig: KnowledgePromptConfig? = null,
-        flashcardConfig: FlashcardPromptConfig? = null
+        flashcardConfig: FlashcardPromptConfig? = null,
+        vocabularyConfig: VocabularyPromptConfig? = null
     ): PromptPreset {
         val existingNames = _promptPresets.value.filter { it.mode == mode }.map { it.name }
         val resolvedName = PromptPreset.uniqueName(rawName, existingNames)
@@ -299,6 +557,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else null,
             flashcardConfig = if (mode == PromptPresetMode.FLASHCARD_SET) {
                 (flashcardConfig ?: flashcardPromptState.toConfig()).normalized()
+            } else null,
+            vocabularyConfig = if (mode == PromptPresetMode.VOCABULARY) {
+                (vocabularyConfig ?: vocabularyPromptState.toConfig()).normalized()
             } else null
         )
         val updated = _promptPresets.value + newPreset
@@ -313,7 +574,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         newName: String? = null,
         questionConfig: QuestionPromptConfig? = null,
         knowledgeConfig: KnowledgePromptConfig? = null,
-        flashcardConfig: FlashcardPromptConfig? = null
+        flashcardConfig: FlashcardPromptConfig? = null,
+        vocabularyConfig: VocabularyPromptConfig? = null
     ) {
         val now = System.currentTimeMillis()
         var targetMode: PromptPresetMode? = null
@@ -334,7 +596,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     } else existing.knowledgeConfig,
                     flashcardConfig = if (existing.mode == PromptPresetMode.FLASHCARD_SET) {
                         (flashcardConfig ?: existing.flashcardConfig ?: flashcardPromptState.toConfig()).normalized()
-                    } else existing.flashcardConfig
+                    } else existing.flashcardConfig,
+                    vocabularyConfig = if (existing.mode == PromptPresetMode.VOCABULARY) {
+                        (vocabularyConfig ?: existing.vocabularyConfig ?: vocabularyPromptState.toConfig()).normalized()
+                    } else existing.vocabularyConfig
                 )
             }
         }
@@ -405,6 +670,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             PromptPresetMode.FLASHCARD_SET -> {
                 flashcardPromptState.reset()
                 appPreferences.clearFlashcardPromptDraft()
+            }
+            PromptPresetMode.VOCABULARY -> {
+                vocabularyPromptState.reset()
+                appPreferences.clearVocabularyPromptDraft()
             }
         }
     }
@@ -3934,9 +4203,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 val refreshedFolders = appPreferences.getCustomFolders()
                 val refreshedPresets = appPreferences.getPromptPresets()
+                val refreshedVocabDecks = appPreferences.getVocabularyDecks()
+                val refreshedVocabSrs = appPreferences.getAllVocabularySrsMaps()
                 withContext(Dispatchers.Main) {
                     _folders.value = refreshedFolders
                     _promptPresets.value = refreshedPresets
+                    _vocabularyDecks.value = refreshedVocabDecks
+                    _vocabularySrsByDeck.value = refreshedVocabSrs
                     _themeMode.value = themePreferences.getThemeMode()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()

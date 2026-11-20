@@ -7,7 +7,8 @@ import java.util.UUID
 enum class PromptPresetMode(val code: String, val label: String) {
     QUESTION_SET("QUESTION_SET", "Question Set"),
     KNOWLEDGE_SET("KNOWLEDGE_SET", "Knowledge Set"),
-    FLASHCARD_SET("FLASHCARD_SET", "Flashcard Set");
+    FLASHCARD_SET("FLASHCARD_SET", "Flashcard Set"),
+    VOCABULARY("VOCABULARY", "Vocabulary");
 
     companion object {
         fun fromCode(code: String?): PromptPresetMode {
@@ -343,6 +344,95 @@ data class FlashcardPromptConfig(
     }
 }
 
+data class VocabularyPromptConfig(
+    val language: String = "English",
+    val translationLanguage: String = "",
+    val levelCode: String = VocabularyLevel.INTERMEDIATE.code,
+    val customLevelLabel: String = "",
+    val domain: String = "General",
+    val wordCount: Int = 20,
+    val examplesPerWord: Int = 3,
+    val outputFormat: String = "Strict JSON",
+    val includePronunciation: Boolean = true,
+    val includeSynonymsAndCollocations: Boolean = true,
+    val includeUsageNote: Boolean = true,
+    val customInstruction: String = ""
+) {
+    fun normalized(): VocabularyPromptConfig = copy(
+        language = language.trim().ifBlank { "English" },
+        translationLanguage = translationLanguage.trim(),
+        levelCode = VocabularyLevel.fromCode(levelCode).code,
+        customLevelLabel = customLevelLabel.trim(),
+        domain = domain.trim().ifBlank { "General" },
+        wordCount = wordCount.coerceIn(5, 60),
+        examplesPerWord = examplesPerWord.coerceIn(1, 4),
+        outputFormat = if (outputFormat.equals("Structured Text", ignoreCase = true)) "Structured Text" else "Strict JSON",
+        customInstruction = customInstruction.trim()
+    )
+
+    fun formatBadge(): String {
+        val lvl = VocabularyLevel.fromCode(levelCode).compactBadge(customLevelLabel)
+        val fmt = if (outputFormat == "Structured Text") "TEXT" else "JSON"
+        return "$fmt · $lvl"
+    }
+
+    fun specChips(): List<String> = buildList {
+        add(abbreviateTag(language, 14))
+        if (translationLanguage.isNotBlank()) add("-> ${abbreviateTag(translationLanguage, 12)}")
+        add(VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel))
+        add("$wordCount Words")
+        add("${examplesPerWord} Ex/Word")
+        if (!domain.equals("General", ignoreCase = true)) add(abbreviateTag(domain, 14))
+        if (customInstruction.isNotBlank()) add("Custom Rule")
+    }.take(6)
+
+    fun suggestName(): String {
+        val lvl = VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel)
+        val parts = buildList {
+            add(abbreviateTag(language, 14))
+            add(lvl)
+            if (!domain.equals("General", ignoreCase = true)) add(abbreviateTag(domain, 14))
+            add(if (outputFormat == "Structured Text") "Text" else "JSON")
+        }
+        return parts.joinToString(" • ").ifBlank { "Vocabulary $lvl" }
+    }
+
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("language", language)
+        put("translationLanguage", translationLanguage)
+        put("levelCode", levelCode)
+        put("customLevelLabel", customLevelLabel)
+        put("domain", domain)
+        put("wordCount", wordCount)
+        put("examplesPerWord", examplesPerWord)
+        put("outputFormat", outputFormat)
+        put("includePronunciation", includePronunciation)
+        put("includeSynonymsAndCollocations", includeSynonymsAndCollocations)
+        put("includeUsageNote", includeUsageNote)
+        put("customInstruction", customInstruction)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject?): VocabularyPromptConfig {
+            if (obj == null) return VocabularyPromptConfig()
+            return VocabularyPromptConfig(
+                language = obj.optString("language", "English").ifBlank { "English" },
+                translationLanguage = obj.optString("translationLanguage", ""),
+                levelCode = obj.optString("levelCode", VocabularyLevel.INTERMEDIATE.code),
+                customLevelLabel = obj.optString("customLevelLabel", ""),
+                domain = obj.optString("domain", "General").ifBlank { "General" },
+                wordCount = obj.optInt("wordCount", 20).coerceIn(5, 60),
+                examplesPerWord = obj.optInt("examplesPerWord", 3).coerceIn(1, 4),
+                outputFormat = obj.optString("outputFormat", "Strict JSON"),
+                includePronunciation = obj.optBoolean("includePronunciation", true),
+                includeSynonymsAndCollocations = obj.optBoolean("includeSynonymsAndCollocations", true),
+                includeUsageNote = obj.optBoolean("includeUsageNote", true),
+                customInstruction = obj.optString("customInstruction", "")
+            ).normalized()
+        }
+    }
+}
+
 data class PromptPreset(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -353,18 +443,21 @@ data class PromptPreset(
     val lastUsedAt: Long = 0L,
     val questionConfig: QuestionPromptConfig? = null,
     val knowledgeConfig: KnowledgePromptConfig? = null,
-    val flashcardConfig: FlashcardPromptConfig? = null
+    val flashcardConfig: FlashcardPromptConfig? = null,
+    val vocabularyConfig: VocabularyPromptConfig? = null
 ) {
     fun formatBadge(): String = when (mode) {
         PromptPresetMode.QUESTION_SET -> (questionConfig ?: QuestionPromptConfig()).formatBadge()
         PromptPresetMode.KNOWLEDGE_SET -> (knowledgeConfig ?: KnowledgePromptConfig()).formatBadge()
         PromptPresetMode.FLASHCARD_SET -> (flashcardConfig ?: FlashcardPromptConfig()).formatBadge()
+        PromptPresetMode.VOCABULARY -> (vocabularyConfig ?: VocabularyPromptConfig()).formatBadge()
     }
 
     fun specChips(): List<String> = when (mode) {
         PromptPresetMode.QUESTION_SET -> (questionConfig ?: QuestionPromptConfig()).specChips()
         PromptPresetMode.KNOWLEDGE_SET -> (knowledgeConfig ?: KnowledgePromptConfig()).specChips()
         PromptPresetMode.FLASHCARD_SET -> (flashcardConfig ?: FlashcardPromptConfig()).specChips()
+        PromptPresetMode.VOCABULARY -> (vocabularyConfig ?: VocabularyPromptConfig()).specChips()
     }
 
     fun matchesSearch(query: String): Boolean {
@@ -386,6 +479,7 @@ data class PromptPreset(
         questionConfig?.let { put("questionConfig", it.toJson()) }
         knowledgeConfig?.let { put("knowledgeConfig", it.toJson()) }
         flashcardConfig?.let { put("flashcardConfig", it.toJson()) }
+        vocabularyConfig?.let { put("vocabularyConfig", it.toJson()) }
     }
 
     companion object {
@@ -411,6 +505,9 @@ data class PromptPreset(
                 } else null,
                 flashcardConfig = if (mode == PromptPresetMode.FLASHCARD_SET) {
                     FlashcardPromptConfig.fromJson(obj.optJSONObject("flashcardConfig"))
+                } else null,
+                vocabularyConfig = if (mode == PromptPresetMode.VOCABULARY) {
+                    VocabularyPromptConfig.fromJson(obj.optJSONObject("vocabularyConfig"))
                 } else null
             )
         }

@@ -783,6 +783,8 @@ object VaultArchiveEngine {
             put("shuffleOptions", appPrefs.getShuffleOptions())
             put("themeMode", themePrefs.getThemeMode().name)
             put("promptPresetsJson", appPrefs.getPromptPresetsRawJson())
+            put("vocabularyDecksJson", appPrefs.getVocabularyDecksRawJson())
+            put("vocabularySrsJson", appPrefs.getVocabularySrsRawJson())
         }.toString()
     }
 
@@ -815,6 +817,37 @@ object VaultArchiveEngine {
                         }
                     }
                     appPrefs.savePromptPresets(existing.values.toList())
+                }
+            }
+            val incomingVocabDecksRaw = obj.optString("vocabularyDecksJson", "")
+            if (incomingVocabDecksRaw.isNotBlank()) {
+                val incomingDecks = com.example.model.VocabularyDeck.deserializeList(incomingVocabDecksRaw)
+                if (overwriteAll) {
+                    appPrefs.saveVocabularyDecks(incomingDecks)
+                } else if (incomingDecks.isNotEmpty()) {
+                    val existing = appPrefs.getVocabularyDecks().associateBy { it.id }.toMutableMap()
+                    incomingDecks.forEach { deck ->
+                        if (!existing.containsKey(deck.id)) {
+                            existing[deck.id] = deck
+                        }
+                    }
+                    appPrefs.saveVocabularyDecks(existing.values.toList())
+                }
+            }
+            val incomingVocabSrsRaw = obj.optString("vocabularySrsJson", "")
+            if (incomingVocabSrsRaw.isNotBlank()) {
+                val incomingSrs = appPrefs.parseVocabSrsRootJson(incomingVocabSrsRaw)
+                if (overwriteAll) {
+                    appPrefs.saveAllVocabularySrsMaps(incomingSrs)
+                } else if (incomingSrs.isNotEmpty()) {
+                    val merged = appPrefs.getAllVocabularySrsMaps().mapValues { it.value.toMutableMap() }.toMutableMap()
+                    incomingSrs.forEach { (deckId, entryMap) ->
+                        val target = merged.getOrPut(deckId) { mutableMapOf() }
+                        entryMap.forEach { (entryId, st) ->
+                            if (!target.containsKey(entryId)) target[entryId] = st
+                        }
+                    }
+                    appPrefs.saveAllVocabularySrsMaps(merged)
                 }
             }
         }

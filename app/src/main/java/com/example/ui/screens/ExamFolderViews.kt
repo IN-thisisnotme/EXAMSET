@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -98,6 +99,7 @@ import java.util.Locale
 
 enum class QuickFeatureAction(val label: String) {
     STUDY_NOTES("Knowledge Sets"),
+    VOCABULARY("Vocabulary"),
     MOCK_TESTS("Mock Tests"),
     PYQS("PYPs"),
     ATTEMPTED("Attempted"),
@@ -289,6 +291,7 @@ fun RootExamSeriesHorizontalCard(
 @Composable
 fun QuickFeatureStripRow(
     notesCount: Int,
+    vocabWordCount: Int = 0,
     mockCount: Int,
     pyqCount: Int,
     attemptedCount: Int,
@@ -298,6 +301,7 @@ fun QuickFeatureStripRow(
     val colors = ExamTheme.colors
     val itemsSpec: List<Triple<QuickFeatureAction, ImageVector, Pair<Color, Int?>>> = listOf(
         Triple(QuickFeatureAction.STUDY_NOTES, Icons.AutoMirrored.Filled.MenuBook, colors.teal to notesCount),
+        Triple(QuickFeatureAction.VOCABULARY, Icons.Default.Translate, Color(0xFF0EA5E9) to vocabWordCount),
         Triple(QuickFeatureAction.MOCK_TESTS, Icons.Default.Quiz, Color(0xFF2563EB) to mockCount),
         Triple(QuickFeatureAction.PYQS, Icons.Default.History, colors.amber to pyqCount),
         Triple(QuickFeatureAction.ATTEMPTED, Icons.Default.CheckCircle, colors.green to attemptedCount),
@@ -1178,6 +1182,7 @@ fun LazyListScope.renderRootExaminationLibrary(
     rootFolders: List<FolderItem>,
     libraryIndex: LibraryIndexState,
     totalNotesCount: Int,
+    totalVocabWordsCount: Int = 0,
     showAllFoldersExpanded: Boolean,
     onToggleShowAllFolders: () -> Unit,
     onQuickFeatureClick: (QuickFeatureAction) -> Unit,
@@ -1257,6 +1262,7 @@ fun LazyListScope.renderRootExaminationLibrary(
         item(key = "root_quick_features") {
             QuickFeatureStripRow(
                 notesCount = totalNotesCount,
+                vocabWordCount = totalVocabWordsCount,
                 mockCount = libraryIndex.mockPapers.size,
                 pyqCount = libraryIndex.pyqPapers.size,
                 attemptedCount = libraryIndex.attemptedPapers.size,

@@ -276,6 +276,109 @@ class ExamSetPreferences(context: Context) {
         prefs.edit().remove(KEY_FLASHCARD_PROMPT_DRAFT).apply()
     }
 
+    fun getVocabularyPromptDraft(): com.example.model.VocabularyPromptConfig? {
+        val raw = prefs.getString(KEY_VOCABULARY_PROMPT_DRAFT, null) ?: return null
+        return runCatching {
+            com.example.model.VocabularyPromptConfig.fromJson(JSONObject(raw))
+        }.getOrNull()
+    }
+
+    fun saveVocabularyPromptDraft(config: com.example.model.VocabularyPromptConfig) {
+        prefs.edit().putString(KEY_VOCABULARY_PROMPT_DRAFT, config.toJson().toString()).apply()
+    }
+
+    fun clearVocabularyPromptDraft() {
+        prefs.edit().remove(KEY_VOCABULARY_PROMPT_DRAFT).apply()
+    }
+
+    fun getVocabularyDecks(): List<com.example.model.VocabularyDeck> {
+        val raw = prefs.getString(KEY_VOCABULARY_DECKS, null)
+        return com.example.model.VocabularyDeck.deserializeList(raw)
+    }
+
+    fun saveVocabularyDecks(decks: List<com.example.model.VocabularyDeck>) {
+        prefs.edit().putString(KEY_VOCABULARY_DECKS, com.example.model.VocabularyDeck.serializeList(decks)).apply()
+    }
+
+    fun getVocabularyDecksRawJson(): String {
+        return prefs.getString(KEY_VOCABULARY_DECKS, "[]") ?: "[]"
+    }
+
+    fun getAllVocabularySrsMaps(): Map<String, Map<String, com.example.model.FlashcardSrsState>> {
+        val raw = prefs.getString(KEY_VOCABULARY_SRS, null) ?: return emptyMap()
+        return parseVocabSrsRootJson(raw)
+    }
+
+    fun getVocabularySrsRawJson(): String {
+        return prefs.getString(KEY_VOCABULARY_SRS, "{}") ?: "{}"
+    }
+
+    fun saveAllVocabularySrsMaps(allMaps: Map<String, Map<String, com.example.model.FlashcardSrsState>>) {
+        val root = JSONObject()
+        allMaps.forEach { (deckId, entryMap) ->
+            if (deckId.isNotBlank() && entryMap.isNotEmpty()) {
+                val deckObj = JSONObject()
+                entryMap.forEach { (entryId, st) ->
+                    if (entryId.isNotBlank()) {
+                        deckObj.put(
+                            entryId,
+                            JSONObject().apply {
+                                put("repetitions", st.repetitions)
+                                put("easeFactor", st.easeFactor.toDouble())
+                                put("intervalDays", st.intervalDays)
+                                put("dueAtMillis", st.dueAtMillis)
+                                put("lastReviewedAtMillis", st.lastReviewedAtMillis)
+                                put("lapses", st.lapses)
+                                put("lastRating", st.lastRating?.name ?: "")
+                                put("reviewCount", st.reviewCount)
+                                put("correctCount", st.correctCount)
+                            }
+                        )
+                    }
+                }
+                root.put(deckId, deckObj)
+            }
+        }
+        prefs.edit().putString(KEY_VOCABULARY_SRS, root.toString()).apply()
+    }
+
+    fun parseVocabSrsRootJson(raw: String): Map<String, Map<String, com.example.model.FlashcardSrsState>> {
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            val root = JSONObject(raw)
+            val result = mutableMapOf<String, Map<String, com.example.model.FlashcardSrsState>>()
+            val deckKeys = root.keys()
+            while (deckKeys.hasNext()) {
+                val deckId = deckKeys.next()
+                val deckObj = root.optJSONObject(deckId) ?: continue
+                val entryMap = mutableMapOf<String, com.example.model.FlashcardSrsState>()
+                val entryKeys = deckObj.keys()
+                while (entryKeys.hasNext()) {
+                    val entryId = entryKeys.next()
+                    val obj = deckObj.optJSONObject(entryId) ?: continue
+                    val ratingName = obj.optString("lastRating", "")
+                    val rating = runCatching {
+                        if (ratingName.isNotBlank()) com.example.model.SrsRating.valueOf(ratingName) else null
+                    }.getOrNull()
+                    entryMap[entryId] = com.example.model.FlashcardSrsState(
+                        blockIndex = 0,
+                        repetitions = obj.optInt("repetitions", 0),
+                        easeFactor = obj.optDouble("easeFactor", 2.5).toFloat().coerceIn(1.3f, 3.0f),
+                        intervalDays = obj.optInt("intervalDays", 0),
+                        dueAtMillis = obj.optLong("dueAtMillis", 0L),
+                        lastReviewedAtMillis = obj.optLong("lastReviewedAtMillis", 0L),
+                        lapses = obj.optInt("lapses", 0),
+                        lastRating = rating,
+                        reviewCount = obj.optInt("reviewCount", 0),
+                        correctCount = obj.optInt("correctCount", 0)
+                    )
+                }
+                if (entryMap.isNotEmpty()) result[deckId] = entryMap
+            }
+            result
+        }.getOrDefault(emptyMap())
+    }
+
     fun getActivePromptPresetId(mode: com.example.model.PromptPresetMode): String? {
         return prefs.getString("$KEY_ACTIVE_PROMPT_PRESET_PREFIX${mode.code}", null)?.ifBlank { null }
     }
@@ -304,6 +407,9 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_QUESTION_PROMPT_DRAFT = "key_prompt_draft_question_v1"
         private const val KEY_KNOWLEDGE_PROMPT_DRAFT = "key_prompt_draft_knowledge_v1"
         private const val KEY_FLASHCARD_PROMPT_DRAFT = "key_prompt_draft_flashcard_v1"
+        private const val KEY_VOCABULARY_PROMPT_DRAFT = "key_prompt_draft_vocabulary_v1"
+        private const val KEY_VOCABULARY_DECKS = "key_vocabulary_decks_v1"
+        private const val KEY_VOCABULARY_SRS = "key_vocabulary_srs_v1"
         private const val KEY_ACTIVE_PROMPT_PRESET_PREFIX = "key_active_prompt_preset_"
     }
 }

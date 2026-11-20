@@ -1070,6 +1070,9 @@ fun HomeScreen(
                             defaultCollectionType = collectionType,
                             defaultFormatRule = rule
                         )
+                    },
+                    onOpenVocabularyHub = { lang ->
+                        viewModel.openVocabularyHub(lang)
                     }
                 )
                 6 -> ShareSystemTab(
@@ -1444,6 +1447,44 @@ fun HomeScreen(
                 onDismiss = { viewModel.closeKnowledgeReader() }
             )
         }
+    }
+
+    // Dedicated Full-screen Vocabulary Hub Overlay (completely separate from Knowledge Sets)
+    if (viewModel.showVocabularyHub) {
+        val vocabDecks by viewModel.vocabularyDecks.collectAsState()
+        val vocabSrs by viewModel.vocabularySrsByDeck.collectAsState()
+        VocabularyHubDialog(
+            decks = vocabDecks,
+            srsByDeck = vocabSrs,
+            initialLanguageFilter = viewModel.vocabularyHubInitialLanguage,
+            onDismiss = { viewModel.closeVocabularyHub() },
+            onOpenAiPromptBuilderForVocab = {
+                viewModel.promptBuilderMode = PromptBuilderMode.VOCABULARY
+                viewModel.selectTab(5)
+            },
+            onCommitImport = { targetId, title, lang, transLang, lvlCode, customLvl, dom, analysis, decisions ->
+                viewModel.commitVocabularyImport(
+                    targetDeckId = targetId,
+                    title = title,
+                    language = lang,
+                    translationLanguage = transLang,
+                    levelCode = lvlCode,
+                    customLevelLabel = customLvl,
+                    domain = dom,
+                    analysis = analysis,
+                    decisions = decisions
+                )
+            },
+            onRenameDeck = { id, newTitle, lang, trans, lvl, customLvl ->
+                viewModel.renameVocabularyDeck(id, newTitle, lang, trans, lvl, customLvl)
+            },
+            onDeleteDeck = { id -> viewModel.deleteVocabularyDeck(id) },
+            onToggleEntryBookmark = { deckId, entryId -> viewModel.toggleVocabularyEntryBookmark(deckId, entryId) },
+            onDeleteEntry = { deckId, entryId -> viewModel.deleteVocabularyEntry(deckId, entryId) },
+            onRateEntry = { deckId, entryId, rating -> viewModel.rateVocabularyEntry(deckId, entryId, rating) },
+            onResetDeckSrs = { deckId -> viewModel.resetVocabularyDeckSrs(deckId) },
+            onApplyAuditFixes = { deckId, findings -> viewModel.applyVocabularyAuditFixes(deckId, findings) }
+        )
     }
 
     // Full-screen edge-to-edge Knowledge Sets Studio Editor Overlay (no Dialog/IME clipping)

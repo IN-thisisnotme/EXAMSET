@@ -254,6 +254,7 @@ fun FolderManagerTab(
     val folders by viewModel.folders.collectAsState()
     val libraryIndex by viewModel.libraryIndex.collectAsState()
     val studyNotes by viewModel.studyNotes.collectAsState()
+    val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
     val flashcardSrsByNote by viewModel.flashcardSrsByNote.collectAsState()
     val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
@@ -1114,11 +1115,13 @@ fun FolderManagerTab(
                 rootFolders = rootFolders,
                 libraryIndex = libraryIndex,
                 totalNotesCount = studyNotes.size,
+                totalVocabWordsCount = vocabularyDecks.sumOf { it.entries.size },
                 showAllFoldersExpanded = showAllFoldersExpanded,
                 onToggleShowAllFolders = { showAllFoldersExpanded = !showAllFoldersExpanded },
                 onQuickFeatureClick = { action ->
                     when (action) {
                         QuickFeatureAction.STUDY_NOTES -> showRootStudyNotesDialog = true
+                        QuickFeatureAction.VOCABULARY -> viewModel.openVocabularyHub()
                         QuickFeatureAction.PRINTABLE_PDFS -> {
                             val targetPaper = savedPapers.firstOrNull { it.id == currentPaperEntityId } ?: savedPapers.firstOrNull()
                             if (currentPaper == null && targetPaper != null) {

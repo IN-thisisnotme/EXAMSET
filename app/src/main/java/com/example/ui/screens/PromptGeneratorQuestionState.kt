@@ -16,12 +16,14 @@ enum class PromptBuilderMode(
 ) {
     QUESTION_SET("Question Set", "MCQs & Keys", "prompt_mode_question_set"),
     KNOWLEDGE_SET("Knowledge Set", "Notes & Codex", "prompt_mode_knowledge_set"),
-    FLASHCARD_SET("Flashcard Set", "SM-2 Decks", "prompt_mode_flashcard_set");
+    FLASHCARD_SET("Flashcard Set", "SM-2 Decks", "prompt_mode_flashcard_set"),
+    VOCABULARY("Vocabulary", "Multi-Lang Lexicon", "prompt_mode_vocabulary");
 
     fun toPresetMode(): PromptPresetMode = when (this) {
         QUESTION_SET -> PromptPresetMode.QUESTION_SET
         KNOWLEDGE_SET -> PromptPresetMode.KNOWLEDGE_SET
         FLASHCARD_SET -> PromptPresetMode.FLASHCARD_SET
+        VOCABULARY -> PromptPresetMode.VOCABULARY
     }
 }
 
