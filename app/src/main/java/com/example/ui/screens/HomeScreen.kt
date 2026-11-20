@@ -72,6 +72,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -122,6 +123,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -181,7 +183,8 @@ fun HomeScreen(
     val isCardBoxed by viewModel.isCardBoxed.collectAsState()
     val folders by viewModel.folders.collectAsState()
     val lastActiveFolderId by viewModel.lastActiveFolderId.collectAsState()
-    val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
+    val isLoadingPaper by viewModel.isLoadingPaper.collectAsState()
+    val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
     val fontScaleMode by viewModel.fontScaleMode.collectAsState()
     val studyNotes by viewModel.studyNotes.collectAsState()
     val promptPresets by viewModel.promptPresets.collectAsState()
@@ -618,46 +621,12 @@ fun HomeScreen(
                                     )
                                 }
 
-                                // Today's Test Study Timer & Historical Analytics Trigger
-                                val isExamRunning = isExamStarted && !isExamSubmitted
-                                Surface(
-                                    onClick = { showHistoricalAnalyticsDialog = true },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isExamRunning) colors.tealLight else colors.surfaceVariant,
-                                    border = BorderStroke(0.8.dp, if (isExamRunning) colors.teal else colors.border),
-                                    modifier = Modifier
-                                        .padding(end = 2.dp)
-                                        .testTag("topbar_today_analytics_chip")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Timer,
-                                            contentDescription = "Today Study Timer & Historical Analysis",
-                                            tint = if (isExamRunning) colors.teal else colors.inkBold,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        val tH = todayTestSeconds / 3600
-                                        val tM = (todayTestSeconds % 3600) / 60
-                                        val tS = todayTestSeconds % 60
-                                        val formattedTime = if (tH > 0) {
-                                            String.format(java.util.Locale.US, "%02d:%02d:%02d", tH, tM, tS)
-                                        } else {
-                                            String.format(java.util.Locale.US, "%02d:%02d", tM, tS)
-                                        }
-                                        Text(
-                                            text = formattedTime,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isExamRunning) colors.tealDark else colors.inkBold,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
+                                // Today's Test Study Timer & Historical Analytics Trigger (isolated collector to avoid root recompositions)
+                                TopBarStudyTimerChip(
+                                    viewModel = viewModel,
+                                    isExamRunning = isExamStarted && !isExamSubmitted,
+                                    onClick = { showHistoricalAnalyticsDialog = true }
+                                )
 
                                 // Quick Search / Saved Papers Modal Trigger
                                 IconButton(
@@ -986,7 +955,10 @@ fun HomeScreen(
                         viewModel = viewModel,
                         listState = masterListState
                     )
-                    2 -> if (paper != null && paper.questions.isNotEmpty()) {
+                    2 -> if (isLoadingPaper && (paper == null || (currentPaperEntityId != null && paper.id != currentPaperEntityId))) {
+                        PaperLoadingPlaceholder(title = "Student Test Series")
+                    } else if (paper != null && paper.questions.isNotEmpty()) {
+                        val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
                         StudentTestTab(
                             paper = paper,
                             answers = studentAnswers,
@@ -1036,7 +1008,9 @@ fun HomeScreen(
                         onOpenLastPaper = { viewModel.loadSavedPaper(it) }
                     )
                 }
-                3 -> if (paper != null && paper.questions.isNotEmpty()) {
+                3 -> if (isLoadingPaper && (paper == null || (currentPaperEntityId != null && paper.id != currentPaperEntityId))) {
+                    PaperLoadingPlaceholder(title = "Print & OMR Generator")
+                } else if (paper != null && paper.questions.isNotEmpty()) {
                     PrintablePaperTab(
                         paper = paper,
                         config = examConfig,
@@ -1349,10 +1323,9 @@ fun HomeScreen(
 
     // Optical OMR Scanner Dialog
     if (showOmrScannerDialog) {
-        val scannerPaper = currentPaper
-            ?: savedPapers.firstOrNull()?.toQuestionPaper()
-            ?: viewModel.lastOpenedPaper.collectAsState().value?.toQuestionPaper()
-            ?: com.example.model.QuestionPaper(
+        val lastOpenedForScanner by viewModel.lastOpenedPaper.collectAsState()
+        val fallbackScannerPaper = remember {
+            com.example.model.QuestionPaper(
                 metadata = com.example.model.PaperMetadata(
                     title = "Evaluation Assessment Sheet",
                     subject = "Standard Evaluation",
@@ -1360,6 +1333,24 @@ fun HomeScreen(
                 ),
                 questions = emptyList()
             )
+        }
+        val scannerPaper by produceState(
+            initialValue = currentPaper ?: fallbackScannerPaper,
+            key1 = currentPaper,
+            key2 = savedPapers.firstOrNull()?.id,
+            key3 = lastOpenedForScanner?.id
+        ) {
+            if (currentPaper != null) {
+                value = currentPaper!!
+            } else {
+                val candidate = lastOpenedForScanner ?: savedPapers.firstOrNull()
+                value = if (candidate != null) {
+                    viewModel.getParsedQuestionPaper(candidate)
+                } else {
+                    fallbackScannerPaper
+                }
+            }
+        }
 
         OmrScannerDialog(
             paper = scannerPaper,
@@ -2193,4 +2184,96 @@ fun NoPaperPlaceholder(
         }
     }
 }
+
+@Composable
+private fun TopBarStudyTimerChip(
+    viewModel: MainViewModel,
+    isExamRunning: Boolean,
+    onClick: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (isExamRunning) colors.tealLight else colors.surfaceVariant,
+        border = BorderStroke(0.8.dp, if (isExamRunning) colors.teal else colors.border),
+        modifier = Modifier
+            .padding(end = 2.dp)
+            .testTag("topbar_today_analytics_chip")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Timer,
+                contentDescription = "Today Study Timer & Historical Analysis",
+                tint = if (isExamRunning) colors.teal else colors.inkBold,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            val tH = todayTestSeconds / 3600
+            val tM = (todayTestSeconds % 3600) / 60
+            val tS = todayTestSeconds % 60
+            val formattedTime = if (tH > 0) {
+                String.format(java.util.Locale.US, "%02d:%02d:%02d", tH, tM, tS)
+            } else {
+                String.format(java.util.Locale.US, "%02d:%02d", tM, tS)
+            }
+            Text(
+                text = formattedTime,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isExamRunning) colors.tealDark else colors.inkBold,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaperLoadingPlaceholder(title: String) {
+    val colors = ExamTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
+            border = BorderStroke(0.8.dp, colors.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CircularProgressIndicator(
+                    color = colors.teal,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(34.dp)
+                )
+                Text(
+                    text = "Loading $title...",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.inkBold
+                )
+                Text(
+                    text = "Preparing question set",
+                    fontSize = 12.sp,
+                    color = colors.inkMuted
+                )
+            }
+        }
+    }
+}
+
 

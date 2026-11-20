@@ -155,6 +155,8 @@ fun MasterViewTab(
     val colors = ExamTheme.colors
     val coroutineScope = rememberCoroutineScope()
     val currentPaper by viewModel.currentPaper.collectAsState()
+    val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
+    val isLoadingPaper by viewModel.isLoadingPaper.collectAsState()
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val autoSaveStatus by viewModel.autoSaveStatus.collectAsState()
     val lastSavedTime by viewModel.lastSavedTime.collectAsState()
@@ -172,6 +174,48 @@ fun MasterViewTab(
     var showBulkAuditDialog by remember { mutableStateOf(false) }
     var showResolutionHubDialog by remember { mutableStateOf(false) }
     var initialAuditFeedbackText by remember { mutableStateOf<String?>(null) }
+
+    if (isLoadingPaper && (currentPaper == null || (currentPaperEntityId != null && currentPaper!!.id != currentPaperEntityId))) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(0.8.dp, colors.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = colors.teal,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(34.dp)
+                    )
+                    Text(
+                        text = "Loading Question Set...",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
+                    )
+                    Text(
+                        text = "Preparing questions, options, and answer keys",
+                        fontSize = 12.sp,
+                        color = colors.inkMuted
+                    )
+                }
+            }
+        }
+        return
+    }
 
     if (currentPaper == null || currentPaper!!.questions.isEmpty()) {
         Box(
@@ -297,22 +341,24 @@ fun MasterViewTab(
     }
     val changedCount = currentDiffs.size
 
-    val filteredQuestions = questions.filter { q ->
-        val matchesSearch = searchQuery.isBlank() ||
-                q.question.contains(searchQuery, ignoreCase = true) ||
-                q.explanation?.contains(searchQuery, ignoreCase = true) == true ||
-                q.options.a.contains(searchQuery, ignoreCase = true) ||
-                q.options.b.contains(searchQuery, ignoreCase = true) ||
-                q.options.c.contains(searchQuery, ignoreCase = true) ||
-                q.options.d.contains(searchQuery, ignoreCase = true)
+    val filteredQuestions = remember(questions, searchQuery, filterMode) {
+        questions.filter { q ->
+            val matchesSearch = searchQuery.isBlank() ||
+                    q.question.contains(searchQuery, ignoreCase = true) ||
+                    q.explanation?.contains(searchQuery, ignoreCase = true) == true ||
+                    q.options.a.contains(searchQuery, ignoreCase = true) ||
+                    q.options.b.contains(searchQuery, ignoreCase = true) ||
+                    q.options.c.contains(searchQuery, ignoreCase = true) ||
+                    q.options.d.contains(searchQuery, ignoreCase = true)
 
-        val matchesFilter = when (filterMode) {
-            "missing_key" -> q.correctAnswer == null
-            "missing_exp" -> q.explanation.isNullOrBlank()
-            "missing_option" -> q.options.hasMissingOptions
-            else -> true
+            val matchesFilter = when (filterMode) {
+                "missing_key" -> q.correctAnswer == null
+                "missing_exp" -> q.explanation.isNullOrBlank()
+                "missing_option" -> q.options.hasMissingOptions
+                else -> true
+            }
+            matchesSearch && matchesFilter
         }
-        matchesSearch && matchesFilter
     }
 
     val isScrolledPastHeader by remember {

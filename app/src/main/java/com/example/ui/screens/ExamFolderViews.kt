@@ -715,6 +715,7 @@ fun PaperExamCard(
     isCompleted: Boolean,
     isInProgress: Boolean,
     attemptScore: Double? = null,
+    detectedLanguages: List<String>? = null,
     onOpenMaster: () -> Unit,
     onTakeTest: () -> Unit,
     onAssignFolder: () -> Unit,
@@ -953,11 +954,16 @@ fun PaperExamCard(
             }
 
             Spacer(modifier = Modifier.height(4.dp))
-            val detectedLanguages = remember(paper.id, paper.updatedAt, paper.rawText, paper.title) {
-                PaperLanguageDetector.detectLanguages(paper.rawText, paper.title)
+            val resolvedLanguages = remember(detectedLanguages, paper.id, paper.updatedAt, paper.title) {
+                detectedLanguages ?: PaperLanguageDetector.detectLanguagesCached(
+                    paperId = paper.id,
+                    updatedAt = paper.updatedAt,
+                    rawText = paper.rawText,
+                    title = paper.title
+                )
             }
             Text(
-                text = PaperLanguageDetector.formatAvailableLabel(detectedLanguages),
+                text = PaperLanguageDetector.formatAvailableLabel(resolvedLanguages),
                 fontSize = 11.sp,
                 color = colors.inkMuted.copy(alpha = 0.85f)
             )
@@ -1435,6 +1441,7 @@ fun LazyListScope.renderRootExaminationLibrary(
                 isCompleted = isCompleted,
                 isInProgress = isInProgress,
                 attemptScore = lastScore,
+                detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
                 onOpenMaster = { onOpenMaster(paper) },
                 onTakeTest = { onTakeTest(paper) },
                 onAssignFolder = { onAssignFolder(paper) },
@@ -1698,6 +1705,7 @@ fun LazyListScope.renderFolderDetailContents(
                 isCompleted = isCompleted,
                 isInProgress = isInProgress,
                 attemptScore = lastScore,
+                detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
                 onOpenMaster = { onOpenMaster(paper) },
                 onTakeTest = { onTakeTest(paper) },
                 onAssignFolder = { onAssignFolder(paper) },

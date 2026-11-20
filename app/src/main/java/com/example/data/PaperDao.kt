@@ -20,6 +20,19 @@ interface PaperDao {
     @Query("SELECT * FROM question_papers WHERE id = :id")
     suspend fun getPaperById(id: Long): PaperEntity?
 
+    @Query("SELECT * FROM question_papers ORDER BY updatedAt DESC, createdAt DESC LIMIT 1")
+    suspend fun getLatestPaper(): PaperEntity?
+
+    @Query("SELECT * FROM question_papers WHERE rollNumber = '' OR bookletNumber = ''")
+    suspend fun getPapersMissingNumbers(): List<PaperEntity>
+
+    @Transaction
+    suspend fun updatePapersBatch(papers: List<PaperEntity>) {
+        for (paper in papers) {
+            updatePaper(paper)
+        }
+    }
+
     @Query("SELECT * FROM question_papers WHERE rawText = :rawText LIMIT 1")
     suspend fun findPaperByRawText(rawText: String): PaperEntity?
 

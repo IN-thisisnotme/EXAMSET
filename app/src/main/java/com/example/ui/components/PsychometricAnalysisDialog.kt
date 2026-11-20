@@ -81,6 +81,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -138,15 +139,23 @@ fun PsychometricAnalysisDialog(
     }
     var showPaperPickerDropdown by remember { mutableStateOf(false) }
 
-    val effectivePaper: QuestionPaper? = remember(paper, selectedPaperEntityId, savedPapers) {
-        if (paper != null && (selectedPaperEntityId == null || selectedPaperEntityId == viewModel.currentPaperEntityId.value)) {
+    val effectivePaperState = produceState<QuestionPaper?>(
+        initialValue = if (paper != null && (selectedPaperEntityId == null || selectedPaperEntityId == viewModel.currentPaperEntityId.value)) paper else null,
+        key1 = paper,
+        key2 = selectedPaperEntityId,
+        key3 = savedPapers
+    ) {
+        value = if (paper != null && (selectedPaperEntityId == null || selectedPaperEntityId == viewModel.currentPaperEntityId.value)) {
             paper
         } else if (selectedPaperEntityId != null) {
-            savedPapers.find { it.id == selectedPaperEntityId }?.toQuestionPaper() ?: paper
+            val target = savedPapers.find { it.id == selectedPaperEntityId }
+            if (target != null) viewModel.getParsedQuestionPaper(target) else paper
         } else {
-            paper ?: savedPapers.firstOrNull()?.toQuestionPaper()
+            val first = savedPapers.firstOrNull()
+            paper ?: if (first != null) viewModel.getParsedQuestionPaper(first) else null
         }
     }
+    val effectivePaper: QuestionPaper? = effectivePaperState.value
 
     var useSimulationMode by remember { mutableStateOf(false) }
     var activeTab by remember { mutableStateOf("ITEMS") } // "ITEMS" or "STUDENTS"

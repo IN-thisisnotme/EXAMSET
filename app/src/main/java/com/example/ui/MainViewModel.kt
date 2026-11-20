@@ -99,6 +99,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
@@ -137,6 +138,7 @@ data class LibraryIndexState(
     val folderMonthlyCounts: Map<String, Int> = emptyMap(),
     val folderNotesCounts: Map<String, Int> = emptyMap(),
     val folderLanguages: Map<String, List<String>> = emptyMap(),
+    val paperLanguagesById: Map<Long, List<String>> = emptyMap(),
     val suggestedNextPaper: PaperEntity? = null,
     val attemptedPapers: List<PaperEntity> = emptyList(),
     val weakAccuracyPapers: List<PaperEntity> = emptyList(),
@@ -1184,7 +1186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val folderLangs = mutableMapOf<String, List<String>>()
 
         val paperLanguagesById = papers.associate { p ->
-            p.id to PaperLanguageDetector.detectLanguages(p.rawText, p.title)
+            p.id to PaperLanguageDetector.detectLanguagesCached(p.id, p.updatedAt, p.rawText, p.title)
         }
 
         for (folder in folderList) {
@@ -1240,13 +1242,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             folderMonthlyCounts = monthlyCounts,
             folderNotesCounts = notesCounts,
             folderLanguages = folderLangs,
+            paperLanguagesById = paperLanguagesById,
             suggestedNextPaper = suggested,
             attemptedPapers = attempted,
             weakAccuracyPapers = weakPapers,
             mockPapers = mocks,
             pyqPapers = pyqs
         )
-    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, LibraryIndexState())
+    }.conflate().flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, LibraryIndexState())
 
     fun setLastActiveFolderId(folderId: String) {
         _lastActiveFolderId.value = folderId
@@ -1283,6 +1286,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var examTimerJob: Job? = null
     private var attemptHistoryJob: Job? = null
+    private var loadPaperJob: Job? = null
+
+    private val parsedPaperCache = object : LinkedHashMap<String, ParseResult>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ParseResult>?): Boolean {
+            return size > 16
+        }
+    }
+
+    private fun parsePaperWithCache(entity: PaperEntity): ParseResult {
+        val key = "${entity.id}|${entity.updatedAt}|${entity.rawText.length}|${entity.rawText.hashCode()}"
+        synchronized(parsedPaperCache) {
+            parsedPaperCache[key]?.let { return it }
+        }
+        val parsed = McqParser.parseWithResult(entity.rawText)
+        synchronized(parsedPaperCache) {
+            parsedPaperCache[key] = parsed
+        }
+        return parsed
+    }
+
+    /**
+     * Parses a PaperEntity on Dispatchers.Default using the in-memory LRU cache.
+     * Prevents synchronous McqParser execution on the main/UI thread in Compose dialogs.
+     */
+    suspend fun getParsedQuestionPaper(entity: PaperEntity): QuestionPaper = withContext(Dispatchers.Default) {
+        val freshEntity = if (entity.id > 0L) paperDao.getPaperById(entity.id) ?: entity else entity
+        val result = parsePaperWithCache(freshEntity)
+        val savedDuration = if (freshEntity.durationMinutes > 0) freshEntity.durationMinutes else 60
+        val savedPositive = if (freshEntity.positiveMarks > 0.0) freshEntity.positiveMarks else 4.0
+        val savedNegative = if (freshEntity.negativeMarks >= 0.0) freshEntity.negativeMarks else 1.0
+        val savedUnattended = if (freshEntity.unattendedMarks >= 0.0) freshEntity.unattendedMarks else 0.0
+        result.paper.copy(
+            id = freshEntity.id,
+            metadata = PaperMetadata(
+                id = "paper-${freshEntity.id}",
+                title = freshEntity.title,
+                subject = freshEntity.subject,
+                topic = freshEntity.topic,
+                setNumber = freshEntity.setNumber.ifBlank { "Set 1" },
+                exam = freshEntity.exam,
+                folderId = freshEntity.folderId,
+                manualCategory = freshEntity.manualCategory,
+                rollNumber = freshEntity.rollNumber,
+                bookletNumber = freshEntity.bookletNumber,
+                durationMinutes = savedDuration,
+                positiveMarks = savedPositive,
+                negativeMarks = savedNegative,
+                unattendedMarks = savedUnattended,
+                createdAt = freshEntity.createdAt
+            )
+        )
+    }
 
     private val _isLoadingPaper = MutableStateFlow(false)
     val isLoadingPaper: StateFlow<Boolean> = _isLoadingPaper.asStateFlow()
@@ -1368,21 +1423,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun backfillLegacyPaperNumbers() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val allPapers = paperDao.getAllPapers().first()
-                allPapers.forEach { paper ->
-                    val needRoll = paper.rollNumber.isBlank()
-                    val needBooklet = paper.bookletNumber.isBlank()
-                    if (needRoll || needBooklet) {
-                        val updatedRoll = if (needRoll) ExamNumberGenerator.generateRollNumber() else paper.rollNumber
-                        val updatedBooklet = if (needBooklet) ExamNumberGenerator.generateBookletNumber() else paper.bookletNumber
-                        paperDao.updatePaper(
-                            paper.copy(
-                                rollNumber = updatedRoll,
-                                bookletNumber = updatedBooklet
-                            )
-                        )
-                    }
+                // Targeted query: returns 0 rows on normal launches instead of loading all papers' rawText blobs
+                val missing = paperDao.getPapersMissingNumbers()
+                if (missing.isEmpty()) return@launch
+                val toUpdate = missing.map { paper ->
+                    val updatedRoll = if (paper.rollNumber.isBlank()) ExamNumberGenerator.generateRollNumber() else paper.rollNumber
+                    val updatedBooklet = if (paper.bookletNumber.isBlank()) ExamNumberGenerator.generateBookletNumber() else paper.bookletNumber
+                    paper.copy(
+                        rollNumber = updatedRoll,
+                        bookletNumber = updatedBooklet
+                    )
                 }
+                paperDao.updatePapersBatch(toUpdate)
             } catch (e: Exception) {
                 // Ignore transient errors during first launch
             }
@@ -1391,24 +1443,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restoreAutosavedState() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Clean up any previously auto-seeded starter paper or boring example if present
-            try {
-                val allPapers = paperDao.getAllPapers().first()
-                for (p in allPapers) {
-                    val isBoringSample = p.rawText == SampleData.SAMPLE_STARTER_PROMPT ||
-                            p.rawText == SampleData.SAMPLE_SCIENCE_PAPER ||
-                            p.title == "National Science & Technology Olympiad" ||
-                            p.rawText.contains("Which chemical compound is commonly known as dry ice") ||
-                            (p.title == "UPSC / SSC CGL Combined General Studies" && p.subject == "General Science")
-                    if (isBoringSample) {
-                        paperDao.deletePaperWithAttempts(p)
-                        if (appPreferences.getLastActivePaperId() == p.id) {
-                            appPreferences.setLastActivePaperId(-1L)
+            // One-time cleanup of legacy starter samples (avoids scanning every paper's rawText on every cold launch)
+            if (!appPreferences.hasCleanedLegacySamples()) {
+                try {
+                    val allPapers = paperDao.getAllPapersOnce()
+                    for (p in allPapers) {
+                        val isBoringSample = p.rawText == SampleData.SAMPLE_STARTER_PROMPT ||
+                                p.rawText == SampleData.SAMPLE_SCIENCE_PAPER ||
+                                p.title == "National Science & Technology Olympiad" ||
+                                p.rawText.contains("Which chemical compound is commonly known as dry ice") ||
+                                (p.title == "UPSC / SSC CGL Combined General Studies" && p.subject == "General Science")
+                        if (isBoringSample) {
+                            paperDao.deletePaperWithAttempts(p)
+                            if (appPreferences.getLastActivePaperId() == p.id) {
+                                appPreferences.setLastActivePaperId(-1L)
+                            }
                         }
                     }
+                    appPreferences.setLegacySamplesCleaned(true)
+                } catch (e: Exception) {
+                    // Ignore
                 }
-            } catch (e: Exception) {
-                // Ignore
             }
 
             val lastPaperId = appPreferences.getLastActivePaperId()
@@ -1418,14 +1473,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _lastOpenedPaper.value = entity
                 }
             } else {
-                // If lastPaperId not set, populate last opened info with most recently updated paper if any exist
+                // Fetch only the single most recently updated paper instead of all papers
                 try {
-                    val allSaved = paperDao.getAllPapers().first()
-                    if (allSaved.isNotEmpty()) {
-                        _lastOpenedPaper.value = allSaved.maxByOrNull { it.updatedAt }
-                    } else {
-                        _lastOpenedPaper.value = null
-                    }
+                    _lastOpenedPaper.value = paperDao.getLatestPaper()
                 } catch (e: Exception) {
                     // Ignore
                 }
@@ -2363,11 +2413,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadSavedPaper(entity: PaperEntity, onComplete: (() -> Unit)? = null) {
-        // Cancel pending debounced autosaves so they don't overwrite this loaded paper
+        // Cancel pending debounced autosaves and any superseded paper-load job
         paperDebounceJob?.cancel()
         paperDebounceJob = null
         inputDebounceJob?.cancel()
         inputDebounceJob = null
+        loadPaperJob?.cancel()
 
         _isLoadingPaper.value = true
         _currentPaperEntityId.value = entity.id
@@ -2377,16 +2428,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _timeRemainingSeconds.value = initialMinutes * 60L
         _timerMode.value = ExamTimerMode.COUNTDOWN
 
-        viewModelScope.launch(Dispatchers.Default) {
+        val job = viewModelScope.launch(Dispatchers.Default) {
             try {
                 loadSavedPaperInternal(entity)
-            } finally {
                 withContext(Dispatchers.Main) {
                     _isLoadingPaper.value = false
                     onComplete?.invoke()
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    _isLoadingPaper.value = false
+                }
             }
         }
+        loadPaperJob = job
     }
 
     private suspend fun loadSavedPaperInternal(entity: PaperEntity) {
@@ -2395,7 +2452,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             entity
         }
-        val result = McqParser.parseWithResult(freshEntity.rawText)
+        val result = parsePaperWithCache(freshEntity)
         val finalRoll = if (freshEntity.rollNumber.isNotBlank()) freshEntity.rollNumber else ExamNumberGenerator.generateRollNumber()
         val finalBooklet = if (freshEntity.bookletNumber.isNotBlank()) freshEntity.bookletNumber else ExamNumberGenerator.generateBookletNumber()
         val savedDuration = if (freshEntity.durationMinutes > 0) freshEntity.durationMinutes else 60

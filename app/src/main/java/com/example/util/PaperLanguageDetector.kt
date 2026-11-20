@@ -297,15 +297,71 @@ object PaperLanguageDetector {
         "ya", "wa", "cha", "sahihi", "jibu", "maelezo", "au", "kati", "ambayo"
     )
 
+    private const val MAX_DETECTION_SAMPLE_HEAD = 3200
+    private const val MAX_DETECTION_SAMPLE_MID = 1400
+    private const val MAX_CACHE_ENTRIES = 256
+
+    private val paperLanguageCache = object : LinkedHashMap<String, List<String>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean {
+            return size > MAX_CACHE_ENTRIES
+        }
+    }
+
+    /**
+     * Thread-safe cached language detection keyed by paper ID, updatedAt, title, and rawText length.
+     * Avoids rescanning unchanged papers across libraryIndex recomputations and Compose recompositions.
+     */
+    fun detectLanguagesCached(
+        paperId: Long,
+        updatedAt: Long,
+        rawText: String,
+        title: String = ""
+    ): List<String> {
+        val key = if (paperId > 0L) {
+            "$paperId|$updatedAt|${rawText.length}|${title.hashCode()}"
+        } else {
+            "0|${rawText.length}|${rawText.take(256).hashCode()}|${title.hashCode()}"
+        }
+        synchronized(paperLanguageCache) {
+            paperLanguageCache[key]?.let { return it }
+        }
+        val detected = detectLanguages(rawText, title)
+        synchronized(paperLanguageCache) {
+            paperLanguageCache[key] = detected
+        }
+        return detected
+    }
+
+    fun clearCache() {
+        synchronized(paperLanguageCache) {
+            paperLanguageCache.clear()
+        }
+    }
+
+    private fun extractRepresentativeSample(rawText: String): String {
+        if (rawText.length <= MAX_DETECTION_SAMPLE_HEAD + MAX_DETECTION_SAMPLE_MID) {
+            return rawText
+        }
+        val head = rawText.substring(0, MAX_DETECTION_SAMPLE_HEAD)
+        val midStart = ((rawText.length - MAX_DETECTION_SAMPLE_MID) / 2).coerceAtLeast(MAX_DETECTION_SAMPLE_HEAD)
+        val midEnd = (midStart + MAX_DETECTION_SAMPLE_MID).coerceAtMost(rawText.length)
+        return buildString(MAX_DETECTION_SAMPLE_HEAD + MAX_DETECTION_SAMPLE_MID + 2) {
+            append(head)
+            append('\n')
+            append(rawText, midStart, midEnd)
+        }
+    }
+
     fun detectLanguages(rawText: String, title: String = ""): List<String> {
         val explicit = detectExplicitMetadataLanguages(rawText)
         if (explicit.isNotEmpty()) {
             return explicit
         }
 
-        val source = buildString {
+        val sampledRaw = extractRepresentativeSample(rawText)
+        val source = buildString(title.length + sampledRaw.length + 1) {
             if (title.isNotBlank()) append(title).append('\n')
-            append(rawText)
+            append(sampledRaw)
         }
         if (source.isBlank()) return listOf("English")
 
@@ -467,8 +523,9 @@ object PaperLanguageDetector {
         if (rawText.isBlank()) return emptyList()
         val found = mutableListOf<String>()
 
-        // Check header lines near top of paper
-        val headLines = rawText.lines().asSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(25)
+        // Check header lines near top of paper without splitting the entire rawText
+        val headChunk = if (rawText.length > 3000) rawText.substring(0, 3000) else rawText
+        val headLines = headChunk.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(25)
         for (line in headLines) {
             val match = EXPLICIT_LANGUAGE_LINE_REGEX.find(line) ?: continue
             val value = match.groupValues[1].trim()

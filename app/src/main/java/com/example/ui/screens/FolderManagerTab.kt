@@ -1855,6 +1855,7 @@ fun FolderManagerTab(
                                     isCompleted = paper.id in libraryIndex.completedPaperIds,
                                     isInProgress = paper.id in libraryIndex.inProgressPaperIds,
                                     attemptScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score,
+                                    detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
                                     onOpenMaster = {
                                         activeQuickFeatureFilter = null
                                         viewModel.loadSavedPaper(paper)
