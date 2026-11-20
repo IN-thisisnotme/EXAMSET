@@ -33,6 +33,10 @@ import com.example.model.BatchItemStatus
 import com.example.model.CloudAccountStatus
 import com.example.model.CloudProviderType
 import com.example.model.ExamConfig
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeFormatRule
@@ -46,10 +50,15 @@ import com.example.model.QuestionPaper
 import com.example.model.RemoteCloudBackupFile
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
+import com.example.model.SrsRating
 import com.example.ui.components.computeNextSetForSubject
 import com.example.ui.components.isSetNumberMatch
 import com.example.ui.components.paperBelongsToDestination
 import com.example.ui.components.resolveFolderBySubjectPath
+import com.example.ui.screens.FlashcardPromptState
+import com.example.ui.screens.KnowledgePromptState
+import com.example.ui.screens.PromptBuilderMode
+import com.example.ui.screens.QuestionPromptState
 import com.example.util.CloudBackupClients
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
@@ -58,6 +67,7 @@ import com.example.util.ExamNumberGenerator
 import com.example.util.OmrVisionProcessor
 import com.example.util.PaperLanguageDetector
 import com.example.util.PsychometricEngine
+import com.example.util.SpacedRepetitionEngine
 import com.example.util.StudyNoteParser
 import com.example.util.TrustedTimeManager
 import com.example.util.VaultArchiveEngine
@@ -175,6 +185,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _autoBackupSchedule = MutableStateFlow(cloudAuthStore.getAutoBackupSchedule())
     val autoBackupSchedule: StateFlow<AutoBackupSchedule> = _autoBackupSchedule.asStateFlow()
+
+    // Hoisted AI Prompt Builder state so user inputs persist across tab switches
+    var promptBuilderMode by mutableStateOf(PromptBuilderMode.QUESTION_SET)
+    val questionPromptState = QuestionPromptState()
+    val knowledgePromptState = KnowledgePromptState()
+    val flashcardPromptState = FlashcardPromptState()
+
+    // Spaced Repetition (SM-2) progress keyed by StudyNoteEntity.id -> blockIndex
+    private val _flashcardSrsByNote = MutableStateFlow(appPreferences.getAllFlashcardSrsMaps())
+    val flashcardSrsByNote: StateFlow<Map<Long, Map<Int, FlashcardSrsState>>> = _flashcardSrsByNote.asStateFlow()
 
     // Full-screen Knowledge Sets Studio navigation states (rendered outside Dialog windows so IME/insets never clip)
     private val _knowledgeEditorDraft = MutableStateFlow<KnowledgeEditorDraft?>(null)
@@ -2908,8 +2928,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteStudyNote(note: StudyNoteEntity) {
+    fun reviewFlashcard(note: StudyNoteEntity, blockIndex: Int, rating: SrsRating) {
+        val now = System.currentTimeMillis()
+        val noteMap = _flashcardSrsByNote.value[note.id].orEmpty()
+        val updatedCard = SpacedRepetitionEngine.computeNextState(
+            current = noteMap[blockIndex],
+            blockIndex = blockIndex,
+            rating = rating,
+            nowMillis = now
+        )
+        val updatedNoteMap = noteMap + (blockIndex to updatedCard)
+        _flashcardSrsByNote.value = _flashcardSrsByNote.value + (note.id to updatedNoteMap)
+
         viewModelScope.launch(Dispatchers.IO) {
+            appPreferences.saveFlashcardSrsMap(note.id, updatedNoteMap)
+            val fresh = studyNoteDao.getStudyNoteById(note.id) ?: note
+            val currentMastered = fresh.getMasteredIndices().toMutableSet()
+            val shouldBeMastered = rating == SrsRating.EASY || SpacedRepetitionEngine.isMasteredBySrs(updatedCard)
+            val changed = if (rating == SrsRating.AGAIN) {
+                currentMastered.remove(blockIndex)
+            } else if (shouldBeMastered) {
+                currentMastered.add(blockIndex)
+            } else {
+                false
+            }
+            if (changed) {
+                studyNoteDao.updateStudyNote(fresh.withMasteredIndices(currentMastered))
+            }
+        }
+    }
+
+    fun resetFlashcardSrsProgress(note: StudyNoteEntity) {
+        _flashcardSrsByNote.value = _flashcardSrsByNote.value - note.id
+        viewModelScope.launch(Dispatchers.IO) {
+            appPreferences.clearFlashcardSrsMap(note.id)
+            val fresh = studyNoteDao.getStudyNoteById(note.id) ?: note
+            if (fresh.getMasteredIndices().isNotEmpty()) {
+                studyNoteDao.updateStudyNote(fresh.withMasteredIndices(emptySet()))
+            }
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Reset spaced repetition schedule for ${note.title}"
+            }
+        }
+    }
+
+    fun deleteStudyNote(note: StudyNoteEntity) {
+        _flashcardSrsByNote.value = _flashcardSrsByNote.value - note.id
+        viewModelScope.launch(Dispatchers.IO) {
+            appPreferences.clearFlashcardSrsMap(note.id)
             studyNoteDao.deleteStudyNote(note)
             withContext(Dispatchers.Main) {
                 if (_activeKnowledgeReaderNoteId.value == note.id) {

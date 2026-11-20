@@ -254,6 +254,7 @@ fun FolderManagerTab(
     val folders by viewModel.folders.collectAsState()
     val libraryIndex by viewModel.libraryIndex.collectAsState()
     val studyNotes by viewModel.studyNotes.collectAsState()
+    val flashcardSrsByNote by viewModel.flashcardSrsByNote.collectAsState()
     val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val currentPaper by viewModel.currentPaper.collectAsState()
@@ -1298,6 +1299,7 @@ fun FolderManagerTab(
                         },
                         onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
                         linkedPaperTitles = linkedPaperTitles,
+                        flashcardSrsByNote = flashcardSrsByNote,
                         onCompileCourseActiveRecall = {
                             val targetFId = if (activeFolderId == "all") null else activeFolderId
                             val targetSub = currentFolder?.name.orEmpty()
@@ -1962,7 +1964,8 @@ fun FolderManagerTab(
                                     )
                                 },
                                 onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
-                                linkedPaperTitles = linkedPaperTitles
+                                linkedPaperTitles = linkedPaperTitles,
+                                flashcardSrsByNote = flashcardSrsByNote
                             )
                         }
                     }

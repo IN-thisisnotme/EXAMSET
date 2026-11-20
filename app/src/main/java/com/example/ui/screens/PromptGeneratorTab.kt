@@ -56,10 +56,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,36 +95,23 @@ fun PromptGeneratorTab(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    var isKnowledgeMode by remember { mutableStateOf(false) }
-    val knowledgeState = remember { KnowledgePromptState() }
-
-    var examType by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var topic by remember { mutableStateOf("") }
-    var questionCount by remember { mutableFloatStateOf(20f) }
-    var difficulty by remember { mutableStateOf("Moderate") }
-    var questionType by remember { mutableStateOf("Mixed Formats") }
-    var questionLanguage by remember { mutableStateOf("English") }
-    var explanationChoice by remember { mutableStateOf("Same as Question") }
-    var customExplanationLanguage by remember { mutableStateOf("") }
-    var optionCount by remember { mutableIntStateOf(4) } // 4 or 5 options
-    var explainAllFourOptions by remember { mutableStateOf(true) }
-    var includeFormulasAndDiagrams by remember { mutableStateOf(true) }
-    var promptPhasingStyle by remember { mutableStateOf("Standard") }
-    var targetOutputFormat by remember { mutableStateOf("Strict JSON") } // "Strict JSON", "Standard Text (Aiken)", "Markdown Table"
-    var promptDensity by remember { mutableStateOf("Concise") } // "Concise", "Comprehensive"
-
-    // Format & Quantity Correction Rule (Disabled by default: Unrestricted Full Stream)
-    var enableQuantityCorrectionRule by remember { mutableStateOf(false) }
+    val activeMode = viewModel.promptBuilderMode
+    val qState = viewModel.questionPromptState
+    val knowledgeState = viewModel.knowledgePromptState
+    val flashcardState = viewModel.flashcardPromptState
 
     var copied by remember { mutableStateOf(false) }
 
-    val countInt = questionCount.toInt()
+    val countInt = qState.questionCount.toInt()
 
-    val effectiveExplanationLanguage by remember(questionLanguage, explanationChoice, customExplanationLanguage) {
+    val effectiveExplanationLanguage by remember(
+        qState.questionLanguage,
+        qState.explanationChoice,
+        qState.customExplanationLanguage
+    ) {
         derivedStateOf {
-            val q = questionLanguage.trim().ifBlank { "English" }
-            when (explanationChoice) {
+            val q = qState.questionLanguage.trim().ifBlank { "English" }
+            when (qState.explanationChoice) {
                 "Same as Question" -> "$q (same language as questions)"
                 "Bilingual" -> {
                     if (q.equals("English", ignoreCase = true)) {
@@ -136,42 +122,42 @@ fun PromptGeneratorTab(
                 }
                 "English" -> "English"
                 "Hindi" -> "Hindi"
-                "Custom" -> customExplanationLanguage.trim().ifBlank { q }
-                else -> explanationChoice
+                "Custom" -> qState.customExplanationLanguage.trim().ifBlank { q }
+                else -> qState.explanationChoice
             }
         }
     }
 
     val generatedPrompt by remember(
-        examType, subject, topic, countInt, difficulty, questionType,
-        questionLanguage, effectiveExplanationLanguage, explainAllFourOptions,
-        includeFormulasAndDiagrams, promptPhasingStyle, enableQuantityCorrectionRule,
-        targetOutputFormat, promptDensity, optionCount
+        qState.examType, qState.subject, qState.topic, countInt, qState.difficulty, qState.questionType,
+        qState.questionLanguage, effectiveExplanationLanguage, qState.explainAllFourOptions,
+        qState.includeFormulasAndDiagrams, qState.promptPhasingStyle, qState.enableQuantityCorrectionRule,
+        qState.targetOutputFormat, qState.promptDensity, qState.optionCount
     ) {
         derivedStateOf {
-            val qLang = questionLanguage.trim().ifBlank { "English" }
-            val targetExam = examType.trim().ifBlank { "Competitive Examination" }
+            val qLang = qState.questionLanguage.trim().ifBlank { "English" }
+            val targetExam = qState.examType.trim().ifBlank { "Competitive Examination" }
             val targetSubject = buildString {
-                if (subject.isNotBlank()) {
-                    append(subject.trim())
-                    if (topic.isNotBlank()) {
-                        append(" (Focus: ${topic.trim()})")
+                if (qState.subject.isNotBlank()) {
+                    append(qState.subject.trim())
+                    if (qState.topic.isNotBlank()) {
+                        append(" (Focus: ${qState.topic.trim()})")
                     }
-                } else if (topic.isNotBlank()) {
-                    append("Focus: ${topic.trim()}")
+                } else if (qState.topic.isNotBlank()) {
+                    append("Focus: ${qState.topic.trim()}")
                 } else {
                     append("Comprehensive Subject Curriculum")
                 }
             }
 
-            val cognitiveCalibration = when (difficulty) {
+            val cognitiveCalibration = when (qState.difficulty) {
                 "Easy" -> "Cognitive Level (Easy / Foundational): Direct conceptual recall, core definitions, standard formulas, and clear distractors."
                 "Moderate" -> "Cognitive Level (Moderate / Standard): Competitive examination caliber requiring multi-step comprehension, application, and deduction."
                 "Hard" -> "Cognitive Level (Hard / Advanced): High analytical rigor, edge cases, multi-step calculations, and distractors targeting subtle misconceptions."
                 "Extreme" -> "Cognitive Level (Extreme Olympiad / Rank-Decider): Deep multi-concept synthesis, subtle distractor nuances, and demanding problem-solving."
                 else -> "Cognitive Level (Mixed Difficulty): Balanced ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging items."
             }
-            val patternCalibration = when (questionType) {
+            val patternCalibration = when (qState.questionType) {
                 "Conceptual & Theory" -> "Pattern Focus: Strictly conceptual & theoretical items evaluating governing laws, principles, and cause-effect reasoning."
                 "Numerical & Calculation" -> "Pattern Focus: Quantitative & numerical problem-solving with exact formulas, numeric options ordered lowest-to-highest, and verified calculation steps."
                 "Assertion-Reason & Statement-Based" -> "Pattern Focus: Analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'."
@@ -179,13 +165,13 @@ fun PromptGeneratorTab(
                 else -> "Pattern Diversity: Actively distribute the $countInt questions across direct conceptual, statement-evaluation, numerical/application, and assertion/analytical formats rather than repeating single-sentence recall."
             }
 
-            if (targetOutputFormat == "Strict JSON") {
+            if (qState.targetOutputFormat == "Strict JSON") {
                 buildString {
                     append(
                         """
                         Act as a senior psychometrician and chief examination paper setter for $targetExam.
 
-                        Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject in $qLang at $difficulty difficulty (Question Pattern: $questionType).
+                        Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject in $qLang at ${qState.difficulty} difficulty (Question Pattern: ${qState.questionType}).
 
                         ### 1. STRICT JSON OUTPUT REQUIREMENTS
                         Output only a valid JSON array containing the complete question set, correct answers, and explanations. Do not include introductory remarks, Markdown code fences, or trailing commentary.
@@ -199,7 +185,7 @@ fun PromptGeneratorTab(
                                 "a": "Option A text",
                                 "b": "Option B text",
                                 "c": "Option C text",
-                                "d": "Option D text"${if (optionCount == 5) ",\n                                \"e\": \"Option E text\"" else ""}
+                                "d": "Option D text"${if (qState.optionCount == 5) ",\n                                \"e\": \"Option E text\"" else ""}
                                 },
                                 "correctAnswer": "A",
                                 "explanation": "Explanation text here"
@@ -210,10 +196,11 @@ fun PromptGeneratorTab(
                         1. Generate exactly $countInt questions relevant to $targetSubject and appropriate for $targetExam.
                         2. $cognitiveCalibration
                         3. $patternCalibration
-                        4. Each question must contain EXACTLY $optionCount options, with keys ${if (optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.${if (optionCount == 4) " Never include an option \"e\" or any additional options." else ""}
+                        4. Each question must contain EXACTLY ${qState.optionCount} options, with keys ${if (qState.optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.${if (qState.optionCount == 4) " Never include an option \"e\" or any additional options." else ""}
                         5. Distractor Quality: Make all options plausible, mutually exclusive, and grammatically parallel. Never use "All of the above", "None of the above", or "Both A and B". Order numeric/date options lowest to highest, and do not make the correct option noticeably longest.
-                        6. The "correctAnswer" value must be exactly one uppercase letter: ${if (optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct.
-                        7. Distribute correct answers approximately evenly across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} when feasible. Never compromise correctness to balance the answer key.
+                        6. The "correctAnswer" value must be exactly one uppercase letter: ${if (qState.optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct.
+                        7. Distribute correct answers approximately evenly across ${if (qState.optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} when feasible. Never compromise correctness to balance the answer key.
+                        ${if (qState.promptPhasingStyle == "Reasoning-First") "8. Reasoning-First Answer Verification: For every item, mentally derive the complete solution and verify all calculations/logic BEFORE committing the \"correctAnswer\" key so the key never contradicts the explanation." else ""}
 
                         ### 4. EXPLANATION REQUIREMENTS
                         Write every explanation in $effectiveExplanationLanguage. Ensure that the reasoning is accurate, specific to the question, and sufficient to justify the answer. Avoid repetition, filler, vague claims, and unrelated background information.
@@ -222,7 +209,7 @@ fun PromptGeneratorTab(
 
                     append("\n\n")
 
-                    if (promptDensity == "Concise") {
+                    if (qState.promptDensity == "Concise") {
                         append(
                             """
                             EXPLANATION DEPTH
@@ -238,7 +225,7 @@ fun PromptGeneratorTab(
                         )
                     }
 
-                    if (enableQuantityCorrectionRule) {
+                    if (qState.enableQuantityCorrectionRule) {
                         append("\n\n")
                         append(
                             """
@@ -250,11 +237,11 @@ fun PromptGeneratorTab(
 
                     append("\n\n")
 
-                    if (explainAllFourOptions) {
+                    if (qState.explainAllFourOptions) {
                         append(
                             """
                             OPTION-BY-OPTION EXPLANATION
-                            Explain options ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} individually and in that order. For each option, explicitly state whether it is correct or incorrect and give a specific reason. Explain why the correct option is valid and why each distractor fails. Do not repeat the same reasoning in different words.
+                            Explain options ${if (qState.optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} individually and in that order. For each option, explicitly state whether it is correct or incorrect and give a specific reason. Explain why the correct option is valid and why each distractor fails. Do not repeat the same reasoning in different words.
                             """.trimIndent()
                         )
                     } else {
@@ -283,7 +270,7 @@ fun PromptGeneratorTab(
                         """.trimIndent()
                     )
 
-                    if (includeFormulasAndDiagrams) {
+                    if (qState.includeFormulasAndDiagrams) {
                         append("\n\n")
                         append(
                             """
@@ -305,7 +292,7 @@ fun PromptGeneratorTab(
                         - The array contains exactly $countInt question objects.
                         - Question numbers are sequential, starting at 1.
                         - Every object contains exactly the fields "num", "question", "options", "correctAnswer", and "explanation".
-                        - Every options object contains exactly the keys ${if (optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.
+                        - Every options object contains exactly the keys ${if (qState.optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.
                         - Every correctAnswer matches the correct option and uses one uppercase letter.
                         - Explanations follow the selected explanation depth and option-explanation setting.
                         - All JSON strings are correctly escaped and there are no trailing commas or comments.
@@ -314,20 +301,20 @@ fun PromptGeneratorTab(
                         """.trimIndent()
                     )
                 }
-            } else if (targetOutputFormat == "Markdown Table") {
+            } else if (qState.targetOutputFormat == "Markdown Table") {
                 buildString {
                     append("Act as a senior psychometrician and examination paper setter for $targetExam.\n\n")
-                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty in $qLang (Question Pattern: $questionType).\n\n")
+                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at ${qState.difficulty} difficulty in $qLang (Question Pattern: ${qState.questionType}).\n\n")
                     append("OUTPUT FORMAT: MARKDOWN TABLE\n")
                     append("Format the entire question set as a clean, standardized Markdown table with the following column headers:\n")
-                    if (optionCount == 5) {
+                    if (qState.optionCount == 5) {
                         append("| # | Question | Option A | Option B | Option C | Option D | Option E | Answer | Explanation |\n")
                         append("|---|---|---|---|---|---|---|:---:|---|\n\n")
                     } else {
                         append("| # | Question | Option A | Option B | Option C | Option D | Answer | Explanation |\n")
                         append("|---|---|---|---|---|---|:---:|---|\n\n")
                     }
-                    val optionStrategyNote = if (explainAllFourOptions) {
+                    val optionStrategyNote = if (qState.explainAllFourOptions) {
                         "briefly noting why the right answer works and why distractors fail"
                     } else {
                         "focusing concisely on the decisive reasoning"
@@ -335,40 +322,44 @@ fun PromptGeneratorTab(
                     append("Rules:\n")
                     append("1. $cognitiveCalibration\n")
                     append("2. $patternCalibration\n")
-                    append("3. STRICT $optionCount-OPTION CONSTRAINT: Each question must have EXACTLY $optionCount options (${if (optionCount == 5) "Option A, B, C, D, E" else "Option A, Option B, Option C, Option D"}). Never use 'All of the above' or 'None of the above'; keep options parallel and length-balanced.\n")
+                    append("3. STRICT ${qState.optionCount}-OPTION CONSTRAINT: Each question must have EXACTLY ${qState.optionCount} options (${if (qState.optionCount == 5) "Option A, B, C, D, E" else "Option A, B, Option C, Option D"}). Never use 'All of the above' or 'None of the above'; keep options parallel and length-balanced.\n")
                     append("4. SINGLE-ROW INTEGRITY: Put each question in a single table row and NEVER place raw `|` characters or line breaks inside cell text (use words or `\\lvert x \\rvert`).\n")
-                    append("5. In the 'Answer' column, write strictly ${if (optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}.\n")
-                    append("6. In the 'Explanation' column, provide a ${if (promptDensity == "Concise") "concise" else "detailed"} rationale in $effectiveExplanationLanguage, $optionStrategyNote${if (enableQuantityCorrectionRule) ", kept strictly within 2–3 sentences to prevent truncation" else ""}.\n")
-                    append("7. Balanced key distribution across ${if (optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"}.\n")
-                    if (includeFormulasAndDiagrams) {
-                        append("8. Use single-line inline `\$...\$` LaTeX formatting for mathematical expressions and chemical formulas where appropriate.\n")
-                        append("9. Do not include extra commentary or greeting text before or after the table.")
-                    } else {
-                        append("8. Do not include extra commentary or greeting text before or after the table.")
+                    append("5. In the 'Answer' column, write strictly ${if (qState.optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}.\n")
+                    append("6. In the 'Explanation' column, provide a ${if (qState.promptDensity == "Concise") "concise" else "detailed"} rationale in $effectiveExplanationLanguage, $optionStrategyNote${if (qState.enableQuantityCorrectionRule) ", kept strictly within 2–3 sentences to prevent truncation" else ""}.\n")
+                    append("7. Balanced key distribution across ${if (qState.optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"}.\n")
+                    var nextTableRule = 8
+                    if (qState.promptPhasingStyle == "Reasoning-First") {
+                        append("$nextTableRule. Reasoning-First Verification: Derive the decisive proof mentally before choosing each row's Answer letter so the Answer column and Explanation column always agree.\n")
+                        nextTableRule++
                     }
+                    if (qState.includeFormulasAndDiagrams) {
+                        append("$nextTableRule. Use single-line inline `\$...\$` LaTeX formatting for mathematical expressions and chemical formulas where appropriate.\n")
+                        nextTableRule++
+                    }
+                    append("$nextTableRule. Do not include extra commentary or greeting text before or after the table.")
                 }
             } else {
                 buildString {
                     append("Act as a senior psychometrician and chief examination paper setter for $targetExam.\n\n")
-                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at $difficulty difficulty (Question Pattern: $questionType) in $qLang.\n\n")
+                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at ${qState.difficulty} difficulty (Question Pattern: ${qState.questionType}) in $qLang.\n\n")
 
                     append("### 1. LANGUAGE & SCRIPT CONVENTIONS\n")
-                    if (effectiveExplanationLanguage == qLang || explanationChoice == "Same as Question") {
+                    if (effectiveExplanationLanguage == qLang || qState.explanationChoice == "Same as Question") {
                         append("- Language: Write the question stems, options, and explanations entirely in $qLang using natural, academically rigorous terminology.\n")
                     } else {
                         append("- Language: Write question stems and options in $qLang, and explanations in $effectiveExplanationLanguage, using natural, academically rigorous terminology.\n")
                     }
-                    append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as ${if (optionCount == 5) "\"(A)\", \"(B)\", \"(C)\", \"(D)\", \"(E)\"" else "\"(A)\", \"(B)\", \"(C)\", \"(D)\""} for universal OMR and parser compatibility.\n\n")
+                    append("- Structural Markers: Regardless of the language used, keep question labels as \"Q1.\", \"Q2.\" and option keys strictly as ${if (qState.optionCount == 5) "\"(A)\", \"(B)\", \"(C)\", \"(D)\", \"(E)\"" else "\"(A)\", \"(B)\", \"(C)\", \"(D)\""} for universal OMR and parser compatibility.\n\n")
 
                     append("### 2. PSYCHOMETRIC & DISTRACTOR RULES\n")
-                    when (difficulty) {
+                    when (qState.difficulty) {
                         "Easy" -> append("1. COGNITIVE LEVEL (Easy / Foundational): Direct conceptual recall, core standard definitions, basic formulas, and straightforward identification with unambiguous distractors.\n")
                         "Moderate" -> append("1. COGNITIVE LEVEL (Moderate / Standard): Standard examination caliber requiring multi-step comprehension, application of principles, and analytical deduction.\n")
                         "Hard" -> append("1. COGNITIVE LEVEL (Hard / Advanced): Advanced analytical rigor, intricate edge cases, multi-layered calculations, and trap options diagnosing common misconceptions.\n")
                         "Extreme" -> append("1. COGNITIVE LEVEL (Extreme Olympiad / Rank-Decider): Deep synthesis, Olympiad-level multi-concept integration, subtle distractor nuances, and demanding problem-solving.\n")
                         else -> append("1. COGNITIVE LEVEL (Mixed Difficulty): Balanced distribution spanning ~25% Foundational, ~50% Standard/Moderate, and ~25% High-Rigor/Challenging questions.\n")
                     }
-                    when (questionType) {
+                    when (qState.questionType) {
                         "Conceptual & Theory" -> append("2. QUESTION FORMAT FOCUS: Strictly conceptual & theoretical questions evaluating core laws, principles, and cause-effect reasoning.\n")
                         "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
                         "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'.\n")
@@ -378,28 +369,28 @@ fun PromptGeneratorTab(
                             append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across diverse examination formats.\n")
                         }
                     }
-                    append("3. STRICT $optionCount-OPTION CONSTRAINT: Every question must contain EXACTLY $optionCount options labeled (A), (B), (C), (D)${if (optionCount == 5) ", and (E)" else ""}.\n")
-                    append("4. DISTRACTOR HOMOGENEITY: All $optionCount options must be mutually exclusive and grammatically parallel.\n")
+                    append("3. STRICT ${qState.optionCount}-OPTION CONSTRAINT: Every question must contain EXACTLY ${qState.optionCount} options labeled (A), (B), (C), (D)${if (qState.optionCount == 5) ", and (E)" else ""}.\n")
+                    append("4. DISTRACTOR HOMOGENEITY: All ${qState.optionCount} options must be mutually exclusive and grammatically parallel.\n")
                     append("5. LENGTH CONTROL: The correct option must NOT be the longest option by default.\n")
                     append("6. ORDERING: If options contain numerical values or dates, order them strictly from lowest to highest.\n")
                     append("7. PROHIBITED PHRASES: Never use \"All of the above\", \"None of the above\", or \"Both A and B\".\n")
-                    if (includeFormulasAndDiagrams) {
+                    if (qState.includeFormulasAndDiagrams) {
                         append("8. SCIENTIFIC & MATH NOTATION: Enclose all mathematical expressions in LaTeX (e.g. \$E = mc^2\$).\n")
                     }
-                    if (enableQuantityCorrectionRule) {
+                    if (qState.enableQuantityCorrectionRule) {
                         append("9. TRUNCATION GUARD: Keep each explanation strictly within 2–3 concise sentences so all $countInt questions finish completely without token truncation.\n")
-                    } else if (promptDensity == "Concise") {
+                    } else if (qState.promptDensity == "Concise") {
                         append("9. EXPLANATION DEPTH: Keep explanations concise, focusing on the decisive reasoning.\n")
                     }
                     append("\n")
 
                     append("### 3. STATISTICAL BALANCE & ZERO-DISCREPANCY\n")
-                    append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~${100 / optionCount}% each across ${if (optionCount == 5) "A, B, C, D, E" else "A, B, C, D"}).\n")
+                    append("1. BALANCED KEY DISTRIBUTION: Distribute correct answers roughly evenly (~${100 / qState.optionCount}% each across ${if (qState.optionCount == 5) "A, B, C, D, E" else "A, B, C, D"}).\n")
                     append("2. ZERO CHATTER: Output starts immediately with \"Phase 1: Questions\". No introductory remarks or disclaimers.\n\n")
 
                     append("### 4. PLAIN-TEXT FORMATTING RULES\n")
                     append("1. ZERO INDENTATION: Every line starts flush-left.\n")
-                    append("2. ANTI-LIST RULE: Do not use bullet points or markdown lists. Use Q1., (A), (B), (C), (D)${if (optionCount == 5) ", (E)" else ""}.\n\n")
+                    append("2. ANTI-LIST RULE: Do not use bullet points or markdown lists. Use Q1., (A), (B), (C), (D)${if (qState.optionCount == 5) ", (E)" else ""}.\n\n")
 
                     append("### EXACT OUTPUT FORMAT TEMPLATE:\n\n")
                     append("Phase 1: Questions\n\n")
@@ -408,14 +399,14 @@ fun PromptGeneratorTab(
                     append("(B) [Option B]\n")
                     append("(C) [Option C]\n")
                     append("(D) [Option D]\n")
-                    if (optionCount == 5) {
+                    if (qState.optionCount == 5) {
                         append("(E) [Option E]\n\n")
                     } else {
                         append("\n")
                     }
                     append("[Repeat through Q$countInt]\n\n")
 
-                    if (promptPhasingStyle == "Reasoning-First") {
+                    if (qState.promptPhasingStyle == "Reasoning-First") {
                         append("Phase 2: Explanations & Solution\n\n")
                         append("Q1.\n")
                         append("Core Concept & Reasoning: [Reasoning]\n")
@@ -423,7 +414,7 @@ fun PromptGeneratorTab(
                         append("Option (B) [Correct/Incorrect]: [Explanation]\n")
                         append("Option (C) [Correct/Incorrect]: [Explanation]\n")
                         append("Option (D) [Correct/Incorrect]: [Explanation]\n")
-                        if (optionCount == 5) {
+                        if (qState.optionCount == 5) {
                             append("Option (E) [Correct/Incorrect]: [Explanation]\n")
                         }
                         append("\nPhase 3: Answer Key\n\n")
@@ -436,7 +427,7 @@ fun PromptGeneratorTab(
                         append("Phase 3: Explanations & Solution\n\n")
                         append("Q1.\n")
                         append("Core Concept & Reasoning: [Reasoning]\n")
-                        if (explainAllFourOptions) {
+                        if (qState.explainAllFourOptions) {
                             append("Why Correct & Distractor Breakdown: [Option-by-option evaluation]\n\n")
                         } else {
                             append("Why Correct: [Reason for correct option]\n")
@@ -450,21 +441,33 @@ fun PromptGeneratorTab(
         }
     }
 
+    val activePrompt = when (activeMode) {
+        PromptBuilderMode.QUESTION_SET -> generatedPrompt
+        PromptBuilderMode.KNOWLEDGE_SET -> knowledgeState.buildPrompt()
+        PromptBuilderMode.FLASHCARD_SET -> flashcardState.buildPrompt()
+    }
+
+    LaunchedEffect(activePrompt) {
+        copied = false
+    }
+
     val copyAction = {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        val activePrompt = if (isKnowledgeMode) knowledgeState.buildPrompt() else generatedPrompt
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(
-            if (isKnowledgeMode) "AI Knowledge Prompt" else "AI Exam Prompt",
-            activePrompt
-        )
+        val label = when (activeMode) {
+            PromptBuilderMode.QUESTION_SET -> "AI Exam Prompt"
+            PromptBuilderMode.KNOWLEDGE_SET -> "AI Knowledge Prompt"
+            PromptBuilderMode.FLASHCARD_SET -> "AI Flashcard Prompt"
+        }
+        val toastText = when (activeMode) {
+            PromptBuilderMode.QUESTION_SET -> "Prompt copied to clipboard"
+            PromptBuilderMode.KNOWLEDGE_SET -> "Knowledge prompt copied to clipboard"
+            PromptBuilderMode.FLASHCARD_SET -> "Flashcard prompt copied to clipboard"
+        }
+        val clip = ClipData.newPlainText(label, activePrompt)
         clipboard.setPrimaryClip(clip)
         copied = true
-        Toast.makeText(
-            context,
-            if (isKnowledgeMode) "Knowledge prompt copied to clipboard" else "Prompt copied to clipboard",
-            Toast.LENGTH_SHORT
-        ).show()
+        Toast.makeText(context, toastText, Toast.LENGTH_SHORT).show()
     }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -539,79 +542,45 @@ fun PromptGeneratorTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(IntrinsicSize.Max),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Surface(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                isKnowledgeMode = false
-                                copied = false
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .heightIn(min = 48.dp)
-                                .testTag("prompt_mode_question_set"),
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (!isKnowledgeMode) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
-                            border = BorderStroke(
-                                if (!isKnowledgeMode) 1.4.dp else 0.6.dp,
-                                if (!isKnowledgeMode) colors.teal else colors.border
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                Text(
-                                    text = "Question Set",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (!isKnowledgeMode) colors.teal else colors.inkBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                        PromptBuilderMode.entries.forEach { mode ->
+                            val isSelected = activeMode == mode
+                            Surface(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.promptBuilderMode = mode
+                                    copied = false
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .heightIn(min = 48.dp)
+                                    .testTag(mode.testTag),
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(
+                                    if (isSelected) 1.4.dp else 0.6.dp,
+                                    if (isSelected) colors.teal else colors.border
                                 )
-                                Text(
-                                    text = "MCQs & Answer Keys",
-                                    fontSize = 10.sp,
-                                    color = if (!isKnowledgeMode) colors.tealDark else colors.inkMuted,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Surface(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                isKnowledgeMode = true
-                                copied = false
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .heightIn(min = 48.dp)
-                                .testTag("prompt_mode_knowledge_set"),
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isKnowledgeMode) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
-                            border = BorderStroke(
-                                if (isKnowledgeMode) 1.4.dp else 0.6.dp,
-                                if (isKnowledgeMode) colors.teal else colors.border
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                Text(
-                                    text = "Knowledge Set",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isKnowledgeMode) colors.teal else colors.inkBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "One-Liners & Codex",
-                                    fontSize = 10.sp,
-                                    color = if (isKnowledgeMode) colors.tealDark else colors.inkMuted,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                                    Text(
+                                        text = mode.title,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) colors.teal else colors.inkBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = mode.subtitle,
+                                        fontSize = 9.5.sp,
+                                        color = if (isSelected) colors.tealDark else colors.inkMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
@@ -651,25 +620,10 @@ fun PromptGeneratorTab(
                         OutlinedButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                if (isKnowledgeMode) {
-                                    knowledgeState.reset()
-                                } else {
-                                    examType = ""
-                                    subject = ""
-                                    topic = ""
-                                    questionCount = 20f
-                                    difficulty = "Moderate"
-                                    questionType = "Mixed Formats"
-                                    questionLanguage = "English"
-                                    explanationChoice = "Same as Question"
-                                    customExplanationLanguage = ""
-                                    optionCount = 4
-                                    explainAllFourOptions = true
-                                    includeFormulasAndDiagrams = true
-                                    promptPhasingStyle = "Standard"
-                                    targetOutputFormat = "Strict JSON"
-                                    promptDensity = "Concise"
-                                    enableQuantityCorrectionRule = false
+                                when (activeMode) {
+                                    PromptBuilderMode.QUESTION_SET -> qState.reset()
+                                    PromptBuilderMode.KNOWLEDGE_SET -> knowledgeState.reset()
+                                    PromptBuilderMode.FLASHCARD_SET -> flashcardState.reset()
                                 }
                                 copied = false
                             },
@@ -700,18 +654,32 @@ fun PromptGeneratorTab(
             }
         }
 
-        if (isKnowledgeMode) {
-            knowledgePromptBuilderItems(
-                state = knowledgeState,
-                colors = colors,
-                fieldColors = fieldColors,
-                context = context,
-                haptic = haptic,
-                copied = copied,
-                onCopyPrompt = copyAction,
-                onOpenKnowledgeStudio = onOpenKnowledgeStudio
-            )
-        } else {
+        when (activeMode) {
+            PromptBuilderMode.KNOWLEDGE_SET -> {
+                knowledgePromptBuilderItems(
+                    state = knowledgeState,
+                    colors = colors,
+                    fieldColors = fieldColors,
+                    context = context,
+                    haptic = haptic,
+                    copied = copied,
+                    onCopyPrompt = copyAction,
+                    onOpenKnowledgeStudio = onOpenKnowledgeStudio
+                )
+            }
+            PromptBuilderMode.FLASHCARD_SET -> {
+                flashcardPromptBuilderItems(
+                    state = flashcardState,
+                    colors = colors,
+                    fieldColors = fieldColors,
+                    context = context,
+                    haptic = haptic,
+                    copied = copied,
+                    onCopyPrompt = copyAction,
+                    onOpenFlashcardStudio = onOpenKnowledgeStudio
+                )
+            }
+            PromptBuilderMode.QUESTION_SET -> {
         // 2. Card 1: Examination Parameters (Exam & Subject Details)
         item(key = "exam_params") {
             Card(
@@ -751,11 +719,11 @@ fun PromptGeneratorTab(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         examPresets.forEach { preset ->
-                            val isSelected = examType.equals(preset, ignoreCase = true)
+                            val isSelected = qState.examType.equals(preset, ignoreCase = true)
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    examType = preset
+                                    qState.examType = preset
                                 },
                                 shape = RoundedCornerShape(14.dp),
                                 color = if (isSelected) colors.teal else colors.surfaceVariant,
@@ -776,8 +744,8 @@ fun PromptGeneratorTab(
                     }
 
                     OutlinedTextField(
-                        value = examType,
-                        onValueChange = { examType = it },
+                        value = qState.examType,
+                        onValueChange = { qState.examType = it },
                         label = { Text("Exam Name / Target Agency", fontSize = 12.sp) },
                         placeholder = { Text("e.g. UPSC, State PCS, NEET, School Board", fontSize = 12.sp) },
                         singleLine = true,
@@ -812,11 +780,11 @@ fun PromptGeneratorTab(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         quickSubjects.forEach { quickSub ->
-                            val isSubSelected = subject.equals(quickSub, ignoreCase = true)
+                            val isSubSelected = qState.subject.equals(quickSub, ignoreCase = true)
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    subject = quickSub
+                                    qState.subject = quickSub
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isSubSelected) colors.teal else colors.surfaceVariant.copy(alpha = 0.7f),
@@ -837,8 +805,8 @@ fun PromptGeneratorTab(
                     }
 
                     OutlinedTextField(
-                        value = subject,
-                        onValueChange = { subject = it },
+                        value = qState.subject,
+                        onValueChange = { qState.subject = it },
                         label = { Text("Subject", fontSize = 12.sp) },
                         placeholder = { Text("e.g. General Science, Physics, History", fontSize = 12.sp) },
                         singleLine = true,
@@ -851,8 +819,8 @@ fun PromptGeneratorTab(
                     )
 
                     OutlinedTextField(
-                        value = topic,
-                        onValueChange = { topic = it },
+                        value = qState.topic,
+                        onValueChange = { qState.topic = it },
                         label = { Text("Focus Topic (Optional)", fontSize = 12.sp) },
                         placeholder = { Text("e.g. Thermodynamics, Ecology & Climate Change", fontSize = 12.sp) },
                         singleLine = true,
@@ -938,7 +906,7 @@ fun PromptGeneratorTab(
                                 Surface(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        questionCount = cnt.toFloat()
+                                        qState.questionCount = cnt.toFloat()
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
@@ -956,10 +924,10 @@ fun PromptGeneratorTab(
                         }
 
                         Slider(
-                            value = questionCount,
+                            value = qState.questionCount,
                             onValueChange = { newVal ->
                                 val snapped = kotlin.math.round(newVal / 5f) * 5f
-                                questionCount = snapped.coerceIn(5f, 200f)
+                                qState.questionCount = snapped.coerceIn(5f, 200f)
                             },
                             valueRange = 5f..200f,
                             colors = SliderDefaults.colors(
@@ -987,7 +955,7 @@ fun PromptGeneratorTab(
                                 color = colors.inkBold
                             )
                             Text(
-                                text = difficulty,
+                                text = qState.difficulty,
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal
@@ -1006,11 +974,11 @@ fun PromptGeneratorTab(
                                     "Extreme" -> "Extreme (Olympiad)"
                                     else -> "Mixed Difficulty"
                                 }
-                                val isSelected = difficulty == diff
+                                val isSelected = qState.difficulty == diff
                                 Surface(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        difficulty = diff
+                                        qState.difficulty = diff
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
@@ -1045,7 +1013,7 @@ fun PromptGeneratorTab(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = questionType,
+                                text = qState.questionType,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal,
@@ -1067,11 +1035,11 @@ fun PromptGeneratorTab(
                                 "Assertion-Reason & Statement-Based",
                                 "Case Study & Passage-Based"
                             ).forEach { qType ->
-                                val isSelected = questionType == qType
+                                val isSelected = qState.questionType == qType
                                 Surface(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        questionType = qType
+                                        qState.questionType = qType
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
@@ -1105,7 +1073,7 @@ fun PromptGeneratorTab(
                                 color = colors.inkBold
                             )
                             Text(
-                                text = if (optionCount == 5) "5 Options (A–E)" else "4 Options (A–D)",
+                                text = if (qState.optionCount == 5) "5 Options (A–E)" else "4 Options (A–D)",
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal
@@ -1120,16 +1088,16 @@ fun PromptGeneratorTab(
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    optionCount = 4
+                                    qState.optionCount = 4
                                 },
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (optionCount == 4) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                                color = if (qState.optionCount == 4) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
                                 border = BorderStroke(
-                                    if (optionCount == 4) 1.5.dp else 0.6.dp,
-                                    if (optionCount == 4) colors.teal else colors.border
+                                    if (qState.optionCount == 4) 1.5.dp else 0.6.dp,
+                                    if (qState.optionCount == 4) colors.teal else colors.border
                                 )
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
@@ -1137,14 +1105,14 @@ fun PromptGeneratorTab(
                                         text = "4 Options (A–D)",
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (optionCount == 4) colors.teal else colors.inkBold
+                                        color = if (qState.optionCount == 4) colors.teal else colors.inkBold
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "SSC, Railways, JEE, NEET, UPSC",
                                         fontSize = 10.sp,
                                         lineHeight = 13.sp,
-                                        color = if (optionCount == 4) colors.tealDark else colors.inkMuted
+                                        color = if (qState.optionCount == 4) colors.tealDark else colors.inkMuted
                                     )
                                 }
                             }
@@ -1152,16 +1120,16 @@ fun PromptGeneratorTab(
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    optionCount = 5
+                                    qState.optionCount = 5
                                 },
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight(),
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (optionCount == 5) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
+                                color = if (qState.optionCount == 5) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.6f),
                                 border = BorderStroke(
-                                    if (optionCount == 5) 1.5.dp else 0.6.dp,
-                                    if (optionCount == 5) colors.teal else colors.border
+                                    if (qState.optionCount == 5) 1.5.dp else 0.6.dp,
+                                    if (qState.optionCount == 5) colors.teal else colors.border
                                 )
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
@@ -1169,14 +1137,14 @@ fun PromptGeneratorTab(
                                         text = "5 Options (A–E)",
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (optionCount == 5) colors.teal else colors.inkBold
+                                        color = if (qState.optionCount == 5) colors.teal else colors.inkBold
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "Banking, IBPS, State PSC",
                                         fontSize = 10.sp,
                                         lineHeight = 13.sp,
-                                        color = if (optionCount == 5) colors.tealDark else colors.inkMuted
+                                        color = if (qState.optionCount == 5) colors.tealDark else colors.inkMuted
                                     )
                                 }
                             }
@@ -1226,15 +1194,15 @@ fun PromptGeneratorTab(
                             )
                         }
                         Text(
-                            text = "Type any language or select from presets below (universal (A)–(${if (optionCount == 5) "E" else "D"}) labels preserved)",
+                            text = "Type any language or select from presets below (universal (A)–(${if (qState.optionCount == 5) "E" else "D"}) labels preserved)",
                             fontSize = 10.5.sp,
                             color = colors.muted,
                             lineHeight = 14.sp
                         )
 
                         OutlinedTextField(
-                            value = questionLanguage,
-                            onValueChange = { questionLanguage = it },
+                            value = qState.questionLanguage,
+                            onValueChange = { qState.questionLanguage = it },
                             placeholder = { Text("e.g. English, Hindi, Tamil, Bengali, French...", fontSize = 12.sp, color = colors.muted) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -1250,11 +1218,11 @@ fun PromptGeneratorTab(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             com.example.util.PaperLanguageDetector.PRESET_LANGUAGES.forEach { lang ->
-                                val isSelected = questionLanguage.trim().equals(lang, ignoreCase = true)
+                                val isSelected = qState.questionLanguage.trim().equals(lang, ignoreCase = true)
                                 Surface(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        questionLanguage = lang
+                                        qState.questionLanguage = lang
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
@@ -1276,7 +1244,7 @@ fun PromptGeneratorTab(
 
                     // Explanation Language (cleanly separated from active status so zero text collision)
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val activeQLang = questionLanguage.trim().ifBlank { "English" }
+                        val activeQLang = qState.questionLanguage.trim().ifBlank { "English" }
                         val bilingualPresetName = if (activeQLang.equals("English", ignoreCase = true)) {
                             "Bilingual (Eng & Hin)"
                         } else {
@@ -1312,11 +1280,11 @@ fun PromptGeneratorTab(
                             )
 
                             explanationOptions.forEach { (key, displayLabel) ->
-                                val isSelected = explanationChoice == key
+                                val isSelected = qState.explanationChoice == key
                                 Surface(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        explanationChoice = key
+                                        qState.explanationChoice = key
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
@@ -1333,10 +1301,10 @@ fun PromptGeneratorTab(
                             }
                         }
 
-                        if (explanationChoice == "Custom") {
+                        if (qState.explanationChoice == "Custom") {
                             OutlinedTextField(
-                                value = customExplanationLanguage,
-                                onValueChange = { customExplanationLanguage = it },
+                                value = qState.customExplanationLanguage,
+                                onValueChange = { qState.customExplanationLanguage = it },
                                 placeholder = { Text("Type custom explanation language (e.g. Marathi, Sanskrit, French)...", fontSize = 11.5.sp, color = colors.muted) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
@@ -1394,7 +1362,7 @@ fun PromptGeneratorTab(
                                 color = colors.teal.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    text = targetOutputFormat,
+                                    text = qState.targetOutputFormat,
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.teal,
@@ -1409,11 +1377,11 @@ fun PromptGeneratorTab(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf("Strict JSON", "Standard Text (Aiken)", "Markdown Table").forEach { fmt ->
-                                val isSelected = targetOutputFormat == fmt
+                                val isSelected = qState.targetOutputFormat == fmt
                                 Surface(
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        targetOutputFormat = fmt
+                                        qState.targetOutputFormat = fmt
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surface,
@@ -1447,10 +1415,10 @@ fun PromptGeneratorTab(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = when (targetOutputFormat) {
-                                            "Strict JSON" -> "JSON Schema ($optionCount-Option)"
-                                            "Markdown Table" -> "Markdown Table ($optionCount-Option)"
-                                            else -> "Structured Text ($optionCount-Option)"
+                                        text = when (qState.targetOutputFormat) {
+                                            "Strict JSON" -> "JSON Schema (${qState.optionCount}-Option)"
+                                            "Markdown Table" -> "Markdown Table (${qState.optionCount}-Option)"
+                                            else -> "Structured Text (${qState.optionCount}-Option)"
                                         },
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
@@ -1462,8 +1430,8 @@ fun PromptGeneratorTab(
 
                                     Spacer(modifier = Modifier.width(8.dp))
 
-                                    val sampleText = when (targetOutputFormat) {
-                                        "Strict JSON" -> if (optionCount == 5) {
+                                    val sampleText = when (qState.targetOutputFormat) {
+                                        "Strict JSON" -> if (qState.optionCount == 5) {
                                             """[
   {
     "num": 1,
@@ -1495,7 +1463,7 @@ fun PromptGeneratorTab(
   }
 ]"""
                                         }
-                                        "Markdown Table" -> if (optionCount == 5) {
+                                        "Markdown Table" -> if (qState.optionCount == 5) {
                                             """| # | Question | Option A | Option B | Option C | Option D | Option E | Answer | Explanation |
 |---|---|---|---|---|---|---|:---:|---|
 | 1 | Which gas is most abundant in Earth's atmosphere? | Oxygen | Nitrogen | Carbon Dioxide | Argon | Neon | B | Nitrogen accounts for approximately 78% of Earth's atmosphere by volume. |"""
@@ -1504,7 +1472,7 @@ fun PromptGeneratorTab(
 |---|---|---|---|---|---|:---:|---|
 | 1 | Which gas is most abundant in Earth's atmosphere? | Oxygen | Nitrogen | Carbon Dioxide | Argon | B | Nitrogen accounts for approximately 78% of Earth's atmosphere by volume. |"""
                                         }
-                                        else -> if (optionCount == 5) {
+                                        else -> if (qState.optionCount == 5) {
                                             """Phase 1: Questions
 
 Q1. Which gas is most abundant in Earth's atmosphere?
@@ -1542,7 +1510,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                             val clip = ClipData.newPlainText("Sample Format", sampleText)
                                             clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Copied sample $targetOutputFormat format", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Copied sample ${qState.targetOutputFormat} format", Toast.LENGTH_SHORT).show()
                                         },
                                         shape = RoundedCornerShape(6.dp),
                                         color = colors.surfaceVariant,
@@ -1573,10 +1541,10 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
 
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = when (targetOutputFormat) {
-                                        "Strict JSON" -> "JSON array with num, question, options (${if (optionCount == 5) "a, b, c, d, e" else "a, b, c, d"}), correctAnswer, and explanation. Strictly $optionCount options."
-                                        "Markdown Table" -> "${if (optionCount == 5) "9" else "8"}-column table with strictly $optionCount options (${if (optionCount == 5) "Option A through E" else "Option A through D"})."
-                                        else -> "Standard Aiken/Structured format with Q1.. (A)–(${if (optionCount == 5) "E" else "D"}), Answer Key, and Detailed Explanations."
+                                    text = when (qState.targetOutputFormat) {
+                                        "Strict JSON" -> "JSON array with num, question, options (${if (qState.optionCount == 5) "a, b, c, d, e" else "a, b, c, d"}), correctAnswer, and explanation. Strictly ${qState.optionCount} options."
+                                        "Markdown Table" -> "${if (qState.optionCount == 5) "9" else "8"}-column table with strictly ${qState.optionCount} options (${if (qState.optionCount == 5) "Option A through E" else "Option A through D"})."
+                                        else -> "Standard Aiken/Structured format with Q1.. (A)–(${if (qState.optionCount == 5) "E" else "D"}), Answer Key, and Detailed Explanations."
                                     },
                                     fontSize = 10.5.sp,
                                     color = colors.inkMuted,
@@ -1600,11 +1568,11 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf("Concise", "Comprehensive").forEach { density ->
-                                    val isSelected = promptDensity == density
+                                    val isSelected = qState.promptDensity == density
                                     Surface(
                                         onClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            promptDensity = density
+                                            qState.promptDensity = density
                                         },
                                         shape = RoundedCornerShape(6.dp),
                                         color = if (isSelected) colors.teal else colors.surface,
@@ -1627,19 +1595,19 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { explainAllFourOptions = !explainAllFourOptions }
+                            .clickable { qState.explainAllFourOptions = !qState.explainAllFourOptions }
                             .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = explainAllFourOptions,
-                            onCheckedChange = { explainAllFourOptions = it },
+                            checked = qState.explainAllFourOptions,
+                            onCheckedChange = { qState.explainAllFourOptions = it },
                             colors = CheckboxDefaults.colors(checkedColor = colors.teal)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Explain All $optionCount Options Individually",
+                                text = "Explain All ${qState.optionCount} Options Individually",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.inkBold
@@ -1657,13 +1625,13 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { includeFormulasAndDiagrams = !includeFormulasAndDiagrams }
+                            .clickable { qState.includeFormulasAndDiagrams = !qState.includeFormulasAndDiagrams }
                             .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
-                            checked = includeFormulasAndDiagrams,
-                            onCheckedChange = { includeFormulasAndDiagrams = it },
+                            checked = qState.includeFormulasAndDiagrams,
+                            onCheckedChange = { qState.includeFormulasAndDiagrams = it },
                             colors = CheckboxDefaults.colors(checkedColor = colors.teal)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1698,16 +1666,16 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                text = if (promptPhasingStyle == "Reasoning-First") "Derive First" else "Standard",
+                                text = if (qState.promptPhasingStyle == "Reasoning-First") "Derive First" else "Standard",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (promptPhasingStyle == "Reasoning-First") colors.green else colors.teal
+                                color = if (qState.promptPhasingStyle == "Reasoning-First") colors.green else colors.teal
                             )
                         }
 
-                        if (targetOutputFormat != "Standard Text (Aiken)") {
+                        if (qState.targetOutputFormat != "Standard Text (Aiken)") {
                             Text(
-                                text = "Phase ordering applies when Standard Text (Aiken) format is selected.",
+                                text = "JSON/Table apply Reasoning-First as derive-before-key verification; Aiken places Explanations before Answer Key.",
                                 fontSize = 10.sp,
                                 color = colors.muted
                             )
@@ -1719,11 +1687,11 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                 .height(IntrinsicSize.Max),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val isReasoning = promptPhasingStyle == "Reasoning-First"
+                            val isReasoning = qState.promptPhasingStyle == "Reasoning-First"
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    promptPhasingStyle = "Reasoning-First"
+                                    qState.promptPhasingStyle = "Reasoning-First"
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -1761,11 +1729,11 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                 }
                             }
 
-                            val isStandard = promptPhasingStyle == "Standard"
+                            val isStandard = qState.promptPhasingStyle == "Standard"
                             Surface(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    promptPhasingStyle = "Standard"
+                                    qState.promptPhasingStyle = "Standard"
                                 },
                                 modifier = Modifier
                                     .weight(1f)
@@ -1808,14 +1776,14 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                     // Format & Quantity Truncation Guard Toggle
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (enableQuantityCorrectionRule) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(0.8.dp, if (enableQuantityCorrectionRule) colors.teal else colors.border),
+                        color = if (qState.enableQuantityCorrectionRule) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(0.8.dp, if (qState.enableQuantityCorrectionRule) colors.teal else colors.border),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { enableQuantityCorrectionRule = !enableQuantityCorrectionRule }
+                                .clickable { qState.enableQuantityCorrectionRule = !qState.enableQuantityCorrectionRule }
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -1825,7 +1793,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                     Icon(
                                         imageVector = Icons.Default.Shield,
                                         contentDescription = null,
-                                        tint = if (enableQuantityCorrectionRule) colors.teal else colors.muted,
+                                        tint = if (qState.enableQuantityCorrectionRule) colors.teal else colors.muted,
                                         modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -1833,25 +1801,25 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                                         text = "Format & Quantity Truncation Guard",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (enableQuantityCorrectionRule) colors.teal else colors.inkBold
+                                        color = if (qState.enableQuantityCorrectionRule) colors.teal else colors.inkBold
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
-                                    text = if (enableQuantityCorrectionRule) {
+                                    text = if (qState.enableQuantityCorrectionRule) {
                                         "ACTIVE: Enforces a strict 2–3 sentence explanation budget to prevent token cutoffs for 20–25+ question sets."
                                     } else {
                                         "DISABLED (Default): Unrestricted full stream. Generates all $countInt questions continuously without artificial limits."
                                     },
                                     fontSize = 10.5.sp,
                                     lineHeight = 14.sp,
-                                    color = if (enableQuantityCorrectionRule) colors.tealDark else colors.muted
+                                    color = if (qState.enableQuantityCorrectionRule) colors.tealDark else colors.muted
                                 )
                             }
 
                             Switch(
-                                checked = enableQuantityCorrectionRule,
-                                onCheckedChange = { enableQuantityCorrectionRule = it },
+                                checked = qState.enableQuantityCorrectionRule,
+                                onCheckedChange = { qState.enableQuantityCorrectionRule = it },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = colors.teal
@@ -1890,7 +1858,7 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                             border = BorderStroke(0.5.dp, colors.green.copy(alpha = 0.4f))
                         ) {
                             Text(
-                                text = if (enableQuantityCorrectionRule) "Guard Active" else "Full Stream (Default)",
+                                text = if (qState.enableQuantityCorrectionRule) "Guard Active" else "Full Stream (Default)",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.green,
@@ -1986,13 +1954,14 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
             }
         }
 
-        item(key = "bottom_spacer") {
-            Spacer(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .height(24.dp)
-            )
-        }
+                item(key = "bottom_spacer") {
+                    Spacer(
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .height(24.dp)
+                    )
+                }
+            }
         }
     }
 }

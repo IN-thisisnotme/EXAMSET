@@ -44,6 +44,12 @@ enum class KnowledgeCollectionType(
         shortBadge = "FORMULAS",
         description = "LaTeX equations, constants, units & quick derivations"
     ),
+    FLASHCARDS(
+        code = "FLASHCARDS",
+        label = "Spaced Repetition Flashcards",
+        shortBadge = "FLASHCARDS",
+        description = "Atomic front/back active-recall cards tuned for SM-2 spaced repetition"
+    ),
     WEAK_AREA_REVIEW(
         code = "WEAK_AREA_REVIEW",
         label = "Mistake & Weak-Area Log",

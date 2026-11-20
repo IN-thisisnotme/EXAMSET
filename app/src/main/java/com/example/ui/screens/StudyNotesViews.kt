@@ -58,7 +58,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.StudyNoteEntity
+import com.example.model.FlashcardSrsState
+import com.example.model.KnowledgeCollectionType
 import com.example.ui.theme.ExamTheme
+import com.example.util.SpacedRepetitionEngine
+import com.example.util.StudyNoteBlock
 import com.example.util.StudyNoteParser
 
 fun printStudyNoteAsPdf(context: Context, note: StudyNoteEntity) {
@@ -98,6 +102,7 @@ fun StudyNotesSectionItems(
     onEditNote: (StudyNoteEntity) -> Unit,
     onDeleteNote: (StudyNoteEntity) -> Unit,
     linkedPaperTitles: Map<Long, String> = emptyMap(),
+    flashcardSrsByNote: Map<Long, Map<Int, FlashcardSrsState>> = emptyMap(),
     onCompileCourseActiveRecall: (() -> Unit)? = null
 ) {
     val colors = ExamTheme.colors
@@ -239,6 +244,7 @@ fun StudyNotesSectionItems(
                 StudyNoteCard(
                     note = note,
                     linkedPaperTitle = note.linkedPaperId?.let { linkedPaperTitles[it] },
+                    srsMap = flashcardSrsByNote[note.id].orEmpty(),
                     onOpen = { onOpenNote(note) },
                     onEdit = { onEditNote(note) },
                     onPrint = { printStudyNoteAsPdf(context, note) },
@@ -254,6 +260,7 @@ fun StudyNotesSectionItems(
 fun StudyNoteCard(
     note: StudyNoteEntity,
     linkedPaperTitle: String? = null,
+    srsMap: Map<Int, FlashcardSrsState> = emptyMap(),
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onPrint: () -> Unit,
@@ -262,9 +269,21 @@ fun StudyNoteCard(
     val colors = ExamTheme.colors
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val formatRule = remember(note.formatRuleJson, note.collectionType) { note.parsedFormatRule() }
-    val itemCount = remember(note.rawContent, formatRule) { StudyNoteParser.countOneLiners(note.rawContent, formatRule) }
+    val studyUnits = remember(note.rawContent, formatRule) {
+        StudyNoteParser.parseBlocks(note.rawContent, formatRule).filter {
+            it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard
+        }
+    }
+    val itemCount = studyUnits.size
     val starredCount = remember(note.bookmarkedLinesJson) { note.getBookmarkedIndices().size }
     val masteredCount = remember(note.masteredBlocksJson) { note.getMasteredIndices().size }
+    val srsStats = remember(studyUnits, srsMap, note.collectionType) {
+        if (note.resolvedCollectionType() == KnowledgeCollectionType.FLASHCARDS || srsMap.isNotEmpty()) {
+            SpacedRepetitionEngine.computeDeckStats(studyUnits, srsMap, System.currentTimeMillis())
+        } else {
+            null
+        }
+    }
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -297,6 +316,21 @@ fun StudyNoteCard(
                             color = colors.tealDark,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
+                    }
+                    if (srsStats != null && srsStats.totalCount > 0) {
+                        val dueCount = srsStats.actionableCount
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (dueCount > 0) colors.amberLight else colors.greenLight
+                        ) {
+                            Text(
+                                text = if (dueCount > 0) "$dueCount due" else "Caught up",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (dueCount > 0) colors.amber else colors.green,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                     if (note.subject.isNotBlank()) {
                         Surface(

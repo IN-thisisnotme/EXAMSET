@@ -1,6 +1,7 @@
 package com.example.util
 
 import com.example.data.StudyNoteEntity
+import com.example.model.FlashcardPromptStyle
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
 import com.example.model.KnowledgeFormatRule
@@ -201,7 +202,13 @@ object StudyNoteParser {
                     if (aMatch != null) {
                         paragraphs.add(aMatch.groupValues[1].trim())
                     } else if (qaBulletMatch != null) {
-                        nested.add(countIndentLevel(nextRaw) to qaBulletMatch.groupValues[1].trim())
+                        val bulletBody = qaBulletMatch.groupValues[1].trim()
+                        val formulaBullet = Regex("""^(?:\*\*|__)?(?:Formula|Equation)(?:\*\*|__)?\s*[:\-]\s*(.+)$""", RegexOption.IGNORE_CASE).find(bulletBody)
+                        if (formulaBullet != null && formula.isBlank()) {
+                            formula = cleanMarkdownDecorators(formulaBullet.groupValues[1])
+                        } else {
+                            nested.add(countIndentLevel(nextRaw) to bulletBody)
+                        }
                     } else {
                         if (looksLikeFormula(nextTrim) && formula.isBlank()) formula = nextTrim
                         else paragraphs.add(nextTrim)
@@ -418,6 +425,7 @@ object StudyNoteParser {
                     val resolvedType = parsedQuestionType.ifBlank {
                         when {
                             rule.collectionType == KnowledgeCollectionType.LONG_ANSWER -> "Long-Form Q&A"
+                            rule.collectionType == KnowledgeCollectionType.FLASHCARDS -> "Flashcard"
                             formula.isNotBlank() -> "Formula & Concept"
                             rule.collectionType == KnowledgeCollectionType.FORMULA_SHEET -> "Formula"
                             else -> "Concept Card"
@@ -518,7 +526,32 @@ object StudyNoteParser {
         val isOneLinerMode = collectionType == KnowledgeCollectionType.ONE_LINERS
         val isTableMode = collectionType == KnowledgeCollectionType.COMPARISON_TABLE
         val isLongAnswerMode = collectionType == KnowledgeCollectionType.LONG_ANSWER
+        val isFlashcardMode = collectionType == KnowledgeCollectionType.FLASHCARDS
         val resolvedCount = itemCount?.takeIf { it > 0 }
+
+        if (isFlashcardMode) {
+            val defaultStyle = when (rule.layerOrder) {
+                KnowledgeLayerOrder.QA_SEPARATE_LINES -> FlashcardPromptStyle.QA_RETRIEVAL
+                KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> FlashcardPromptStyle.CLOZE_SCENARIO
+                else -> FlashcardPromptStyle.TERM_DEFINITION
+            }
+            return compileFlashcardPrompt(
+                topic = topic,
+                subject = subject,
+                examTarget = examTarget,
+                itemCount = resolvedCount ?: 20,
+                style = defaultStyle,
+                depth = rule.depth,
+                language = targetLang,
+                includeBilingualTerms = includeBilingualTerms,
+                includeMnemonics = rule.includeCallouts,
+                includeExamples = rule.preserveNestedBullets,
+                includeLatexMath = rule.includeLatexMath,
+                includeExamTraps = includePyqTags || rule.includeCallouts,
+                atomicSrsMode = true,
+                customInstruction = rule.customInstruction
+            )
+        }
 
         val roleLine = if (cleanExam.isNotBlank()) {
             "Act as a senior $cleanExam educator and curriculum designer."
@@ -548,9 +581,9 @@ object StudyNoteParser {
         val layerInstruction = when {
             isTableMode -> "Format comparison entries strictly as clean single-line Markdown table rows (`| Feature / Parameter | Item A | Item B |`) with a `| --- |` header separator."
             isLongAnswerMode -> when (rule.layerOrder) {
-                KnowledgeLayerOrder.TERM_FIRST -> "Start each item as `1. **<Question / Directive>**` followed by multi-paragraph structured answer sections (`  - Introduction:`, `  - Body / Analysis:`, `  - Way Forward / Conclusion:`)."
-                KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> "Start with the core thesis/case clue followed by `-> **Core Concept**` and multi-paragraph analytical justification underneath."
-                else -> "Format each long-form question cleanly as `Q1: <Full Question / UPSC Directive>` on one line, followed on the next line by `A: <Introduction>` and multi-paragraph structured sections (`**Key Arguments:**`, `  - Point ...`, `**Way Forward:**`)."
+                KnowledgeLayerOrder.TERM_FIRST -> "Start each item as `1. **<Question / Directive>**` followed by multi-paragraph structured answer sections (`  - Introduction:`, `  - Core Arguments:`, `  - Way Forward:`)."
+                KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> "Start with the core analytical conclusion/scenario clue followed by `-> **Core Concept / Theme**` and structured analytical paragraphs underneath (`  - Analytical Dimensions:`, `  - Way Forward:`)."
+                else -> "Format each long-form question cleanly as `Q1: <Full Question / UPSC Directive>` on one line, followed on the next line by `A: <Introduction>` and multi-paragraph structured sections (`**Core Analytical Dimensions:**`, `  - Point ...`, `**Way Forward:**`)."
             }
             isOneLinerMode && rule.layerOrder == KnowledgeLayerOrder.AUTO_DETECT ->
                 "Always put the Key Term / Concept FIRST in **bold**, followed by `->` and the concise 1-line explanation (`1. **Concept** -> Crisp fact`)."
@@ -576,6 +609,7 @@ object StudyNoteParser {
                 }
             }
             KnowledgeCollectionType.FORMULA_SHEET -> "${resolvedCount?.let { "Generate exactly $it important laws/formulas" } ?: "List every important law/formula"} grouped under `## Section Headings` with `  - Formula:`, `  - Units & Conditions:`, and numerical pitfall lines."
+            KnowledgeCollectionType.FLASHCARDS -> "${countPrefix ?: "Generate 20"} atomic spaced-repetition flashcards grouped under `## Section Headings`."
             KnowledgeCollectionType.WEAK_AREA_REVIEW -> "${countPrefix ?: "Create 12–20"} targeted remediation cards using `  - Trap:`, `  - Correct Rule:`, and `  - Memory Anchor:` sub-lines to eliminate look-alike mistakes."
             KnowledgeCollectionType.CUSTOM -> "${resolvedCount?.let { "Generate exactly $it items formatted" } ?: "Structure the output"} cleanly as a '$collectionTitle' sheet tailored to exam mastery."
         }
@@ -614,7 +648,7 @@ object StudyNoteParser {
             when {
                 isOneLinerMode -> appendLine("$ruleNum. Keep each numbered fact on a single crisp line with NO nested sub-bullets so One-Liner recall cards parse cleanly.")
                 isTableMode -> appendLine("$ruleNum. Keep every table row on a single line; NEVER insert nested bullets or raw unescaped `|` characters inside table cells (use words or `\\lvert x \\rvert`).")
-                isLongAnswerMode -> appendLine("$ruleNum. Inside each `Q:` / `A:` or numbered question card, you may use multiple paragraphs and 2-space indented `- sub-points`; only start a new `Q2:` or `## Heading` when beginning the next question.")
+                isLongAnswerMode -> appendLine("$ruleNum. Inside each `Q:` / `A:` or numbered question card, you may use multiple paragraphs and 2-space indented `- sub-points`; only start a new numbered card / `Q2:` / `## Heading` when beginning the next question.")
                 rule.preserveNestedBullets -> appendLine("$ruleNum. For multi-layer concepts, indent sub-points with exactly 2 spaces (`  - Sub-point`, `  - Formula: ...`, `  - Key Takeaway: ...`) directly under the parent item with no blank lines inside a card.")
                 else -> appendLine("$ruleNum. Avoid nested sub-bullets; keep each fact concise without child lists.")
             }
@@ -671,7 +705,7 @@ object StudyNoteParser {
         val pyqSuffix = if (includePyqTags) " [PYQ Focus]" else ""
         val sampleLine = when (layerOrder) {
             KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST ->
-                "1. Rapid voltage spike across an inductive load opposing current change${if (includePyqTags) " [PYQ Focus]" else ""} -> **Lenz's Law**"
+                "1. Rapid voltage spike across an inductive load opposing current change$pyqSuffix -> **Lenz's Law**"
             KnowledgeLayerOrder.QA_SEPARATE_LINES ->
                 "Q: What governs induced EMF direction?\nA: Lenz's Law — induced EMF always opposes the flux change producing it.$pyqSuffix"
             else ->
@@ -690,15 +724,32 @@ object StudyNoteParser {
         return when (collectionType) {
             KnowledgeCollectionType.LONG_ANSWER -> buildString {
                 appendLine("## Governance & Economic Framework")
-                appendLine("Q1: Examine the significance of Fiscal Responsibility and Budget Management (FRBM) in balancing macroeconomic stability with capital expenditure.$pyqSuffix")
-                appendLine("A: **Introduction:** Enacted in 2003, the FRBM framework institutionalizes fiscal prudence to contain public debt and anchor inflation expectations.")
-                appendLine()
-                appendLine("**Core Analytical Dimensions:**")
-                appendLine("  - **Debt & Deficit Anchors:** Targets fiscal glide paths while preserving space for counter-cyclical public investment.")
-                appendLine("  - **Quality of Expenditure:** Distinguishes revenue deficit from capital outlay driving long-term multiplier growth.")
-                appendLine(fiscalMath)
-                appendLine()
-                append("**Way Forward:** Adopt N.K. Singh Committee escape-clause transparency, medium-term debt ceilings, and outcome-linked CapEx.")
+                when (layerOrder) {
+                    KnowledgeLayerOrder.TERM_FIRST -> {
+                        appendLine("1. **Examine the significance of Fiscal Responsibility and Budget Management (FRBM) in balancing macroeconomic stability with capital expenditure.**$pyqSuffix")
+                        appendLine("  - Introduction: Enacted in 2003, the FRBM framework institutionalizes fiscal prudence to contain public debt and anchor inflation expectations.")
+                        appendLine("  - Core Arguments: Targets fiscal glide paths while preserving counter-cyclical capital outlay.")
+                        appendLine(fiscalMath)
+                        append("  - Way Forward: Adopt N.K. Singh Committee escape-clause transparency, medium-term debt ceilings, and outcome-linked CapEx.")
+                    }
+                    KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> {
+                        appendLine("1. Institutionalizes fiscal glide paths to cap revenue deficit while safeguarding productive capital outlay$pyqSuffix -> **FRBM Framework (2003)**")
+                        appendLine("  - Core Analytical Dimensions: Debt stabilization, crowding-in private CapEx, and counter-cyclical flexibility.")
+                        appendLine(fiscalMath)
+                        append("  - Way Forward: Operationalize N.K. Singh Committee escape clauses with medium-term debt anchors.")
+                    }
+                    else -> {
+                        appendLine("Q1: Examine the significance of Fiscal Responsibility and Budget Management (FRBM) in balancing macroeconomic stability with capital expenditure.$pyqSuffix")
+                        appendLine("A: **Introduction:** Enacted in 2003, the FRBM framework institutionalizes fiscal prudence to contain public debt and anchor inflation expectations.")
+                        appendLine()
+                        appendLine("**Core Analytical Dimensions:**")
+                        appendLine("  - **Debt & Deficit Anchors:** Targets fiscal glide paths while preserving space for counter-cyclical public investment.")
+                        appendLine("  - **Quality of Expenditure:** Distinguishes revenue deficit from capital outlay driving long-term multiplier growth.")
+                        appendLine(fiscalMath)
+                        appendLine()
+                        append("**Way Forward:** Adopt N.K. Singh Committee escape-clause transparency, medium-term debt ceilings, and outcome-linked CapEx.")
+                    }
+                }
                 if (includeCallouts) {
                     appendLine()
                     appendLine()
@@ -719,7 +770,18 @@ object StudyNoteParser {
             }.trimIndent()
             KnowledgeCollectionType.FORMULA_SHEET -> buildString {
                 appendLine("## Core Laws & Equations")
-                appendLine("1. **First Law of Thermodynamics** -> Conservation of internal energy, heat, and work.$pyqSuffix")
+                when (layerOrder) {
+                    KnowledgeLayerOrder.QA_SEPARATE_LINES -> {
+                        appendLine("Q: State the First Law of Thermodynamics and its standard work convention.$pyqSuffix")
+                        appendLine("A: Conservation of internal energy across heat transfer and thermodynamic work.")
+                    }
+                    KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> {
+                        appendLine("1. Law equating internal energy change to heat supplied minus work done by the system$pyqSuffix -> **First Law of Thermodynamics**")
+                    }
+                    else -> {
+                        appendLine("1. **First Law of Thermodynamics** -> Conservation of internal energy, heat, and work.$pyqSuffix")
+                    }
+                }
                 appendLine("  - Formula: $thermoFormula")
                 append("  - Units & Conditions: $thermoCond")
                 if (includeCallouts) {
@@ -727,11 +789,32 @@ object StudyNoteParser {
                     append("> Exam Tip: For an isolated system, $isoZero always holds.")
                 }
             }.trimIndent()
-            KnowledgeCollectionType.ONE_LINERS -> """
+            KnowledgeCollectionType.FLASHCARDS -> buildFlashcardSampleTemplate(
+                style = when (layerOrder) {
+                    KnowledgeLayerOrder.QA_SEPARATE_LINES -> FlashcardPromptStyle.QA_RETRIEVAL
+                    KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> FlashcardPromptStyle.CLOZE_SCENARIO
+                    else -> FlashcardPromptStyle.TERM_DEFINITION
+                },
+                includeLatexMath = includeLatexMath,
+                includeMnemonics = includeCallouts,
+                includeExamples = true,
+                includeExamTraps = includePyqTags || includeCallouts
+            )
+            KnowledgeCollectionType.ONE_LINERS -> {
+                val secondLine = when (layerOrder) {
+                    KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST ->
+                        "2. Enforces Fundamental Rights via five Supreme Court writs$pyqSuffix -> **Article 32**"
+                    KnowledgeLayerOrder.QA_SEPARATE_LINES ->
+                        "Q: Which Constitutional Article grants Supreme Court writ jurisdiction for Fundamental Rights?\nA: Article 32 — empowers the Supreme Court to issue five constitutional writs.$pyqSuffix"
+                    else ->
+                        "2. **Article 32** -> Right to Constitutional Remedies; enforceable via five Supreme Court writs.$pyqSuffix"
+                }
+                """
                 ## High-Yield One-Liners
                 $sampleLine
-                2. **Article 32** -> Right to Constitutional Remedies; enforceable via five Supreme Court writs.$pyqSuffix
-            """.trimIndent()
+                $secondLine
+                """.trimIndent()
+            }
             KnowledgeCollectionType.WEAK_AREA_REVIEW -> buildString {
                 appendLine("## High-Yield Mistake & Trap Log")
                 appendLine(sampleLine)
@@ -754,6 +837,172 @@ object StudyNoteParser {
                 }
             }.trimIndent()
         }
+    }
+
+    fun compileFlashcardPrompt(
+        topic: String,
+        subject: String = "",
+        examTarget: String = "",
+        itemCount: Int = 20,
+        style: FlashcardPromptStyle = FlashcardPromptStyle.QA_RETRIEVAL,
+        depth: KnowledgeDepth = KnowledgeDepth.BALANCED,
+        language: String = "English",
+        includeBilingualTerms: Boolean = false,
+        includeMnemonics: Boolean = true,
+        includeExamples: Boolean = true,
+        includeLatexMath: Boolean = true,
+        includeExamTraps: Boolean = true,
+        atomicSrsMode: Boolean = true,
+        customInstruction: String = ""
+    ): String {
+        val cleanTopic = topic.trim().ifBlank { "[ENTER DECK TOPIC / CHAPTER HERE]" }
+        val cleanSubject = subject.trim()
+        val cleanExam = examTarget.trim()
+        val targetLang = language.trim().ifBlank { "English" }
+        val safeCount = itemCount.coerceIn(1, 100)
+
+        val roleLine = if (cleanExam.isNotBlank()) {
+            "Act as a senior cognitive-science educator and spaced-repetition flashcard designer for $cleanExam."
+        } else {
+            "Act as a senior cognitive-science educator and spaced-repetition flashcard designer."
+        }
+
+        val formatInstruction = when (style) {
+            FlashcardPromptStyle.QA_RETRIEVAL ->
+                "Format EVERY flashcard strictly with `Q<N>: <Focused active-recall prompt>` on line 1, followed immediately on line 2 by `A: <Direct core answer>` (zero blank line between Q and A; one blank line between separate flashcards)."
+            FlashcardPromptStyle.TERM_DEFINITION ->
+                "Format EVERY flashcard strictly as `<N>. **<Front Term / Law / Entity>** -> <Crisp, unambiguous back definition/rule>`."
+            FlashcardPromptStyle.CLOZE_SCENARIO ->
+                "Format EVERY flashcard for reverse active recall: `<N>. <Scenario, symptom, condition, or diagnostic clue> -> **<Exact Target Concept / Rule>**` (keep trailing **Concept** <= 6 words)."
+            FlashcardPromptStyle.FORMULA_TRAP ->
+                "Format EVERY flashcard strictly as `<N>. **<Law / Equation Name>** -> <What it relates & when it applies>`, followed on the next line by `  - Formula: <single-line equation>`."
+        }
+
+        val atomicityRule = if (atomicSrsMode) {
+            "Minimum-Information Principle (SM-2 Ready): Test ONE atomic fact, causal link, threshold, or formula per card. Keep Front prompts short (1 line, <= 22 words) and never give away the answer keyword in the question."
+        } else {
+            "Group tightly related sub-facts onto unified recall cards where conceptual contrast aids retention."
+        }
+
+        val depthRule = when (depth) {
+            KnowledgeDepth.CRISP -> "Keep every Back answer razor-sharp (<= 25 words) for rapid <10-second spaced-repetition reviews."
+            KnowledgeDepth.BALANCED -> "Give a decisive 1-sentence core Back answer plus up to 1–2 concise 2-space indented helper bullets."
+            KnowledgeDepth.DEEP -> "Include core retrieval answer plus crisp indented helper bullets covering mechanism, boundary conditions, and clinical/exam caveats."
+        }
+
+        val sample = buildFlashcardSampleTemplate(
+            style = style,
+            includeLatexMath = includeLatexMath,
+            includeMnemonics = includeMnemonics,
+            includeExamples = includeExamples,
+            includeExamTraps = includeExamTraps
+        )
+
+        return buildString {
+            appendLine(roleLine)
+            appendLine("Create a high-yield **Spaced Repetition Flashcard Deck** of exactly **$safeCount cards** for: $cleanTopic")
+            if (cleanSubject.isNotBlank() && !cleanSubject.equals(cleanTopic, ignoreCase = true)) {
+                appendLine("Subject Domain: $cleanSubject")
+            }
+            if (cleanExam.isNotBlank()) {
+                appendLine("Target Examination: $cleanExam")
+            }
+            appendLine("Output Language: $targetLang")
+            appendLine()
+            appendLine("SPACED REPETITION QUALITY & PARITY RULES:")
+            appendLine("1. Card Count & Progression: Output strictly all $safeCount flashcards organized under 2–5 logical `## Deck Section` headings; maintain identical accuracy and card rigor from card 1 to card $safeCount (never summarize or write 'etc.').")
+            appendLine("2. $atomicityRule")
+            appendLine("3. $formatInstruction")
+            appendLine("4. $depthRule")
+            var ruleIdx = 5
+            val enabledExtras = buildList {
+                if (includeLatexMath && style != FlashcardPromptStyle.FORMULA_TRAP) add("`  - Formula: ...`")
+                if (includeMnemonics) add("`  - Mnemonic: ...` (only when genuinely memorable)")
+                if (includeExamples) add("`  - Example: ...`")
+                if (includeExamTraps) add("`  - Exam Trap: ...` (common look-alike confuser)")
+            }
+            if (enabledExtras.isNotEmpty()) {
+                appendLine("$ruleIdx. Optional 2-space indented back-of-card helpers directly under the answer (no blank lines inside a card): ${enabledExtras.joinToString(", ")}.")
+            } else {
+                appendLine("$ruleIdx. Keep flashcards strictly 2 lines / 1 line without extra sub-bullets for rapid-fire drilling.")
+            }
+            ruleIdx++
+            if (includeLatexMath) {
+                appendLine("$ruleIdx. Wrap equations and chemical symbols in single-line inline `\$...\$` LaTeX (keep commands ASCII, e.g. `\$\\Delta G = \\Delta H - T\\Delta S\$`). Never use `\$\$...\$\$` or outer code fences.")
+            } else {
+                appendLine("$ruleIdx. Write math/symbols in plain Unicode without LaTeX delimiters.")
+            }
+            ruleIdx++
+            if (includeBilingualTerms && !targetLang.equals("English", ignoreCase = true)) {
+                appendLine("$ruleIdx. Retain standard English terminology in parentheses alongside $targetLang text without altering `->`, `Q:`, or `\$...\$` syntax.")
+                ruleIdx++
+            }
+            appendLine("$ruleIdx. Output ONLY the structured flashcard deck directly (zero conversational intro, zero closing tips, no markdown code fence).")
+            appendLine()
+            appendLine("EXACT OUTPUT EXAMPLE (FOLLOW THIS SYNTAX LINE-FOR-LINE):")
+            appendLine(sample)
+            if (customInstruction.isNotBlank()) {
+                appendLine()
+                appendLine("USER CUSTOM REQUIREMENT:")
+                appendLine(customInstruction.trim())
+            }
+        }.trim()
+    }
+
+    fun buildFlashcardSampleTemplate(
+        style: FlashcardPromptStyle,
+        includeLatexMath: Boolean = true,
+        includeMnemonics: Boolean = true,
+        includeExamples: Boolean = true,
+        includeExamTraps: Boolean = true
+    ): String {
+        val gibbsEq = if (includeLatexMath) "\$\\Delta G = \\Delta H - T\\Delta S\$" else "ΔG = ΔH - TΔS"
+        val pHFormula = if (includeLatexMath) "\$\\text{pH} = \\text{p}K_a + \\log\\frac{[\\text{A}^-]}{[\\text{HA}]}\$" else "pH = pKa + log([A-]/[HA])"
+
+        return buildString {
+            appendLine("## Core Active-Recall Deck")
+            when (style) {
+                FlashcardPromptStyle.QA_RETRIEVAL -> {
+                    appendLine("Q1: Under what thermodynamic condition is a process spontaneous at all temperatures?")
+                    appendLine("A: When enthalpy is exothermic (\$\\Delta H < 0\$) and entropy increases (\$\\Delta S > 0\$), making \$\\Delta G\$ always negative.".let {
+                        if (includeLatexMath) it else "A: When ΔH < 0 (exothermic) and ΔS > 0 (entropy increases), making ΔG always negative."
+                    })
+                    if (includeLatexMath) appendLine("  - Formula: $gibbsEq")
+                    if (includeExamTraps) appendLine("  - Exam Trap: Exothermic alone does NOT guarantee spontaneity at high T if ΔS < 0.")
+                    appendLine()
+                    appendLine("Q2: Which Supreme Court writ stops a lower tribunal from exceeding its jurisdiction?")
+                    append("A: Writ of Prohibition — issued before a final order is pronounced.")
+                    if (includeMnemonics) append("\n  - Mnemonic: Prohibition = Prevent; Certiorari = Correct/Quash after order.")
+                }
+                FlashcardPromptStyle.TERM_DEFINITION -> {
+                    appendLine("1. **Henderson–Hasselbalch Equation** -> Relates buffer solution pH to acid pKa and conjugate base/acid ratio.")
+                    if (includeLatexMath) appendLine("  - Formula: $pHFormula")
+                    if (includeExamples) appendLine("  - Example: Half-equivalence point gives pH = pKa.")
+                    if (includeExamTraps) append("  - Exam Trap: Fails for very dilute (<10⁻⁶ M) or strongly acidic buffers.")
+                    appendLine()
+                    append("2. **Article 143 (Constitution)** -> Authorizes President to seek advisory opinion from Supreme Court; non-binding except pre-constitution treaties.")
+                    if (includeMnemonics) append("\n  - Mnemonic: 1-4-3 = Advisory plea from President to SC.")
+                }
+                FlashcardPromptStyle.CLOZE_SCENARIO -> {
+                    appendLine("1. Unilateral shift in buffer pH equals pKa when [A-] equals [HA] ratio of 1:1 -> **Half-Equivalence Point**")
+                    if (includeLatexMath) appendLine("  - Formula: $pHFormula")
+                    if (includeExamTraps) append("  - Exam Trap: Maximum buffer capacity occurs strictly at pH = pKa.")
+                    appendLine()
+                    append("2. Supreme Court advisory opinion binding on pre-1950 treaty disputes but optional otherwise -> **Article 143(2) vs 143(1)**")
+                    if (includeMnemonics) append("\n  - Mnemonic: 143(1) Optional advice; 143(2) Obligatory SC answer.")
+                }
+                FlashcardPromptStyle.FORMULA_TRAP -> {
+                    appendLine("1. **Gibbs Free Energy Criterion** -> Predicts reaction spontaneity at constant temperature and pressure.")
+                    appendLine("  - Formula: $gibbsEq")
+                    appendLine("  - Exam Trap: Negative ΔG indicates thermodynamic favorability, NOT reaction speed (kinetics).")
+                    if (includeExamples) appendLine("  - Example: Diamond -> Graphite has ΔG < 0 yet proceeds negligibly slowly at 298 K.")
+                    appendLine()
+                    appendLine("2. **Henderson–Hasselbalch Equation** -> Relates buffer solution pH to pKa and salt-to-acid ratio.")
+                    append("  - Formula: $pHFormula")
+                    if (includeMnemonics) append("\n  - Mnemonic: Base/Salt stays UP in the log numerator.")
+                }
+            }
+        }.trimIndent()
     }
 
     fun applyTransform(rawText: String, action: KnowledgeTransformAction): String {
@@ -1401,7 +1650,7 @@ object StudyNoteParser {
 
     private fun matchTagSubLine(trimmed: String): MatchResult? {
         return Regex(
-            """^(?:\*\*|__)?(?:Formula|Equation|Example|E\.g\.|Note|Why|Trick|Mnemonic|Answer|Correct Answer|Key Takeaway|Explanation|Solution|Status|Type|Question Type|Concept|Takeaway|Introduction|Body|Conclusion|Way Forward|Arguments|Challenges|Significance|Case Study|Keywords|Data|Committee|Criticism|Analysis|Derivation|Proof)(?:\*\*|__)?\s*[:\-]\s*(.+)$""",
+            """^(?:\*\*|__)?(?:Formula|Equation|Example|E\.g\.|Note|Why|Trick|Mnemonic|Hint|Memory Hook|Exam Trap|Pitfall|Trap|Application|Rule|Cloze|Answer|Correct Answer|Key Takeaway|Explanation|Solution|Status|Type|Question Type|Concept|Takeaway|Introduction|Body|Conclusion|Way Forward|Arguments|Challenges|Significance|Case Study|Keywords|Data|Committee|Criticism|Analysis|Derivation|Proof)(?:\*\*|__)?\s*[:\-]\s*(.+)$""",
             RegexOption.IGNORE_CASE
         ).find(trimmed)
     }

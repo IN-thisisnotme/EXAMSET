@@ -506,6 +506,82 @@ class StudyNoteParserTest {
         assertTrue(html.contains("Part III ↔ Part IV"))
         assertTrue(html.contains("<div class='formula'>"))
     }
+
+    @Test
+    fun `buildSampleTemplate avoids contradicting layerOrder across formula sheet and long answer modes`() {
+        val backwardsFormula = KnowledgeFormatRule(
+            collectionType = KnowledgeCollectionType.FORMULA_SHEET,
+            layerOrder = KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST,
+            includeLatexMath = true
+        )
+        val backwardsPrompt = StudyNoteParser.compilePrompt(
+            topic = "Gravitation",
+            collectionType = KnowledgeCollectionType.FORMULA_SHEET,
+            rule = backwardsFormula,
+            itemCount = 5
+        )
+        assertTrue(backwardsPrompt.contains("-> **First Law of Thermodynamics**"))
+
+        val qaLong = KnowledgeFormatRule(
+            collectionType = KnowledgeCollectionType.LONG_ANSWER,
+            layerOrder = KnowledgeLayerOrder.QA_SEPARATE_LINES,
+            includeLatexMath = true
+        )
+        val qaPrompt = StudyNoteParser.compilePrompt(
+            topic = "Fiscal Federalism",
+            collectionType = KnowledgeCollectionType.LONG_ANSWER,
+            rule = qaLong,
+            itemCount = 3
+        )
+        assertTrue(qaPrompt.contains("Q1:"))
+        assertTrue(qaPrompt.contains("A:"))
+
+        val termLong = qaLong.copy(layerOrder = KnowledgeLayerOrder.TERM_FIRST)
+        val termPrompt = StudyNoteParser.compilePrompt(
+            topic = "Fiscal Federalism",
+            collectionType = KnowledgeCollectionType.LONG_ANSWER,
+            rule = termLong,
+            itemCount = 3
+        )
+        assertTrue(termPrompt.contains("1. **Examine the significance"))
+    }
+
+    @Test
+    fun `compileFlashcardPrompt and buildFlashcardSampleTemplate parse cleanly across all 4 styles`() {
+        com.example.model.FlashcardPromptStyle.entries.forEach { style ->
+            val prompt = StudyNoteParser.compileFlashcardPrompt(
+                topic = "Chemical Equilibrium",
+                subject = "Chemistry",
+                examTarget = "JEE",
+                itemCount = 15,
+                style = style,
+                depth = KnowledgeDepth.BALANCED,
+                includeLatexMath = true,
+                includeMnemonics = true,
+                includeExamples = true,
+                includeExamTraps = true
+            )
+            assertTrue("Prompt should request 15 cards for $style", prompt.contains("exactly **15 cards**"))
+            assertTrue("Prompt should include sample block for $style", prompt.contains("EXACT OUTPUT EXAMPLE"))
+
+            val sample = StudyNoteParser.buildFlashcardSampleTemplate(
+                style = style,
+                includeLatexMath = true,
+                includeMnemonics = true,
+                includeExamples = true,
+                includeExamTraps = true
+            )
+            val flashcardRule = KnowledgeFormatRule(
+                collectionType = KnowledgeCollectionType.FLASHCARDS,
+                layerOrder = if (style == com.example.model.FlashcardPromptStyle.CLOZE_SCENARIO) {
+                    KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST
+                } else {
+                    KnowledgeLayerOrder.AUTO_DETECT
+                }
+            )
+            val blocks = StudyNoteParser.parseBlocks(sample, flashcardRule)
+            val studyCards = blocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
+            assertTrue("Expected >= 2 parsed cards for $style, got ${studyCards.size}", studyCards.size >= 2)
+        }
+    }
 }
-
-

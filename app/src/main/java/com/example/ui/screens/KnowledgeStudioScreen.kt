@@ -124,12 +124,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
+import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
 import com.example.model.KnowledgeFormatRule
 import com.example.model.KnowledgeLayerOrder
 import com.example.model.KnowledgeTransformAction
+import com.example.model.SrsRating
 import com.example.ui.KnowledgeEditorDraft
 import com.example.ui.components.LatexText
 import com.example.ui.components.MathFormulaParser
@@ -214,6 +216,9 @@ fun KnowledgeStudioEditorScreen(
             subject = initialNote?.subject ?: draft.defaultSubject
             topic = initialNote?.title ?: draft.prefillTitle
             collectionType = initialNote?.resolvedCollectionType() ?: draft.defaultCollectionType
+            if (initialNote == null && collectionType == KnowledgeCollectionType.LONG_ANSWER) {
+                itemCount = 5f
+            }
             customCollectionLabel = initialNote?.customLabel ?: initialRule.customCollectionLabel
             layerOrder = initialRule.layerOrder
             depth = initialRule.depth
@@ -1137,8 +1142,11 @@ fun KnowledgeStudioEditorScreen(
 fun KnowledgeStudioReaderScreen(
     note: StudyNoteEntity,
     linkedPaperTitle: String? = null,
+    srsMap: Map<Int, FlashcardSrsState> = emptyMap(),
     onToggleBookmark: (StudyNoteEntity, Int) -> Unit,
     onToggleMastered: (StudyNoteEntity, Int) -> Unit,
+    onRateFlashcard: (StudyNoteEntity, Int, SrsRating) -> Unit = { _, _, _ -> },
+    onResetFlashcardSrs: (StudyNoteEntity) -> Unit = {},
     onEdit: () -> Unit,
     onOpenLinkedPaper: ((Long) -> Unit)? = null,
     onGenerateMcqDraft: (StudyNoteEntity) -> Unit,
@@ -1147,18 +1155,20 @@ fun KnowledgeStudioReaderScreen(
     val colors = ExamTheme.colors
     val context = LocalContext.current
     val formatRule = remember(note.formatRuleJson, note.collectionType) { note.parsedFormatRule() }
+    val isFlashcardDeckNote = remember(note.id, note.collectionType) {
+        note.resolvedCollectionType() == KnowledgeCollectionType.FLASHCARDS
+    }
 
     var searchQuery by remember { mutableStateOf("") }
     var showSearchBar by remember { mutableStateOf(false) }
-    var recallMode by remember { mutableStateOf(false) }
+    var recallMode by remember(note.id) { mutableStateOf(isFlashcardDeckNote) }
     var maskMode by remember { mutableStateOf(RecallMaskMode.ANSWER_AND_EXPLANATION) }
     var typeFilter by remember { mutableStateOf(RecallTypeFilter.ALL) }
     var starredOnly by remember { mutableStateOf(false) }
     var hideMastered by remember { mutableStateOf(false) }
     var showTypeBadges by remember { mutableStateOf(true) }
     var showOptionsBeforeReveal by remember { mutableStateOf(true) }
-    var isDeckMode by remember { mutableStateOf(false) }
-    var deckIndex by remember(note.id) { mutableIntStateOf(0) }
+    var isDeckMode by remember(note.id) { mutableStateOf(isFlashcardDeckNote) }
     var showRecallSettingsDialog by remember { mutableStateOf(false) }
     var expandAllMultiLiners by remember { mutableStateOf(true) }
     var expandedCardOverrides by remember(note.id) { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
@@ -1251,7 +1261,6 @@ fun KnowledgeStudioReaderScreen(
     val deckItems = remember(visibleBlocks) {
         visibleBlocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
     }
-    val safeDeckIndex = if (deckItems.isEmpty()) 0 else deckIndex.coerceIn(0, deckItems.lastIndex)
 
     BackHandler { onDismiss() }
 
@@ -1436,7 +1445,8 @@ fun KnowledgeStudioReaderScreen(
                                 Surface(
                                     onClick = { isDeckMode = false },
                                     shape = RoundedCornerShape(8.dp),
-                                    color = if (!isDeckMode) colors.surface else Color.Transparent
+                                    color = if (!isDeckMode) colors.surface else Color.Transparent,
+                                    modifier = Modifier.testTag("reader_mode_list")
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
@@ -1462,7 +1472,8 @@ fun KnowledgeStudioReaderScreen(
                                 Surface(
                                     onClick = { isDeckMode = true },
                                     shape = RoundedCornerShape(8.dp),
-                                    color = if (isDeckMode) colors.surface else Color.Transparent
+                                    color = if (isDeckMode) colors.surface else Color.Transparent,
+                                    modifier = Modifier.testTag("reader_mode_deck")
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
@@ -1674,227 +1685,50 @@ fun KnowledgeStudioReaderScreen(
             }
 
             if (isDeckMode) {
-                // Focused Flashcard Deck Study Mode
-                if (deckItems.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "No study cards match the active filters.",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.inkMuted,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    typeFilter = RecallTypeFilter.ALL
-                                    starredOnly = false
-                                    hideMastered = false
-                                    searchQuery = ""
-                                }
-                            ) {
-                                Text("Reset Filters")
-                            }
-                        }
-                    }
-                } else {
-                    val activeBlock = deckItems[safeDeckIndex]
-                    val isStarred = activeBlock.blockIndex in bookmarked
-                    val isMastered = activeBlock.blockIndex in mastered
-                    val isHiddenRecall = recallMode &&
-                        ((activeBlock is StudyNoteBlock.OneLiner && activeBlock.hasRecallTarget) || activeBlock is StudyNoteBlock.MultiLinerCard) &&
-                        activeBlock.blockIndex !in revealedIndices
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
-                        // Deck progress header
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Focus Deck • Card ${safeDeckIndex + 1} of ${deckItems.size}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.tealDark
-                            )
-                            Text(
-                                text = if (recallMode) maskMode.shortLabel else "Full Study View",
-                                fontSize = 11.sp,
-                                color = colors.inkMuted
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { (safeDeckIndex + 1).toFloat() / deckItems.size.toFloat() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = colors.teal,
-                            trackColor = colors.border.copy(alpha = 0.4f)
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            if (!linkedPaperTitle.isNullOrBlank() && note.linkedPaperId != null && onOpenLinkedPaper != null) {
-                                Surface(
-                                    onClick = { onOpenLinkedPaper(note.linkedPaperId) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = colors.blueLight,
-                                    border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            Icon(Icons.Default.Link, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "Linked Question Set: $linkedPaperTitle",
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = colors.tealDark,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Open Set →",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.teal,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            }
-                            KnowledgeBlockItemView(
-                                block = activeBlock,
-                                isStarred = isStarred,
-                                isMastered = isMastered,
-                                isHiddenRecall = isHiddenRecall,
-                                recallMode = recallMode,
-                                maskMode = maskMode,
-                                flipPair = flipPair,
-                                showTypeBadges = showTypeBadges,
-                                showOptionsBeforeReveal = showOptionsBeforeReveal,
-                                selectedSelfOption = selfSelectedOptions[activeBlock.blockIndex],
-                                onSelectSelfOption = { chosen ->
-                                    selfSelectedOptions = selfSelectedOptions + (activeBlock.blockIndex to chosen)
-                                },
-                                isExpanded = true,
-                                onReveal = { revealedIndices = revealedIndices + activeBlock.blockIndex },
-                                onHide = { revealedIndices = revealedIndices - activeBlock.blockIndex },
-                                onToggleExpand = {},
-                                onToggleStar = { onToggleBookmark(note, activeBlock.blockIndex) },
-                                onToggleMastered = { onToggleMastered(note, activeBlock.blockIndex) }
-                            )
-                        }
-
-                        // Pinned Deck Action Dock (48dp+ touch targets)
-                        Surface(
-                            color = colors.surface,
-                            shadowElevation = 6.dp,
-                            border = BorderStroke(0.6.dp, colors.border.copy(alpha = 0.6f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedButton(
-                                    onClick = { if (safeDeckIndex > 0) deckIndex = safeDeckIndex - 1 },
-                                    enabled = safeDeckIndex > 0,
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp),
-                                    modifier = Modifier.heightIn(min = 48.dp)
-                                ) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous Card", modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Prev", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                                }
-
-                                if (isHiddenRecall) {
-                                    Button(
-                                        onClick = { revealedIndices = revealedIndices + activeBlock.blockIndex },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 48.dp)
-                                    ) {
-                                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Reveal Answer", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                                    }
-                                } else {
-                                    Button(
-                                        onClick = {
-                                            if (!isMastered) onToggleMastered(note, activeBlock.blockIndex)
-                                            if (safeDeckIndex < deckItems.lastIndex) deckIndex = safeDeckIndex + 1
-                                        },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = colors.green, contentColor = Color.White),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 48.dp)
-                                    ) {
-                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isMastered) "Next Card" else "Got It & Next",
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-
-                                OutlinedButton(
-                                    onClick = { if (safeDeckIndex < deckItems.lastIndex) deckIndex = safeDeckIndex + 1 },
-                                    enabled = safeDeckIndex < deckItems.lastIndex,
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp),
-                                    modifier = Modifier.heightIn(min = 48.dp)
-                                ) {
-                                    Text("Next", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next Card", modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        }
-                    }
-                }
+                FlashcardSpacedDeckView(
+                    note = note,
+                    deckItems = deckItems,
+                    srsMap = srsMap,
+                    bookmarked = bookmarked,
+                    mastered = mastered,
+                    recallMode = recallMode,
+                    maskMode = maskMode,
+                    flipPair = flipPair,
+                    showTypeBadges = showTypeBadges,
+                    showOptionsBeforeReveal = showOptionsBeforeReveal,
+                    revealedIndices = revealedIndices,
+                    selfSelectedOptions = selfSelectedOptions,
+                    linkedPaperTitle = linkedPaperTitle,
+                    onOpenLinkedPaper = onOpenLinkedPaper,
+                    onRevealBlock = { blockIdx ->
+                        revealedIndices = revealedIndices + blockIdx
+                    },
+                    onHideBlock = { blockIdx ->
+                        revealedIndices = revealedIndices - blockIdx
+                    },
+                    onSelectSelfOption = { blockIdx, chosen ->
+                        selfSelectedOptions = selfSelectedOptions + (blockIdx to chosen)
+                    },
+                    onToggleBookmark = { blockIdx ->
+                        onToggleBookmark(note, blockIdx)
+                    },
+                    onToggleMastered = { blockIdx ->
+                        onToggleMastered(note, blockIdx)
+                    },
+                    onRateFlashcard = { blockIdx, rating ->
+                        onRateFlashcard(note, blockIdx, rating)
+                    },
+                    onResetSrs = {
+                        onResetFlashcardSrs(note)
+                    },
+                    onResetFilters = {
+                        typeFilter = RecallTypeFilter.ALL
+                        starredOnly = false
+                        hideMastered = false
+                        searchQuery = ""
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier

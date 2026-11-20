@@ -184,6 +184,7 @@ fun HomeScreen(
     val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
     val fontScaleMode by viewModel.fontScaleMode.collectAsState()
     val studyNotes by viewModel.studyNotes.collectAsState()
+    val flashcardSrsByNote by viewModel.flashcardSrsByNote.collectAsState()
     val knowledgeEditorDraft by viewModel.knowledgeEditorDraft.collectAsState()
     val activeKnowledgeReaderNoteId by viewModel.activeKnowledgeReaderNoteId.collectAsState()
     val isEditMetadataOverlayOpen by viewModel.isEditMetadataOverlayOpen.collectAsState()
@@ -1400,8 +1401,11 @@ fun HomeScreen(
             KnowledgeStudioReaderScreen(
                 note = liveNote,
                 linkedPaperTitle = linkedPaper?.title,
+                srsMap = flashcardSrsByNote[liveNote.id].orEmpty(),
                 onToggleBookmark = { note, idx -> viewModel.toggleStudyNoteLineBookmark(note, idx) },
                 onToggleMastered = { note, idx -> viewModel.toggleStudyNoteBlockMastered(note, idx) },
+                onRateFlashcard = { note, idx, rating -> viewModel.reviewFlashcard(note, idx, rating) },
+                onResetFlashcardSrs = { note -> viewModel.resetFlashcardSrsProgress(note) },
                 onEdit = {
                     viewModel.openKnowledgeEditor(
                         note = liveNote,

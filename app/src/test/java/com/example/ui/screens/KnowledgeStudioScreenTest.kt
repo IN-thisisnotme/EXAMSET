@@ -110,4 +110,66 @@ class KnowledgeStudioScreenTest {
         assertTrue(savedRawContent.contains("Coulomb's Law"))
         assertTrue(dismissed)
     }
+
+    @Test
+    fun knowledgeStudioReader_flashcardNoteLaunchesDeckModeSupportsRevealAndSrsRating() {
+        val flashcardNote = com.example.data.StudyNoteEntity(
+            id = 42L,
+            title = "Thermodynamics SRS",
+            subject = "Physics",
+            collectionType = KnowledgeCollectionType.FLASHCARDS.code,
+            formatRuleJson = KnowledgeFormatRule(collectionType = KnowledgeCollectionType.FLASHCARDS).toJson(),
+            rawContent = """
+                ## Core Laws
+                Q1: State the First Law of Thermodynamics.
+                A: Energy is conserved: ΔU = Q - W.
+
+                Q2: What is the entropy change in a reversible adiabatic process?
+                A: Zero (isentropic).
+            """.trimIndent()
+        )
+        val recordedRatings = mutableListOf<Pair<Int, com.example.model.SrsRating>>()
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                KnowledgeStudioReaderScreen(
+                    note = flashcardNote,
+                    srsMap = emptyMap(),
+                    onToggleBookmark = { _, _ -> },
+                    onToggleMastered = { _, _ -> },
+                    onRateFlashcard = { _, blockIdx, rating ->
+                        recordedRatings.add(blockIdx to rating)
+                    },
+                    onEdit = {},
+                    onGenerateMcqDraft = {},
+                    onDismiss = {}
+                )
+            }
+        }
+
+        // Flashcards collection opens directly in SM-2 Deck Studio with hidden answer
+        composeTestRule.onNodeWithTag("srs_rating_dock").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("flashcard_reveal_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        // Rating buttons appear with predicted intervals
+        composeTestRule.onNodeWithTag("srs_rate_again").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("srs_rate_hard").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("srs_rate_good").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(1, recordedRatings.size)
+        assertEquals(com.example.model.SrsRating.GOOD, recordedRatings.first().second)
+
+        // Second card appears ready to flip -> rate Again -> re-queues card cleanly
+        composeTestRule.onNodeWithTag("flashcard_reveal_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("srs_rate_again").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(2, recordedRatings.size)
+        assertEquals(com.example.model.SrsRating.AGAIN, recordedRatings[1].second)
+        // Because card 2 was rated Again, it stays in the current session queue for re-testing!
+        composeTestRule.onNodeWithTag("flashcard_reveal_button").assertIsDisplayed()
+    }
 }

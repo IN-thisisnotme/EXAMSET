@@ -136,6 +136,88 @@ class ExamSetPreferences(context: Context) {
         prefs.edit().putString(KEY_LAST_ACTIVE_FOLDER_ID, folderId).apply()
     }
 
+    fun getFlashcardSrsMap(noteId: Long): Map<Int, com.example.model.FlashcardSrsState> {
+        if (noteId <= 0L) return emptyMap()
+        val raw = prefs.getString("$KEY_SRS_PREFIX$noteId", null) ?: return emptyMap()
+        return parseSrsJson(raw)
+    }
+
+    fun getAllFlashcardSrsMaps(): Map<Long, Map<Int, com.example.model.FlashcardSrsState>> {
+        val result = mutableMapOf<Long, Map<Int, com.example.model.FlashcardSrsState>>()
+        prefs.all.forEach { (key, value) ->
+            if (key.startsWith(KEY_SRS_PREFIX) && value is String) {
+                val noteId = key.removePrefix(KEY_SRS_PREFIX).toLongOrNull()
+                if (noteId != null && noteId > 0L) {
+                    val parsed = parseSrsJson(value)
+                    if (parsed.isNotEmpty()) {
+                        result[noteId] = parsed
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    fun saveFlashcardSrsMap(noteId: Long, map: Map<Int, com.example.model.FlashcardSrsState>) {
+        if (noteId <= 0L) return
+        val arr = JSONArray()
+        map.values.forEach { st ->
+            arr.put(
+                JSONObject().apply {
+                    put("blockIndex", st.blockIndex)
+                    put("repetitions", st.repetitions)
+                    put("easeFactor", st.easeFactor.toDouble())
+                    put("intervalDays", st.intervalDays)
+                    put("dueAtMillis", st.dueAtMillis)
+                    put("lastReviewedAtMillis", st.lastReviewedAtMillis)
+                    put("lapses", st.lapses)
+                    put("lastRating", st.lastRating?.name ?: "")
+                    put("reviewCount", st.reviewCount)
+                    put("correctCount", st.correctCount)
+                }
+            )
+        }
+        prefs.edit().putString("$KEY_SRS_PREFIX$noteId", arr.toString()).apply()
+    }
+
+    fun clearFlashcardSrsMap(noteId: Long) {
+        if (noteId <= 0L) return
+        prefs.edit().remove("$KEY_SRS_PREFIX$noteId").apply()
+    }
+
+    private fun parseSrsJson(raw: String): Map<Int, com.example.model.FlashcardSrsState> {
+        if (raw.isBlank()) return emptyMap()
+        return try {
+            val arr = JSONArray(raw)
+            val out = mutableMapOf<Int, com.example.model.FlashcardSrsState>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val idx = obj.optInt("blockIndex", -1)
+                if (idx >= 0) {
+                    val ratingName = obj.optString("lastRating", "")
+                    val rating = runCatching {
+                        if (ratingName.isNotBlank()) com.example.model.SrsRating.valueOf(ratingName) else null
+                    }.getOrNull()
+                    out[idx] = com.example.model.FlashcardSrsState(
+                        blockIndex = idx,
+                        repetitions = obj.optInt("repetitions", 0),
+                        easeFactor = obj.optDouble("easeFactor", 2.5).toFloat().coerceIn(1.3f, 3.0f),
+                        intervalDays = obj.optInt("intervalDays", 0),
+                        dueAtMillis = obj.optLong("dueAtMillis", 0L),
+                        lastReviewedAtMillis = obj.optLong("lastReviewedAtMillis", 0L),
+                        lapses = obj.optInt("lapses", 0),
+                        lastRating = rating,
+                        reviewCount = obj.optInt("reviewCount", 0),
+                        correctCount = obj.optInt("correctCount", 0)
+                    )
+                }
+            }
+            out
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -146,5 +228,6 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_FONT_SCALE_MODE = "key_font_scale_mode"
         private const val KEY_SHUFFLE_OPTIONS = "key_shuffle_options"
         private const val KEY_LAST_ACTIVE_FOLDER_ID = "key_last_active_folder_id"
+        private const val KEY_SRS_PREFIX = "key_flashcard_srs_"
     }
 }

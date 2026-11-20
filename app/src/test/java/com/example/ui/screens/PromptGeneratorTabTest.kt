@@ -133,5 +133,55 @@ class PromptGeneratorTabTest {
         assertEquals(KnowledgeCollectionType.FORMULA_SHEET, capturedType)
         assertEquals(KnowledgeCollectionType.FORMULA_SHEET, capturedRule?.collectionType)
     }
+
+    @Test
+    fun promptGeneratorTab_flashcardModeRendersCardsAndOpensFlashcardStudio() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val viewModel = MainViewModel(app)
+
+        var capturedTitle = ""
+        var capturedSubject = ""
+        var capturedType: KnowledgeCollectionType? = null
+        var capturedRule: KnowledgeFormatRule? = null
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                PromptGeneratorTab(
+                    viewModel = viewModel,
+                    onNavigateToCreator = {},
+                    onOpenKnowledgeStudio = { title, subject, type, rule ->
+                        capturedTitle = title
+                        capturedSubject = subject
+                        capturedType = type
+                        capturedRule = rule
+                    }
+                )
+            }
+        }
+
+        // Switch to Flashcard Set mode
+        composeTestRule.onNodeWithTag("prompt_mode_flashcard_set").performClick()
+        composeTestRule.waitForIdle()
+
+        val list = composeTestRule.onNodeWithTag("prompt_lazy_column")
+
+        list.performScrollToNode(hasText("FLASHCARD DECK SCOPE"))
+        composeTestRule.onNodeWithTag("flashcard_prompt_subject_input").performScrollTo().performTextInput("Chemistry")
+        composeTestRule.onNodeWithTag("flashcard_prompt_topic_input").performScrollTo().performTextInput("Chemical Kinetics")
+
+        list.performScrollToNode(hasText("CARD PATTERN & VOLUME"))
+        composeTestRule.onNodeWithTag("flashcard_style_formula_trap").performScrollTo().performClick()
+
+        list.performScrollToNode(hasText("CONSTRUCTED FLASHCARD PROMPT"))
+        composeTestRule.onNodeWithText("FORMULA SRS • 20 Cards").performScrollTo().assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("flashcard_prompt_open_studio_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Chemical Kinetics", capturedTitle)
+        assertEquals("Chemistry", capturedSubject)
+        assertEquals(KnowledgeCollectionType.FLASHCARDS, capturedType)
+        assertEquals(KnowledgeCollectionType.FLASHCARDS, capturedRule?.collectionType)
+    }
 }
 
