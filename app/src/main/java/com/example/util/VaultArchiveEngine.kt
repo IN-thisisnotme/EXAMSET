@@ -785,6 +785,9 @@ object VaultArchiveEngine {
             put("promptPresetsJson", appPrefs.getPromptPresetsRawJson())
             put("vocabularyDecksJson", appPrefs.getVocabularyDecksRawJson())
             put("vocabularySrsJson", appPrefs.getVocabularySrsRawJson())
+            put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
+            put("languageWordOfTheDayStatesJson", appPrefs.getLanguageWordOfTheDayStatesJson() ?: "{}")
+            put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
         }.toString()
     }
 
@@ -803,6 +806,13 @@ object VaultArchiveEngine {
                 appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
                 appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
                 themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
+                val incomingVariant = obj.optString("preferredEnglishVariant", "")
+                if (incomingVariant.isNotBlank()) {
+                    appPrefs.setPreferredEnglishVariant(incomingVariant)
+                }
+                if (obj.has("vocabReminderEnabled")) {
+                    appPrefs.setVocabularyReminderEnabled(obj.optBoolean("vocabReminderEnabled", false))
+                }
             }
             val incomingPresetsRaw = obj.optString("promptPresetsJson", "")
             if (incomingPresetsRaw.isNotBlank()) {
@@ -848,6 +858,18 @@ object VaultArchiveEngine {
                         }
                     }
                     appPrefs.saveAllVocabularySrsMaps(merged)
+                }
+            }
+            val incomingWotdStatesRaw = obj.optString("languageWordOfTheDayStatesJson", "")
+            if (incomingWotdStatesRaw.isNotBlank()) {
+                if (overwriteAll) {
+                    appPrefs.saveLanguageWordOfTheDayStatesJson(incomingWotdStatesRaw)
+                } else {
+                    val mergedWotd = WordOfTheDayService.mergePersistedLanguageStatesJson(
+                        existingRaw = appPrefs.getLanguageWordOfTheDayStatesJson(),
+                        incomingRaw = incomingWotdStatesRaw
+                    )
+                    appPrefs.saveLanguageWordOfTheDayStatesJson(mergedWotd)
                 }
             }
         }

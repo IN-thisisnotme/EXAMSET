@@ -260,6 +260,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _preferredEnglishVariant = MutableStateFlow(appPreferences.getPreferredEnglishVariant())
     val preferredEnglishVariant: StateFlow<String> = _preferredEnglishVariant.asStateFlow()
 
+    private val _vocabularyReminderEnabled = MutableStateFlow(appPreferences.isVocabularyReminderEnabled())
+    val vocabularyReminderEnabled: StateFlow<Boolean> = _vocabularyReminderEnabled.asStateFlow()
+
     private var activeWotdLanguage: String? = null
     private val _wordOfTheDayState = MutableStateFlow<WordOfTheDayUiState>(
         WordOfTheDayUiState.Hidden(language = "", currentUniqueWords = 0)
@@ -280,6 +283,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeVocabularyHub() {
         showVocabularyHub = false
+    }
+
+    fun setVocabularyReminderEnabled(enabled: Boolean) {
+        appPreferences.setVocabularyReminderEnabled(enabled)
+        _vocabularyReminderEnabled.value = enabled
+        com.example.util.VocabularyDailyReminderWorker.syncSchedule(getApplication(), enabled)
+        _statusMessage.value = if (enabled) {
+            "Daily vocabulary & Word of the Day reminder enabled"
+        } else {
+            "Daily vocabulary reminder turned off"
+        }
+    }
+
+    fun onAppResumed() {
+        com.example.util.TrustedTimeManager.syncWithNetworkAsync(viewModelScope)
+        initTodayStudyAnalytics()
+        refreshActiveWordOfTheDay()
     }
 
     fun setPreferredEnglishVariant(variant: String) {
@@ -652,7 +672,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun rateVocabularyEntry(deckId: String, entryId: String, rating: SrsRating) {
-        val now = System.currentTimeMillis()
+        val now = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
         val allSrs = _vocabularySrsByDeck.value.toMutableMap()
         val deckSrs = (allSrs[deckId] ?: emptyMap()).toMutableMap()
         val nextState = SpacedRepetitionEngine.computeNextState(
@@ -3685,7 +3705,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reviewFlashcard(note: StudyNoteEntity, blockIndex: Int, rating: SrsRating) {
-        val now = System.currentTimeMillis()
+        val now = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
         val noteMap = _flashcardSrsByNote.value[note.id].orEmpty()
         val updatedCard = SpacedRepetitionEngine.computeNextState(
             current = noteMap[blockIndex],
@@ -4475,11 +4495,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val refreshedPresets = appPreferences.getPromptPresets()
                 val refreshedVocabDecks = appPreferences.getVocabularyDecks()
                 val refreshedVocabSrs = appPreferences.getAllVocabularySrsMaps()
+                val refreshedVariant = appPreferences.getPreferredEnglishVariant()
+                val refreshedReminder = appPreferences.isVocabularyReminderEnabled()
                 withContext(Dispatchers.Main) {
                     _folders.value = refreshedFolders
                     _promptPresets.value = refreshedPresets
                     _vocabularyDecks.value = refreshedVocabDecks
                     _vocabularySrsByDeck.value = refreshedVocabSrs
+                    _preferredEnglishVariant.value = refreshedVariant
+                    _vocabularyReminderEnabled.value = refreshedReminder
+                    com.example.util.VocabularyDailyReminderWorker.syncSchedule(getApplication(), refreshedReminder)
+                    refreshActiveWordOfTheDay()
                     _themeMode.value = themePreferences.getThemeMode()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()

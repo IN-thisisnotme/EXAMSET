@@ -418,6 +418,14 @@ class ExamSetPreferences(context: Context) {
         }
     }
 
+    fun isVocabularyReminderEnabled(): Boolean {
+        return prefs.getBoolean(KEY_VOCAB_DAILY_REMINDER_ENABLED, false)
+    }
+
+    fun setVocabularyReminderEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_VOCAB_DAILY_REMINDER_ENABLED, enabled).apply()
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -440,5 +448,6 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_WORD_OF_THE_DAY_CACHE = "key_vocab_wotd_cache_v1"
         private const val KEY_WORD_OF_THE_DAY_LANGUAGE_STATES = "key_vocab_wotd_lang_states_v1"
         private const val KEY_ACTIVE_PROMPT_PRESET_PREFIX = "key_active_prompt_preset_"
+        private const val KEY_VOCAB_DAILY_REMINDER_ENABLED = "key_vocab_daily_reminder_enabled_v1"
     }
 }

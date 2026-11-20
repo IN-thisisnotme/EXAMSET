@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
@@ -36,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -69,7 +71,10 @@ import com.example.model.VocabularyEntry
 import com.example.model.VocabularyRecallDirection
 import com.example.ui.theme.ExamTheme
 import com.example.util.SpacedRepetitionEngine
+import com.example.util.TrustedTimeManager
 import com.example.util.VocabularyEngine
+import com.example.util.VocabularyTtsSpeaker
+import com.example.util.rememberVocabularyTtsSpeaker
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -78,12 +83,15 @@ fun VocabularyRecallView(
     srsMap: Map<String, FlashcardSrsState>,
     onRateEntry: (entryId: String, rating: SrsRating) -> Unit,
     onResetDeckSrs: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    preferredEnglishVariant: String = "US",
+    ttsSpeaker: VocabularyTtsSpeaker? = null
 ) {
     val colors = ExamTheme.colors
     val haptic = LocalHapticFeedback.current
-    val nowMillis = System.currentTimeMillis()
-    val stats = remember(deck, srsMap) { VocabularyEngine.computeDeckSrsStats(deck, srsMap, nowMillis) }
+    val activeSpeaker = ttsSpeaker ?: rememberVocabularyTtsSpeaker()
+    val nowMillis = TrustedTimeManager.getTrustedTimeMillis()
+    val stats = remember(deck, srsMap, nowMillis) { VocabularyEngine.computeDeckSrsStats(deck, srsMap, nowMillis) }
 
     var direction by remember(deck.id) { mutableStateOf(VocabularyRecallDirection.WORD_TO_MEANING) }
     var cramAll by remember(deck.id) { mutableStateOf(stats.actionableCount == 0 && deck.entries.isNotEmpty()) }
@@ -96,7 +104,7 @@ fun VocabularyRecallView(
             VocabularyEngine.buildRecallQueue(
                 deck = deck,
                 srsMap = srsMap,
-                nowMillis = System.currentTimeMillis(),
+                nowMillis = TrustedTimeManager.getTrustedTimeMillis(),
                 cramAll = cramAll,
                 shuffle = shuffled
             )
@@ -445,6 +453,7 @@ fun VocabularyRecallView(
                     }
 
                     // FRONT CUE
+                    val speakLanguage = activeEntry.language.ifBlank { deck.language }
                     if (direction == VocabularyRecallDirection.WORD_TO_MEANING) {
                         Column(
                             modifier = Modifier
@@ -466,6 +475,26 @@ fun VocabularyRecallView(
                                     fontSize = 13.5.sp,
                                     color = colors.teal,
                                     fontStyle = FontStyle.Italic
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    activeSpeaker.speak(
+                                        text = activeEntry.word,
+                                        language = speakLanguage,
+                                        preferredEnglishVariant = preferredEnglishVariant,
+                                        utteranceKey = "recall_${activeEntry.id}"
+                                    )
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("vocab_recall_speak_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                    contentDescription = "Pronounce ${activeEntry.word}",
+                                    tint = colors.teal,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
@@ -550,6 +579,26 @@ fun VocabularyRecallView(
                                                 text = activeEntry.pronunciation,
                                                 fontSize = 12.5.sp,
                                                 color = colors.inkMuted
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                activeSpeaker.speak(
+                                                    text = activeEntry.word,
+                                                    language = speakLanguage,
+                                                    preferredEnglishVariant = preferredEnglishVariant,
+                                                    utteranceKey = "recall_back_${activeEntry.id}"
+                                                )
+                                            },
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .testTag("vocab_recall_speak_back_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                                contentDescription = "Pronounce ${activeEntry.word}",
+                                                tint = colors.tealDark,
+                                                modifier = Modifier.size(21.dp)
                                             )
                                         }
                                     }

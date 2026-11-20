@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.ExamSetPreferences
+import com.example.model.FlashcardSrsState
 import com.example.model.PromptPresetMode
 import com.example.model.SrsRating
 import com.example.model.VocabularyDeck
@@ -21,6 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.Locale
 
 @RunWith(RobolectricTestRunner::class)
 class VocabularyEngineTest {
@@ -1138,6 +1140,107 @@ class VocabularyEngineTest {
 
         val createdEsDeck = vm.vocabularyDecks.value.first { it.language == "Spanish" }
         assertEquals("", createdEsDeck.translationLanguage)
+    }
+
+    @Test
+    fun wordOfTheDayService_formatsUtcCountdownAndMergesPersistedStates() {
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val ts = formatter.parse("2026-11-20T21:15:00Z")!!.time
+        assertEquals("Next in 2h 45m UTC", WordOfTheDayService.formatUtcCountdownLabel(ts))
+
+        val existing = LanguageWordOfTheDayState(
+            languageKey = "english",
+            activeUtcDateKey = "2026-11-19",
+            activeWordKey = "alpha",
+            seenWordKeysInCycle = listOf("alpha"),
+            cycleNumber = 1,
+            history = listOf(
+                WordOfTheDayHistoryItem(utcDateKey = "2026-11-19", wordKey = "alpha", word = "Alpha")
+            )
+        )
+        val incoming = LanguageWordOfTheDayState(
+            languageKey = "english",
+            activeUtcDateKey = "2026-11-20",
+            activeWordKey = "beta",
+            seenWordKeysInCycle = listOf("alpha", "beta"),
+            cycleNumber = 1,
+            history = listOf(
+                WordOfTheDayHistoryItem(utcDateKey = "2026-11-20", wordKey = "beta", word = "Beta"),
+                WordOfTheDayHistoryItem(utcDateKey = "2026-11-19", wordKey = "alpha", word = "Alpha")
+            )
+        )
+        val existingJson = org.json.JSONObject().apply { put("english", existing.toJson()) }.toString()
+        val incomingJson = org.json.JSONObject().apply { put("english", incoming.toJson()) }.toString()
+
+        val mergedJson = WordOfTheDayService.mergePersistedLanguageStatesJson(existingJson, incomingJson)
+        val mergedMap = WordOfTheDayService.parseStatesJson(mergedJson)
+        val en = mergedMap["english"]!!
+        assertEquals("2026-11-20", en.activeUtcDateKey)
+        assertEquals("beta", en.activeWordKey)
+        assertEquals(listOf("alpha", "beta"), en.seenWordKeysInCycle)
+        assertEquals(2, en.history.size)
+    }
+
+    @Test
+    fun vocabularyEngine_compilesAllDueAcrossLanguagesAndFindsGlobalWordHits() {
+        val now = 1_700_000_000_000L
+        val enDeck = VocabularyDeck(
+            id = "en_1",
+            title = "English Core",
+            language = "English",
+            levelCode = "B1",
+            entries = listOf(
+                VocabularyEntry(id = "e1", word = "Lucid", meaning = "Clear and easy to understand", levelCode = "B1"),
+                VocabularyEntry(id = "e2", word = "MasteredWord", meaning = "Already learned", levelCode = "B1")
+            )
+        )
+        val hiDeck = VocabularyDeck(
+            id = "hi_1",
+            title = "Hindi Essentials",
+            language = "Hindi",
+            levelCode = "A2",
+            entries = listOf(
+                VocabularyEntry(id = "h1", word = "स्पष्ट", meaning = "Clear and explicit", translation = "Clear", levelCode = "A2")
+            )
+        )
+        val srsByDeck = mapOf(
+            "en_1" to mapOf(
+                "e2" to FlashcardSrsState(
+                    blockIndex = 0,
+                    repetitions = 4,
+                    easeFactor = 2.6f,
+                    intervalDays = 21,
+                    dueAtMillis = now + 7 * 86_400_000L,
+                    lastReviewedAtMillis = now - 86_400_000L,
+                    reviewCount = 4,
+                    correctCount = 4
+                )
+            )
+        )
+
+        val compiledDue = VocabularyEngine.compileAllDueVocabularyDeck(
+            decks = listOf(enDeck, hiDeck),
+            srsByDeck = srsByDeck,
+            nowMillis = now
+        )
+        assertEquals(2, compiledDue.virtualDeck.entries.size)
+        assertEquals("en_1", compiledDue.sourceByEntryId["e1"]?.originDeckId)
+        assertEquals("hi_1", compiledDue.sourceByEntryId["h1"]?.originDeckId)
+        assertFalse(compiledDue.virtualDeck.entries.any { it.id == "e2" })
+
+        val hits = VocabularyEngine.searchEntriesAcrossDecks(listOf(enDeck, hiDeck), "clear")
+        assertEquals(2, hits.size)
+    }
+
+    @Test
+    fun vocabularyTtsSpeaker_resolvesExpectedLocales() {
+        assertEquals(Locale.US, VocabularyTtsSpeaker.resolveLocale("English", "US"))
+        assertEquals(Locale.UK, VocabularyTtsSpeaker.resolveLocale("English", "UK"))
+        assertEquals(Locale.forLanguageTag("en-IN"), VocabularyTtsSpeaker.resolveLocale("English", "IN"))
+        assertEquals(Locale.forLanguageTag("hi-IN"), VocabularyTtsSpeaker.resolveLocale("Hindi"))
+        assertEquals(Locale.JAPANESE, VocabularyTtsSpeaker.resolveLocale("Japanese"))
     }
 }
 

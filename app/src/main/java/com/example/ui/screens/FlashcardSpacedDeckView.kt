@@ -77,6 +77,7 @@ import com.example.model.SrsRating
 import com.example.ui.theme.ExamTheme
 import com.example.util.SpacedRepetitionEngine
 import com.example.util.StudyNoteBlock
+import com.example.util.TrustedTimeManager
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -112,7 +113,7 @@ fun FlashcardSpacedDeckView(
     var shuffleSeed by remember(note.id) { mutableIntStateOf(0) }
     var sessionGeneration by remember(note.id) { mutableIntStateOf(0) }
     var sessionNowMillis by remember(note.id, sessionGeneration) {
-        mutableLongStateOf(System.currentTimeMillis())
+        mutableLongStateOf(TrustedTimeManager.getTrustedTimeMillis())
     }
 
     var sessionQueue by remember(note.id) { mutableStateOf<List<StudyNoteBlock>>(emptyList()) }
@@ -133,7 +134,7 @@ fun FlashcardSpacedDeckView(
     // Rebuild session queue only when deck filter composition, cram toggle, shuffle, or explicit restart changes
     // (NOT on every individual rating, so Again re-insertion stays intact within the session).
     LaunchedEffect(note.id, deckItems, cramAll, shuffleSeed, sessionGeneration) {
-        val now = System.currentTimeMillis()
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         sessionNowMillis = now
         sessionQueue = SpacedRepetitionEngine.buildStudyQueue(
             allCards = deckItems,

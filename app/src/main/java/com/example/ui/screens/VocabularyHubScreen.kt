@@ -1,6 +1,13 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
@@ -46,6 +54,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
@@ -82,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -103,14 +114,18 @@ import com.example.model.VocabularyLevelFolderSummary
 import com.example.ui.theme.ExamColorPalette
 import com.example.ui.theme.ExamTheme
 import com.example.util.SpacedRepetitionEngine
+import com.example.util.TrustedTimeManager
 import com.example.util.VocabularyAuditFinding
 import com.example.util.VocabularyEngine
 import com.example.util.VocabularyImportAnalysis
 import com.example.util.VocabularyMergeDecision
 import com.example.util.VocabularySmartRouteTargetChoice
+import com.example.util.VocabularyTtsSpeaker
 import com.example.util.WordOfTheDayHistoryItem
 import com.example.util.WordOfTheDayService
 import com.example.util.WordOfTheDayUiState
+import com.example.util.rememberVocabularyTtsSpeaker
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 private enum class VocabListFilter(val label: String) {
@@ -128,7 +143,8 @@ private sealed class VocabNavTier {
         val levelCode: String,
         val customLevelLabel: String = ""
     ) : VocabNavTier()
-    data class MixedFolder(val language: String) : VocabNavTier()
+    data class MixedFolder(val language: String, val initialTab: Int = 0) : VocabNavTier()
+    data class AllDueReview(val initialTab: Int = 1) : VocabNavTier()
     data class DeckDetail(
         val deckId: String,
         val returnToTier: VocabNavTier
@@ -137,7 +153,7 @@ private sealed class VocabNavTier {
 
 /**
  * Dedicated full-screen Vocabulary Hub — organized into a 3-tier folder hierarchy:
- * Tier 1: Language Folders
+ * Tier 1: Language Folders (+ Global Word Search & Cross-Language Due Review)
  * Tier 2: Proficiency Level Subfolders (ordered A1 -> C2 -> Custom) + Language-Specific Word of the Day
  *         + Pinned Last "Mixed Vocabulary" Live Compilation Folder
  * Tier 3: Vocabulary Sets / Mixed Compilation -> A-Z Word List & SM-2 Active Recall.
@@ -148,11 +164,13 @@ fun VocabularyHubDialog(
     srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
     preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT,
     wordOfTheDayState: WordOfTheDayUiState = WordOfTheDayUiState.Hidden("", 0),
+    vocabularyReminderEnabled: Boolean = false,
     initialLanguageFilter: String? = null,
     initialDeckId: String? = null,
     onDismiss: () -> Unit,
     onOpenAiPromptBuilderForVocab: () -> Unit,
     onChangeEnglishVariant: (String) -> Unit = {},
+    onToggleVocabularyReminder: (Boolean) -> Unit = {},
     onActiveLanguageChanged: (String?) -> Unit = {},
     onCycleNextWordOfTheDay: (String) -> Unit = {},
     onCommitImport: (
@@ -184,6 +202,7 @@ fun VocabularyHubDialog(
     onApplyMixedAuditFixes: (originDeckIdByEntryId: Map<String, String>, findings: List<VocabularyAuditFinding>) -> Unit = { _, _ -> }
 ) {
     val colors = ExamTheme.colors
+    val ttsSpeaker = rememberVocabularyTtsSpeaker()
 
     var navTier by remember(initialDeckId, initialLanguageFilter) {
         mutableStateOf<VocabNavTier>(
@@ -221,6 +240,7 @@ fun VocabularyHubDialog(
     val activeLanguageForWotd = remember(navTier, decks) {
         when (val tier = navTier) {
             VocabNavTier.LanguagesRoot -> null
+            is VocabNavTier.AllDueReview -> null
             is VocabNavTier.LanguageFolder -> tier.language
             is VocabNavTier.LevelFolder -> tier.language
             is VocabNavTier.MixedFolder -> tier.language
@@ -249,6 +269,7 @@ fun VocabularyHubDialog(
         navTier = when (val tier = navTier) {
             is VocabNavTier.DeckDetail -> tier.returnToTier
             is VocabNavTier.MixedFolder -> VocabNavTier.LanguageFolder(tier.language)
+            is VocabNavTier.AllDueReview -> VocabNavTier.LanguagesRoot
             is VocabNavTier.LevelFolder -> VocabNavTier.LanguageFolder(tier.language)
             is VocabNavTier.LanguageFolder -> VocabNavTier.LanguagesRoot
             VocabNavTier.LanguagesRoot -> {
@@ -285,12 +306,19 @@ fun VocabularyHubDialog(
                     VocabularyLanguagesRootView(
                         decks = decks,
                         srsByDeck = srsByDeck,
+                        preferredEnglishVariant = preferredEnglishVariant,
+                        ttsSpeaker = ttsSpeaker,
+                        reminderEnabled = vocabularyReminderEnabled,
+                        onToggleReminder = onToggleVocabularyReminder,
                         searchQuery = hubSearchQuery,
                         onSearchQueryChange = { hubSearchQuery = it },
                         onBack = onDismiss,
                         onOpenLanguageFolder = { lang ->
                             hubSearchQuery = ""
                             navTier = VocabNavTier.LanguageFolder(lang)
+                        },
+                        onOpenAllDueReview = {
+                            navTier = VocabNavTier.AllDueReview(initialTab = 1)
                         },
                         onOpenDeckFromSearch = { deck ->
                             navTier = VocabNavTier.DeckDetail(
@@ -324,11 +352,18 @@ fun VocabularyHubDialog(
                         decks = decks,
                         srsByDeck = srsByDeck,
                         preferredEnglishVariant = preferredEnglishVariant,
+                        ttsSpeaker = ttsSpeaker,
                         wordOfTheDayState = wordOfTheDayState,
                         onBack = { navTier = VocabNavTier.LanguagesRoot },
                         onChangeEnglishVariant = onChangeEnglishVariant,
                         onCycleNextWordOfTheDay = { onCycleNextWordOfTheDay(tier.language) },
                         onOpenWotdHistory = { readyState -> showWotdHistoryForState = readyState },
+                        onToggleWotdBookmark = { deckId, entryId ->
+                            onToggleEntryBookmark(deckId, entryId)
+                        },
+                        onPracticeWotdInMixed = {
+                            navTier = VocabNavTier.MixedFolder(tier.language, initialTab = 1)
+                        },
                         onOpenDeckById = { deckId ->
                             navTier = VocabNavTier.DeckDetail(
                                 deckId = deckId,
@@ -392,6 +427,9 @@ fun VocabularyHubDialog(
                     VocabularyDeckDetailView(
                         deck = compiled.virtualDeck,
                         srsMap = compiled.srsByEntryId,
+                        initialStudyModeTab = tier.initialTab,
+                        preferredEnglishVariant = preferredEnglishVariant,
+                        ttsSpeaker = ttsSpeaker,
                         isMixedVirtualDeck = true,
                         compiledSources = compiled.sourceByEntryId,
                         onBack = { navTier = VocabNavTier.LanguageFolder(tier.language) },
@@ -424,6 +462,52 @@ fun VocabularyHubDialog(
                     )
                 }
 
+                is VocabNavTier.AllDueReview -> {
+                    val compiledDue = remember(decks, srsByDeck) {
+                        VocabularyEngine.compileAllDueVocabularyDeck(
+                            decks = decks,
+                            srsByDeck = srsByDeck,
+                            nowMillis = TrustedTimeManager.getTrustedTimeMillis()
+                        )
+                    }
+                    VocabularyDeckDetailView(
+                        deck = compiledDue.virtualDeck,
+                        srsMap = compiledDue.srsByEntryId,
+                        initialStudyModeTab = tier.initialTab,
+                        preferredEnglishVariant = preferredEnglishVariant,
+                        ttsSpeaker = ttsSpeaker,
+                        isMixedVirtualDeck = true,
+                        compiledSources = compiledDue.sourceByEntryId,
+                        onBack = { navTier = VocabNavTier.LanguagesRoot },
+                        onAddWords = {
+                            openImportFromContext(null, "English", VocabularyLevel.INTERMEDIATE.code, "")
+                        },
+                        onOpenAudit = {
+                            auditMixedSources = compiledDue.sourceByEntryId
+                            auditTargetDeck = compiledDue.virtualDeck
+                        },
+                        onToggleBookmark = { entryId ->
+                            val realDeckId = compiledDue.sourceByEntryId[entryId]?.originDeckId
+                            if (!realDeckId.isNullOrBlank()) {
+                                onToggleEntryBookmark(realDeckId, entryId)
+                            }
+                        },
+                        onDeleteEntry = { entryId ->
+                            val realDeckId = compiledDue.sourceByEntryId[entryId]?.originDeckId
+                            if (!realDeckId.isNullOrBlank()) {
+                                onDeleteEntry(realDeckId, entryId)
+                            }
+                        },
+                        onRateEntry = { entryId, rating ->
+                            val realDeckId = compiledDue.sourceByEntryId[entryId]?.originDeckId
+                            if (!realDeckId.isNullOrBlank()) {
+                                onRateEntry(realDeckId, entryId, rating)
+                            }
+                        },
+                        onResetSrs = {}
+                    )
+                }
+
                 is VocabNavTier.DeckDetail -> {
                     val activeDeck = remember(decks, tier.deckId) {
                         decks.firstOrNull { it.id == tier.deckId }
@@ -436,6 +520,8 @@ fun VocabularyHubDialog(
                         VocabularyDeckDetailView(
                             deck = activeDeck,
                             srsMap = srsByDeck[activeDeck.id].orEmpty(),
+                            preferredEnglishVariant = preferredEnglishVariant,
+                            ttsSpeaker = ttsSpeaker,
                             onBack = { navTier = tier.returnToTier },
                             onAddWords = {
                                 openImportFromContext(
@@ -582,10 +668,15 @@ fun VocabularyHubDialog(
 private fun VocabularyLanguagesRootView(
     decks: List<VocabularyDeck>,
     srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
+    preferredEnglishVariant: String,
+    ttsSpeaker: VocabularyTtsSpeaker,
+    reminderEnabled: Boolean,
+    onToggleReminder: (Boolean) -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onBack: () -> Unit,
     onOpenLanguageFolder: (String) -> Unit,
+    onOpenAllDueReview: () -> Unit,
     onOpenDeckFromSearch: (VocabularyDeck) -> Unit,
     onOpenImport: () -> Unit,
     onOpenAiPromptBuilder: () -> Unit,
@@ -594,9 +685,42 @@ private fun VocabularyLanguagesRootView(
     onDeleteDeck: (VocabularyDeck) -> Unit
 ) {
     val colors = ExamTheme.colors
-    val nowMillis = System.currentTimeMillis()
+    val context = LocalContext.current
+    val nowMillis = TrustedTimeManager.getTrustedTimeMillis()
 
-    val languageSummaries = remember(decks, srsByDeck) {
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            onToggleReminder(true)
+        } else {
+            Toast.makeText(
+                context,
+                "Notification permission denied. Enable notifications in Android settings to receive daily vocabulary reminders.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    val handleReminderClick: () -> Unit = {
+        if (reminderEnabled) {
+            onToggleReminder(false)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                onToggleReminder(true)
+            } else {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            onToggleReminder(true)
+        }
+    }
+
+    val languageSummaries = remember(decks, srsByDeck, nowMillis) {
         VocabularyEngine.buildLanguageFolderSummaries(
             decks = decks,
             srsByDeck = srsByDeck,
@@ -620,6 +744,9 @@ private fun VocabularyLanguagesRootView(
                         it.translation.lowercase(Locale.ROOT).contains(q)
                 }
         }.sortedWith(compareBy({ it.language.lowercase(Locale.ROOT) }, { it.resolvedLevel().sortRank }, { it.title.lowercase(Locale.ROOT) }))
+    }
+    val matchingWordHits = remember(decks, q) {
+        if (q.isBlank()) emptyList() else VocabularyEngine.searchEntriesAcrossDecks(decks, q, limit = 25)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -654,6 +781,18 @@ private fun VocabularyLanguagesRootView(
                         color = colors.inkMuted,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(
+                    onClick = handleReminderClick,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("vocab_hub_reminder_toggle")
+                ) {
+                    Icon(
+                        imageVector = if (reminderEnabled) Icons.Default.Notifications else Icons.Default.NotificationsNone,
+                        contentDescription = if (reminderEnabled) "Disable daily vocabulary reminder" else "Enable daily vocabulary reminder",
+                        tint = if (reminderEnabled) colors.teal else colors.inkMuted
                     )
                 }
                 IconButton(
@@ -787,16 +926,94 @@ private fun VocabularyLanguagesRootView(
                     }
                 }
             } else if (q.isNotBlank()) {
+                if (matchingWordHits.isNotEmpty()) {
+                    item(key = "vocab_search_words_header") {
+                        Text(
+                            text = "MATCHING WORDS (${matchingWordHits.size})",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkMuted,
+                            letterSpacing = 0.6.sp
+                        )
+                    }
+                    items(
+                        items = matchingWordHits,
+                        key = { "word_hit_${it.deck.id}_${it.entry.id}" }
+                    ) { hit ->
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.surface),
+                            border = BorderStroke(0.75.dp, colors.border),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenDeckFromSearch(hit.deck) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Text(
+                                            text = hit.entry.word,
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = colors.inkBold
+                                        )
+                                        Surface(shape = RoundedCornerShape(5.dp), color = colors.tealLight) {
+                                            Text(
+                                                text = "${hit.deck.language} • ${hit.entry.effectiveLevelBadge()}",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.tealDark,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = hit.entry.meaning.ifBlank { hit.entry.translation },
+                                        fontSize = 12.sp,
+                                        color = colors.inkMuted,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        ttsSpeaker.speak(
+                                            text = hit.entry.word,
+                                            language = hit.deck.language,
+                                            preferredEnglishVariant = preferredEnglishVariant,
+                                            utteranceKey = "search_${hit.entry.id}"
+                                        )
+                                    },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                        contentDescription = "Pronounce ${hit.entry.word}",
+                                        tint = colors.teal,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 item(key = "vocab_search_header") {
                     Text(
-                        text = "SEARCH RESULTS (${matchingDecks.size})",
+                        text = "MATCHING SETS (${matchingDecks.size})",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkMuted,
                         letterSpacing = 0.6.sp
                     )
                 }
-                if (matchingDecks.isEmpty()) {
+                if (matchingDecks.isEmpty() && matchingWordHits.isEmpty()) {
                     item(key = "vocab_search_empty") {
                         Text(
                             text = "No vocabulary sets or words match \"$searchQuery\".",
@@ -810,7 +1027,7 @@ private fun VocabularyLanguagesRootView(
                     }
                 } else {
                     items(matchingDecks, key = { it.id }) { deck ->
-                        val stats = remember(deck, srsByDeck[deck.id]) {
+                        val stats = remember(deck, srsByDeck[deck.id], nowMillis) {
                             VocabularyEngine.computeDeckSrsStats(deck, srsByDeck[deck.id].orEmpty(), nowMillis)
                         }
                         VocabularyDeckCard(
@@ -826,6 +1043,60 @@ private fun VocabularyLanguagesRootView(
                     }
                 }
             } else {
+                if (totalDue > 0) {
+                    item(key = "vocab_all_due_banner") {
+                        Card(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = colors.amberLight.copy(alpha = 0.55f)),
+                            border = BorderStroke(1.dp, colors.amber.copy(alpha = 0.55f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vocab_all_due_banner")
+                        ) {
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.widthIn(min = 180.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = "$totalDue Word(s) Due Across All Languages",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = colors.inkBold
+                                    )
+                                    Text(
+                                        text = "Review overdue & new SM-2 cards together in one quick session.",
+                                        fontSize = 11.5.sp,
+                                        color = colors.inkMuted
+                                    )
+                                }
+                                Button(
+                                    onClick = onOpenAllDueReview,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colors.amber,
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .testTag("vocab_review_all_due_button")
+                                ) {
+                                    Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Review Due", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 item(key = "vocab_lang_folders_header") {
                     Text(
                         text = "LANGUAGE FOLDERS (${languageSummaries.size})",
@@ -980,11 +1251,14 @@ private fun VocabularyLanguageFolderView(
     decks: List<VocabularyDeck>,
     srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
     preferredEnglishVariant: String,
+    ttsSpeaker: VocabularyTtsSpeaker,
     wordOfTheDayState: WordOfTheDayUiState,
     onBack: () -> Unit,
     onChangeEnglishVariant: (String) -> Unit,
     onCycleNextWordOfTheDay: () -> Unit,
     onOpenWotdHistory: (WordOfTheDayUiState.Ready) -> Unit,
+    onToggleWotdBookmark: (deckId: String, entryId: String) -> Unit,
+    onPracticeWotdInMixed: () -> Unit,
     onOpenDeckById: (String) -> Unit,
     onOpenLevelFolder: (VocabularyLevelFolderSummary) -> Unit,
     onOpenMixedFolder: () -> Unit,
@@ -992,10 +1266,10 @@ private fun VocabularyLanguageFolderView(
     onOpenAiPromptBuilder: () -> Unit
 ) {
     val colors = ExamTheme.colors
-    val nowMillis = System.currentTimeMillis()
+    val nowMillis = TrustedTimeManager.getTrustedTimeMillis()
     val isEnglish = VocabularyLanguageVariants.isEnglish(language)
 
-    val levelSummaries = remember(language, decks, srsByDeck) {
+    val levelSummaries = remember(language, decks, srsByDeck, nowMillis) {
         VocabularyEngine.buildLevelFolderSummaries(
             language = language,
             decks = decks,
@@ -1011,7 +1285,7 @@ private fun VocabularyLanguageFolderView(
             srsByDeck = srsByDeck
         )
     }
-    val mixedStats = remember(compiledMixed) {
+    val mixedStats = remember(compiledMixed, nowMillis) {
         VocabularyEngine.computeDeckSrsStats(
             deck = compiledMixed.virtualDeck,
             srsMap = compiledMixed.srsByEntryId,
@@ -1144,11 +1418,25 @@ private fun VocabularyLanguageFolderView(
                 wordOfTheDayState.language.equals(language, ignoreCase = true)
             ) {
                 item(key = "vocab_word_of_the_day") {
+                    val liveBookmarked = remember(decks, wordOfTheDayState.sourceDeckId, wordOfTheDayState.entry.id) {
+                        decks.firstOrNull { it.id == wordOfTheDayState.sourceDeckId }
+                            ?.entries
+                            ?.firstOrNull { it.id == wordOfTheDayState.entry.id }
+                            ?.isBookmarked
+                            ?: wordOfTheDayState.entry.isBookmarked
+                    }
                     WordOfTheDayCard(
                         state = wordOfTheDayState,
+                        liveBookmarked = liveBookmarked,
+                        preferredEnglishVariant = preferredEnglishVariant,
+                        ttsSpeaker = ttsSpeaker,
                         colors = colors,
                         onNextWord = onCycleNextWordOfTheDay,
                         onOpenHistory = { onOpenWotdHistory(wordOfTheDayState) },
+                        onToggleBookmark = {
+                            onToggleWotdBookmark(wordOfTheDayState.sourceDeckId, wordOfTheDayState.entry.id)
+                        },
+                        onPracticeMixed = onPracticeWotdInMixed,
                         onOpenDeckById = onOpenDeckById
                     )
                 }
@@ -1484,7 +1772,7 @@ private fun VocabularyLevelFolderView(
     onDeleteDeck: (VocabularyDeck) -> Unit
 ) {
     val colors = ExamTheme.colors
-    val nowMillis = System.currentTimeMillis()
+    val nowMillis = TrustedTimeManager.getTrustedTimeMillis()
     val targetLevel = VocabularyLevel.fromCode(levelCode)
     val levelTitle = targetLevel.displayTitle(customLevelLabel)
 
@@ -1750,6 +2038,9 @@ private fun VocabularyDeckCard(
 private fun VocabularyDeckDetailView(
     deck: VocabularyDeck,
     srsMap: Map<String, FlashcardSrsState>,
+    initialStudyModeTab: Int = 0,
+    preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT,
+    ttsSpeaker: VocabularyTtsSpeaker? = null,
     isMixedVirtualDeck: Boolean = false,
     compiledSources: Map<String, VocabularyCompiledSource> = emptyMap(),
     onBack: () -> Unit,
@@ -1761,8 +2052,9 @@ private fun VocabularyDeckDetailView(
     onResetSrs: () -> Unit
 ) {
     val colors = ExamTheme.colors
-    val nowMillis = System.currentTimeMillis()
-    var studyModeTab by remember(deck.id) { mutableIntStateOf(0) } // 0 = A-Z List, 1 = SM-2 Active Recall
+    val activeSpeaker = ttsSpeaker ?: rememberVocabularyTtsSpeaker()
+    val nowMillis = TrustedTimeManager.getTrustedTimeMillis()
+    var studyModeTab by remember(deck.id, initialStudyModeTab) { mutableIntStateOf(initialStudyModeTab) } // 0 = A-Z List, 1 = SM-2 Active Recall
     var listFilter by remember(deck.id) { mutableStateOf(VocabListFilter.ALL) }
     var searchQuery by remember(deck.id) { mutableStateOf("") }
     var hideMeanings by remember(deck.id) { mutableStateOf(false) }
@@ -1894,6 +2186,8 @@ private fun VocabularyDeckDetailView(
                 srsMap = srsMap,
                 onRateEntry = onRateEntry,
                 onResetDeckSrs = onResetSrs,
+                preferredEnglishVariant = preferredEnglishVariant,
+                ttsSpeaker = activeSpeaker,
                 modifier = Modifier.weight(1f)
             )
         } else {
@@ -1996,6 +2290,9 @@ private fun VocabularyDeckDetailView(
                             entry = entry,
                             srsStatus = srsStatus,
                             sourceDeckTitle = sourceInfo?.originDeckTitle,
+                            speakLanguage = entry.language.ifBlank { deck.language },
+                            preferredEnglishVariant = preferredEnglishVariant,
+                            ttsSpeaker = activeSpeaker,
                             hideMeanings = hideMeanings,
                             isExpanded = isExpanded,
                             colors = colors,
@@ -2062,6 +2359,9 @@ private fun VocabularyWordExpandableCard(
     entry: VocabularyEntry,
     srsStatus: FlashcardSrsStatus,
     sourceDeckTitle: String? = null,
+    speakLanguage: String = "English",
+    preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT,
+    ttsSpeaker: VocabularyTtsSpeaker,
     hideMeanings: Boolean,
     isExpanded: Boolean,
     colors: ExamColorPalette,
@@ -2149,6 +2449,24 @@ private fun VocabularyWordExpandableCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            ttsSpeaker.speak(
+                                text = entry.word,
+                                language = speakLanguage,
+                                preferredEnglishVariant = preferredEnglishVariant,
+                                utteranceKey = "word_${entry.id}"
+                            )
+                        },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = "Pronounce ${entry.word}",
+                            tint = colors.teal,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                     IconButton(onClick = onToggleBookmark, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = if (entry.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -2331,12 +2649,26 @@ private fun VocabFilterChip(
 @Composable
 private fun WordOfTheDayCard(
     state: WordOfTheDayUiState.Ready,
+    liveBookmarked: Boolean,
+    preferredEnglishVariant: String,
+    ttsSpeaker: VocabularyTtsSpeaker,
     colors: ExamColorPalette,
     onNextWord: () -> Unit,
     onOpenHistory: () -> Unit,
+    onToggleBookmark: () -> Unit,
+    onPracticeMixed: () -> Unit,
     onOpenDeckById: (String) -> Unit
 ) {
     var expanded by remember(state.utcDateKey, state.entry.id) { mutableStateOf(false) }
+    var countdownLabel by remember {
+        mutableStateOf(WordOfTheDayService.formatUtcCountdownLabel(TrustedTimeManager.getTrustedTimeMillis()))
+    }
+    LaunchedEffect(state.utcDateKey) {
+        while (true) {
+            countdownLabel = WordOfTheDayService.formatUtcCountdownLabel(TrustedTimeManager.getTrustedTimeMillis())
+            delay(30_000L)
+        }
+    }
     val entry = state.entry
 
     Card(
@@ -2351,7 +2683,7 @@ private fun WordOfTheDayCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header: UTC badge + Language + Cycle progress + History & Next actions
+            // Header: UTC badge + Countdown + Cycle progress + Speak, Bookmark, History & Next actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2380,7 +2712,7 @@ private fun WordOfTheDayCard(
                             Icon(Icons.Default.Schedule, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = "UTC • ${state.dateLabel}",
+                                text = "UTC • ${state.dateLabel} • $countdownLabel",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.inkBold
@@ -2399,6 +2731,39 @@ private fun WordOfTheDayCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            ttsSpeaker.speak(
+                                text = entry.word,
+                                language = state.language,
+                                preferredEnglishVariant = preferredEnglishVariant,
+                                utteranceKey = "wotd_${entry.id}"
+                            )
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("vocab_wotd_speak_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = "Pronounce ${entry.word}",
+                            tint = colors.teal,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onToggleBookmark,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("vocab_wotd_bookmark_button")
+                    ) {
+                        Icon(
+                            imageVector = if (liveBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = if (liveBookmarked) "Remove bookmark" else "Bookmark Word of the Day",
+                            tint = if (liveBookmarked) colors.amber else colors.inkMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onOpenHistory,
                         modifier = Modifier
@@ -2561,7 +2926,7 @@ private fun WordOfTheDayCard(
                         .heightIn(min = 48.dp)
                         .testTag("vocab_wotd_open_deck_button")
                 ) {
-                    Icon(Icons.Default.Bookmark, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Default.Folder, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "In \"${state.sourceDeckTitle}\"",
@@ -2570,6 +2935,23 @@ private fun WordOfTheDayCard(
                         color = colors.tealDark,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                TextButton(
+                    onClick = onPracticeMixed,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("vocab_wotd_practice_mixed_button")
+                ) {
+                    Icon(Icons.Default.Psychology, contentDescription = null, tint = colors.amber, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Practice Mixed",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.amber
                     )
                 }
 

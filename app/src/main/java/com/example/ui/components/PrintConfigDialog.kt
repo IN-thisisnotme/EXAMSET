@@ -352,7 +352,7 @@ fun PrintConfigDialog(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("save_pdf_dialog_button")
                     ) {
                         Icon(
@@ -384,7 +384,7 @@ fun PrintConfigDialog(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("start_print_button")
                     ) {
                         Icon(

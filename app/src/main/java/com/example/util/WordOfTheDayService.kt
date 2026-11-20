@@ -459,4 +459,76 @@ object WordOfTheDayService {
         }
         prefs.saveLanguageWordOfTheDayStatesJson(root.toString())
     }
+
+    fun millisUntilNextUtcMidnight(
+        nowMillis: Long = TrustedTimeManager.getTrustedTimeMillis()
+    ): Long {
+        val dayMs = 86_400_000L
+        val elapsedInDay = ((nowMillis % dayMs) + dayMs) % dayMs
+        return (dayMs - elapsedInDay).coerceIn(0L, dayMs)
+    }
+
+    fun formatUtcCountdownLabel(
+        nowMillis: Long = TrustedTimeManager.getTrustedTimeMillis()
+    ): String {
+        val remaining = millisUntilNextUtcMidnight(nowMillis)
+        val totalMinutes = (remaining / 60_000L).coerceAtLeast(0L)
+        val hours = totalMinutes / 60L
+        val minutes = totalMinutes % 60L
+        return when {
+            hours > 0L -> "Next in ${hours}h ${minutes}m UTC"
+            minutes > 0L -> "Next in ${minutes}m UTC"
+            else -> "Next in <1m UTC"
+        }
+    }
+
+    fun parseStatesJson(raw: String?): Map<String, LanguageWordOfTheDayState> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val root = JSONObject(raw)
+            buildMap {
+                val keys = root.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val parsed = LanguageWordOfTheDayState.fromJson(root.optJSONObject(key))
+                    if (parsed != null) {
+                        put(key.lowercase(Locale.ROOT), parsed)
+                    }
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    fun mergePersistedLanguageStatesJson(existingRaw: String?, incomingRaw: String?): String {
+        val existing = parseStatesJson(existingRaw)
+        val incoming = parseStatesJson(incomingRaw)
+        if (incoming.isEmpty()) return existingRaw ?: "{}"
+        if (existing.isEmpty()) return incomingRaw ?: "{}"
+
+        val merged = existing.toMutableMap()
+        incoming.forEach { (langKey, inc) ->
+            val cur = merged[langKey]
+            if (cur == null) {
+                merged[langKey] = inc
+            } else {
+                val keepIncomingActive = inc.activeUtcDateKey > cur.activeUtcDateKey ||
+                    (inc.activeUtcDateKey == cur.activeUtcDateKey && cur.activeWordKey.isBlank())
+                val mergedHistory = (cur.history + inc.history)
+                    .distinctBy { "${it.utcDateKey}::${it.wordKey}" }
+                    .sortedByDescending { it.utcDateKey }
+                    .take(MAX_HISTORY_ENTRIES)
+                merged[langKey] = LanguageWordOfTheDayState(
+                    languageKey = cur.languageKey,
+                    activeUtcDateKey = if (keepIncomingActive) inc.activeUtcDateKey else cur.activeUtcDateKey,
+                    activeWordKey = if (keepIncomingActive) inc.activeWordKey else cur.activeWordKey,
+                    seenWordKeysInCycle = (cur.seenWordKeysInCycle + inc.seenWordKeysInCycle).distinct(),
+                    cycleNumber = maxOf(cur.cycleNumber, inc.cycleNumber),
+                    history = mergedHistory
+                )
+            }
+        }
+        val root = JSONObject()
+        merged.forEach { (k, v) -> root.put(k, v.toJson()) }
+        return root.toString()
+    }
 }

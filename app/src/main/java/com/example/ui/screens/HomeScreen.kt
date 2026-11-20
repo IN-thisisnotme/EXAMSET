@@ -1455,11 +1455,13 @@ fun HomeScreen(
         val vocabSrs by viewModel.vocabularySrsByDeck.collectAsState()
         val preferredEnglishVariant by viewModel.preferredEnglishVariant.collectAsState()
         val wordOfTheDayState by viewModel.wordOfTheDayState.collectAsState()
+        val vocabReminderEnabled by viewModel.vocabularyReminderEnabled.collectAsState()
         VocabularyHubDialog(
             decks = vocabDecks,
             srsByDeck = vocabSrs,
             preferredEnglishVariant = preferredEnglishVariant,
             wordOfTheDayState = wordOfTheDayState,
+            vocabularyReminderEnabled = vocabReminderEnabled,
             initialLanguageFilter = viewModel.vocabularyHubInitialLanguage,
             onDismiss = { viewModel.closeVocabularyHub() },
             onOpenAiPromptBuilderForVocab = {
@@ -1467,6 +1469,7 @@ fun HomeScreen(
                 viewModel.selectTab(5)
             },
             onChangeEnglishVariant = { variant -> viewModel.setPreferredEnglishVariant(variant) },
+            onToggleVocabularyReminder = { enabled -> viewModel.setVocabularyReminderEnabled(enabled) },
             onActiveLanguageChanged = { language ->
                 viewModel.loadWordOfTheDayForLanguage(language = language, cycleNext = false)
             },

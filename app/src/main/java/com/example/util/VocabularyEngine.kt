@@ -2154,4 +2154,112 @@ object VocabularyEngine {
             compiledDeckCount = langDecks.count { it.entries.isNotEmpty() }
         )
     }
+
+    data class GlobalWordSearchHit(
+        val entry: VocabularyEntry,
+        val deck: VocabularyDeck
+    )
+
+    fun searchEntriesAcrossDecks(
+        decks: List<VocabularyDeck>,
+        query: String,
+        limit: Int = 40
+    ): List<GlobalWordSearchHit> {
+        val q = query.trim().lowercase(Locale.ROOT)
+        if (q.isBlank()) return emptyList()
+        val hits = mutableListOf<GlobalWordSearchHit>()
+        val seenKeys = mutableSetOf<String>()
+        decks.sortedWith(
+            compareBy<VocabularyDeck>(
+                { it.language.lowercase(Locale.ROOT) },
+                { it.resolvedLevel().sortRank },
+                { it.title.lowercase(Locale.ROOT) }
+            )
+        ).forEach { deck ->
+            deck.entries.forEach { entry ->
+                val matches = entry.word.lowercase(Locale.ROOT).contains(q) ||
+                    entry.meaning.lowercase(Locale.ROOT).contains(q) ||
+                    entry.translation.lowercase(Locale.ROOT).contains(q)
+                if (matches) {
+                    val dedupKey = "${deck.language.trim().lowercase(Locale.ROOT)}::${entry.normalizedWordKey()}"
+                    if (seenKeys.add(dedupKey)) {
+                        hits.add(GlobalWordSearchHit(entry = entry, deck = deck))
+                        if (hits.size >= limit) return hits
+                    }
+                }
+            }
+        }
+        return hits
+    }
+
+    fun compileAllDueVocabularyDeck(
+        decks: List<VocabularyDeck>,
+        srsByDeck: Map<String, Map<String, FlashcardSrsState>>,
+        nowMillis: Long = TrustedTimeManager.getTrustedTimeMillis()
+    ): CompiledMixedVocabularyDeck {
+        val dedupedByKey = linkedMapOf<String, Pair<VocabularyEntry, VocabularyCompiledSource>>()
+        val srsByEntryId = mutableMapOf<String, FlashcardSrsState>()
+        val languagesSeen = mutableSetOf<String>()
+        val sourceDeckIds = mutableSetOf<String>()
+
+        decks.sortedWith(
+            compareBy<VocabularyDeck>(
+                { it.language.lowercase(Locale.ROOT) },
+                { it.resolvedLevel().sortRank },
+                { -it.updatedAt }
+            )
+        ).forEach { deck ->
+            val lang = deck.language.trim().ifBlank { "English" }
+            val deckSrs = srsByDeck[deck.id].orEmpty()
+            deck.entries.forEach { entry ->
+                val st = deckSrs[entry.id]
+                val status = SpacedRepetitionEngine.statusOf(st, nowMillis)
+                if (status == FlashcardSrsStatus.DUE || status == FlashcardSrsStatus.NEW) {
+                    val wordKey = "${lang.lowercase(Locale.ROOT)}::${entry.normalizedWordKey().ifBlank { entry.id }}"
+                    if (!dedupedByKey.containsKey(wordKey)) {
+                        dedupedByKey[wordKey] = entry to VocabularyCompiledSource(
+                            originDeckId = deck.id,
+                            originDeckTitle = "$lang • ${deck.title}",
+                            originLevelCode = deck.levelCode,
+                            originCustomLevelLabel = deck.customLevelLabel
+                        )
+                        st?.let { srsByEntryId[entry.id] = it }
+                        languagesSeen.add(lang)
+                        sourceDeckIds.add(deck.id)
+                    }
+                }
+            }
+        }
+
+        val sortedEntries = dedupedByKey.values
+            .map { it.first }
+            .sortedWith(
+                compareBy<VocabularyEntry>(
+                    { srsByEntryId[it.id]?.dueAtMillis ?: 0L },
+                    { it.word.trim().lowercase(Locale.ROOT) }
+                )
+            )
+        val sourceMap = dedupedByKey.values.associate { (entry, src) -> entry.id to src }
+
+        val virtualDeck = VocabularyDeck(
+            id = "__due_all_languages__",
+            title = "Due Today • All Languages",
+            language = if (languagesSeen.size == 1) languagesSeen.first() else "Multi-Language",
+            languageVariant = "",
+            translationLanguage = "",
+            levelCode = VocabularyLevel.MIXED.code,
+            customLevelLabel = "",
+            domain = "${languagesSeen.size.coerceAtLeast(1)} Language(s) Due",
+            entries = sortedEntries
+        )
+
+        return CompiledMixedVocabularyDeck(
+            language = virtualDeck.language,
+            virtualDeck = virtualDeck,
+            sourceByEntryId = sourceMap,
+            srsByEntryId = srsByEntryId,
+            compiledLevelCount = languagesSeen.size,
+            compiledDeckCount = sourceDeckIds.size
+        )
+    }
 }

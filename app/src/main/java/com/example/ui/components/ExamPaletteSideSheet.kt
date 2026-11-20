@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -576,7 +578,7 @@ fun ExamPaletteSideSheet(
                             ),
                             shadowElevation = if (isCurrent) 4.dp else 0.dp,
                             modifier = Modifier
-                                .size(44.dp)
+                                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                                 .testTag("side_palette_bubble_${q.num}")
                         ) {
                             Box(
@@ -621,7 +623,8 @@ fun ExamPaletteSideSheet(
                                 onClick = {
                                     onScrollToTop()
                                     onDismiss()
-                                }
+                                },
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.teal)
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -634,7 +637,8 @@ fun ExamPaletteSideSheet(
                                 onClick = {
                                     onScrollToAnswerKey()
                                     onDismiss()
-                                }
+                                },
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.inkBold)
                                 Spacer(modifier = Modifier.width(4.dp))
