@@ -900,6 +900,8 @@ object VaultArchiveEngine {
             put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
             put("languageWordOfTheDayStatesJson", appPrefs.getLanguageWordOfTheDayStatesJson() ?: "{}")
             put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
+            put("headwordInboxJson", appPrefs.getHeadwordInboxRawJson())
+            put("dismissedWordKeysJson", appPrefs.getDismissedWordKeysRawJson())
         }.toString()
     }
 
@@ -961,6 +963,8 @@ object VaultArchiveEngine {
             put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
             put("languageWordOfTheDayStatesJson", appPrefs.getLanguageWordOfTheDayStatesJson() ?: "{}")
             put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
+            put("headwordInboxJson", appPrefs.getHeadwordInboxRawJson())
+            put("dismissedWordKeysJson", appPrefs.getDismissedWordKeysRawJson())
         }.toString()
     }
 
@@ -1145,6 +1149,38 @@ object VaultArchiveEngine {
                     incomingRaw = incomingWotdStatesRaw
                 )
                 appPrefs.saveLanguageWordOfTheDayStatesJson(mergedWotd)
+            }
+        }
+
+        val incomingInboxRaw = obj.optString("headwordInboxJson", "")
+        if (incomingInboxRaw.isNotBlank()) {
+            val incomingItems = runCatching {
+                val arr = JSONArray(incomingInboxRaw)
+                (0 until arr.length()).mapNotNull { i ->
+                    com.example.model.HeadwordQueueItem.fromJson(arr.optJSONObject(i))
+                }
+            }.getOrDefault(emptyList())
+            if (overwriteAll) {
+                appPrefs.saveHeadwordInbox(incomingItems)
+            } else if (incomingItems.isNotEmpty()) {
+                val current = appPrefs.getHeadwordInbox()
+                val currentKeys = current.map { it.normalizedWordKey() }.toSet()
+                val toAdd = incomingItems.filter { it.normalizedWordKey() !in currentKeys }
+                appPrefs.saveHeadwordInbox(current + toAdd)
+            }
+        }
+
+        val incomingDismissedRaw = obj.optString("dismissedWordKeysJson", "")
+        if (incomingDismissedRaw.isNotBlank()) {
+            val incomingKeys = runCatching {
+                val arr = JSONArray(incomingDismissedRaw)
+                (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }.toSet()
+            }.getOrDefault(emptySet())
+            if (overwriteAll) {
+                appPrefs.saveDismissedWordKeys(incomingKeys)
+            } else if (incomingKeys.isNotEmpty()) {
+                val current = appPrefs.getDismissedWordKeys()
+                appPrefs.saveDismissedWordKeys(current + incomingKeys)
             }
         }
     }

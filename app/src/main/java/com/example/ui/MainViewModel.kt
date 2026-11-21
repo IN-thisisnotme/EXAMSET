@@ -44,6 +44,8 @@ import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeFormatRule
 import com.example.model.KnowledgePromptConfig
 import com.example.model.LinkedCloudFileStatus
+import com.example.model.HeadwordQueueItem
+import com.example.model.HeadwordFilterResult
 import com.example.model.McqQuestion
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
@@ -269,6 +271,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _vocabularyReminderEnabled = MutableStateFlow(appPreferences.isVocabularyReminderEnabled())
     val vocabularyReminderEnabled: StateFlow<Boolean> = _vocabularyReminderEnabled.asStateFlow()
+
+    // Curated Headword Inbox & Deduplication State (Stage-1 Headword Pipeline)
+    private val _headwordInbox = MutableStateFlow(appPreferences.getHeadwordInbox())
+    val headwordInbox: StateFlow<List<HeadwordQueueItem>> = _headwordInbox.asStateFlow()
+
+    private val _dismissedWordKeys = MutableStateFlow(appPreferences.getDismissedWordKeys())
+    val dismissedWordKeys: StateFlow<Set<String>> = _dismissedWordKeys.asStateFlow()
 
     private var activeWotdLanguage: String? = null
     private val _wordOfTheDayState = MutableStateFlow<WordOfTheDayUiState>(
@@ -890,6 +899,95 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.saveVocabularyDecks(updated)
         refreshActiveWordOfTheDay()
         _statusMessage.value = "Applied ${findings.size} vocabulary audit fix(es)"
+    }
+
+    fun importHeadwordsJson(rawJson: String, defaultLanguage: String = "English"): HeadwordFilterResult {
+        val parsed = VocabularyEngine.parseHeadwordsJson(rawJson, defaultLanguage)
+        val filterResult = VocabularyEngine.filterNewHeadwords(
+            incoming = parsed,
+            existingDecks = _vocabularyDecks.value,
+            existingQueue = _headwordInbox.value,
+            dismissedKeys = _dismissedWordKeys.value
+        )
+        if (filterResult.addedItems.isNotEmpty()) {
+            val updatedQueue = _headwordInbox.value + filterResult.addedItems
+            _headwordInbox.value = updatedQueue
+            appPreferences.saveHeadwordInbox(updatedQueue)
+        }
+        val skippedTotal = filterResult.skippedAlreadyInDeckCount +
+            filterResult.skippedAlreadyInQueueCount +
+            filterResult.skippedDismissedCount
+        val msg = if (filterResult.addedItems.isNotEmpty()) {
+            "Added ${filterResult.addedItems.size} headword(s) to inbox" +
+                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/saved/dismissed)" else ""
+        } else {
+            "No new headwords added" +
+                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/saved/dismissed)" else ""
+        }
+        _statusMessage.value = msg
+        return filterResult
+    }
+
+    fun dismissHeadword(queueItemId: String) {
+        val item = _headwordInbox.value.firstOrNull { it.id == queueItemId } ?: return
+        val norm = item.normalizedWordKey()
+        val updatedQueue = _headwordInbox.value.filterNot { it.id == queueItemId }
+        _headwordInbox.value = updatedQueue
+        appPreferences.saveHeadwordInbox(updatedQueue)
+
+        val updatedDismissed = _dismissedWordKeys.value + norm
+        _dismissedWordKeys.value = updatedDismissed
+        appPreferences.saveDismissedWordKeys(updatedDismissed)
+
+        _statusMessage.value = "Dismissed '${item.word}' (will not be suggested again)"
+    }
+
+    fun removeHeadwordFromInbox(queueItemId: String) {
+        val updatedQueue = _headwordInbox.value.filterNot { it.id == queueItemId }
+        _headwordInbox.value = updatedQueue
+        appPreferences.saveHeadwordInbox(updatedQueue)
+        _statusMessage.value = "Removed headword from inbox"
+    }
+
+    fun clearHeadwordInbox() {
+        _headwordInbox.value = emptyList()
+        appPreferences.saveHeadwordInbox(emptyList())
+        _statusMessage.value = "Headword inbox cleared"
+    }
+
+    fun generateEnrichmentPromptForBatch(
+        language: String,
+        maxCount: Int = 15
+    ): String {
+        val langItems = _headwordInbox.value.filter { it.language.equals(language, ignoreCase = true) }
+        val batch = langItems.take(maxCount)
+        return VocabularyEngine.buildStage2EnrichmentPrompt(
+            items = batch,
+            targetLanguage = language,
+            nativeExplanationLanguage = "English",
+            preferredVariant = _preferredEnglishVariant.value
+        )
+    }
+
+    fun promoteEnrichedEntryToDeck(entry: VocabularyEntry, queueItemId: String? = null) {
+        val (targetDeck, updatedDecks) = VocabularyEngine.findOrCreateTargetDeck(
+            currentDecks = _vocabularyDecks.value,
+            language = entry.language,
+            levelCode = entry.levelCode,
+            customLevelLabel = entry.customLevelLabel,
+            variant = entry.languageVariant
+        )
+        val withEntry = targetDeck.copy(
+            entries = targetDeck.entries + entry,
+            updatedAt = TrustedTimeManager.getTrustedTimeMillis()
+        )
+        val finalDecks = updatedDecks.map { if (it.id == withEntry.id) withEntry else it }
+        _vocabularyDecks.value = finalDecks
+        appPreferences.saveVocabularyDecks(finalDecks)
+
+        if (!queueItemId.isNullOrBlank()) {
+            removeHeadwordFromInbox(queueItemId)
+        }
     }
 
     fun getActivePromptPreset(mode: PromptPresetMode): PromptPreset? {
@@ -4715,6 +4813,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     refreshActiveWordOfTheDay()
                     _themeMode.value = themePreferences.getThemeMode()
                     _colorSchemePreset.value = themePreferences.getColorSchemePreset()
+                    _headwordInbox.value = appPreferences.getHeadwordInbox()
+                    _dismissedWordKeys.value = appPreferences.getDismissedWordKeys()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()

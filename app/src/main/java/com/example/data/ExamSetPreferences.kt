@@ -304,6 +304,54 @@ class ExamSetPreferences(context: Context) {
         return prefs.getString(KEY_VOCABULARY_DECKS, "[]") ?: "[]"
     }
 
+    fun getHeadwordInbox(): List<com.example.model.HeadwordQueueItem> {
+        val raw = prefs.getString(KEY_HEADWORD_INBOX, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                com.example.model.HeadwordQueueItem.fromJson(arr.optJSONObject(i))
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveHeadwordInbox(items: List<com.example.model.HeadwordQueueItem>) {
+        val arr = JSONArray().apply {
+            items.forEach { put(it.toJson()) }
+        }
+        prefs.edit().putString(KEY_HEADWORD_INBOX, arr.toString()).apply()
+    }
+
+    fun getHeadwordInboxRawJson(): String {
+        return prefs.getString(KEY_HEADWORD_INBOX, "[]") ?: "[]"
+    }
+
+    fun getDismissedWordKeys(): Set<String> {
+        val raw = prefs.getString(KEY_DISMISSED_WORD_KEYS, null) ?: return emptySet()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }.toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    fun saveDismissedWordKeys(keys: Set<String>) {
+        val arr = JSONArray().apply {
+            keys.forEach { put(it) }
+        }
+        prefs.edit().putString(KEY_DISMISSED_WORD_KEYS, arr.toString()).apply()
+    }
+
+    fun addDismissedWordKey(key: String) {
+        val norm = com.example.model.VocabularyEntry.normalizeVocabularyWordKey(key)
+        if (norm.isBlank()) return
+        val current = getDismissedWordKeys().toMutableSet()
+        current.add(norm)
+        saveDismissedWordKeys(current)
+    }
+
+    fun getDismissedWordKeysRawJson(): String {
+        return prefs.getString(KEY_DISMISSED_WORD_KEYS, "[]") ?: "[]"
+    }
+
     fun getAllVocabularySrsMaps(): Map<String, Map<String, com.example.model.FlashcardSrsState>> {
         val raw = prefs.getString(KEY_VOCABULARY_SRS, null) ?: return emptyMap()
         return parseVocabSrsRootJson(raw)
@@ -457,6 +505,8 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_WORD_OF_THE_DAY_LANGUAGE_STATES = "key_vocab_wotd_lang_states_v1"
         private const val KEY_ACTIVE_PROMPT_PRESET_PREFIX = "key_active_prompt_preset_"
         private const val KEY_VOCAB_DAILY_REMINDER_ENABLED = "key_vocab_daily_reminder_enabled_v1"
+        private const val KEY_HEADWORD_INBOX = "key_headword_inbox_v1"
+        private const val KEY_DISMISSED_WORD_KEYS = "key_dismissed_word_keys_v1"
         private const val KEY_LEGACY_SAMPLES_CLEANED = "key_legacy_samples_cleaned_v1"
     }
 }

@@ -588,3 +588,64 @@ data class VocabularyLanguageFolderSummary(
     val masteredCount: Int,
     val wotdUnlocked: Boolean
 )
+
+enum class VocabularyUtilityTier(val title: String, val subtitle: String) {
+    DAILY_HIGH_FREQUENCY("Daily High-Frequency", "Core high-yield words used in daily life, conversations, and media"),
+    EXAM_EDITORIAL("Competitive Exam Editorial", "High-impact analytical vocabulary from editorials (The Hindu, Indian Express, UPSC, SSC, Banking)"),
+    LITERARY_PRECISION("Literary & Formal Precision", "Formal, expressive words for academic papers, essays, and literature"),
+    GENERAL_BALANCED("General Balanced", "Balanced practical vocabulary across multiple domains")
+}
+
+data class HeadwordQueueItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val word: String,
+    val language: String = "English",
+    val levelCode: String = "B2",
+    val customLevelLabel: String = "",
+    val partOfSpeech: String = "",
+    val domain: String = "Competitive Exam Editorial",
+    val utilityReason: String = "",
+    val addedAt: Long = System.currentTimeMillis()
+) {
+    fun normalizedWordKey(): String = VocabularyEntry.normalizeVocabularyWordKey(word)
+
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("word", word.trim())
+        put("language", language.trim())
+        put("levelCode", levelCode.trim())
+        put("customLevelLabel", customLevelLabel.trim())
+        put("partOfSpeech", partOfSpeech.trim())
+        put("domain", domain.trim())
+        put("utilityReason", utilityReason.trim())
+        put("addedAt", addedAt)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject?): HeadwordQueueItem? {
+            if (obj == null) return null
+            val word = obj.optString("word", "").trim()
+            if (word.isBlank()) return null
+            return HeadwordQueueItem(
+                id = obj.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+                word = word,
+                language = obj.optString("language", "English").trim().ifBlank { "English" },
+                levelCode = obj.optString("levelCode", "B2").trim().ifBlank { "B2" },
+                customLevelLabel = obj.optString("customLevelLabel", "").trim(),
+                partOfSpeech = obj.optString("partOfSpeech", "").trim(),
+                domain = obj.optString("domain", "Competitive Exam Editorial").trim().ifBlank { "Competitive Exam Editorial" },
+                utilityReason = obj.optString("utilityReason", "").trim(),
+                addedAt = obj.optLong("addedAt", System.currentTimeMillis())
+            )
+        }
+    }
+}
+
+data class HeadwordFilterResult(
+    val addedItems: List<HeadwordQueueItem>,
+    val skippedAlreadyInDeckCount: Int,
+    val skippedAlreadyInQueueCount: Int,
+    val skippedDismissedCount: Int,
+    val totalProcessedCount: Int
+)
+

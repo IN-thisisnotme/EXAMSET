@@ -12,6 +12,8 @@ import com.example.model.VocabularyLanguageFolderSummary
 import com.example.model.VocabularyLanguageVariants
 import com.example.model.VocabularyLevel
 import com.example.model.VocabularyLevelFolderSummary
+import com.example.model.HeadwordQueueItem
+import com.example.model.HeadwordFilterResult
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -2437,5 +2439,188 @@ object VocabularyEngine {
             compiledLevelCount = languagesSeen.size,
             compiledDeckCount = sourceDeckIds.size
         )
+    }
+
+    fun parseHeadwordsJson(
+        rawJson: String,
+        defaultLanguage: String = "English"
+    ): List<HeadwordQueueItem> {
+        val trimmed = rawJson.trim()
+        if (trimmed.isBlank()) return emptyList()
+
+        return runCatching {
+            val cleaned = trimmed
+                .replace(Regex("""^```[a-zA-Z]*\s*"""), "")
+                .replace(Regex("""\s*```$"""), "")
+                .trim()
+
+            val jsonArray = when {
+                cleaned.startsWith("[") -> JSONArray(cleaned)
+                cleaned.startsWith("{") -> {
+                    val root = JSONObject(cleaned)
+                    root.optJSONArray("headwords")
+                        ?: root.optJSONArray("words")
+                        ?: root.optJSONArray("items")
+                        ?: JSONArray()
+                }
+                else -> {
+                    val start = cleaned.indexOf('[')
+                    val end = cleaned.lastIndexOf(']')
+                    if (start >= 0 && end > start) {
+                        JSONArray(cleaned.substring(start, end + 1))
+                    } else {
+                        JSONArray()
+                    }
+                }
+            }
+
+            buildList {
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.optJSONObject(i) ?: continue
+                    val word = (obj.optString("word", "").takeIf { it.isNotBlank() }
+                        ?: obj.optString("headword", "")).trim()
+                    if (word.isBlank()) continue
+
+                    val lang = obj.optString("language", defaultLanguage).trim().ifBlank { defaultLanguage }
+                    val level = (obj.optString("level", "").takeIf { it.isNotBlank() }
+                        ?: obj.optString("levelCode", "B2")).trim().ifBlank { "B2" }
+                    val customLevel = obj.optString("customLevelLabel", "").trim()
+                    val pos = (obj.optString("pos", "").takeIf { it.isNotBlank() }
+                        ?: obj.optString("partOfSpeech", "")).trim()
+                    val domain = (obj.optString("domain", "").takeIf { it.isNotBlank() }
+                        ?: obj.optString("category", "Competitive Exam Editorial")).trim()
+                    val reason = (obj.optString("utilityReason", "").takeIf { it.isNotBlank() }
+                        ?: obj.optString("reason", "")
+                        ?: obj.optString("context", "")).trim()
+
+                    add(
+                        HeadwordQueueItem(
+                            word = word,
+                            language = lang,
+                            levelCode = level,
+                            customLevelLabel = customLevel,
+                            partOfSpeech = pos,
+                            domain = domain,
+                            utilityReason = reason
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun filterNewHeadwords(
+        incoming: List<HeadwordQueueItem>,
+        existingDecks: List<VocabularyDeck>,
+        existingQueue: List<HeadwordQueueItem>,
+        dismissedKeys: Set<String>
+    ): HeadwordFilterResult {
+        val existingDeckKeysByLang = mutableMapOf<String, MutableSet<String>>()
+        existingDecks.forEach { deck ->
+            val langKey = deck.language.trim().lowercase(Locale.ROOT)
+            val set = existingDeckKeysByLang.getOrPut(langKey) { mutableSetOf() }
+            deck.entries.forEach { entry ->
+                val k = entry.normalizedWordKey()
+                if (k.isNotBlank()) set.add(k)
+            }
+        }
+
+        val queueKeysByLang = mutableMapOf<String, MutableSet<String>>()
+        existingQueue.forEach { item ->
+            val langKey = item.language.trim().lowercase(Locale.ROOT)
+            val set = queueKeysByLang.getOrPut(langKey) { mutableSetOf() }
+            val k = item.normalizedWordKey()
+            if (k.isNotBlank()) set.add(k)
+        }
+
+        val normalizedDismissed = dismissedKeys.map { VocabularyEntry.normalizeVocabularyWordKey(it) }.toSet()
+
+        val added = mutableListOf<HeadwordQueueItem>()
+        var skippedInDeck = 0
+        var skippedInQueue = 0
+        var skippedDismissed = 0
+
+        incoming.forEach { item ->
+            val key = item.normalizedWordKey()
+            if (key.isBlank()) return@forEach
+
+            val langKey = item.language.trim().lowercase(Locale.ROOT)
+            val deckSet = existingDeckKeysByLang[langKey] ?: emptySet()
+            val queueSet = queueKeysByLang.getOrPut(langKey) { mutableSetOf() }
+
+            when {
+                key in deckSet -> {
+                    skippedInDeck++
+                }
+                key in queueSet -> {
+                    skippedInQueue++
+                }
+                key in normalizedDismissed -> {
+                    skippedDismissed++
+                }
+                else -> {
+                    added.add(item)
+                    queueSet.add(key)
+                }
+            }
+        }
+
+        return HeadwordFilterResult(
+            addedItems = added,
+            skippedAlreadyInDeckCount = skippedInDeck,
+            skippedAlreadyInQueueCount = skippedInQueue,
+            skippedDismissedCount = skippedDismissed,
+            totalProcessedCount = incoming.size
+        )
+    }
+
+    fun buildStage2EnrichmentPrompt(
+        items: List<HeadwordQueueItem>,
+        targetLanguage: String,
+        nativeExplanationLanguage: String = "English",
+        preferredVariant: String = "US"
+    ): String {
+        val wordListStr = items.joinToString(", ") { it.word.trim() }
+        val lang = targetLanguage.trim().ifBlank { "English" }
+        val transLang = nativeExplanationLanguage.trim().ifBlank { "English" }
+        val hasTrans = !transLang.equals(lang, ignoreCase = true)
+
+        return buildString {
+            appendLine("Act as a chief lexicographer, exam setter, and language pedagogue for $lang.")
+            appendLine("Enrich the following curated list of ${items.size} headwords into full vocabulary cards:")
+            appendLine("HEADWORDS TO ENRICH: $wordListStr")
+            appendLine()
+            appendLine("### STRICT INSTRUCTIONS:")
+            appendLine("1. Generate comprehensive, multi-layer cards ONLY for the words specified above. Do not substitute words.")
+            appendLine("2. LANGUAGE STANDARD: $lang (Variant: $preferredVariant).")
+            appendLine("3. For each word provide: accurate part of speech, CEFR level (A1-C2), clear definition, IPA pronunciation/reading guide, 2-3 natural examples across different contexts (Everyday, Workplace/Academic, Formal/Editorial), natural synonyms, collocations, and a 1-sentence usage/nuance note.")
+            if (hasTrans) {
+                appendLine("4. Provide natural translations in $transLang for definitions and examples.")
+            }
+            appendLine()
+            appendLine("### OUTPUT FORMAT: STRICT JSON ARRAY")
+            appendLine("Return ONLY a valid JSON array of objects with the exact schema below:")
+            appendLine("[")
+            appendLine("  {")
+            appendLine("    \"word\": \"[Headword]\",")
+            appendLine("    \"pronunciation\": \"[/IPA/ or reading]\",")
+            appendLine("    \"partOfSpeech\": \"noun | verb | adjective | adverb | idiom | phrasal verb\",")
+            appendLine("    \"levelCode\": \"B2\",")
+            appendLine("    \"meaning\": \"[Clear, crisp definition in $lang]\",")
+            if (hasTrans) {
+                appendLine("    \"translation\": \"[Natural $transLang translation]\",")
+                appendLine("    \"translationLanguage\": \"$transLang\",")
+            }
+            appendLine("    \"examples\": [")
+            appendLine("      { \"sentence\": \"[Example 1]\", \"context\": \"Everyday\"${if (hasTrans) ", \"translation\": \"[Translation 1]\"" else ""} },")
+            appendLine("      { \"sentence\": \"[Example 2]\", \"context\": \"Academic/Workplace\"${if (hasTrans) ", \"translation\": \"[Translation 2]\"" else ""} },")
+            appendLine("      { \"sentence\": \"[Example 3]\", \"context\": \"Editorial/Formal\"${if (hasTrans) ", \"translation\": \"[Translation 3]\"" else ""} }")
+            appendLine("    ],")
+            appendLine("    \"synonyms\": [\"synonym1\", \"synonym2\"],")
+            appendLine("    \"collocations\": [\"collocation1\", \"collocation2\"],")
+            appendLine("    \"usageNote\": \"[1-sentence nuance note]\"")
+            appendLine("  }")
+            appendLine("]")
+        }
     }
 }
