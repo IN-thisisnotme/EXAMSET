@@ -411,6 +411,7 @@ object WordOfTheDayService {
         val deduped = linkedMapOf<String, LanguageWordCandidate>()
         matchingDecks.forEach { deck ->
             deck.entries.forEach { entry ->
+                if (entry.meaning.isBlank() && entry.translation.isBlank()) return@forEach
                 val wordKey = entry.normalizedWordKey()
                 if (wordKey.isNotBlank() && !deduped.containsKey(wordKey)) {
                     deduped[wordKey] = LanguageWordCandidate(

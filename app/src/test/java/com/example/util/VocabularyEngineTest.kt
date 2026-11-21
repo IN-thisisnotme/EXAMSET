@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.ExamSetPreferences
 import com.example.model.FlashcardSrsState
+import com.example.model.HeadwordQueueItem
 import com.example.model.PromptPresetMode
 import com.example.model.SrsRating
 import com.example.model.VocabularyDeck
@@ -13,6 +14,7 @@ import com.example.model.VocabularyExample
 import com.example.model.VocabularyLanguageVariants
 import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
+import com.example.model.VocabularyUtilityTier
 import com.example.ui.MainViewModel
 import com.example.ui.screens.VocabularyPromptState
 import kotlinx.coroutines.runBlocking
@@ -1508,6 +1510,216 @@ class VocabularyEngineTest {
         assertEquals("JLPT N3", summaries[1].compactBadge)
         assertEquals("JLPT N1", summaries[2].compactBadge)
     }
+
+    @Test
+    fun parseQuickCaptureHeadwords_supportsDelimitersAndParenthesisHints() {
+        val raw = """
+            ephemeral, sanction (penalty); obfuscate | - ubiquitous
+            • lucid (clear expression)
+        """.trimIndent()
+
+        val items = VocabularyEngine.parseQuickCaptureHeadwords(
+            rawInput = raw,
+            defaultLanguage = "English",
+            defaultLevelCode = "C1"
+        )
+        assertEquals(5, items.size)
+        assertEquals("ephemeral", items[0].word)
+        assertEquals("", items[0].utilityReason)
+        assertEquals("sanction", items[1].word)
+        assertEquals("Context hint: penalty", items[1].utilityReason)
+        assertEquals("obfuscate", items[2].word)
+        assertEquals("ubiquitous", items[3].word)
+        assertEquals("lucid", items[4].word)
+        assertEquals("Context hint: clear expression", items[4].utilityReason)
+        assertTrue(items.all { it.language == "English" && it.levelCode == "C1" })
+    }
+
+    @Test
+    fun parseHeadwordsJson_handlesFencedJsonWrappedObjectsAndStringArrays() {
+        val fencedJson = """
+            ```json
+            [
+              {"word": "Ephemeral", "level": "C1", "pos": "adjective", "domain": "Editorial", "utilityReason": "Common in trend analysis"},
+              {"headword": "Cogent", "levelCode": "C2", "partOfSpeech": "adjective", "language": "English"}
+            ]
+            ```
+        """.trimIndent()
+        val parsedFenced = VocabularyEngine.parseHeadwordsJson(fencedJson, defaultLanguage = "English")
+        assertEquals(2, parsedFenced.size)
+        assertEquals("Ephemeral", parsedFenced[0].word)
+        assertEquals("C1", parsedFenced[0].levelCode)
+        assertEquals("adjective", parsedFenced[0].partOfSpeech)
+        assertEquals("Editorial", parsedFenced[0].domain)
+        assertEquals("Cogent", parsedFenced[1].word)
+        assertEquals("C2", parsedFenced[1].levelCode)
+
+        val wrappedJson = """{"headwords": ["Pragmatic", "Ambiguous"]}"""
+        val parsedWrapped = VocabularyEngine.parseHeadwordsJson(wrappedJson, defaultLanguage = "English")
+        assertEquals(listOf("Pragmatic", "Ambiguous"), parsedWrapped.map { it.word })
+        assertTrue(parsedWrapped.all { it.language == "English" && it.levelCode == "B2" })
+    }
+
+    @Test
+    fun filterNewHeadwords_deduplicatesAgainstDecksQueueDismissedAndIntraBatch() {
+        val existingDecks = listOf(
+            VocabularyDeck(
+                id = "en_c1",
+                title = "English • C1",
+                language = "English",
+                levelCode = "C1",
+                entries = listOf(
+                    VocabularyEntry(id = "e1", word = "Ephemeral", meaning = "Short-lived", levelCode = "C1")
+                )
+            ),
+            VocabularyDeck(
+                id = "de_b1",
+                title = "German • B1",
+                language = "German",
+                levelCode = "B1",
+                entries = listOf(
+                    VocabularyEntry(id = "d1", word = "Gift", meaning = "Poison", levelCode = "B1")
+                )
+            )
+        )
+        val existingQueue = listOf(
+            HeadwordQueueItem(id = "q1", word = "Lucid", language = "English", levelCode = "B2")
+        )
+        val dismissed = setOf(VocabularyEntry.normalizeVocabularyWordKey("Obsolete"))
+
+        val incoming = listOf(
+            HeadwordQueueItem(word = "ephemeral", language = "English", levelCode = "C1"), // in deck
+            HeadwordQueueItem(word = "LUCID", language = "English", levelCode = "B2"),     // in queue
+            HeadwordQueueItem(word = "obsolete", language = "English", levelCode = "B2"),  // dismissed
+            HeadwordQueueItem(word = "Pragmatic", language = "English", levelCode = "C1"), // new
+            HeadwordQueueItem(word = "Pragmatic", language = "English", levelCode = "C1"), // intra-batch duplicate
+            HeadwordQueueItem(word = "Gift", language = "English", levelCode = "B1")       // same spelling, DIFFERENT language -> keep!
+        )
+
+        val res = VocabularyEngine.filterNewHeadwords(
+            incoming = incoming,
+            existingDecks = existingDecks,
+            existingQueue = existingQueue,
+            dismissedKeys = dismissed
+        )
+
+        assertEquals(listOf("Pragmatic", "Gift"), res.addedItems.map { it.word })
+        assertEquals(1, res.skippedAlreadyInDeckCount)
+        assertEquals(2, res.skippedAlreadyInQueueCount) // 1 existing + 1 intra-batch duplicate
+        assertEquals(1, res.skippedDismissedCount)
+        assertEquals(6, res.totalProcessedCount)
+    }
+
+    @Test
+    fun vocabularyPromptConfig_andStage1Stage2Prompts_preserveConfigAndExcludeKnownWords() {
+        val original = VocabularyPromptConfig(
+            language = "English",
+            levelCode = "C1",
+            wordCount = 20,
+            isHeadwordIndexOnly = true,
+            utilityTier = VocabularyUtilityTier.LITERARY_PRECISION
+        )
+        val roundTripped = VocabularyPromptConfig.fromJson(original.toJson())
+        assertEquals(true, roundTripped.isHeadwordIndexOnly)
+        assertEquals(VocabularyUtilityTier.LITERARY_PRECISION, roundTripped.utilityTier)
+
+        val stage1Prompt = VocabularyPromptState().apply {
+            applyConfig(roundTripped)
+            topic = "Philosophy & Ethics"
+        }.buildPrompt(existingWordsToAvoid = listOf("Ephemeral", "Cogent"))
+
+        assertTrue(stage1Prompt.contains("Stage-1 Headword Index"))
+        assertTrue(stage1Prompt.contains(VocabularyUtilityTier.LITERARY_PRECISION.title))
+        assertTrue(stage1Prompt.contains(VocabularyUtilityTier.LITERARY_PRECISION.subtitle))
+        assertTrue(stage1Prompt.contains("Ephemeral"))
+        assertTrue(stage1Prompt.contains("Cogent"))
+        assertTrue(stage1Prompt.contains("\"utilityReason\""))
+
+        val stage2Prompt = VocabularyEngine.buildStage2EnrichmentPrompt(
+            items = listOf(
+                HeadwordQueueItem(
+                    word = "Sanction",
+                    language = "English",
+                    levelCode = "C1",
+                    partOfSpeech = "noun/verb",
+                    utilityReason = "Context hint: penalty"
+                )
+            ),
+            targetLanguage = "English",
+            nativeExplanationLanguage = "Hindi",
+            preferredVariant = "UK"
+        )
+        assertTrue(stage2Prompt.contains("Sanction"))
+        assertTrue(stage2Prompt.contains("Context hint: penalty"))
+        assertTrue(stage2Prompt.contains("\"level\": \"A1 | A2 | B1 | B2 | C1 | C2\""))
+        assertTrue(stage2Prompt.contains("\"translationLanguage\": \"Hindi\""))
+    }
+
+    @Test
+    fun mainViewModel_headwordPipeline_storesSilentlyGraduatesOnEnrichmentAndStaysIsolatedFromWotd() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val vm = MainViewModel(app)
+
+        // 1. Quick-capture + Stage-1 JSON import go silently into headwordInbox, not vocabularyDecks
+        val quickRes = vm.addQuickHeadwordsToInbox("ephemeral, sanction (penalty)", "English", "C1")
+        assertEquals(2, quickRes.addedItems.size)
+        val jsonRes = vm.importHeadwordsJson(
+            """[{"word": "Ephemeral", "level": "C1"}, {"word": "Lucid", "level": "B2"}, {"word": "Banal", "level": "C1"}]""",
+            defaultLanguage = "English"
+        )
+        assertEquals(listOf("Lucid", "Banal"), jsonRes.addedItems.map { it.word })
+        assertEquals(1, jsonRes.skippedAlreadyInQueueCount)
+        assertTrue(vm.vocabularyDecks.value.isEmpty())
+        assertEquals(4, vm.headwordInbox.value.size)
+
+        // 2. Dismiss "Banal" permanently -> re-importing skips it
+        val banalId = vm.headwordInbox.value.first { it.word == "Banal" }.id
+        vm.dismissHeadword(banalId)
+        assertEquals(3, vm.headwordInbox.value.size)
+        val retryDismissed = vm.importHeadwordsJson("""["Banal"]""", "English")
+        assertEquals(1, retryDismissed.skippedDismissedCount)
+        assertEquals(0, retryDismissed.addedItems.size)
+
+        // 3. Word of the Day ignores queued headwords & blank-meaning entries
+        vm.loadWordOfTheDayForLanguage("English", cycleNext = false)
+        assertFalse(vm.wordOfTheDayState.value is WordOfTheDayUiState.Ready)
+
+        // 4. Existing avoidance list combines saved, queued, and dismissed words for that language
+        val avoidList = vm.existingVocabularyAndQueuedWordsForLanguage("English").map { it.lowercase() }
+        assertTrue("ephemeral" in avoidList)
+        assertTrue("sanction" in avoidList)
+        assertTrue("lucid" in avoidList)
+        assertTrue("banal" in avoidList)
+
+        // 5. Enrich Stage-2 cards directly from Inbox -> routes to (English, C1) & (English, B2) and graduates completed headwords!
+        val enrichedJson = """
+            [
+              {
+                "word": "Ephemeral",
+                "language": "English",
+                "level": "C1",
+                "meaning": "Lasting for a very short time.",
+                "examples": [{"context": "Editorial", "sentence": "Fame on social media is ephemeral."}]
+              },
+              {
+                "word": "Lucid",
+                "language": "English",
+                "level": "B2",
+                "meaning": "Expressed clearly and easy to understand.",
+                "examples": [{"context": "Academic", "sentence": "She gave a lucid explanation."}]
+              }
+            ]
+        """.trimIndent()
+        val graduated = vm.importEnrichedStage2CardsFromInbox(enrichedJson, "English")
+        assertEquals(2, graduated)
+
+        // Both Ephemeral & Lucid promoted to real decks and removed from Inbox; Sanction stays queued
+        assertEquals(listOf("sanction"), vm.headwordInbox.value.map { it.word.lowercase() })
+        assertTrue(vm.vocabularyDecks.value.any { it.language == "English" && it.levelCode == "C1" && it.entries.any { e -> e.word == "Ephemeral" } })
+        assertTrue(vm.vocabularyDecks.value.any { it.language == "English" && it.levelCode == "B2" && it.entries.any { e -> e.word == "Lucid" } })
+    }
 }
+
 
 

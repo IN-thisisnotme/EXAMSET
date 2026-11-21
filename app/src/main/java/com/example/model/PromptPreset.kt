@@ -357,6 +357,8 @@ data class VocabularyPromptConfig(
     val includePronunciation: Boolean = true,
     val includeSynonymsAndCollocations: Boolean = true,
     val includeUsageNote: Boolean = true,
+    val isHeadwordIndexOnly: Boolean = false,
+    val utilityTier: VocabularyUtilityTier = VocabularyUtilityTier.EXAM_EDITORIAL,
     val customInstruction: String = ""
 ) {
     fun normalized(): VocabularyPromptConfig {
@@ -371,14 +373,24 @@ data class VocabularyPromptConfig(
             domain = domain.trim().ifBlank { "General" },
             wordCount = wordCount.coerceIn(5, 60),
             examplesPerWord = examplesPerWord.coerceIn(1, 4),
-            outputFormat = if (outputFormat.equals("Structured Text", ignoreCase = true)) "Structured Text" else "Strict JSON",
+            outputFormat = if (isHeadwordIndexOnly) {
+                "Strict JSON"
+            } else if (outputFormat.equals("Structured Text", ignoreCase = true)) {
+                "Structured Text"
+            } else {
+                "Strict JSON"
+            },
             customInstruction = customInstruction.trim()
         )
     }
 
     fun formatBadge(): String {
         val lvl = VocabularyLevel.fromCode(levelCode).compactBadge(customLevelLabel)
-        val fmt = if (outputFormat == "Structured Text") "TEXT" else "JSON"
+        val fmt = when {
+            isHeadwordIndexOnly -> "INDEX"
+            outputFormat == "Structured Text" -> "TEXT"
+            else -> "JSON"
+        }
         return "$fmt · $lvl"
     }
 
@@ -389,10 +401,15 @@ data class VocabularyPromptConfig(
             abbreviateTag(language, 14)
         }
         add(langTag)
-        if (translationLanguage.isNotBlank()) add("-> ${abbreviateTag(translationLanguage, 12)}")
+        if (isHeadwordIndexOnly) {
+            add("Stage-1 Index")
+            add(abbreviateTag(utilityTier.title, 18))
+        } else if (translationLanguage.isNotBlank()) {
+            add("-> ${abbreviateTag(translationLanguage, 12)}")
+        }
         add(VocabularyLevel.fromCode(levelCode).displayTitle(customLevelLabel))
         add("$wordCount Words")
-        add("${examplesPerWord} Ex/Word")
+        if (!isHeadwordIndexOnly) add("${examplesPerWord} Ex/Word")
         if (!domain.equals("General", ignoreCase = true)) add(abbreviateTag(domain, 14))
         if (customInstruction.isNotBlank()) add("Custom Rule")
     }.take(6)
@@ -407,8 +424,9 @@ data class VocabularyPromptConfig(
         val parts = buildList {
             add(langPart)
             add(lvl)
+            if (isHeadwordIndexOnly) add("Headword Index")
             if (!domain.equals("General", ignoreCase = true)) add(abbreviateTag(domain, 14))
-            add(if (outputFormat == "Structured Text") "Text" else "JSON")
+            if (!isHeadwordIndexOnly) add(if (outputFormat == "Structured Text") "Text" else "JSON")
         }
         return parts.joinToString(" • ").ifBlank { "Vocabulary $lvl" }
     }
@@ -426,6 +444,8 @@ data class VocabularyPromptConfig(
         put("includePronunciation", includePronunciation)
         put("includeSynonymsAndCollocations", includeSynonymsAndCollocations)
         put("includeUsageNote", includeUsageNote)
+        put("isHeadwordIndexOnly", isHeadwordIndexOnly)
+        put("utilityTier", utilityTier.name)
         put("customInstruction", customInstruction)
     }
 
@@ -434,6 +454,10 @@ data class VocabularyPromptConfig(
             if (obj == null) return VocabularyPromptConfig()
             val lang = obj.optString("language", "English").ifBlank { "English" }
             val defaultVar = if (VocabularyLanguageVariants.isEnglish(lang)) VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT else ""
+            val tierName = obj.optString("utilityTier", VocabularyUtilityTier.EXAM_EDITORIAL.name)
+            val tier = runCatching {
+                VocabularyUtilityTier.valueOf(tierName)
+            }.getOrDefault(VocabularyUtilityTier.EXAM_EDITORIAL)
             return VocabularyPromptConfig(
                 language = lang,
                 languageVariant = obj.optString("languageVariant", defaultVar),
@@ -447,6 +471,8 @@ data class VocabularyPromptConfig(
                 includePronunciation = obj.optBoolean("includePronunciation", true),
                 includeSynonymsAndCollocations = obj.optBoolean("includeSynonymsAndCollocations", true),
                 includeUsageNote = obj.optBoolean("includeUsageNote", true),
+                isHeadwordIndexOnly = obj.optBoolean("isHeadwordIndexOnly", false),
+                utilityTier = tier,
                 customInstruction = obj.optString("customInstruction", "")
             ).normalized()
         }

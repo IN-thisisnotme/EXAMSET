@@ -117,6 +117,8 @@ fun PromptGeneratorTab(
     val vocabState = viewModel.vocabularyPromptState
     val promptPresets by viewModel.promptPresets.collectAsState()
     val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
+    val headwordInbox by viewModel.headwordInbox.collectAsState()
+    val dismissedWordKeys by viewModel.dismissedWordKeys.collectAsState()
 
     var copied by remember { mutableStateOf(false) }
     val presetDialogState = rememberPromptPresetDialogState()
@@ -596,8 +598,8 @@ fun PromptGeneratorTab(
         }
     }
 
-    val existingVocabWordsForLang = remember(vocabularyDecks, vocabState.language) {
-        viewModel.existingVocabularyWordsForLanguage(vocabState.language)
+    val existingVocabWordsForLang = remember(vocabularyDecks, headwordInbox, dismissedWordKeys, vocabState.language) {
+        viewModel.existingVocabularyAndQueuedWordsForLanguage(vocabState.language)
     }
     val generatedVocabPrompt = remember(
         vConfig, vocabState.topic, vocabState.excludeAlreadySavedWords, existingVocabWordsForLang

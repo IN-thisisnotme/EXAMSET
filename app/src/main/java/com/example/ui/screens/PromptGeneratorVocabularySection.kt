@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.VocabularyLanguageVariants
 import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
+import com.example.model.VocabularyUtilityTier
 import com.example.ui.theme.ExamColorPalette
 
 class VocabularyPromptState {
@@ -84,6 +85,8 @@ class VocabularyPromptState {
     var includeSynonymsAndCollocations by mutableStateOf(true)
     var includeUsageNote by mutableStateOf(true)
     var excludeAlreadySavedWords by mutableStateOf(true)
+    var isHeadwordIndexOnly by mutableStateOf(false)
+    var utilityTier by mutableStateOf(VocabularyUtilityTier.EXAM_EDITORIAL)
     var customInstruction by mutableStateOf("")
 
     fun toConfig(): VocabularyPromptConfig = VocabularyPromptConfig(
@@ -99,6 +102,8 @@ class VocabularyPromptState {
         includePronunciation = includePronunciation,
         includeSynonymsAndCollocations = includeSynonymsAndCollocations,
         includeUsageNote = includeUsageNote,
+        isHeadwordIndexOnly = isHeadwordIndexOnly,
+        utilityTier = utilityTier,
         customInstruction = customInstruction
     ).normalized()
 
@@ -117,6 +122,8 @@ class VocabularyPromptState {
         includePronunciation = c.includePronunciation
         includeSynonymsAndCollocations = c.includeSynonymsAndCollocations
         includeUsageNote = c.includeUsageNote
+        isHeadwordIndexOnly = c.isHeadwordIndexOnly
+        utilityTier = c.utilityTier
         customInstruction = c.customInstruction
     }
 
@@ -135,6 +142,8 @@ class VocabularyPromptState {
         includeSynonymsAndCollocations = true
         includeUsageNote = true
         excludeAlreadySavedWords = true
+        isHeadwordIndexOnly = false
+        utilityTier = VocabularyUtilityTier.EXAM_EDITORIAL
         customInstruction = ""
     }
 
@@ -158,6 +167,22 @@ class VocabularyPromptState {
         val topicLine = topic.trim().ifBlank { "High-utility $domainClean vocabulary across everyday and real-world situations" }
         val count = wordCount.toInt().coerceIn(5, 60)
         val exCount = examplesPerWord.coerceIn(1, 4)
+
+        if (isHeadwordIndexOnly) {
+            return buildHeadwordIndexPrompt(
+                lang = lang,
+                resolvedVariant = resolvedVariant,
+                variantDirective = variantDirective,
+                lvl = lvl,
+                levelLabel = levelLabel,
+                langProficiencyGuide = langProficiencyGuide,
+                schemaLevelHint = schemaLevelHint,
+                domainClean = domainClean,
+                topicLine = topicLine,
+                count = count,
+                existingWordsToAvoid = existingWordsToAvoid
+            )
+        }
 
         return buildString {
             appendLine("Act as a master lexicographer and multi-language curriculum specialist for $lang.")
@@ -287,6 +312,68 @@ class VocabularyPromptState {
             }
         }.trim()
     }
+
+    private fun buildHeadwordIndexPrompt(
+        lang: String,
+        resolvedVariant: String,
+        variantDirective: String,
+        lvl: VocabularyLevel,
+        levelLabel: String,
+        langProficiencyGuide: String,
+        schemaLevelHint: String,
+        domainClean: String,
+        topicLine: String,
+        count: Int,
+        existingWordsToAvoid: List<String>
+    ): String {
+        return buildString {
+            appendLine("Act as a senior lexicographer and competitive-exam vocabulary curator for $lang.")
+            appendLine()
+            appendLine("Generate a lightweight Stage-1 Headword Index of EXACTLY $count high-utility, practical words/expressions in $lang.")
+            appendLine("Do NOT generate full definitions or example sentences yet — return ONLY the curated headword index JSON so the learner can filter duplicates and enrich selected words in Stage 2.")
+            appendLine()
+            appendLine("### SELECTION & UTILITY SPECIFICATION")
+            appendLine("- Target Language: $lang")
+            if (resolvedVariant.isNotBlank()) {
+                appendLine("- Regional Origin / Standard: ${VocabularyLanguageVariants.displayLabel(resolvedVariant)}")
+            }
+            appendLine("- Utility Tier: ${utilityTier.title} — ${utilityTier.subtitle}")
+            appendLine("- Target Proficiency Level: $levelLabel (code: ${lvl.code})")
+            appendLine("- Language Calibration: $langProficiencyGuide")
+            appendLine("- Domain / Register: $domainClean")
+            appendLine("- Focus Theme / Source Context: $topicLine")
+            appendLine()
+            appendLine("### STRICT CURATION & ANTI-NOISE RULES")
+            appendLine("1. PRACTICAL HIGH-UTILITY ONLY: Include only meaningful words genuinely encountered in daily intelligent reading, editorials, literature, and competitive exams. Strictly SKIP archaic trivia, ultra-obscure dictionary curiosities, and redundant filler.")
+            appendLine("2. ZERO REPETITION: Every entry must be a unique base headword (lemma). Do not repeat inflected forms.")
+            appendLine("3. SORTING: Sort the JSON array strictly in ASCENDING alphabetical order (A -> Z).")
+            appendLine("4. CALIBRATED LEVEL: Set `level` accurately to each word's true tier (`A1`, `A2`, `B1`, `B2`, `C1`, or `C2`).")
+            var nextNum = 5
+            if (variantDirective.isNotBlank()) {
+                appendLine("${nextNum++}. SPELLING STANDARD: $variantDirective")
+            }
+            if (excludeAlreadySavedWords && existingWordsToAvoid.isNotEmpty()) {
+                val capped = existingWordsToAvoid.take(150).joinToString(", ")
+                appendLine("${nextNum++}. EXCLUDE ALREADY SAVED / QUEUED / IGNORED WORDS: Do NOT include any of these words: $capped")
+            }
+            if (customInstruction.isNotBlank()) {
+                appendLine("${nextNum}. CUSTOM RULE: ${customInstruction.trim()}")
+            }
+            appendLine()
+            appendLine("### OUTPUT FORMAT: STRICT JSON ARRAY ONLY")
+            appendLine("Return ONLY a valid JSON array inside a single ```json code block starting with `[` and ending with `]`:")
+            appendLine("[")
+            appendLine("  {")
+            appendLine("    \"word\": \"headword\",")
+            appendLine("    \"language\": \"$lang\",")
+            appendLine("    \"level\": \"$schemaLevelHint\",")
+            appendLine("    \"pos\": \"noun | verb | adjective | adverb | idiom | phrasal verb\",")
+            appendLine("    \"domain\": \"$domainClean\",")
+            appendLine("    \"utilityReason\": \"1-line reason why this word is high-value in daily/exam usage\"")
+            appendLine("  }")
+            appendLine("]")
+        }.trim()
+    }
 }
 
 private val COMMON_VOCAB_LANGUAGES = listOf(
@@ -374,6 +461,97 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                             fontWeight = FontWeight.Bold,
                             color = colors.tealDark,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // Stage Toggle: Full Vocabulary Cards vs. Stage-1 Headwords Index (JSON)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        false to ("Full Word Cards" to "Meanings, examples & notes"),
+                        true to ("Headword Index (JSON)" to "Stage-1 list · Auto-dedupes")
+                    ).forEach { (indexOnly, labelPair) ->
+                        val selected = state.isHeadwordIndexOnly == indexOnly
+                        Surface(
+                            onClick = {
+                                state.isHeadwordIndexOnly = indexOnly
+                                if (indexOnly) state.outputFormat = "Strict JSON"
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(
+                                if (selected) 1.3.dp else 0.7.dp,
+                                if (selected) colors.teal else colors.border
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag(if (indexOnly) "vocab_stage_headword_index" else "vocab_stage_full_cards")
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Text(
+                                    text = labelPair.first,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) colors.tealDark else colors.inkBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = labelPair.second,
+                                    fontSize = 10.sp,
+                                    color = colors.inkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (state.isHeadwordIndexOnly) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Practical Utility Filter",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.inkMuted
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            VocabularyUtilityTier.entries.forEach { tier ->
+                                val selected = state.utilityTier == tier
+                                Surface(
+                                    onClick = { state.utilityTier = tier },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (selected) colors.amberLight else colors.surfaceVariant.copy(alpha = 0.45f),
+                                    border = BorderStroke(
+                                        if (selected) 1.2.dp else 0.7.dp,
+                                        if (selected) colors.amber else colors.border
+                                    ),
+                                    modifier = Modifier.testTag("vocab_utility_${tier.name.lowercase()}")
+                                ) {
+                                    Text(
+                                        text = tier.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) colors.amber else colors.inkBold,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = state.utilityTier.subtitle,
+                            fontSize = 10.5.sp,
+                            fontStyle = FontStyle.Italic,
+                            color = colors.inkMuted
                         )
                     }
                 }
@@ -757,47 +935,49 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "OUTPUT FORMAT & CARD DEPTH",
+                        text = if (state.isHeadwordIndexOnly) "HEADWORD BATCH VOLUME" else "OUTPUT FORMAT & CARD DEPTH",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.teal,
                         letterSpacing = 0.5.sp
                     )
 
-                    // JSON vs Structured Text toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "Strict JSON" to "Recommended • Zero-drift",
-                            "Structured Text" to "Easy to read & tweak"
-                        ).forEach { (fmt, sub) ->
-                            val selected = state.outputFormat == fmt
-                            Surface(
-                                onClick = { state.outputFormat = fmt },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (selected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
-                                border = BorderStroke(
-                                    if (selected) 1.3.dp else 0.7.dp,
-                                    if (selected) colors.teal else colors.border
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("vocab_format_${fmt.lowercase().replace(" ", "_")}")
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(
-                                        text = fmt,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selected) colors.tealDark else colors.inkBold
-                                    )
-                                    Text(
-                                        text = sub,
-                                        fontSize = 10.sp,
-                                        color = colors.inkMuted
-                                    )
+                    if (!state.isHeadwordIndexOnly) {
+                        // JSON vs Structured Text toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                "Strict JSON" to "Recommended • Zero-drift",
+                                "Structured Text" to "Easy to read & tweak"
+                            ).forEach { (fmt, sub) ->
+                                val selected = state.outputFormat == fmt
+                                Surface(
+                                    onClick = { state.outputFormat = fmt },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (selected) colors.tealLight else colors.surfaceVariant.copy(alpha = 0.4f),
+                                    border = BorderStroke(
+                                        if (selected) 1.3.dp else 0.7.dp,
+                                        if (selected) colors.teal else colors.border
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("vocab_format_${fmt.lowercase().replace(" ", "_")}")
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = fmt,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selected) colors.tealDark else colors.inkBold
+                                        )
+                                        Text(
+                                            text = sub,
+                                            fontSize = 10.sp,
+                                            color = colors.inkMuted
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -810,7 +990,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Vocabulary Word Count",
+                            text = if (state.isHeadwordIndexOnly) "Headwords to Index" else "Vocabulary Word Count",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.inkBold
@@ -837,66 +1017,68 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         )
                     )
 
-                    // Context examples per word selector (responsive & scrollable at large font scales)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Context Examples / Word",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 8.dp)
-                        )
+                    if (!state.isHeadwordIndexOnly) {
+                        // Context examples per word selector (responsive & scrollable at large font scales)
                         Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            listOf(1, 2, 3, 4).forEach { count ->
-                                val selected = state.examplesPerWord == count
-                                Surface(
-                                    onClick = { state.examplesPerWord = count },
-                                    shape = RoundedCornerShape(7.dp),
-                                    color = if (selected) colors.teal else colors.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(0.7.dp, if (selected) colors.teal else colors.border)
-                                ) {
-                                    Text(
-                                        text = "${count}x",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (selected) Color.White else colors.inkBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
+                            Text(
+                                text = "Context Examples / Word",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.inkBold,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
+                            )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(1, 2, 3, 4).forEach { count ->
+                                    val selected = state.examplesPerWord == count
+                                    Surface(
+                                        onClick = { state.examplesPerWord = count },
+                                        shape = RoundedCornerShape(7.dp),
+                                        color = if (selected) colors.teal else colors.surfaceVariant.copy(alpha = 0.5f),
+                                        border = BorderStroke(0.7.dp, if (selected) colors.teal else colors.border)
+                                    ) {
+                                        Text(
+                                            text = "${count}x",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selected) Color.White else colors.inkBold,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
+
+                        HorizontalDivider(color = colors.borderLight)
+
+                        // Richness toggles
+                        VocabCheckRow(
+                            label = "Pronunciation / IPA / Romanization",
+                            checked = state.includePronunciation,
+                            onCheckedChange = { state.includePronunciation = it },
+                            colors = colors
+                        )
+                        VocabCheckRow(
+                            label = "Synonyms, Antonyms & Common Collocations",
+                            checked = state.includeSynonymsAndCollocations,
+                            onCheckedChange = { state.includeSynonymsAndCollocations = it },
+                            colors = colors
+                        )
+                        VocabCheckRow(
+                            label = "Usage, Tone & Nuance Note",
+                            checked = state.includeUsageNote,
+                            onCheckedChange = { state.includeUsageNote = it },
+                            colors = colors
+                        )
                     }
-
-                    HorizontalDivider(color = colors.borderLight)
-
-                    // Richness toggles
-                    VocabCheckRow(
-                        label = "Pronunciation / IPA / Romanization",
-                        checked = state.includePronunciation,
-                        onCheckedChange = { state.includePronunciation = it },
-                        colors = colors
-                    )
-                    VocabCheckRow(
-                        label = "Synonyms, Antonyms & Common Collocations",
-                        checked = state.includeSynonymsAndCollocations,
-                        onCheckedChange = { state.includeSynonymsAndCollocations = it },
-                        colors = colors
-                    )
-                    VocabCheckRow(
-                        label = "Usage, Tone & Nuance Note",
-                        checked = state.includeUsageNote,
-                        onCheckedChange = { state.includeUsageNote = it },
-                        colors = colors
-                    )
 
                     OutlinedTextField(
                         value = state.customInstruction,
@@ -916,7 +1098,11 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
     // 4. Constructed Vocabulary Prompt Preview + Actions Card
     item(key = "vocab_prompt_preview_card") {
         val lvlBadge = VocabularyLevel.fromCode(state.levelCode).compactBadge(state.customLevelLabel)
-        val fmtLabel = if (state.outputFormat == "Structured Text") "TEXT" else "JSON"
+        val fmtLabel = when {
+            state.isHeadwordIndexOnly -> "INDEX"
+            state.outputFormat == "Structured Text" -> "TEXT"
+            else -> "JSON"
+        }
         Card(
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surface),

@@ -2441,72 +2441,156 @@ object VocabularyEngine {
         )
     }
 
+    fun findOrCreateTargetDeck(
+        currentDecks: List<VocabularyDeck>,
+        language: String,
+        levelCode: String,
+        customLevelLabel: String = "",
+        variant: String = ""
+    ): Pair<VocabularyDeck, List<VocabularyDeck>> {
+        val cleanLang = language.trim().ifBlank { "English" }
+        val safeLevel = VocabularyLevel.fromCode(levelCode)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?: VocabularyLevel.INTERMEDIATE
+        val safeCustom = if (safeLevel == VocabularyLevel.CUSTOM) customLevelLabel.trim() else ""
+        val cleanVariant = if (VocabularyLanguageVariants.isEnglish(cleanLang)) {
+            VocabularyLanguageVariants.normalizeVariant(cleanLang, variant)
+        } else variant.trim()
+
+        val existing = currentDecks.firstOrNull { deck ->
+            deck.language.trim().equals(cleanLang, ignoreCase = true) &&
+                deck.resolvedLevel() == safeLevel &&
+                (safeLevel != VocabularyLevel.CUSTOM || deck.customLevelLabel.trim().equals(safeCustom, ignoreCase = true))
+        }
+        if (existing != null) {
+            return existing to currentDecks
+        }
+        val now = System.currentTimeMillis()
+        val levelTitle = safeLevel.displayTitleForLanguage(cleanLang, safeCustom)
+        val newDeck = VocabularyDeck(
+            title = "$cleanLang • $levelTitle",
+            language = cleanLang,
+            languageVariant = cleanVariant,
+            translationLanguage = "",
+            levelCode = safeLevel.code,
+            customLevelLabel = safeCustom,
+            domain = "General",
+            entries = emptyList(),
+            createdAt = now,
+            updatedAt = now
+        )
+        return newDeck to (listOf(newDeck) + currentDecks)
+    }
+
+    fun parseQuickCaptureHeadwords(
+        rawInput: String,
+        defaultLanguage: String = "English",
+        defaultLevelCode: String = "B2",
+        defaultDomain: String = "Quick Capture"
+    ): List<HeadwordQueueItem> {
+        val cleanLang = defaultLanguage.trim().ifBlank { "English" }
+        val safeLevel = VocabularyLevel.fromCode(defaultLevelCode)
+            .takeUnless { it == VocabularyLevel.MIXED }
+            ?.code ?: "B2"
+        val tokens = rawInput
+            .split('\n', ',', ';', '|')
+            .map { it.trim().removePrefix("-").removePrefix("•").removePrefix("*").trim() }
+            .filter { it.isNotBlank() }
+
+        return tokens.mapNotNull { token ->
+            // Support optional context hint in parentheses: e.g., "sanction (penalty)"
+            val hintMatch = Regex("^(.+?)\\s*\\(([^)]+)\\)$").matchEntire(token)
+            val word = (hintMatch?.groupValues?.get(1) ?: token).trim()
+            val hint = hintMatch?.groupValues?.get(2)?.trim().orEmpty()
+            if (word.isBlank()) return@mapNotNull null
+            HeadwordQueueItem(
+                word = word,
+                language = cleanLang,
+                levelCode = safeLevel,
+                domain = defaultDomain,
+                utilityReason = if (hint.isNotBlank()) "Context hint: $hint" else ""
+            )
+        }
+    }
+
     fun parseHeadwordsJson(
         rawJson: String,
         defaultLanguage: String = "English"
     ): List<HeadwordQueueItem> {
-        val trimmed = rawJson.trim()
+        val trimmed = stripOuterCodeFences(rawJson)
         if (trimmed.isBlank()) return emptyList()
 
-        return runCatching {
-            val cleaned = trimmed
-                .replace(Regex("""^```[a-zA-Z]*\s*"""), "")
-                .replace(Regex("""\s*```$"""), "")
-                .trim()
-
-            val jsonArray = when {
-                cleaned.startsWith("[") -> JSONArray(cleaned)
-                cleaned.startsWith("{") -> {
-                    val root = JSONObject(cleaned)
-                    root.optJSONArray("headwords")
-                        ?: root.optJSONArray("words")
-                        ?: root.optJSONArray("items")
-                        ?: JSONArray()
-                }
-                else -> {
-                    val start = cleaned.indexOf('[')
-                    val end = cleaned.lastIndexOf(']')
-                    if (start >= 0 && end > start) {
-                        JSONArray(cleaned.substring(start, end + 1))
-                    } else {
-                        JSONArray()
+        for (candidate in buildJsonSanitizedCandidates(trimmed)) {
+            val parsed = runCatching {
+                val jsonArray = when {
+                    candidate.startsWith("[") -> JSONArray(candidate)
+                    candidate.startsWith("{") -> {
+                        val root = JSONObject(candidate)
+                        root.optJSONArray("headwords")
+                            ?: root.optJSONArray("words")
+                            ?: root.optJSONArray("items")
+                            ?: root.optJSONArray("data")
+                            ?: JSONArray()
+                    }
+                    else -> {
+                        extractBalancedJsonArray(candidate)?.let { JSONArray(it) } ?: JSONArray()
                     }
                 }
-            }
 
-            buildList {
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.optJSONObject(i) ?: continue
-                    val word = (obj.optString("word", "").takeIf { it.isNotBlank() }
-                        ?: obj.optString("headword", "")).trim()
-                    if (word.isBlank()) continue
-
-                    val lang = obj.optString("language", defaultLanguage).trim().ifBlank { defaultLanguage }
-                    val level = (obj.optString("level", "").takeIf { it.isNotBlank() }
-                        ?: obj.optString("levelCode", "B2")).trim().ifBlank { "B2" }
-                    val customLevel = obj.optString("customLevelLabel", "").trim()
-                    val pos = (obj.optString("pos", "").takeIf { it.isNotBlank() }
-                        ?: obj.optString("partOfSpeech", "")).trim()
-                    val domain = (obj.optString("domain", "").takeIf { it.isNotBlank() }
-                        ?: obj.optString("category", "Competitive Exam Editorial")).trim()
-                    val reason = (obj.optString("utilityReason", "").takeIf { it.isNotBlank() }
-                        ?: obj.optString("reason", "")
-                        ?: obj.optString("context", "")).trim()
-
-                    add(
-                        HeadwordQueueItem(
-                            word = word,
-                            language = lang,
-                            levelCode = level,
-                            customLevelLabel = customLevel,
-                            partOfSpeech = pos,
-                            domain = domain,
-                            utilityReason = reason
-                        )
-                    )
+                buildList {
+                    for (i in 0 until jsonArray.length()) {
+                        val rawElem = jsonArray.opt(i)
+                        when (rawElem) {
+                            is String -> {
+                                val word = rawElem.trim()
+                                if (word.isNotBlank()) {
+                                    add(
+                                        HeadwordQueueItem(
+                                            word = word,
+                                            language = defaultLanguage.trim().ifBlank { "English" },
+                                            levelCode = "B2",
+                                            domain = "Curated Index"
+                                        )
+                                    )
+                                }
+                            }
+                            is JSONObject -> {
+                                val word = firstNonBlank(rawElem, "word", "headword", "term", "vocab")
+                                if (word.isBlank()) continue
+                                val lang = firstNonBlank(rawElem, "language", "lang", "targetLanguage")
+                                    .ifBlank { defaultLanguage.trim().ifBlank { "English" } }
+                                val level = firstNonBlank(rawElem, "level", "levelCode", "cefr", "proficiency")
+                                    .ifBlank { "B2" }
+                                val resolvedLvl = VocabularyLevel.fromCode(level)
+                                    .takeUnless { it == VocabularyLevel.MIXED }
+                                    ?: VocabularyLevel.UPPER_INTERMEDIATE
+                                val customLevel = if (resolvedLvl == VocabularyLevel.CUSTOM) level else {
+                                    rawElem.optString("customLevelLabel", "").trim()
+                                }
+                                val pos = firstNonBlank(rawElem, "pos", "partOfSpeech", "category", "wordClass")
+                                val domain = firstNonBlank(rawElem, "domain", "category", "register")
+                                    .ifBlank { "Competitive Exam Editorial" }
+                                val reason = firstNonBlank(rawElem, "utilityReason", "reason", "utility", "context", "hint")
+                                add(
+                                    HeadwordQueueItem(
+                                        word = word,
+                                        language = lang,
+                                        levelCode = resolvedLvl.code,
+                                        customLevelLabel = customLevel,
+                                        partOfSpeech = pos,
+                                        domain = domain,
+                                        utilityReason = reason
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        }.getOrDefault(emptyList())
+            }.getOrNull()
+
+            if (!parsed.isNullOrEmpty()) return parsed
+        }
+        return emptyList()
     }
 
     fun filterNewHeadwords(
@@ -2578,49 +2662,60 @@ object VocabularyEngine {
         items: List<HeadwordQueueItem>,
         targetLanguage: String,
         nativeExplanationLanguage: String = "English",
-        preferredVariant: String = "US"
+        preferredVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT
     ): String {
-        val wordListStr = items.joinToString(", ") { it.word.trim() }
         val lang = targetLanguage.trim().ifBlank { "English" }
-        val transLang = nativeExplanationLanguage.trim().ifBlank { "English" }
-        val hasTrans = !transLang.equals(lang, ignoreCase = true)
+        val resolvedVariant = VocabularyLanguageVariants.normalizeVariant(lang, preferredVariant)
+        val variantDirective = VocabularyLanguageVariants.promptDirective(lang, resolvedVariant)
+        val transLang = nativeExplanationLanguage.trim()
+        val hasTrans = transLang.isNotBlank() && !transLang.equals("None", ignoreCase = true) && !transLang.equals(lang, ignoreCase = true)
+
+        val headwordLines = items.joinToString("\n") { item ->
+            val hint = item.utilityReason.takeIf { it.isNotBlank() }?.let { " | Note: $it" }.orEmpty()
+            val posHint = item.partOfSpeech.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+            "- ${item.word.trim()}$posHint [Target Level: ${item.levelCode}]$hint"
+        }
 
         return buildString {
             appendLine("Act as a chief lexicographer, exam setter, and language pedagogue for $lang.")
-            appendLine("Enrich the following curated list of ${items.size} headwords into full vocabulary cards:")
-            appendLine("HEADWORDS TO ENRICH: $wordListStr")
+            appendLine("Enrich ONLY the following ${items.size} headword(s) into complete vocabulary cards:")
+            appendLine(headwordLines)
             appendLine()
             appendLine("### STRICT INSTRUCTIONS:")
-            appendLine("1. Generate comprehensive, multi-layer cards ONLY for the words specified above. Do not substitute words.")
-            appendLine("2. LANGUAGE STANDARD: $lang (Variant: $preferredVariant).")
-            appendLine("3. For each word provide: accurate part of speech, CEFR level (A1-C2), clear definition, IPA pronunciation/reading guide, 2-3 natural examples across different contexts (Everyday, Workplace/Academic, Formal/Editorial), natural synonyms, collocations, and a 1-sentence usage/nuance note.")
+            appendLine("1. Generate complete cards ONLY for the exact headwords listed above. Do NOT omit, rename, or substitute words.")
+            appendLine("2. LANGUAGE STANDARD: $lang${if (resolvedVariant.isNotBlank()) " (${VocabularyLanguageVariants.displayLabel(resolvedVariant)})" else ""}.")
+            if (variantDirective.isNotBlank()) {
+                appendLine("3. SPELLING & PRONUNCIATION: $variantDirective")
+            }
+            appendLine("4. For each word verify/provide: accurate partOfSpeech, calibrated CEFR level (`A1`–`C2`), crisp learner-friendly meaning, IPA/romanization pronunciation, 3 natural example sentences across distinct contexts (Everyday, Workplace/Academic, Editorial/Formal), synonyms, antonyms, collocations, and a 1-sentence usageNote.")
             if (hasTrans) {
-                appendLine("4. Provide natural translations in $transLang for definitions and examples.")
+                appendLine("5. Provide natural $transLang translations for each definition and example sentence.")
             }
             appendLine()
             appendLine("### OUTPUT FORMAT: STRICT JSON ARRAY")
-            appendLine("Return ONLY a valid JSON array of objects with the exact schema below:")
+            appendLine("Return ONLY a valid JSON array inside a single ```json code block starting with `[` and ending with `]`:")
             appendLine("[")
             appendLine("  {")
-            appendLine("    \"word\": \"[Headword]\",")
-            appendLine("    \"pronunciation\": \"[/IPA/ or reading]\",")
+            appendLine("    \"word\": \"headword\",")
+            appendLine("    \"language\": \"$lang\",")
+            if (resolvedVariant.isNotBlank()) appendLine("    \"languageVariant\": \"$resolvedVariant\",")
+            appendLine("    \"pronunciation\": \"/IPA/ or romanization\",")
             appendLine("    \"partOfSpeech\": \"noun | verb | adjective | adverb | idiom | phrasal verb\",")
-            appendLine("    \"levelCode\": \"B2\",")
-            appendLine("    \"meaning\": \"[Clear, crisp definition in $lang]\",")
-            if (hasTrans) {
-                appendLine("    \"translation\": \"[Natural $transLang translation]\",")
-                appendLine("    \"translationLanguage\": \"$transLang\",")
-            }
+            appendLine("    \"level\": \"A1 | A2 | B1 | B2 | C1 | C2\",")
+            appendLine("    \"meaning\": \"Clear, precise definition in $lang\",")
+            appendLine("    \"translation\": \"${if (hasTrans) "Natural $transLang translation" else ""}\",")
+            if (hasTrans) appendLine("    \"translationLanguage\": \"$transLang\",")
             appendLine("    \"examples\": [")
-            appendLine("      { \"sentence\": \"[Example 1]\", \"context\": \"Everyday\"${if (hasTrans) ", \"translation\": \"[Translation 1]\"" else ""} },")
-            appendLine("      { \"sentence\": \"[Example 2]\", \"context\": \"Academic/Workplace\"${if (hasTrans) ", \"translation\": \"[Translation 2]\"" else ""} },")
-            appendLine("      { \"sentence\": \"[Example 3]\", \"context\": \"Editorial/Formal\"${if (hasTrans) ", \"translation\": \"[Translation 3]\"" else ""} }")
+            appendLine("      { \"context\": \"Everyday\", \"sentence\": \"Natural sentence 1\", \"translation\": \"${if (hasTrans) "Translation 1" else ""}\" },")
+            appendLine("      { \"context\": \"Workplace/Academic\", \"sentence\": \"Natural sentence 2\", \"translation\": \"${if (hasTrans) "Translation 2" else ""}\" },")
+            appendLine("      { \"context\": \"Editorial/Formal\", \"sentence\": \"Natural sentence 3\", \"translation\": \"${if (hasTrans) "Translation 3" else ""}\" }")
             appendLine("    ],")
-            appendLine("    \"synonyms\": [\"synonym1\", \"synonym2\"],")
-            appendLine("    \"collocations\": [\"collocation1\", \"collocation2\"],")
-            appendLine("    \"usageNote\": \"[1-sentence nuance note]\"")
+            appendLine("    \"synonyms\": [\"syn1\", \"syn2\"],")
+            appendLine("    \"antonyms\": [\"ant1\"],")
+            appendLine("    \"collocations\": [\"collocation 1\", \"collocation 2\"],")
+            appendLine("    \"usageNote\": \"1-sentence register/nuance note\"")
             appendLine("  }")
             appendLine("]")
-        }
+        }.trim()
     }
 }

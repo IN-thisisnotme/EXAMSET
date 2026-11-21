@@ -1164,8 +1164,12 @@ object VaultArchiveEngine {
                 appPrefs.saveHeadwordInbox(incomingItems)
             } else if (incomingItems.isNotEmpty()) {
                 val current = appPrefs.getHeadwordInbox()
-                val currentKeys = current.map { it.normalizedWordKey() }.toSet()
-                val toAdd = incomingItems.filter { it.normalizedWordKey() !in currentKeys }
+                val currentPairs = current.map {
+                    it.language.trim().lowercase() to it.normalizedWordKey()
+                }.toSet()
+                val toAdd = incomingItems.filter {
+                    (it.language.trim().lowercase() to it.normalizedWordKey()) !in currentPairs
+                }
                 appPrefs.saveHeadwordInbox(current + toAdd)
             }
         }

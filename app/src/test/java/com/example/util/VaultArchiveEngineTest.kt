@@ -199,6 +199,18 @@ class VaultArchiveEngineTest {
         )
         appPrefs.setPreferredEnglishVariant("UK")
         appPrefs.setVocabularyReminderEnabled(true)
+        appPrefs.saveHeadwordInbox(
+            listOf(
+                com.example.model.HeadwordQueueItem(
+                    id = "hq_1",
+                    word = "Obfuscate",
+                    language = "English",
+                    levelCode = "C1",
+                    utilityReason = "Frequently tested in editorial passages"
+                )
+            )
+        )
+        appPrefs.saveDismissedWordKeys(setOf("trivial"))
 
         val archiveFile = File(tempDir, "test_backup.examset.zip")
         val manifest = VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
@@ -236,6 +248,8 @@ class VaultArchiveEngineTest {
         appPrefs.savePromptPresets(emptyList())
         appPrefs.clearFlashcardSrsMap(noteId)
         appPrefs.setVocabularyReminderEnabled(false)
+        appPrefs.saveHeadwordInbox(emptyList())
+        appPrefs.saveDismissedWordKeys(emptySet())
 
         val restoredCounts = VaultArchiveEngine.restoreFromPreview(
             context = context,
@@ -276,8 +290,19 @@ class VaultArchiveEngineTest {
         assertEquals(3, restoredVocabSrs["deck_en_c1"]?.get("word_ephemeral")?.reviewCount)
         assertEquals(4, restoredFlashcardSrs[0]?.reviewCount)
         assertEquals(1, appPrefs.getPromptPresets().size)
+        assertEquals(listOf("Obfuscate"), appPrefs.getHeadwordInbox().map { it.word })
+        assertEquals(setOf("trivial"), appPrefs.getDismissedWordKeys())
 
-        // Verify SMART_MERGE does not duplicate already present records
+        // Verify SMART_MERGE does not duplicate already present records and preserves distinct inbox/dismissed items
+        appPrefs.saveHeadwordInbox(
+            appPrefs.getHeadwordInbox() + com.example.model.HeadwordQueueItem(
+                id = "hq_local",
+                word = "Obfuscate",
+                language = "German",
+                levelCode = "B2"
+            )
+        )
+        appPrefs.addDismissedWordKey("localignored")
         VaultArchiveEngine.restoreFromPreview(
             context = context,
             db = db,
@@ -291,6 +316,8 @@ class VaultArchiveEngineTest {
         assertEquals(1, db.paperDao().getAllAttemptsOnce().size)
         assertEquals(1, appPrefs.getVocabularyDecks().size)
         assertEquals(2, appPrefs.getVocabularyDecks().first().entries.size)
+        assertEquals(2, appPrefs.getHeadwordInbox().size)
+        assertEquals(setOf("trivial", "localignored"), appPrefs.getDismissedWordKeys())
     }
 
     @Test

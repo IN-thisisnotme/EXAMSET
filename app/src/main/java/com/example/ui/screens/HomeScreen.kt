@@ -151,6 +151,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.components.EditMetadataDialog
+import com.example.ui.components.HeadwordInboxDialog
 import com.example.ui.components.InputBottomSheet
 import com.example.ui.components.OmrScannerDialog
 import com.example.ui.components.PrintConfigDialog
@@ -1481,17 +1482,30 @@ fun HomeScreen(
         val preferredEnglishVariant by viewModel.preferredEnglishVariant.collectAsState()
         val wordOfTheDayState by viewModel.wordOfTheDayState.collectAsState()
         val vocabReminderEnabled by viewModel.vocabularyReminderEnabled.collectAsState()
+        val headwordInbox by viewModel.headwordInbox.collectAsState()
+        val headwordCountsByLang = remember(headwordInbox) {
+            headwordInbox.groupingBy { it.language.trim().lowercase(java.util.Locale.ROOT) }.eachCount()
+        }
+        var showHeadwordInboxDialog by remember { mutableStateOf(false) }
+        var headwordInboxLangFilter by remember { mutableStateOf<String?>(null) }
+
         VocabularyHubDialog(
             decks = vocabDecks,
             srsByDeck = vocabSrs,
             preferredEnglishVariant = preferredEnglishVariant,
             wordOfTheDayState = wordOfTheDayState,
             vocabularyReminderEnabled = vocabReminderEnabled,
+            headwordInboxCount = headwordInbox.size,
+            headwordInboxCountsByLanguage = headwordCountsByLang,
             initialLanguageFilter = viewModel.vocabularyHubInitialLanguage,
             onDismiss = { viewModel.closeVocabularyHub() },
             onOpenAiPromptBuilderForVocab = {
                 viewModel.promptBuilderMode = PromptBuilderMode.VOCABULARY
                 viewModel.selectTab(5)
+            },
+            onOpenHeadwordInbox = { lang ->
+                headwordInboxLangFilter = lang
+                showHeadwordInboxDialog = true
             },
             onChangeEnglishVariant = { variant -> viewModel.setPreferredEnglishVariant(variant) },
             onToggleVocabularyReminder = { enabled -> viewModel.setVocabularyReminderEnabled(enabled) },
@@ -1543,6 +1557,14 @@ fun HomeScreen(
                 viewModel.applyMixedVocabularyAuditFixes(originByEntryId, findings)
             }
         )
+
+        if (showHeadwordInboxDialog) {
+            HeadwordInboxDialog(
+                viewModel = viewModel,
+                initialLanguageFilter = headwordInboxLangFilter,
+                onDismiss = { showHeadwordInboxDialog = false }
+            )
+        }
     }
 
     // Full-screen edge-to-edge Knowledge Sets Studio Editor Overlay (no Dialog/IME clipping)

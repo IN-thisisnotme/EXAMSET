@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
@@ -161,10 +162,13 @@ fun VocabularyHubDialog(
     preferredEnglishVariant: String = VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT,
     wordOfTheDayState: WordOfTheDayUiState = WordOfTheDayUiState.Hidden("", 0),
     vocabularyReminderEnabled: Boolean = false,
+    headwordInboxCount: Int = 0,
+    headwordInboxCountsByLanguage: Map<String, Int> = emptyMap(),
     initialLanguageFilter: String? = null,
     initialDeckId: String? = null,
     onDismiss: () -> Unit,
     onOpenAiPromptBuilderForVocab: () -> Unit,
+    onOpenHeadwordInbox: (languageFilter: String?) -> Unit = {},
     onChangeEnglishVariant: (String) -> Unit = {},
     onToggleVocabularyReminder: (Boolean) -> Unit = {},
     onActiveLanguageChanged: (String?) -> Unit = {},
@@ -342,6 +346,7 @@ fun VocabularyHubDialog(
                         preferredEnglishVariant = preferredEnglishVariant,
                         ttsSpeaker = ttsSpeaker,
                         reminderEnabled = vocabularyReminderEnabled,
+                        headwordInboxCount = headwordInboxCount,
                         onToggleReminder = onToggleVocabularyReminder,
                         searchQuery = hubSearchQuery,
                         onSearchQueryChange = { hubSearchQuery = it },
@@ -374,6 +379,7 @@ fun VocabularyHubDialog(
                         onOpenImport = {
                             openImportFromContext(null, "English", VocabularyLevel.INTERMEDIATE.code, "")
                         },
+                        onOpenHeadwordInbox = { onOpenHeadwordInbox(null) },
                         onOpenAiPromptBuilder = {
                             onDismiss()
                             onOpenAiPromptBuilderForVocab()
@@ -389,7 +395,9 @@ fun VocabularyHubDialog(
                         preferredEnglishVariant = preferredEnglishVariant,
                         ttsSpeaker = ttsSpeaker,
                         wordOfTheDayState = wordOfTheDayState,
+                        languageInboxCount = headwordInboxCountsByLanguage[tier.language.trim().lowercase(Locale.ROOT)] ?: 0,
                         onBack = { navTier = VocabNavTier.LanguagesRoot },
+                        onOpenHeadwordInbox = { onOpenHeadwordInbox(tier.language) },
                         onChangeEnglishVariant = onChangeEnglishVariant,
                         onCycleNextWordOfTheDay = { onCycleNextWordOfTheDay(tier.language) },
                         onOpenWotdHistory = { readyState -> showWotdHistoryForState = readyState },
@@ -749,6 +757,7 @@ private fun VocabularyLanguagesRootView(
     preferredEnglishVariant: String,
     ttsSpeaker: VocabularyTtsSpeaker,
     reminderEnabled: Boolean,
+    headwordInboxCount: Int = 0,
     onToggleReminder: (Boolean) -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
@@ -758,6 +767,7 @@ private fun VocabularyLanguagesRootView(
     onOpenAllDueReview: () -> Unit,
     onOpenWordHit: (VocabularyDeck, VocabularyEntry) -> Unit,
     onOpenImport: () -> Unit,
+    onOpenHeadwordInbox: () -> Unit = {},
     onOpenAiPromptBuilder: () -> Unit
 ) {
     val colors = ExamTheme.colors
@@ -938,6 +948,83 @@ private fun VocabularyLanguagesRootView(
                             .fillMaxWidth()
                             .testTag("vocab_hub_search_input")
                     )
+                }
+            }
+
+            if (q.isBlank()) {
+                item(key = "vocab_headword_inbox_banner") {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.surface),
+                        border = BorderStroke(0.9.dp, colors.teal.copy(alpha = 0.45f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("vocab_headword_inbox_banner")
+                    ) {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.widthIn(min = 190.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = colors.tealLight,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Inbox,
+                                            contentDescription = null,
+                                            tint = colors.tealDark,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = if (headwordInboxCount > 0) {
+                                            "Headword Inbox ($headwordInboxCount)"
+                                        } else {
+                                            "Headword Inbox"
+                                        },
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = colors.inkBold
+                                    )
+                                    Text(
+                                        text = if (headwordInboxCount > 0) {
+                                            "$headwordInboxCount queued word(s) awaiting enrichment — hidden from WOTD & SRS."
+                                        } else {
+                                            "Capture bare words or import Stage-1 AI JSON with zero duplicates."
+                                        },
+                                        fontSize = 11.5.sp,
+                                        color = colors.inkMuted
+                                    )
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onOpenHeadwordInbox,
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, colors.teal),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("vocab_open_headword_inbox_button")
+                            ) {
+                                Icon(Icons.Default.Inbox, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open Inbox", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1333,7 +1420,9 @@ private fun VocabularyLanguageFolderView(
     preferredEnglishVariant: String,
     ttsSpeaker: VocabularyTtsSpeaker,
     wordOfTheDayState: WordOfTheDayUiState,
+    languageInboxCount: Int = 0,
     onBack: () -> Unit,
+    onOpenHeadwordInbox: () -> Unit = {},
     onChangeEnglishVariant: (String) -> Unit,
     onCycleNextWordOfTheDay: () -> Unit,
     onOpenWotdHistory: (WordOfTheDayUiState.Ready) -> Unit,
@@ -1517,6 +1606,35 @@ private fun VocabularyLanguageFolderView(
                         },
                         onPracticeMixed = onPracticeWotdInMixed,
                         onOpenSourceLevel = { onOpenWotdSourceLevel(wordOfTheDayState) }
+                    )
+                }
+            }
+
+            item(key = "vocab_lang_inbox_strip") {
+                OutlinedButton(
+                    onClick = onOpenHeadwordInbox,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(0.9.dp, colors.teal.copy(alpha = 0.55f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = colors.surface,
+                        contentColor = colors.tealDark
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("vocab_lang_open_inbox_button")
+                ) {
+                    Icon(Icons.Default.Inbox, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (languageInboxCount > 0) {
+                            "$language Headword Inbox ($languageInboxCount queued)"
+                        } else {
+                            "Open $language Headword Inbox"
+                        },
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }

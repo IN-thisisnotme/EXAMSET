@@ -368,6 +368,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .sortedBy { it.lowercase() }
     }
 
+    fun existingVocabularyAndQueuedWordsForLanguage(language: String): List<String> {
+        val clean = language.trim().lowercase().ifBlank { "english" }
+        val deckWords = existingVocabularyWordsForLanguage(language)
+        val inboxWords = _headwordInbox.value
+            .filter { it.language.trim().lowercase() == clean }
+            .map { it.word.trim() }
+            .filter { it.isNotBlank() }
+        val dismissed = _dismissedWordKeys.value.toList()
+        return (deckWords + inboxWords + dismissed)
+            .distinctBy { VocabularyEntry.normalizeVocabularyWordKey(it) }
+            .sortedBy { it.lowercase() }
+    }
+
     fun commitVocabularyImport(
         targetDeckId: String?,
         title: String,
@@ -475,6 +488,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         _vocabularyDecks.value = decksMutable
         appPreferences.saveVocabularyDecks(decksMutable)
+        graduateHeadwordsForEntries(newEntriesToAdd + analysis.duplicateItems.map { it.incoming }, cleanLang)
         refreshActiveWordOfTheDay()
         _statusMessage.value = "Saved \"${updatedTargetDeck.title}\" (${updatedTargetDeck.entries.size} words)"
         return updatedTargetDeck
@@ -634,6 +648,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         _vocabularyDecks.value = decksMutable
         appPreferences.saveVocabularyDecks(decksMutable)
+        val routedEntries = addedEntriesByDeckId.values.flatten() + analysis.duplicateItems.map { it.incoming }
+        graduateHeadwordsForEntries(routedEntries, fallbackLanguage = "")
         refreshActiveWordOfTheDay()
         val totalAdded = addedEntriesByDeckId.values.sumOf { it.size }
         _statusMessage.value = "Routed $totalAdded word(s) across ${touchedDecks.size} set(s)"
@@ -928,6 +944,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return filterResult
     }
 
+    fun addQuickHeadwordsToInbox(
+        rawInput: String,
+        defaultLanguage: String = "English",
+        defaultLevelCode: String = "B2"
+    ): HeadwordFilterResult {
+        val parsed = VocabularyEngine.parseQuickCaptureHeadwords(
+            rawInput = rawInput,
+            defaultLanguage = defaultLanguage,
+            defaultLevelCode = defaultLevelCode
+        )
+        val filterResult = VocabularyEngine.filterNewHeadwords(
+            incoming = parsed,
+            existingDecks = _vocabularyDecks.value,
+            existingQueue = _headwordInbox.value,
+            dismissedKeys = _dismissedWordKeys.value
+        )
+        if (filterResult.addedItems.isNotEmpty()) {
+            val updatedQueue = _headwordInbox.value + filterResult.addedItems
+            _headwordInbox.value = updatedQueue
+            appPreferences.saveHeadwordInbox(updatedQueue)
+        }
+        val skippedTotal = filterResult.skippedAlreadyInDeckCount +
+            filterResult.skippedAlreadyInQueueCount +
+            filterResult.skippedDismissedCount
+        _statusMessage.value = if (filterResult.addedItems.isNotEmpty()) {
+            "Stored ${filterResult.addedItems.size} headword(s) silently in inbox" +
+                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/saved/ignored)" else ""
+        } else {
+            "No new headwords stored" +
+                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/saved/ignored)" else ""
+        }
+        return filterResult
+    }
+
     fun dismissHeadword(queueItemId: String) {
         val item = _headwordInbox.value.firstOrNull { it.id == queueItemId } ?: return
         val norm = item.normalizedWordKey()
@@ -957,16 +1007,113 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun generateEnrichmentPromptForBatch(
         language: String,
-        maxCount: Int = 15
+        maxCount: Int = 15,
+        translationLanguage: String = vocabularyPromptState.translationLanguage
     ): String {
         val langItems = _headwordInbox.value.filter { it.language.equals(language, ignoreCase = true) }
         val batch = langItems.take(maxCount)
         return VocabularyEngine.buildStage2EnrichmentPrompt(
             items = batch,
             targetLanguage = language,
-            nativeExplanationLanguage = "English",
+            nativeExplanationLanguage = translationLanguage,
             preferredVariant = _preferredEnglishVariant.value
         )
+    }
+
+    fun importEnrichedStage2CardsFromInbox(
+        rawInput: String,
+        defaultLanguage: String = "English"
+    ): Int {
+        val cleanLang = defaultLanguage.trim().ifBlank { "English" }
+        val parsed = VocabularyEngine.parseVocabularyInput(
+            rawInput = rawInput,
+            preferredEnglishVariant = _preferredEnglishVariant.value
+        )
+        if (parsed.entries.isEmpty()) {
+            _statusMessage.value = parsed.warnings.firstOrNull()
+                ?: "No complete vocabulary cards found. Ensure meanings are included."
+            return 0
+        }
+
+        val stampedEntries = parsed.entries.map { entry ->
+            val resolvedLang = entry.language.trim().ifBlank { cleanLang }
+            val resolvedVariant = entry.languageVariant.trim().ifBlank {
+                if (VocabularyLanguageVariants.isEnglish(resolvedLang)) _preferredEnglishVariant.value else ""
+            }
+            entry.copy(language = resolvedLang, languageVariant = resolvedVariant)
+        }
+        val stampedParse = parsed.copy(entries = stampedEntries)
+        val buckets = VocabularyEngine.buildSmartRoutingPlan(
+            parseResult = stampedParse,
+            allDecks = _vocabularyDecks.value,
+            preferredEnglishVariant = _preferredEnglishVariant.value
+        )
+        val targets = buckets.map { bucket ->
+            VocabularySmartRouteTargetChoice(
+                bucketKey = bucket.bucketKey,
+                targetDeckId = bucket.recommendedDeckId,
+                customTitle = bucket.defaultNewTitle,
+                language = bucket.language,
+                languageVariant = bucket.languageVariant,
+                translationLanguage = bucket.translationLanguage,
+                levelCode = bucket.levelCode,
+                customLevelLabel = bucket.customLevelLabel
+            )
+        }
+        val routeAnalysis = VocabularyEngine.analyzeSmartRoutedImport(
+            parseResult = stampedParse,
+            buckets = buckets,
+            choices = targets.associateBy { it.bucketKey },
+            allDecks = _vocabularyDecks.value,
+            checkAcrossSameLanguage = true
+        )
+        val autoMergeDecisions = routeAnalysis.analysis.duplicateItems.associate { dup ->
+            dup.id to VocabularyMergeDecision(
+                action = VocabularyDuplicateAction.MERGE_SEGMENTS,
+                mergeExamples = true,
+                mergeTranslation = true,
+                mergeSynonymsAndCollocations = true,
+                mergeMeaningAndNote = true,
+                mergeLevelAndMeta = true
+            )
+        }
+        commitSmartRoutedVocabularyImport(
+            targets = targets,
+            entryBucketById = routeAnalysis.entryBucketById,
+            analysis = routeAnalysis.analysis,
+            decisions = autoMergeDecisions
+        )
+        val graduatedCount = stampedEntries.size
+        _statusMessage.value = "Enriched & graduated $graduatedCount word(s) into Vocabulary Hub"
+        return graduatedCount
+    }
+
+    private fun graduateHeadwordsForEntries(
+        entries: List<VocabularyEntry>,
+        fallbackLanguage: String
+    ) {
+        if (_headwordInbox.value.isEmpty() || entries.isEmpty()) return
+        val completedPairs = entries.mapNotNull { entry ->
+            val key = entry.normalizedWordKey()
+            if (key.isBlank() || (entry.meaning.isBlank() && entry.translation.isBlank())) {
+                null
+            } else {
+                val langKey = entry.language.trim().ifBlank { fallbackLanguage.trim().ifBlank { "English" } }
+                    .lowercase()
+                langKey to key
+            }
+        }.toSet()
+        if (completedPairs.isEmpty()) return
+
+        val remaining = _headwordInbox.value.filterNot { item ->
+            val itemKey = item.normalizedWordKey()
+            val itemLang = item.language.trim().ifBlank { "English" }.lowercase()
+            (itemLang to itemKey) in completedPairs
+        }
+        if (remaining.size != _headwordInbox.value.size) {
+            _headwordInbox.value = remaining
+            appPreferences.saveHeadwordInbox(remaining)
+        }
     }
 
     fun promoteEnrichedEntryToDeck(entry: VocabularyEntry, queueItemId: String? = null) {
@@ -978,7 +1125,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             variant = entry.languageVariant
         )
         val withEntry = targetDeck.copy(
-            entries = targetDeck.entries + entry,
+            entries = (targetDeck.entries + entry).sortedWith(
+                compareBy<VocabularyEntry>(
+                    { it.word.trim().lowercase() },
+                    { it.partOfSpeech.trim().lowercase() }
+                )
+            ),
             updatedAt = TrustedTimeManager.getTrustedTimeMillis()
         )
         val finalDecks = updatedDecks.map { if (it.id == withEntry.id) withEntry else it }
@@ -987,7 +1139,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         if (!queueItemId.isNullOrBlank()) {
             removeHeadwordFromInbox(queueItemId)
+        } else {
+            graduateHeadwordsForEntries(listOf(entry), entry.language)
         }
+        refreshActiveWordOfTheDay()
     }
 
     fun getActivePromptPreset(mode: PromptPresetMode): PromptPreset? {
