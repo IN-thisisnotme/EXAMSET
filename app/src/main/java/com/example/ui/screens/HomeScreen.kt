@@ -1446,14 +1446,17 @@ fun HomeScreen(
         val liveNote = studyNotes.find { it.id == noteId }
         if (liveNote != null) {
             val linkedPaper = liveNote.linkedPaperId?.let { pid -> savedPapers.find { it.id == pid } }
+            val readerPreferredEnglishVariant by viewModel.preferredEnglishVariant.collectAsState()
             KnowledgeStudioReaderScreen(
                 note = liveNote,
                 linkedPaperTitle = linkedPaper?.title,
                 srsMap = flashcardSrsByNote[liveNote.id].orEmpty(),
+                preferredEnglishVariant = readerPreferredEnglishVariant,
                 onToggleBookmark = { note, idx -> viewModel.toggleStudyNoteLineBookmark(note, idx) },
                 onToggleMastered = { note, idx -> viewModel.toggleStudyNoteBlockMastered(note, idx) },
                 onRateFlashcard = { note, idx, rating -> viewModel.reviewFlashcard(note, idx, rating) },
                 onResetFlashcardSrs = { note -> viewModel.resetFlashcardSrsProgress(note) },
+                onRecordStudySeconds = { secs -> viewModel.recordStudySeconds(secs) },
                 onEdit = {
                     viewModel.openKnowledgeEditor(
                         note = liveNote,

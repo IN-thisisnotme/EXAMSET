@@ -24,6 +24,8 @@ class VocabularyTtsSpeaker(context: Context) {
     private var pendingText: String? = null
     private var pendingLocale: Locale? = null
 
+    private var pendingSpeechRate: Float = 1.0f
+
     var isSpeaking by mutableStateOf(false)
         private set
 
@@ -37,10 +39,12 @@ class VocabularyTtsSpeaker(context: Context) {
                 if (isInitialized) {
                     val queuedText = pendingText
                     val queuedLocale = pendingLocale
+                    val queuedRate = pendingSpeechRate
                     pendingText = null
                     pendingLocale = null
+                    pendingSpeechRate = 1.0f
                     if (!queuedText.isNullOrBlank()) {
-                        speakInternal(queuedText, queuedLocale ?: Locale.ENGLISH, activeUtteranceKey)
+                        speakInternal(queuedText, queuedLocale ?: Locale.ENGLISH, activeUtteranceKey, queuedRate)
                     }
                 }
             }
@@ -90,21 +94,24 @@ class VocabularyTtsSpeaker(context: Context) {
         text: String,
         language: String,
         preferredEnglishVariant: String = "US",
-        utteranceKey: String? = null
+        utteranceKey: String? = null,
+        speechRate: Float = 1.0f
     ) {
         val cleanText = text.trim()
         if (cleanText.isBlank()) return
         val targetLocale = resolveLocale(language, preferredEnglishVariant)
+        val safeRate = speechRate.coerceIn(0.75f, 1.5f)
         activeUtteranceKey = utteranceKey ?: cleanText
         if (!isInitialized) {
             pendingText = cleanText
             pendingLocale = targetLocale
+            pendingSpeechRate = safeRate
             return
         }
-        speakInternal(cleanText, targetLocale, activeUtteranceKey)
+        speakInternal(cleanText, targetLocale, activeUtteranceKey, safeRate)
     }
 
-    private fun speakInternal(text: String, locale: Locale, utteranceId: String?) {
+    private fun speakInternal(text: String, locale: Locale, utteranceId: String?, speechRate: Float) {
         val engine = tts ?: return
         try {
             val langSupport = engine.isLanguageAvailable(locale)
@@ -118,6 +125,7 @@ class VocabularyTtsSpeaker(context: Context) {
                     engine.language = Locale.US
                 }
             }
+            engine.setSpeechRate(speechRate)
             engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId ?: "vocab_tts")
         } catch (_: Exception) {
             isSpeaking = false

@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -1294,10 +1295,12 @@ fun KnowledgeStudioReaderScreen(
     note: StudyNoteEntity,
     linkedPaperTitle: String? = null,
     srsMap: Map<Int, FlashcardSrsState> = emptyMap(),
+    preferredEnglishVariant: String = "US",
     onToggleBookmark: (StudyNoteEntity, Int) -> Unit,
     onToggleMastered: (StudyNoteEntity, Int) -> Unit,
     onRateFlashcard: (StudyNoteEntity, Int, SrsRating) -> Unit = { _, _, _ -> },
     onResetFlashcardSrs: (StudyNoteEntity) -> Unit = {},
+    onRecordStudySeconds: (Long) -> Unit = {},
     onEdit: () -> Unit,
     onOpenLinkedPaper: ((Long) -> Unit)? = null,
     onGenerateMcqDraft: (StudyNoteEntity) -> Unit,
@@ -1321,6 +1324,7 @@ fun KnowledgeStudioReaderScreen(
     var showOptionsBeforeReveal by remember { mutableStateOf(true) }
     var isDeckMode by remember(note.id) { mutableStateOf(isFlashcardDeckNote) }
     var showRecallSettingsDialog by remember { mutableStateOf(false) }
+    var showNotebookDictation by remember(note.id) { mutableStateOf(false) }
     var expandAllMultiLiners by remember { mutableStateOf(true) }
     var expandedCardOverrides by remember(note.id) { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
     var revealedIndices by remember(note.id, recallMode, maskMode) { mutableStateOf(setOf<Int>()) }
@@ -1681,6 +1685,38 @@ fun KnowledgeStudioReaderScreen(
                                 )
                             }
                         }
+
+                        // Notebook Dictation (Speak-to-Write) Mode Button
+                        Surface(
+                            onClick = { showNotebookDictation = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.amberLight.copy(alpha = 0.7f),
+                            border = BorderStroke(1.dp, colors.amber.copy(alpha = 0.6f)),
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .testTag("knowledge_dictate_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.RecordVoiceOver,
+                                    contentDescription = "Notebook Dictation Practice",
+                                    tint = colors.badgeWarningText,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Dictate",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.badgeWarningText,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
                     }
 
                     // Single-Row Quick Filter Chips (never wraps onto a 2nd sticky row at any font size!)
@@ -2004,6 +2040,16 @@ fun KnowledgeStudioReaderScreen(
                 }
             }
         }
+    }
+
+    if (showNotebookDictation) {
+        NotebookDictationScreen(
+            note = note,
+            blocks = visibleBlocks.ifEmpty { blocks },
+            preferredEnglishVariant = preferredEnglishVariant,
+            onLogStudySeconds = onRecordStudySeconds,
+            onDismiss = { showNotebookDictation = false }
+        )
     }
 }
 

@@ -5973,6 +5973,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun recordStudySeconds(additionalSeconds: Long) {
+        if (additionalSeconds <= 0L) return
+        _todayTestSeconds.value += additionalSeconds
+        saveTodayDailyAnalytics()
+    }
+
     private fun recordTestCompletionInDailyAnalytics(
         questionsAttempted: Int,
         correctCount: Int
