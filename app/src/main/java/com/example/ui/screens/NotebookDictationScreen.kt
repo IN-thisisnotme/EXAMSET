@@ -88,6 +88,7 @@ import com.example.util.DictationConfig
 import com.example.util.DictationElevationInterval
 import com.example.util.DictationEngine
 import com.example.util.DictationPlaybackPhase
+import com.example.util.DictationPunctuationMode
 import com.example.util.StudyNoteBlock
 import com.example.util.rememberDictationTtsController
 import kotlin.math.roundToInt
@@ -897,30 +898,60 @@ fun NotebookDictationScreen(
                                 .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Spoken Punctuation & Paragraph Cues",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold
-                                    )
-                                    Text(
-                                        text = "Calls out 'comma', 'full stop', and 'new paragraph' for clean notebook structure",
-                                        fontSize = 11.sp,
-                                        color = colors.inkMuted
-                                    )
-                                }
-                                Switch(
-                                    checked = cfg.speakPunctuationCues,
-                                    onCheckedChange = { controller.setSpeakPunctuationCues(it) },
-                                    colors = SwitchDefaults.colors(checkedTrackColor = colors.teal),
-                                    modifier = Modifier.testTag("dictation_punctuation_switch")
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val activePunctMode = cfg.effectivePunctuationMode
+                                Text(
+                                    text = "Spoken Punctuation & Structure Cues",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
                                 )
+                                Text(
+                                    text = activePunctMode.summary,
+                                    fontSize = 11.sp,
+                                    color = colors.inkMuted
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    DictationPunctuationMode.entries.forEach { mode ->
+                                        val selected = activePunctMode == mode
+                                        val tag = when (mode) {
+                                            DictationPunctuationMode.OFF -> "dictation_punctuation_mode_off"
+                                            DictationPunctuationMode.ESSENTIAL -> "dictation_punctuation_mode_essential"
+                                            DictationPunctuationMode.FULL_VERBATIM -> "dictation_punctuation_mode_verbatim"
+                                        }
+                                        Surface(
+                                            onClick = { controller.setPunctuationMode(mode) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (selected) colors.teal else colors.surfaceVariant,
+                                            border = BorderStroke(
+                                                width = 1.dp,
+                                                color = if (selected) colors.tealDark else colors.border
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 48.dp)
+                                                .testTag(tag)
+                                        ) {
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                                            ) {
+                                                Text(
+                                                    text = mode.label,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (selected) Color.White else colors.inkBold,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             HorizontalDivider(color = colors.border.copy(alpha = 0.6f))

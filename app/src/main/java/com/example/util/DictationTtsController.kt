@@ -181,7 +181,7 @@ class DictationTtsController(
         val oldIndex = currentPhraseIndex
         val newList = DictationEngine.splitPassageIntoPhrases(
             rawText = passage.rawDictationText,
-            speakPunctuationCues = config.speakPunctuationCues
+            punctuationMode = config.effectivePunctuationMode
         )
         phrases = newList
         currentPhraseIndex = if (preserveSentencePosition && newList.isNotEmpty()) {
@@ -204,10 +204,17 @@ class DictationTtsController(
         setTargetWpm(config.targetWpm + delta)
     }
 
-    fun setSpeakPunctuationCues(enabled: Boolean) {
-        if (config.speakPunctuationCues == enabled) return
-        config = config.copy(speakPunctuationCues = enabled).normalized()
+    fun setPunctuationMode(mode: DictationPunctuationMode) {
+        if (config.effectivePunctuationMode == mode) return
+        config = config.copy(
+            punctuationMode = mode,
+            speakPunctuationCues = mode != DictationPunctuationMode.OFF
+        ).normalized()
         rebuildPhrasesForCurrentPassage(preserveSentencePosition = true)
+    }
+
+    fun setSpeakPunctuationCues(enabled: Boolean) {
+        setPunctuationMode(if (enabled) DictationPunctuationMode.ESSENTIAL else DictationPunctuationMode.OFF)
     }
 
     fun updateElevatingConfig(

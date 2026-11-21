@@ -2,6 +2,15 @@ package com.example.util
 
 import kotlin.math.roundToLong
 
+enum class DictationPunctuationMode(
+    val label: String,
+    val summary: String
+) {
+    OFF("Off", "Silent pauses only — clean reading rhythm"),
+    ESSENTIAL("Essential", "Speaks comma, full stop, ? ! : ; and new paragraph"),
+    FULL_VERBATIM("Full Verbatim", "Adds brackets, quotes, dash, ellipsis, slash, bullets & headings")
+}
+
 enum class DictationElevationInterval(
     val label: String,
     val intervalSeconds: Int,
@@ -18,6 +27,7 @@ data class DictationConfig(
     val speechBurstRate: Float = DEFAULT_BURST_SPEECH_RATE,
     val speechBurstWpmBaseline: Int = DEFAULT_BURST_WPM_BASELINE,
     val speakPunctuationCues: Boolean = false,
+    val punctuationMode: DictationPunctuationMode = DictationPunctuationMode.OFF,
     val elevatingEnabled: Boolean = false,
     val startWpm: Int = 35,
     val targetMaxWpm: Int = 75,
@@ -25,14 +35,24 @@ data class DictationConfig(
     val elevationInterval: DictationElevationInterval = DictationElevationInterval.EVERY_60S,
     val autoAdvancePassages: Boolean = true
 ) {
+    val effectivePunctuationMode: DictationPunctuationMode
+        get() = when {
+            punctuationMode != DictationPunctuationMode.OFF -> punctuationMode
+            speakPunctuationCues -> DictationPunctuationMode.ESSENTIAL
+            else -> DictationPunctuationMode.OFF
+        }
+
     fun normalized(): DictationConfig {
         val clampedWpm = targetWpm.coerceIn(MIN_WPM, MAX_WPM)
         val clampedStart = startWpm.coerceIn(MIN_WPM, MAX_WPM)
         val clampedMax = targetMaxWpm.coerceIn(clampedStart, MAX_WPM)
+        val resolvedPunctMode = effectivePunctuationMode
         return copy(
             targetWpm = clampedWpm,
             speechBurstRate = speechBurstRate.coerceIn(MIN_BURST_SPEECH_RATE, MAX_BURST_SPEECH_RATE),
             speechBurstWpmBaseline = speechBurstWpmBaseline.coerceIn(110, 185),
+            speakPunctuationCues = resolvedPunctMode != DictationPunctuationMode.OFF,
+            punctuationMode = resolvedPunctMode,
             startWpm = clampedStart,
             targetMaxWpm = clampedMax,
             stepWpm = stepWpm.coerceIn(5, 15)
@@ -136,6 +156,7 @@ object DictationEngine {
                         val bulletLines = block.nestedBullets
                             .map { it.second.trim() }
                             .filter { it.isNotBlank() }
+                            .map { "• $it" }
                         if (bulletLines.isNotEmpty()) {
                             sections.add(bulletLines.joinToString("\n"))
                         }
@@ -226,7 +247,11 @@ object DictationEngine {
         }
     }
 
-    fun sanitizeForSpeech(rawText: String): String {
+    fun sanitizeForSpeech(
+        rawText: String,
+        preserveStructuralMarkers: Boolean = false,
+        preserveDashes: Boolean = false
+    ): String {
         if (rawText.isBlank()) return ""
         var text = rawText.replace("\r\n", "\n")
 
@@ -253,17 +278,32 @@ object DictationEngine {
 
         // Clean line-leading markdown headings, blockquotes, and bullet symbols cleanly
         text = text.lines().joinToString("\n") { line ->
-            line.trim()
-                .replace(Regex("^#{1,6}\\s+"), "")
+            val trimmed = line.trim()
+            val cleanedLine = when {
+                preserveStructuralMarkers && Regex("^#{1,6}\\s+").containsMatchIn(trimmed) ->
+                    "\u0003HD\u0003 " + trimmed.replace(Regex("^#{1,6}\\s+"), "")
+                preserveStructuralMarkers && Regex("^[-*•+]\\s+").containsMatchIn(trimmed) ->
+                    "\u0003BL\u0003 " + trimmed.replace(Regex("^[-*•+]\\s+"), "")
+                else -> trimmed
+                    .replace(Regex("^#{1,6}\\s+"), "")
+                    .replace(Regex("^[-*•+]\\s+"), "")
+            }
                 .replace(Regex("^>+\\s*"), "")
-                .replace(Regex("^[-*•+]\\s+"), "")
                 .replace("**", "")
                 .replace("__", "")
                 .replace("`", "")
                 .replace("→", " leads to ")
                 .replace("->", " leads to ")
-                .replace("—", ", ")
-                .replace("–", ", ")
+
+            if (preserveDashes) {
+                cleanedLine
+                    .replace("—", " — ")
+                    .replace("–", " – ")
+            } else {
+                cleanedLine
+                    .replace("—", ", ")
+                    .replace("–", ", ")
+            }
         }
 
         // Normalize repeated spaces on lines without destroying paragraph breaks (\n\n)
@@ -319,12 +359,27 @@ object DictationEngine {
         rawText: String,
         speakPunctuationCues: Boolean = false
     ): List<DictationPhrase> {
-        val sanitized = sanitizeForSpeech(rawText)
+        return splitPassageIntoPhrases(
+            rawText = rawText,
+            punctuationMode = if (speakPunctuationCues) DictationPunctuationMode.ESSENTIAL else DictationPunctuationMode.OFF
+        )
+    }
+
+    fun splitPassageIntoPhrases(
+        rawText: String,
+        punctuationMode: DictationPunctuationMode
+    ): List<DictationPhrase> {
+        val isVerbatim = punctuationMode == DictationPunctuationMode.FULL_VERBATIM
+        val sanitized = sanitizeForSpeech(
+            rawText = rawText,
+            preserveStructuralMarkers = isVerbatim,
+            preserveDashes = isVerbatim
+        )
         if (sanitized.isBlank()) return emptyList()
 
         val rawParagraphs = sanitized
             .split(Regex("\\n\\s*\\n+"))
-            .map { it.replace("\n", ". ").replace(Regex("\\.\\s*\\."), ".").trim() }
+            .map { it.replace(Regex("([.!?।])\\n+"), "$1 ").replace("\n", ". ").trim() }
             .filter { it.isNotBlank() }
 
         val phrases = mutableListOf<DictationPhrase>()
@@ -346,19 +401,27 @@ object DictationEngine {
                         val isSentenceEnd = isLastClauseInSentence && isLastChunkInClause
                         val isParagraphEnd = isLastSentenceInPara && isSentenceEnd
 
-                        val displayClean = chunk.trim()
+                        val trimmedChunk = chunk.trim()
+                        val isHeadingStart = trimmedChunk.startsWith("\u0003HD\u0003")
+                        val isBulletStart = trimmedChunk.startsWith("\u0003BL\u0003")
+                        val displayClean = trimmedChunk
+                            .replace("\u0003HD\u0003", "")
+                            .replace("\u0003BL\u0003", "")
+                            .trim()
                         val wordTokens = displayClean
                             .split(Regex("\\s+"))
-                            .map { it.trim(',', '.', ';', ':', '!', '?', '"', '\'') }
+                            .map { it.trim(',', '.', ';', ':', '!', '?', '।', '"', '\'', '(', ')', '[', ']', '—', '–') }
                             .filter { it.isNotBlank() }
                         val wordCount = wordTokens.size.coerceAtLeast(1)
                         val charCount = wordTokens.sumOf { it.length }.coerceAtLeast(wordCount)
 
                         val spoken = buildSpokenPhrase(
                             chunk = displayClean,
-                            speakPunctuationCues = speakPunctuationCues,
+                            punctuationMode = punctuationMode,
                             isSentenceEnd = isSentenceEnd,
-                            isParagraphEnd = isParagraphEnd
+                            isParagraphEnd = isParagraphEnd,
+                            isHeadingStart = isHeadingStart,
+                            isBulletStart = isBulletStart
                         )
 
                         phrases.add(
@@ -484,29 +547,114 @@ object DictationEngine {
 
     private fun buildSpokenPhrase(
         chunk: String,
-        speakPunctuationCues: Boolean,
+        punctuationMode: DictationPunctuationMode,
         isSentenceEnd: Boolean,
-        isParagraphEnd: Boolean
+        isParagraphEnd: Boolean,
+        isHeadingStart: Boolean,
+        isBulletStart: Boolean
     ): String {
-        val cleanedCore = chunk.trim()
-            .trimEnd(',', ';', ':', '.', '!', '?', '।')
-            .trim()
-        if (!speakPunctuationCues) {
-            return cleanedCore.ifBlank { chunk.trim() }
+        val rawTrimmed = chunk.trim()
+        val hasTrailingEllipsis = rawTrimmed.endsWith("...") || rawTrimmed.endsWith("…")
+        val insideQuoteMatch = Regex("^([\\s\\S]*?)([.!?।]+)(\"\\s*|”\\s*|'\\s*|\\)\\s*)$").find(rawTrimmed)
+
+        val terminalMark: String
+        val coreBeforeTerminal: String
+        when {
+            hasTrailingEllipsis -> {
+                terminalMark = "..."
+                coreBeforeTerminal = rawTrimmed.removeSuffix("...").removeSuffix("…").trim()
+            }
+            insideQuoteMatch != null -> {
+                terminalMark = insideQuoteMatch.groupValues[2].takeLast(1)
+                coreBeforeTerminal = (insideQuoteMatch.groupValues[1] + insideQuoteMatch.groupValues[3]).trim()
+            }
+            else -> {
+                val lastCh = rawTrimmed.lastOrNull()
+                if (lastCh != null && lastCh in charArrayOf(',', ';', ':', '.', '!', '?', '।')) {
+                    terminalMark = lastCh.toString()
+                    coreBeforeTerminal = rawTrimmed.dropLast(1).trim()
+                } else {
+                    terminalMark = ""
+                    coreBeforeTerminal = rawTrimmed
+                }
+            }
         }
-        val cue = when {
-            isParagraphEnd && chunk.endsWith("?") -> "question mark, new paragraph"
+
+        if (punctuationMode == DictationPunctuationMode.OFF) {
+            return coreBeforeTerminal.ifBlank { rawTrimmed }
+        }
+
+        val structuralPrefix = if (punctuationMode == DictationPunctuationMode.FULL_VERBATIM) {
+            when {
+                isHeadingStart -> "Heading"
+                isBulletStart -> "Bullet point"
+                else -> ""
+            }
+        } else ""
+
+        val expandedBody = if (punctuationMode == DictationPunctuationMode.FULL_VERBATIM) {
+            expandInlineVerbatimPunctuation(coreBeforeTerminal.ifBlank { rawTrimmed })
+        } else {
+            coreBeforeTerminal.ifBlank { rawTrimmed }
+        }
+
+        val endCue = when {
+            hasTrailingEllipsis && punctuationMode == DictationPunctuationMode.FULL_VERBATIM ->
+                if (isParagraphEnd) "ellipsis, new paragraph" else "ellipsis"
+            isParagraphEnd && terminalMark == "?" -> "question mark, new paragraph"
+            isParagraphEnd && terminalMark == "!" -> "exclamation mark, new paragraph"
+            isParagraphEnd && terminalMark == "।" -> "poorna viram, new paragraph"
             isParagraphEnd -> "full stop, new paragraph"
-            isSentenceEnd && chunk.endsWith("?") -> "question mark"
-            isSentenceEnd && chunk.endsWith("!") -> "exclamation mark"
+            isSentenceEnd && terminalMark == "?" -> "question mark"
+            isSentenceEnd && terminalMark == "!" -> "exclamation mark"
+            isSentenceEnd && terminalMark == "।" -> "poorna viram"
             isSentenceEnd -> "full stop"
-            chunk.endsWith(",") -> "comma"
-            chunk.endsWith(";") -> "semicolon"
-            chunk.endsWith(":") -> "colon"
+            terminalMark == "," -> "comma"
+            terminalMark == ";" -> "semicolon"
+            terminalMark == ":" -> "colon"
             else -> ""
         }
-        val base = cleanedCore.ifBlank { chunk.trim() }
-        return if (cue.isNotBlank()) "$base, $cue" else base
+
+        return listOf(structuralPrefix, expandedBody, endCue)
+            .filter { it.isNotBlank() }
+            .joinToString(", ")
+            .replace(Regex("\\s*,(\\s*,)+"), ",")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun expandInlineVerbatimPunctuation(text: String): String {
+        if (text.isBlank()) return text
+        var out = text
+
+        // Ellipsis mid-phrase
+        out = out.replace("...", ", ellipsis, ").replace("…", ", ellipsis, ")
+
+        // Em-dash, en-dash, double-hyphen, or spaced hyphen -> "dash" (preserve compound hyphens like well-known)
+        out = out.replace(Regex("\\s*[—–]\\s*|\\s+-\\s+|\\s*--\\s*"), ", dash, ")
+
+        // Paired straight double quotes first, then curly double quotes
+        out = out.replace(Regex("\"([^\"\n]+)\""), ", open quote, $1, close quote, ")
+        out = out.replace("“", ", open quote, ").replace("”", ", close quote, ")
+
+        // Paired outer single quotes while protecting apostrophes inside words (don't, citizen's)
+        out = out.replace(Regex("(^|\\s)'([^'\n]+)'(?=\\s|[,.;:!?)]|$)"), "$1, open quote, $2, close quote, ")
+
+        // Parentheses & square brackets
+        out = out.replace("(", ", open bracket, ")
+            .replace("[", ", open bracket, ")
+            .replace(")", ", close bracket, ")
+            .replace("]", ", close bracket, ")
+
+        // Context-aware slash -> "slash" except common metric rate units (m/s, km/h, etc.)
+        out = out.replace(Regex("(?i)(?<!\\b(?:km|m|cm|mm|kg|g|mg|ml|l))/(?!(?:s|hr|h|min|kg|m|cm|l|cc)\\b)"), " slash ")
+
+        return out
+            .replace(Regex("\\s*,\\s*"), ", ")
+            .replace(Regex("(?:^,\\s*|,\\s*$)"), "")
+            .replace(Regex("(,\\s*){2,}"), ", ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     fun computeWritingPauseMs(
@@ -528,9 +676,15 @@ object DictationEngine {
             phrase.isSentenceEnd -> 320.0
             else -> 0.0
         }
+        val verbatimSymbolAllowanceMs = if (safeConfig.effectivePunctuationMode == DictationPunctuationMode.FULL_VERBATIM) {
+            240.0
+        } else {
+            0.0
+        }
+        val minPauseMs = if (safeConfig.effectivePunctuationMode == DictationPunctuationMode.FULL_VERBATIM) 480L else 300L
 
-        val netPauseMs = (totalBudgetMs - estimatedSpeechMs) + cadenceTailMs
-        return netPauseMs.roundToLong().coerceIn(300L, 20_000L)
+        val netPauseMs = (totalBudgetMs - estimatedSpeechMs) + cadenceTailMs + verbatimSymbolAllowanceMs
+        return netPauseMs.roundToLong().coerceIn(minPauseMs, 20_000L)
     }
 
     fun estimateExpectedSpeechMs(

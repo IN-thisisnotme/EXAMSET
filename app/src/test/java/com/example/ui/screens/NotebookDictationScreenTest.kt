@@ -14,6 +14,7 @@ import com.example.model.KnowledgeCollectionType
 import com.example.ui.theme.ExamSetTheme
 import com.example.util.DictationEngine
 import com.example.util.DictationPlaybackPhase
+import com.example.util.DictationPunctuationMode
 import com.example.util.DictationTtsController
 import com.example.util.StudyNoteParser
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
@@ -90,6 +91,11 @@ class NotebookDictationScreenTest {
         composeTestRule.onNodeWithText("35 WPM").assertIsDisplayed()
         composeTestRule.onNodeWithText("30 → 60 WPM").assertIsDisplayed()
 
+        // Verify 3-way Punctuation Mode selector
+        composeTestRule.onNodeWithTag("dictation_punctuation_mode_verbatim").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText(DictationPunctuationMode.FULL_VERBATIM.summary).assertIsDisplayed()
+
         // Exit screen triggers onDismiss cleanly
         composeTestRule.onNodeWithTag("dictation_back_button").performClick()
         composeTestRule.waitForIdle()
@@ -122,7 +128,12 @@ class NotebookDictationScreenTest {
 
         controller.setSpeakPunctuationCues(true)
         assertTrue(controller.config.speakPunctuationCues)
+        assertEquals(DictationPunctuationMode.ESSENTIAL, controller.config.effectivePunctuationMode)
         assertTrue(controller.phrases.any { it.spokenText.contains("full stop") })
+
+        controller.setPunctuationMode(DictationPunctuationMode.FULL_VERBATIM)
+        assertEquals(DictationPunctuationMode.FULL_VERBATIM, controller.config.effectivePunctuationMode)
+        assertTrue(controller.config.speakPunctuationCues)
 
         controller.skipToNextPhrase()
         assertEquals(1, controller.currentPhraseIndex)

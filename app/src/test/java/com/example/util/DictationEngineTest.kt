@@ -143,4 +143,36 @@ class DictationEngineTest {
         assertEquals("Table", passages[3].badge)
         assertTrue(passages[3].rawDictationText.contains("Provision: Equality"))
     }
+
+    @Test
+    fun `splitPassageIntoPhrases in FULL_VERBATIM speaks brackets, quotes, dashes, ellipsis, slashes and bullets safely`() {
+        val raw = """
+            ## Constitutional Guarantees
+            - **Due Process** (Art. 21) — protects a citizen's "personal liberty" against arbitrary/unfair action at 10 m/s...
+
+            नागरिकों को समानता का अधिकार है।
+        """.trimIndent()
+
+        val phrases = DictationEngine.splitPassageIntoPhrases(
+            rawText = raw,
+            punctuationMode = DictationPunctuationMode.FULL_VERBATIM
+        )
+        assertTrue(phrases.isNotEmpty())
+        val allSpoken = phrases.joinToString(" | ") { it.spokenText }
+        val allDisplay = phrases.joinToString(" | ") { it.displayText }
+
+        // Internal structural tokens must never leak into proofread displayText
+        assertFalse(allDisplay.contains("\u0003"))
+
+        assertTrue("Expected Heading cue: $allSpoken", allSpoken.contains("Heading"))
+        assertTrue("Expected Bullet point cue: $allSpoken", allSpoken.contains("Bullet point"))
+        assertTrue("Expected bracket cues: $allSpoken", allSpoken.contains("open bracket") && allSpoken.contains("close bracket"))
+        assertTrue("Expected dash cue: $allSpoken", allSpoken.contains("dash"))
+        assertTrue("Expected quote cues: $allSpoken", allSpoken.contains("open quote") && allSpoken.contains("close quote"))
+        assertTrue("Apostrophe must stay intact without false quote cue: $allSpoken", allSpoken.contains("citizen's"))
+        assertTrue("Arbitrary/unfair slash should be spoken: $allSpoken", allSpoken.contains("arbitrary slash unfair"))
+        assertTrue("Metric rate m/s should stay natural: $allSpoken", allSpoken.contains("10 m/s"))
+        assertTrue("Ellipsis should be spoken: $allSpoken", allSpoken.contains("ellipsis"))
+        assertTrue("Devanagari purna viram should be spoken: $allSpoken", allSpoken.contains("poorna viram"))
+    }
 }
