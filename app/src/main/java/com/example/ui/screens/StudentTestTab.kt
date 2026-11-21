@@ -103,7 +103,9 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -111,6 +113,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -126,8 +129,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.AttemptEntity
+import com.example.data.AttemptPacingSummary
 import com.example.data.DailyStudyAnalyticsEntity
+import com.example.data.QuestionPacingAnalyzer
 import com.example.model.ExamConfig
 import com.example.model.McqQuestion
 import com.example.model.QuestionPaper
@@ -136,9 +144,11 @@ import com.example.ui.components.StudentPracticeCard
 import com.example.ui.components.AttemptHistoryDialog
 import com.example.ui.components.LatexText
 import com.example.ui.components.ExamPaletteSideSheet
+import com.example.ui.components.PerQuestionPacingCard
 import com.example.ui.components.StudentHistoricalAnalysisDialog
 import com.example.ui.theme.ExamTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 enum class ReviewFilter { ALL, CORRECT, INCORRECT, UNANSWERED }
@@ -193,6 +203,12 @@ fun StudentTestTab(
     onScanOmr: () -> Unit = {},
     onOpenPsychometrics: () -> Unit = {},
     onSaveWeakAreasToKnowledgeSet: ((QuestionPaper, Set<Int>, Set<Int>, Map<Int, String>) -> Unit)? = null,
+    timeSpentSecondsFlow: StateFlow<Long>? = null,
+    timeRemainingSecondsFlow: StateFlow<Long>? = null,
+    todayTestSecondsFlow: StateFlow<Long>? = null,
+    questionTimes: Map<Int, Long> = emptyMap(),
+    questionTimesFlow: StateFlow<Map<Int, Long>>? = null,
+    onActiveQuestionChanged: (Int?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val positiveMarks = remember(config.positiveMarks, paper.metadata.positiveMarks) {
@@ -233,6 +249,30 @@ fun StudentTestTab(
     }
 
     if (showHistoricalAnalyticsDialog) {
+        val analyticsQuestionTimes = questionTimesFlow?.collectAsState()?.value ?: questionTimes
+        val pacingSummaryForAnalytics: AttemptPacingSummary? = remember(
+            paper,
+            submittedAnswers,
+            answers,
+            isSubmitted,
+            analyticsQuestionTimes,
+            attempts
+        ) {
+            when {
+                analyticsQuestionTimes.values.any { it > 0L } -> {
+                    val evalAnswers = if (isSubmitted && submittedAnswers.isNotEmpty()) submittedAnswers else answers
+                    QuestionPacingAnalyzer.computeSummary(paper, evalAnswers, analyticsQuestionTimes)
+                }
+                else -> {
+                    val latestWithTiming = attempts.firstOrNull {
+                        it.isSubmitted && it.getQuestionTimesMap().values.any { t -> t > 0L }
+                    }
+                    latestWithTiming?.let {
+                        QuestionPacingAnalyzer.computeSummary(paper, it.getAnswersMap(), it.getQuestionTimesMap())
+                    }
+                }
+            }
+        }
         StudentHistoricalAnalysisDialog(
             todayTestSeconds = todayTestSeconds,
             todayAnalytics = todayAnalytics,
@@ -240,7 +280,9 @@ fun StudentTestTab(
             dailyGoalMinutes = dailyGoalMinutes,
             isTestCurrentlyRunning = isExamStarted && !isSubmitted,
             onSetDailyGoalMinutes = onSetDailyGoalMinutes,
-            onDismiss = { showHistoricalAnalyticsDialog = false }
+            onDismiss = { showHistoricalAnalyticsDialog = false },
+            todayTestSecondsFlow = todayTestSecondsFlow,
+            pacingSummary = pacingSummaryForAnalytics
         )
     }
 
@@ -266,6 +308,10 @@ fun StudentTestTab(
                 onOpenAnalytics = { showHistoricalAnalyticsDialog = true },
                 onOpenPsychometrics = onOpenPsychometrics,
                 onSaveWeakAreasToKnowledgeSet = onSaveWeakAreasToKnowledgeSet,
+                timeSpentSecondsFlow = timeSpentSecondsFlow,
+                todayTestSecondsFlow = todayTestSecondsFlow,
+                questionTimes = questionTimes,
+                questionTimesFlow = questionTimesFlow,
                 modifier = modifier
             )
         }
@@ -289,6 +335,10 @@ fun StudentTestTab(
                 onExitToOverview = onExitToOverview,
                 onSwitchToFull = { onStartExam(null, null) },
                 onOpenAnalytics = { showHistoricalAnalyticsDialog = true },
+                timeSpentSecondsFlow = timeSpentSecondsFlow,
+                timeRemainingSecondsFlow = timeRemainingSecondsFlow,
+                todayTestSecondsFlow = todayTestSecondsFlow,
+                onActiveQuestionChanged = onActiveQuestionChanged,
                 modifier = modifier
             )
         }
@@ -318,6 +368,8 @@ fun StudentTestTab(
                 onOpenPsychometrics = onOpenPsychometrics,
                 onLoadAttempt = onLoadAttempt,
                 onScanOmr = onScanOmr,
+                timeSpentSecondsFlow = timeSpentSecondsFlow,
+                todayTestSecondsFlow = todayTestSecondsFlow,
                 modifier = modifier
             )
         }
@@ -354,6 +406,8 @@ private fun ExamStartOverviewView(
     onOpenPsychometrics: () -> Unit = {},
     onLoadAttempt: (AttemptEntity) -> Unit,
     onScanOmr: () -> Unit = {},
+    timeSpentSecondsFlow: StateFlow<Long>? = null,
+    todayTestSecondsFlow: StateFlow<Long>? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -500,55 +554,11 @@ private fun ExamStartOverviewView(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            val hours = todayTestSeconds / 3600
-                            val minutes = (todayTestSeconds % 3600) / 60
-                            val seconds = todayTestSeconds % 60
-                            val timeStr = if (hours > 0) {
-                                String.format(java.util.Locale.US, "%dh %02dm %02ds", hours, minutes, seconds)
-                            } else {
-                                String.format(java.util.Locale.US, "%dm %02ds", minutes, seconds)
-                            }
-                            Text(
-                                text = timeStr,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = colors.teal,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            )
-                            Text(
-                                text = "Total test practice today • Goal: ${dailyGoalMinutes}m",
-                                fontSize = 11.5.sp,
-                                color = colors.muted
-                            )
-                        }
-
-                        val goalSeconds = dailyGoalMinutes * 60L
-                        val fraction = if (goalSeconds > 0) (todayTestSeconds.toFloat() / goalSeconds).coerceIn(0f, 1f) else 0f
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "${(fraction * 100).toInt()}% Goal",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (fraction >= 1f) colors.green else colors.teal
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            LinearProgressIndicator(
-                                progress = { fraction },
-                                modifier = Modifier
-                                    .width(80.dp)
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = if (fraction >= 1f) colors.green else colors.teal,
-                                trackColor = colors.border
-                            )
-                        }
-                    }
+                    TodayTrackerTimeLeaf(
+                        todayTestSecondsFlow = todayTestSecondsFlow,
+                        fallbackSeconds = todayTestSeconds,
+                        dailyGoalMinutes = dailyGoalMinutes
+                    )
                 }
             }
         }
@@ -1250,8 +1260,9 @@ private fun ExamStartOverviewView(
                             color = colors.teal
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        val m = timeSpentSeconds / 60
-                        val s = timeSpentSeconds % 60
+                        val effectiveResumeSeconds = timeSpentSecondsFlow?.collectAsState()?.value ?: timeSpentSeconds
+                        val m = effectiveResumeSeconds / 60
+                        val s = effectiveResumeSeconds % 60
                         Text(
                             text = "You have ${answers.size} answered questions (${String.format(java.util.Locale.US, "%02d:%02d", m, s)} elapsed). Would you like to resume or start fresh?",
                             fontSize = 12.sp,
@@ -1417,6 +1428,10 @@ private fun ActiveExamView(
     onExitToOverview: () -> Unit,
     onSwitchToFull: () -> Unit,
     onOpenAnalytics: () -> Unit = {},
+    timeSpentSecondsFlow: StateFlow<Long>? = null,
+    timeRemainingSecondsFlow: StateFlow<Long>? = null,
+    todayTestSecondsFlow: StateFlow<Long>? = null,
+    onActiveQuestionChanged: (Int?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -1466,7 +1481,7 @@ private fun ActiveExamView(
     var isSavingNext by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
     val isFreshExamStart = remember(paper.id, retryQuestionNumbers) {
-        timeSpentSeconds <= 2L && answers.isEmpty()
+        (timeSpentSecondsFlow?.value ?: timeSpentSeconds) <= 2L && answers.isEmpty()
     }
     var readinessCountdown by remember(paper.id, retryQuestionNumbers) {
         mutableIntStateOf(if (isFreshExamStart) 3 else 0)
@@ -1483,6 +1498,75 @@ private fun ActiveExamView(
     var showExitConfirmDialog by remember { mutableStateOf(false) }
     var showCbtPaletteSideSheet by remember { mutableStateOf(false) }
 
+    // Per-question pacing telemetry: track visible question and pause on lifecycle/overlay
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isLifecycleResumed by remember {
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        )
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> isLifecycleResumed = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> isLifecycleResumed = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    var scrolledQuestionNum by remember(activeQuestions) {
+        mutableStateOf(activeQuestions.firstOrNull()?.num)
+    }
+    LaunchedEffect(scrollListState, activeQuestions) {
+        snapshotFlow { scrollListState.firstVisibleItemIndex }
+            .collect { firstIdx ->
+                if (activeQuestions.isNotEmpty()) {
+                    // Item 0 is the top Spacer; activeQuestions start at LazyColumn index 1
+                    val qIdx = (firstIdx - 1).coerceIn(0, activeQuestions.lastIndex)
+                    scrolledQuestionNum = activeQuestions.getOrNull(qIdx)?.num
+                } else {
+                    scrolledQuestionNum = null
+                }
+            }
+    }
+
+    LaunchedEffect(
+        isLifecycleResumed,
+        readinessCountdown,
+        showSubmitConfirmDialog,
+        showExitConfirmDialog,
+        showCbtPaletteSideSheet,
+        interfaceMode,
+        currentQuestion.num,
+        scrolledQuestionNum
+    ) {
+        val activeNum = if (
+            !isLifecycleResumed ||
+            readinessCountdown > 0 ||
+            showSubmitConfirmDialog ||
+            showExitConfirmDialog ||
+            showCbtPaletteSideSheet
+        ) {
+            null
+        } else if (interfaceMode == ExamInterfaceMode.TCS_CBT) {
+            currentQuestion.num
+        } else {
+            scrolledQuestionNum
+        }
+        onActiveQuestionChanged(activeNum)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onActiveQuestionChanged(null)
+        }
+    }
+
     // Immersive Full-Screen controller
     LaunchedEffect(isFullscreen) {
         activity?.window?.let { window ->
@@ -1493,13 +1577,6 @@ private fun ActiveExamView(
             } else {
                 insetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             }
-        }
-    }
-
-    // Auto-submission when countdown expires
-    LaunchedEffect(timerMode, timeRemainingSeconds) {
-        if (timerMode == ExamTimerMode.COUNTDOWN && timeRemainingSeconds <= 0L) {
-            onSubmitExam()
         }
     }
 
@@ -1768,45 +1845,14 @@ private fun ActiveExamView(
                         )
                     }
 
-                    // Digital Timer Pill (TCS Style)
-                    val formattedTime = if (timerMode == ExamTimerMode.COUNTDOWN) {
-                        val h = timeRemainingSeconds / 3600
-                        val m = (timeRemainingSeconds % 3600) / 60
-                        val s = timeRemainingSeconds % 60
-                        if (h > 0) String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, s)
-                        else String.format(java.util.Locale.US, "%02d:%02d", m, s)
-                    } else {
-                        val m = timeSpentSeconds / 60
-                        val s = timeSpentSeconds % 60
-                        String.format(java.util.Locale.US, "%02d:%02d", m, s)
-                    }
-
-                    val isTimerWarning = timerMode == ExamTimerMode.COUNTDOWN && timeRemainingSeconds <= 300L
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isTimerWarning) Color(0xFF991B1B).copy(alpha = 0.4f) else Color(0xFF0D9488).copy(alpha = 0.25f),
-                        border = BorderStroke(1.dp, if (isTimerWarning) Color(0xFFEF4444) else Color(0xFF14B8A6))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.HourglassBottom,
-                                contentDescription = null,
-                                tint = if (isTimerWarning) Color(0xFFFCA5A5) else Color(0xFF5EEAD4),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = formattedTime,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isTimerWarning) Color(0xFFFCA5A5) else Color(0xFF5EEAD4),
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            )
-                        }
-                    }
+                    // Digital Timer Pill (leaf-isolated to prevent per-second outer recompositions)
+                    ExamHeaderTimerLeaf(
+                        timerMode = timerMode,
+                        timeSpentSecondsFlow = timeSpentSecondsFlow,
+                        timeRemainingSecondsFlow = timeRemainingSecondsFlow,
+                        fallbackTimeSpentSeconds = timeSpentSeconds,
+                        fallbackTimeRemainingSeconds = timeRemainingSeconds
+                    )
 
                     // Fullscreen Toggle Button
                     IconButton(
@@ -2920,6 +2966,10 @@ private fun ExamResultAndReviewView(
     onOpenAnalytics: () -> Unit = {},
     onOpenPsychometrics: () -> Unit = {},
     onSaveWeakAreasToKnowledgeSet: ((QuestionPaper, Set<Int>, Set<Int>, Map<Int, String>) -> Unit)? = null,
+    timeSpentSecondsFlow: StateFlow<Long>? = null,
+    todayTestSecondsFlow: StateFlow<Long>? = null,
+    questionTimes: Map<Int, Long> = emptyMap(),
+    questionTimesFlow: StateFlow<Map<Int, Long>>? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -2931,6 +2981,8 @@ private fun ExamResultAndReviewView(
     var focusedQuestionIdx by remember { mutableIntStateOf(0) }
     var showPaletteDialog by remember { mutableStateOf(false) }
     var isSavedToKnowledge by remember { mutableStateOf(false) }
+    val effectiveTimeSpentSeconds = timeSpentSecondsFlow?.collectAsState()?.value ?: timeSpentSeconds
+    val effectiveQuestionTimes = questionTimesFlow?.collectAsState()?.value ?: questionTimes
 
     // Official one-time evaluation
     val officialAnswers = if (submittedAnswers.isNotEmpty()) submittedAnswers else answers
@@ -2995,9 +3047,13 @@ private fun ExamResultAndReviewView(
         ExamNumberGenerator.formatSetDisplayLabel(paper.metadata.setNumber)
     }
 
-    val h = timeSpentSeconds / 3600
-    val m = (timeSpentSeconds % 3600) / 60
-    val s = timeSpentSeconds % 60
+    val pacingSummary = remember(paper, officialAnswers, effectiveQuestionTimes) {
+        QuestionPacingAnalyzer.computeSummary(paper, officialAnswers, effectiveQuestionTimes)
+    }
+
+    val h = effectiveTimeSpentSeconds / 3600
+    val m = (effectiveTimeSpentSeconds % 3600) / 60
+    val s = effectiveTimeSpentSeconds % 60
     val durationFormatted = if (h > 0) {
         String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, s)
     } else {
@@ -3414,7 +3470,7 @@ private fun ExamResultAndReviewView(
                                         ScoreStatTile(
                                             title = "Duration",
                                             value = durationFormatted,
-                                            subtitle = if (total > 0) "${timeSpentSeconds / total}s avg / Q" else "Exam time",
+                                            subtitle = if (total > 0) "${effectiveTimeSpentSeconds / total}s avg / Q" else "Exam time",
                                             color = colors.teal,
                                             onClick = onOpenAnalytics,
                                             modifier = Modifier.weight(1f)
@@ -3485,50 +3541,11 @@ private fun ExamResultAndReviewView(
                                         }
                                     }
 
-                                    if (todayTestSeconds > 0L) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Surface(
-                                            onClick = onOpenAnalytics,
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = colors.tealLight.copy(alpha = 0.55f),
-                                            border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                val tHours = todayTestSeconds / 3600
-                                                val tMins = (todayTestSeconds % 3600) / 60
-                                                val tSecs = todayTestSeconds % 60
-                                                val todayFormatted = if (tHours > 0) "${tHours}h ${tMins}m ${tSecs}s" else "${tMins}m ${tSecs}s"
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    modifier = Modifier.weight(1f)
-                                                ) {
-                                                    Icon(Icons.Default.Timer, contentDescription = null, tint = colors.teal, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = "Today's Study: $todayFormatted",
-                                                        fontSize = 11.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (colors.isDark) colors.teal else colors.tealDark,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                Icon(
-                                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                                    contentDescription = "Open Analytics",
-                                                    tint = colors.teal,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                            }
-                                        }
-                                    }
+                                    ResultTodayStudyLeaf(
+                                        todayTestSecondsFlow = todayTestSecondsFlow,
+                                        fallbackSeconds = todayTestSeconds,
+                                        onOpenAnalytics = onOpenAnalytics
+                                    )
                                 }
                             }
                         }
@@ -4066,7 +4083,7 @@ private fun ExamResultAndReviewView(
                 val attemptedCount = correctCount + wrongCount
                 val accuracyOnAttempted = if (attemptedCount > 0) (correctCount * 100) / attemptedCount else 0
                 val attemptRate = if (total > 0) (attemptedCount * 100) / total else 0
-                val avgPaceSec = if (total > 0) timeSpentSeconds / total else 0L
+                val avgPaceSec = if (total > 0) effectiveTimeSpentSeconds / total else 0L
 
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -4153,6 +4170,12 @@ private fun ExamResultAndReviewView(
                                         color = if (percentage >= 50) colors.green else colors.red
                                     )
                                 }
+                            }
+                        }
+
+                        if (pacingSummary.hasPacingData) {
+                            item {
+                                PerQuestionPacingCard(pacingSummary = pacingSummary)
                             }
                         }
 
@@ -4663,6 +4686,171 @@ private fun InstructionBullet(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
             Text(text = description, fontSize = 11.5.sp, color = colors.muted, lineHeight = 16.sp)
+        }
+    }
+}
+
+@Composable
+private fun TodayTrackerTimeLeaf(
+    todayTestSecondsFlow: StateFlow<Long>?,
+    fallbackSeconds: Long,
+    dailyGoalMinutes: Int
+) {
+    val colors = ExamTheme.colors
+    val todaySeconds = todayTestSecondsFlow?.collectAsState()?.value ?: fallbackSeconds
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            val hours = todaySeconds / 3600
+            val minutes = (todaySeconds % 3600) / 60
+            val seconds = todaySeconds % 60
+            val timeStr = if (hours > 0) {
+                String.format(java.util.Locale.US, "%dh %02dm %02ds", hours, minutes, seconds)
+            } else {
+                String.format(java.util.Locale.US, "%dm %02ds", minutes, seconds)
+            }
+            Text(
+                text = timeStr,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = colors.teal,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            )
+            Text(
+                text = "Total test practice today • Goal: ${dailyGoalMinutes}m",
+                fontSize = 11.5.sp,
+                color = colors.muted
+            )
+        }
+
+        val goalSeconds = dailyGoalMinutes * 60L
+        val fraction = if (goalSeconds > 0) (todaySeconds.toFloat() / goalSeconds).coerceIn(0f, 1f) else 0f
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = "${(fraction * 100).toInt()}% Goal",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (fraction >= 1f) colors.green else colors.teal
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = if (fraction >= 1f) colors.green else colors.teal,
+                trackColor = colors.border
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExamHeaderTimerLeaf(
+    timerMode: ExamTimerMode,
+    timeSpentSecondsFlow: StateFlow<Long>?,
+    timeRemainingSecondsFlow: StateFlow<Long>?,
+    fallbackTimeSpentSeconds: Long,
+    fallbackTimeRemainingSeconds: Long
+) {
+    val timeSpent = timeSpentSecondsFlow?.collectAsState()?.value ?: fallbackTimeSpentSeconds
+    val timeRemaining = timeRemainingSecondsFlow?.collectAsState()?.value ?: fallbackTimeRemainingSeconds
+
+    val formattedTime = if (timerMode == ExamTimerMode.COUNTDOWN) {
+        val h = timeRemaining / 3600
+        val m = (timeRemaining % 3600) / 60
+        val s = timeRemaining % 60
+        if (h > 0) String.format(java.util.Locale.US, "%02d:%02d:%02d", h, m, s)
+        else String.format(java.util.Locale.US, "%02d:%02d", m, s)
+    } else {
+        val m = timeSpent / 60
+        val s = timeSpent % 60
+        String.format(java.util.Locale.US, "%02d:%02d", m, s)
+    }
+
+    val isTimerWarning = timerMode == ExamTimerMode.COUNTDOWN && timeRemaining <= 300L
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = if (isTimerWarning) Color(0xFF991B1B).copy(alpha = 0.4f) else Color(0xFF0D9488).copy(alpha = 0.25f),
+        border = BorderStroke(1.dp, if (isTimerWarning) Color(0xFFEF4444) else Color(0xFF14B8A6))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.HourglassBottom,
+                contentDescription = null,
+                tint = if (isTimerWarning) Color(0xFFFCA5A5) else Color(0xFF5EEAD4),
+                modifier = Modifier.size(12.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+                text = formattedTime,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isTimerWarning) Color(0xFFFCA5A5) else Color(0xFF5EEAD4),
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResultTodayStudyLeaf(
+    todayTestSecondsFlow: StateFlow<Long>?,
+    fallbackSeconds: Long,
+    onOpenAnalytics: () -> Unit
+) {
+    val colors = ExamTheme.colors
+    val todaySeconds = todayTestSecondsFlow?.collectAsState()?.value ?: fallbackSeconds
+    if (todaySeconds <= 0L) return
+
+    Spacer(modifier = Modifier.height(8.dp))
+    Surface(
+        onClick = onOpenAnalytics,
+        shape = RoundedCornerShape(8.dp),
+        color = colors.tealLight.copy(alpha = 0.55f),
+        border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val tHours = todaySeconds / 3600
+            val tMins = (todaySeconds % 3600) / 60
+            val tSecs = todaySeconds % 60
+            val todayFormatted = if (tHours > 0) "${tHours}h ${tMins}m ${tSecs}s" else "${tMins}m ${tSecs}s"
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Default.Timer, contentDescription = null, tint = colors.teal, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Today's Study: $todayFormatted",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (colors.isDark) colors.teal else colors.tealDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = "Open Analytics",
+                tint = colors.teal,
+                modifier = Modifier.size(15.dp)
+            )
         }
     }
 }

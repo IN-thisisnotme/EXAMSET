@@ -164,6 +164,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.ui.screens.DismissibleFormatTipBanner
 import com.example.ui.theme.ExamTheme
 
 private const val LITERAL_SLASH_PLACEHOLDER = "\u0000LITERAL_SLASH\u0000"
@@ -397,7 +398,10 @@ fun InputBottomSheet(
     onDuplicatePromptPreset: (String) -> Unit = {},
     onTogglePinPromptPreset: (String) -> Unit = {},
     onDeletePromptPreset: (String) -> Unit = {},
-    onClearQuestionPreset: () -> Unit = {}
+    onClearQuestionPreset: () -> Unit = {},
+    showFormatTip: Boolean = false,
+    onDismissFormatTip: () -> Unit = {},
+    onOpenAppGuide: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val colors = ExamTheme.colors
@@ -2148,6 +2152,16 @@ fun InputBottomSheet(
                     .fillMaxWidth()
                     .bringIntoViewRequester(bringIntoViewRequester)
             ) {
+                DismissibleFormatTipBanner(
+                    tipId = "input_mcq_formats",
+                    title = "Supported Input Formats",
+                    body = "Paste numbered MCQs (1. or Q1. with A–D), Aiken format (ANSWER: B), JSON arrays, or Markdown tables. Answers at the bottom are auto-linked!",
+                    isDismissed = !showFormatTip,
+                    onDismissTip = { onDismissFormatTip() },
+                    onOpenGuide = onOpenAppGuide,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

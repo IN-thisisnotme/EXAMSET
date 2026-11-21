@@ -90,6 +90,22 @@ import com.example.util.VocabularyMergeDecision
 import com.example.util.VocabularySmartRouteTargetChoice
 import com.example.util.WordOfTheDayService
 import com.example.util.WordOfTheDayUiState
+import android.os.SystemClock
+import com.example.data.AttemptPacingSummary
+import com.example.data.QuestionPacingAnalyzer
+import com.example.model.DueSuggestionCategory
+import com.example.model.ExamCountdownTarget
+import com.example.model.PomodoroDndMode
+import com.example.model.PomodoroPhase
+import com.example.model.PomodoroPreset
+import com.example.model.StudyDateUtils
+import com.example.model.StudyDueSuggestion
+import com.example.model.StudyTodoItem
+import com.example.model.TodoLinkType
+import com.example.model.TodoPriority
+import com.example.util.FocusPomodoroController
+import com.example.util.PomodoroUiState
+import com.example.util.StudyNoteBlock
 import com.example.util.StudyNoteParser
 import com.example.util.TrustedTimeManager
 import com.example.util.VaultArchiveEngine
@@ -290,6 +306,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var vocabularyHubInitialLanguage by mutableStateOf<String?>(null)
         private set
 
+    var showAppGuide by mutableStateOf(false)
+        private set
+    var showStudyPlanner by mutableStateOf(false)
+        private set
+    var showHeadwordInboxOverlay by mutableStateOf(false)
+        private set
+    var headwordInboxInitialLanguage by mutableStateOf<String?>(null)
+        private set
+
     fun openVocabularyHub(languageFilter: String? = null) {
         val cleanLang = languageFilter?.trim()?.ifBlank { null }?.takeUnless { it.equals("All", ignoreCase = true) }
         vocabularyHubInitialLanguage = cleanLang
@@ -299,6 +324,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeVocabularyHub() {
         showVocabularyHub = false
+    }
+
+    fun openAppGuide() {
+        showAppGuide = true
+    }
+
+    fun closeAppGuide() {
+        showAppGuide = false
+    }
+
+    fun openStudyPlanner() {
+        focusPomodoroController.refreshDndAccessStatus()
+        showStudyPlanner = true
+    }
+
+    fun closeStudyPlanner() {
+        showStudyPlanner = false
+    }
+
+    fun openHeadwordInboxOverlay(languageFilter: String? = null) {
+        headwordInboxInitialLanguage = languageFilter?.trim()?.ifBlank { null }
+        showHeadwordInboxOverlay = true
+    }
+
+    fun closeHeadwordInboxOverlay() {
+        showHeadwordInboxOverlay = false
     }
 
     fun setVocabularyReminderEnabled(enabled: Boolean) {
@@ -316,6 +367,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         com.example.util.TrustedTimeManager.syncWithNetworkAsync(viewModelScope)
         initTodayStudyAnalytics()
         refreshActiveWordOfTheDay()
+        _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
+        focusPomodoroController.restoreDndIfOrphaned()
+        focusPomodoroController.refreshDndAccessStatus()
+        syncExamTickerWithClock()
     }
 
     fun setPreferredEnglishVariant(variant: String) {
@@ -1661,7 +1716,302 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastOpenedPaper = MutableStateFlow<PaperEntity?>(null)
     val lastOpenedPaper: StateFlow<PaperEntity?> = _lastOpenedPaper.asStateFlow()
 
+    // Dismissible contextual format tips
+    private val _dismissedFormatTips = MutableStateFlow(
+        listOf("input_mcq_formats", "empty_library_welcome", "study_planner_tip")
+            .filter { appPreferences.isFormatTipDismissed(it) }
+            .toSet()
+    )
+    val dismissedFormatTips: StateFlow<Set<String>> = _dismissedFormatTips.asStateFlow()
+
+    fun isFormatTipDismissed(tipId: String): Boolean {
+        return tipId in _dismissedFormatTips.value || appPreferences.isFormatTipDismissed(tipId)
+    }
+
+    fun dismissFormatTip(tipId: String) {
+        appPreferences.dismissFormatTip(tipId)
+        _dismissedFormatTips.value = _dismissedFormatTips.value + tipId
+    }
+
+    // Per-question pacing telemetry (stored in AttemptEntity.answersJson._qTime)
+    private val _currentQuestionTimes = MutableStateFlow<Map<Int, Long>>(emptyMap())
+    val currentQuestionTimes: StateFlow<Map<Int, Long>> = _currentQuestionTimes.asStateFlow()
+
+    private val questionTimesAccumulator = mutableMapOf<Int, Long>()
+    private var activeTrackedQuestionNum: Int? = null
+    private var activeQuestionStartedElapsedMs: Long = 0L
+    private var activeQuestionRemainderMs: Long = 0L
+    private var examTimerLastTickElapsedMs: Long = 0L
+    private var examTimerRemainderMs: Long = 0L
+    private var examTimerLastRoomFlushElapsedMs: Long = 0L
+
+    // Exam-Day Countdowns
+    private val _examCountdowns = MutableStateFlow(appPreferences.getExamCountdowns())
+    val examCountdowns: StateFlow<List<ExamCountdownTarget>> = _examCountdowns.asStateFlow()
+
+    private val _countdownNowMillis = MutableStateFlow(TrustedTimeManager.getTrustedTimeMillis())
+    val countdownNowMillis: StateFlow<Long> = _countdownNowMillis.asStateFlow()
+
+    fun addOrUpdateExamCountdown(
+        id: String? = null,
+        title: String,
+        targetDateStr: String,
+        subject: String = "",
+        colorHex: String = "#0D9488",
+        isPinned: Boolean = true
+    ): Boolean {
+        val cleanTitle = title.trim()
+        val cleanDate = targetDateStr.trim()
+        if (cleanTitle.isBlank() || StudyDateUtils.parseDateToStartOfDayMillis(cleanDate) == null) {
+            _statusMessage.value = "Enter a title and valid YYYY-MM-DD date"
+            return false
+        }
+        val list = _examCountdowns.value.toMutableList()
+        val existingIdx = if (!id.isNullOrBlank()) list.indexOfFirst { it.id == id } else -1
+        if (existingIdx >= 0) {
+            list[existingIdx] = list[existingIdx].copy(
+                title = cleanTitle,
+                targetDateStr = cleanDate,
+                subject = subject.trim(),
+                colorHex = colorHex,
+                isPinned = isPinned
+            )
+        } else {
+            list.add(
+                ExamCountdownTarget(
+                    title = cleanTitle,
+                    targetDateStr = cleanDate,
+                    subject = subject.trim(),
+                    colorHex = colorHex,
+                    isPinned = isPinned,
+                    createdAt = TrustedTimeManager.getTrustedTimeMillis()
+                )
+            )
+        }
+        _examCountdowns.value = list
+        appPreferences.saveExamCountdowns(list)
+        _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
+        _statusMessage.value = "Saved exam countdown: $cleanTitle"
+        return true
+    }
+
+    fun deleteExamCountdown(id: String) {
+        val updated = _examCountdowns.value.filterNot { it.id == id }
+        _examCountdowns.value = updated
+        appPreferences.saveExamCountdowns(updated)
+    }
+
+    fun togglePinExamCountdown(id: String) {
+        val updated = _examCountdowns.value.map {
+            if (it.id == id) it.copy(isPinned = !it.isPinned) else it
+        }
+        _examCountdowns.value = updated
+        appPreferences.saveExamCountdowns(updated)
+    }
+
+    // Smart Study To-Do Planner
+    private val _studyTodos = MutableStateFlow(appPreferences.getStudyTodos())
+    val studyTodos: StateFlow<List<StudyTodoItem>> = _studyTodos.asStateFlow()
+
+    fun addStudyTodo(
+        title: String,
+        priority: TodoPriority = TodoPriority.MEDIUM,
+        dueDateStr: String = "",
+        targetPomodoros: Int = 1,
+        linkedType: TodoLinkType = TodoLinkType.NONE,
+        linkedPaperId: Long? = null,
+        linkedNoteId: Long? = null,
+        linkedDeckLanguage: String = "",
+        linkedLabel: String = ""
+    ): Boolean {
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank()) return false
+        val newItem = StudyTodoItem(
+            title = cleanTitle,
+            priority = priority,
+            dueDateStr = dueDateStr.trim(),
+            targetPomodoros = targetPomodoros.coerceIn(1, 12),
+            linkedType = linkedType,
+            linkedPaperId = linkedPaperId,
+            linkedNoteId = linkedNoteId,
+            linkedDeckLanguage = linkedDeckLanguage.trim(),
+            linkedLabel = linkedLabel.trim(),
+            createdAt = TrustedTimeManager.getTrustedTimeMillis()
+        )
+        val updated = listOf(newItem) + _studyTodos.value
+        _studyTodos.value = updated
+        appPreferences.saveStudyTodos(updated)
+        return true
+    }
+
+    fun toggleTodoCompleted(id: String) {
+        val now = TrustedTimeManager.getTrustedTimeMillis()
+        val updated = _studyTodos.value.map { item ->
+            if (item.id == id) {
+                val nextDone = !item.isCompleted
+                item.copy(
+                    isCompleted = nextDone,
+                    completedAt = if (nextDone) now else null
+                )
+            } else item
+        }
+        _studyTodos.value = updated
+        appPreferences.saveStudyTodos(updated)
+    }
+
+    fun deleteTodoItem(id: String) {
+        val updated = _studyTodos.value.filterNot { it.id == id }
+        _studyTodos.value = updated
+        appPreferences.saveStudyTodos(updated)
+    }
+
+    fun incrementTodoPomodoro(id: String) {
+        val updated = _studyTodos.value.map { item ->
+            if (item.id == id) {
+                item.copy(completedPomodoros = item.completedPomodoros + 1)
+            } else item
+        }
+        _studyTodos.value = updated
+        appPreferences.saveStudyTodos(updated)
+    }
+
+    val focusPomodoroController: FocusPomodoroController = FocusPomodoroController(
+        context = application,
+        prefs = appPreferences,
+        scope = viewModelScope,
+        onFlushFocusSeconds = { secs -> recordStudySeconds(secs) },
+        onFocusSessionCompleted = { todoId ->
+            if (todoId != null) {
+                incrementTodoPomodoro(todoId)
+            }
+        },
+        onStatusMessage = { msg -> _statusMessage.value = msg }
+    )
+
+    val pomodoroState: StateFlow<PomodoroUiState> = focusPomodoroController.state
+
+    fun startFocusForTodo(item: StudyTodoItem) {
+        focusPomodoroController.startFocus(
+            todoId = item.id,
+            todoTitle = item.title
+        )
+    }
+
+    private data class StudySrsInputs(
+        val notes: List<StudyNoteEntity>,
+        val flashcardSrs: Map<Long, Map<Int, FlashcardSrsState>>,
+        val vocabDecks: List<VocabularyDeck>,
+        val vocabSrs: Map<String, Map<String, FlashcardSrsState>>
+    )
+
+    private val studySrsInputsFlow = combine(
+        studyNotes,
+        _flashcardSrsByNote,
+        _vocabularyDecks,
+        _vocabularySrsByDeck
+    ) { notes, fcSrs, vDecks, vSrs ->
+        StudySrsInputs(notes, fcSrs, vDecks, vSrs)
+    }
+
+    val studyDueSuggestions: StateFlow<List<StudyDueSuggestion>> = combine(
+        studySrsInputsFlow,
+        _headwordInbox,
+        savedPapers,
+        libraryIndex
+    ) { srsInputs, inbox, papers, libIndex ->
+        val now = TrustedTimeManager.getTrustedTimeMillis()
+        val suggestions = mutableListOf<StudyDueSuggestion>()
+
+        // 1. Due SM-2 Flashcards
+        srsInputs.notes.forEach { note ->
+            val rule = note.parsedFormatRule()
+            val blocks = StudyNoteParser.parseBlocks(note.rawContent, rule)
+            val cards = blocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
+            if (cards.isNotEmpty()) {
+                val stats = SpacedRepetitionEngine.computeDeckStats(
+                    allCards = cards,
+                    srsMap = srsInputs.flashcardSrs[note.id].orEmpty(),
+                    nowMillis = now
+                )
+                val isFlashcardDeck = note.resolvedCollectionType() == KnowledgeCollectionType.FLASHCARDS
+                val dueOrReady = if (isFlashcardDeck) stats.actionableCount else stats.dueCount
+                if (stats.dueCount > 0 || (isFlashcardDeck && dueOrReady > 0)) {
+                    val count = if (stats.dueCount > 0) stats.dueCount else dueOrReady
+                    val subtitle = buildString {
+                        if (stats.dueCount > 0) append("${stats.dueCount} due")
+                        if (stats.dueCount > 0 && stats.newCount > 0) append(" • ")
+                        if (stats.newCount > 0) append("${stats.newCount} new")
+                        if (note.subject.isNotBlank()) append(" • ${note.subject}")
+                    }
+                    suggestions.add(
+                        StudyDueSuggestion(
+                            id = "fc-${note.id}",
+                            category = DueSuggestionCategory.FLASHCARDS,
+                            title = note.title.ifBlank { "Flashcard Deck" },
+                            subtitle = subtitle,
+                            count = count,
+                            noteId = note.id
+                        )
+                    )
+                }
+            }
+        }
+
+        // 2. Due Vocabulary SRS Decks (per language)
+        val vocabSummaries = VocabularyEngine.buildLanguageFolderSummaries(
+            decks = srsInputs.vocabDecks,
+            srsByDeck = srsInputs.vocabSrs,
+            nowMillis = now
+        )
+        vocabSummaries.filter { it.dueCount > 0 }.forEach { summary ->
+            suggestions.add(
+                StudyDueSuggestion(
+                    id = "vocab-${summary.language}",
+                    category = DueSuggestionCategory.VOCABULARY,
+                    title = "${summary.language} Vocabulary",
+                    subtitle = "${summary.dueCount} word(s) due • ${summary.uniqueWords} total",
+                    count = summary.dueCount,
+                    language = summary.language
+                )
+            )
+        }
+
+        // 3. Pending Headword Inbox
+        if (inbox.isNotEmpty()) {
+            val topLang = inbox.groupingBy { it.language.ifBlank { "English" } }
+                .eachCount()
+                .maxByOrNull { it.value }?.key
+            suggestions.add(
+                StudyDueSuggestion(
+                    id = "inbox-all",
+                    category = DueSuggestionCategory.HEADWORD_INBOX,
+                    title = "Headword Inbox Queue",
+                    subtitle = "${inbox.size} queued word(s) awaiting enrichment",
+                    count = inbox.size,
+                    language = topLang
+                )
+            )
+        }
+
+        // 4. Paused / In-Progress Mock Tests
+        papers.filter { it.id in libIndex.inProgressPaperIds }.forEach { paper ->
+            suggestions.add(
+                StudyDueSuggestion(
+                    id = "paper-${paper.id}",
+                    category = DueSuggestionCategory.PAUSED_TEST,
+                    title = paper.title.ifBlank { "Saved Test" },
+                    subtitle = "${paper.subject.ifBlank { "General" }} • Resume unfinished attempt",
+                    count = 1,
+                    paperId = paper.id
+                )
+            )
+        }
+
+        suggestions
+    }.conflate().flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     init {
+        focusPomodoroController.restoreDndIfOrphaned()
         restoreAutosavedState()
         initTodayStudyAnalytics()
         backfillLegacyPaperNumbers()
@@ -1672,10 +2022,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             com.example.util.TrustedTimeManager.isNetworkTimeSynced.collect { synced ->
                 if (synced && !wasSynced) {
                     refreshActiveWordOfTheDay()
+                    _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
                 }
                 wasSynced = synced
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        focusPomodoroController.stopAndReset()
     }
 
     private fun backfillLegacyPaperNumbers() {
@@ -2762,6 +3118,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _timerMode.value = ExamTimerMode.COUNTDOWN
 
             if (unsubmittedAttempt != null) {
+                val loadedQTimes = unsubmittedAttempt.getQuestionTimesMap()
+                questionTimesAccumulator.clear()
+                questionTimesAccumulator.putAll(loadedQTimes)
+                _currentQuestionTimes.value = loadedQTimes
+                activeTrackedQuestionNum = null
                 _currentAttemptId.value = unsubmittedAttempt.id
                 _studentAnswers.value = unsubmittedAttempt.getAnswersMap()
                 _timeSpentSeconds.value = unsubmittedAttempt.timeSpentSeconds
@@ -2769,6 +3130,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _isExamStarted.value = false
                 _retryQuestionNumbers.value = null
             } else {
+                questionTimesAccumulator.clear()
+                _currentQuestionTimes.value = emptyMap()
+                activeTrackedQuestionNum = null
                 _currentAttemptId.value = null
                 _studentAnswers.value = emptyMap()
                 _timeSpentSeconds.value = 0L
@@ -4970,6 +5334,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _colorSchemePreset.value = themePreferences.getColorSchemePreset()
                     _headwordInbox.value = appPreferences.getHeadwordInbox()
                     _dismissedWordKeys.value = appPreferences.getDismissedWordKeys()
+                    _examCountdowns.value = appPreferences.getExamCountdowns()
+                    _studyTodos.value = appPreferences.getStudyTodos()
+                    focusPomodoroController.reloadPreferencesAfterRestore()
+                    _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
@@ -5408,33 +5776,102 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.setShuffleOptions(enabled)
     }
 
+    fun onActiveExamQuestionChanged(qNum: Int?) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        commitActiveQuestionElapsed(nowElapsed)
+        activeTrackedQuestionNum = qNum
+        activeQuestionStartedElapsedMs = nowElapsed
+        activeQuestionRemainderMs = 0L
+    }
+
+    private fun commitActiveQuestionElapsed(nowElapsed: Long = SystemClock.elapsedRealtime()) {
+        val qNum = activeTrackedQuestionNum ?: return
+        if (!_isExamStarted.value || _isExamSubmitted.value) return
+        val deltaMs = (nowElapsed - activeQuestionStartedElapsedMs).coerceAtLeast(0L)
+        activeQuestionStartedElapsedMs = nowElapsed
+        if (deltaMs <= 0L) return
+        activeQuestionRemainderMs += deltaMs
+        val wholeSecs = activeQuestionRemainderMs / 1000L
+        if (wholeSecs > 0L) {
+            activeQuestionRemainderMs %= 1000L
+            val next = (questionTimesAccumulator[qNum] ?: 0L) + wholeSecs
+            questionTimesAccumulator[qNum] = next
+            _currentQuestionTimes.value = questionTimesAccumulator.toMap()
+        }
+    }
+
+    fun resolveCurrentPaperPacingSummary(): AttemptPacingSummary? {
+        val paper = _currentPaper.value ?: return null
+        val activeTimes = _currentQuestionTimes.value
+        if (activeTimes.isNotEmpty()) {
+            val answers = if (_isExamSubmitted.value && _submittedAnswers.value.isNotEmpty()) {
+                _submittedAnswers.value
+            } else {
+                _studentAnswers.value
+            }
+            val summary = QuestionPacingAnalyzer.computeSummary(paper, answers, activeTimes)
+            if (summary.hasPacingData) return summary
+        }
+        val latestSubmitted = _attempts.value
+            .filter { it.isSubmitted }
+            .maxByOrNull { it.submittedAt ?: it.createdAt }
+            ?: return null
+        return QuestionPacingAnalyzer.computeSummary(paper, latestSubmitted).takeIf { it.hasPacingData }
+    }
+
+    fun syncExamTickerWithClock() {
+        if (!_isExamStarted.value || _isExamSubmitted.value) return
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (examTimerLastTickElapsedMs == 0L) {
+            examTimerLastTickElapsedMs = nowElapsed
+            activeQuestionStartedElapsedMs = nowElapsed
+            return
+        }
+        val deltaMs = (nowElapsed - examTimerLastTickElapsedMs).coerceAtLeast(0L)
+        examTimerLastTickElapsedMs = nowElapsed
+        if (deltaMs > 0L) {
+            examTimerRemainderMs += deltaMs
+            val wholeSecs = examTimerRemainderMs / 1000L
+            if (wholeSecs > 0L) {
+                examTimerRemainderMs %= 1000L
+                _timeSpentSeconds.value += wholeSecs
+                _todayTestSeconds.value += wholeSecs
+
+                if (_timerMode.value == ExamTimerMode.COUNTDOWN) {
+                    val remaining = (_timeRemainingSeconds.value - wholeSecs).coerceAtLeast(0L)
+                    _timeRemainingSeconds.value = remaining
+                    if (remaining <= 0L) {
+                        commitActiveQuestionElapsed(nowElapsed)
+                        submitExam()
+                        _statusMessage.value = "Time's up! Examination auto-submitted."
+                        return
+                    }
+                }
+            }
+        }
+        commitActiveQuestionElapsed(nowElapsed)
+    }
+
     private fun startTimerTicker() {
         examTimerJob?.cancel()
+        val startElapsed = SystemClock.elapsedRealtime()
+        examTimerLastTickElapsedMs = startElapsed
+        examTimerRemainderMs = 0L
+        examTimerLastRoomFlushElapsedMs = startElapsed
+        activeQuestionStartedElapsedMs = startElapsed
+        activeQuestionRemainderMs = 0L
         examTimerJob = viewModelScope.launch {
-            var tick = 0
             while (_isExamStarted.value && !_isExamSubmitted.value) {
                 delay(1000L)
                 if (!_isExamStarted.value || _isExamSubmitted.value) break
 
-                _timeSpentSeconds.value += 1L
-                _todayTestSeconds.value += 1L
-                tick++
+                syncExamTickerWithClock()
+                if (_isExamSubmitted.value) break
 
-                if (_timerMode.value == ExamTimerMode.COUNTDOWN) {
-                    if (_timeRemainingSeconds.value > 0) {
-                        _timeRemainingSeconds.value -= 1L
-                        if (_timeRemainingSeconds.value <= 0L) {
-                            withContext(Dispatchers.Main) {
-                                submitExam()
-                                _statusMessage.value = "Time's up! Examination auto-submitted."
-                            }
-                            break
-                        }
-                    }
-                }
-
-                // Save attempt and daily analytics periodically every 10 seconds to avoid disk thrashing
-                if (tick % 10 == 0) {
+                val nowElapsed = SystemClock.elapsedRealtime()
+                // Throttle background Room persistence to every 30s (immediate flushes still happen on pause/exit/submit)
+                if (nowElapsed - examTimerLastRoomFlushElapsedMs >= 30_000L) {
+                    examTimerLastRoomFlushElapsedMs = nowElapsed
                     saveCurrentAttempt()
                     saveTodayDailyAnalytics()
                 }
@@ -5445,6 +5882,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun stopTimerTicker() {
         examTimerJob?.cancel()
         examTimerJob = null
+        if (_isExamStarted.value && !_isExamSubmitted.value) {
+            syncExamTickerWithClock()
+        }
+        activeTrackedQuestionNum = null
+        examTimerLastTickElapsedMs = 0L
         saveTodayDailyAnalytics()
     }
 
@@ -5452,8 +5894,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val paperId = _currentPaperEntityId.value ?: return
         val attemptId = _currentAttemptId.value
         val paper = _currentPaper.value ?: return
+        commitActiveQuestionElapsed()
         val currentTime = _timeSpentSeconds.value
         val answers = _studentAnswers.value.toMap()
+        val questionTimesSnapshot = questionTimesAccumulator.toMap()
         val isSubmitted = _isExamSubmitted.value
 
         // If attempt was already submitted, do not overwrite the official one-time score from review changes
@@ -5463,7 +5907,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             val stats = calculateTestStats(paper, answers)
-            val answersJson = AttemptEntity.buildAnswersJson(answers)
+            val answersJson = AttemptEntity.buildAnswersJson(
+                map = answers,
+                questionTimes = questionTimesSnapshot
+            )
             if (attemptId == null) {
                 val newAttempt = AttemptEntity(
                     paperId = paperId,
@@ -5514,6 +5961,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val paper = _currentPaper.value ?: return
 
         val answersSnapshot = _studentAnswers.value.toMap()
+        val questionTimesSnapshot = questionTimesAccumulator.toMap()
         _submittedAnswers.value = answersSnapshot
 
         // One-time official scoring calculation
@@ -5547,7 +5995,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 map = answersSnapshot,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
-                bookletCode = finalCode
+                bookletCode = finalCode,
+                questionTimes = questionTimesSnapshot
             )
             val trustedSubmissionTime = com.example.util.TrustedTimeManager.getTrustedTimeMillis()
             val updatedAttempt = if (attemptId != null) {
@@ -5725,6 +6174,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _unattendedQuestionLog.value = emptySet()
             _currentAttemptId.value = null
             _examSessionSeed.value = System.currentTimeMillis()
+            questionTimesAccumulator.clear()
+            _currentQuestionTimes.value = emptyMap()
+            activeTrackedQuestionNum = null
         }
         _timeSpentSeconds.value = 0L
         _timeRemainingSeconds.value = _customTimeLimitMinutes.value * 60L
@@ -5761,6 +6213,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _submittedStats.value = null
         _incorrectQuestionLog.value = emptySet()
         _unattendedQuestionLog.value = emptySet()
+        questionTimesAccumulator.clear()
+        _currentQuestionTimes.value = emptyMap()
+        activeTrackedQuestionNum = null
         _timeSpentSeconds.value = 0L
         val autoMins = (_currentPaper.value?.questions?.size ?: 30).coerceAtLeast(1)
         _customTimeLimitMinutes.value = autoMins
@@ -5788,6 +6243,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         stopTimerTicker()
         _currentAttemptId.value = attempt.id
         val answersMap = attempt.getAnswersMap()
+        val loadedQTimes = attempt.getQuestionTimesMap()
+        questionTimesAccumulator.clear()
+        questionTimesAccumulator.putAll(loadedQTimes)
+        _currentQuestionTimes.value = loadedQTimes
+        activeTrackedQuestionNum = null
         _studentAnswers.value = answersMap
         _timeSpentSeconds.value = attempt.timeSpentSeconds
         _isExamSubmitted.value = attempt.isSubmitted
@@ -5902,10 +6362,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearCurrentPaper() {
+        stopTimerTicker()
         _currentPaper.value = null
         _currentPaperEntityId.value = null
         _rawInputText.value = ""
         _studentAnswers.value = emptyMap()
+        questionTimesAccumulator.clear()
+        _currentQuestionTimes.value = emptyMap()
+        activeTrackedQuestionNum = null
         _isExamSubmitted.value = false
         _isExamStarted.value = false
         _currentAttemptId.value = null

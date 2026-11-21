@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,6 +59,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,9 +79,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.AttemptPacingSummary
 import com.example.data.DailyStudyAnalyticsEntity
 import com.example.ui.theme.ExamTheme
 import com.example.util.TrustedTimeManager
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -88,14 +92,16 @@ import java.util.Locale
 
 @Composable
 fun StudentHistoricalAnalysisDialog(
-    todayTestSeconds: Long,
+    todayTestSeconds: Long = 0L,
     todayAnalytics: DailyStudyAnalyticsEntity?,
     historicalRecords: List<DailyStudyAnalyticsEntity>,
     dailyGoalMinutes: Int,
     isTestCurrentlyRunning: Boolean,
     onSetDailyGoalMinutes: (Int) -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    todayTestSecondsFlow: StateFlow<Long>? = null,
+    pacingSummary: AttemptPacingSummary? = null
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
@@ -112,15 +118,19 @@ fun StudentHistoricalAnalysisDialog(
         label = "pulse_alpha"
     )
 
+    val initialTodaySeconds = remember(todayTestSecondsFlow, todayTestSeconds) {
+        todayTestSecondsFlow?.value ?: todayTestSeconds
+    }
+
     // Anchor "today" to TrustedTimeManager so device clock drifts never misalign daily activity
-    val trustedNowMillis = remember(todayTestSeconds, todayAnalytics) {
+    val trustedNowMillis = remember(todayAnalytics) {
         TrustedTimeManager.getTrustedTimeMillis()
     }
-    val activeTodayEntity = remember(todayTestSeconds, todayAnalytics, dailyGoalMinutes, trustedNowMillis) {
+    val activeTodayEntity = remember(initialTodaySeconds, todayAnalytics, dailyGoalMinutes, trustedNowMillis) {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(trustedNowMillis))
         val base = todayAnalytics ?: DailyStudyAnalyticsEntity(dateString = todayStr)
         base.copy(
-            totalTestTimeSeconds = todayTestSeconds,
+            totalTestTimeSeconds = initialTodaySeconds,
             dailyGoalSeconds = dailyGoalMinutes * 60L
         )
     }
@@ -233,16 +243,23 @@ fun StudentHistoricalAnalysisDialog(
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // --- SECTION 1: TODAY'S LIVE TIMER CARD ---
+                    // --- SECTION 1: TODAY'S LIVE TIMER CARD (Leaf-isolated collector) ---
                     item {
                         TodayLiveTimerCard(
-                            todaySeconds = todayTestSeconds,
+                            todaySecondsFlow = todayTestSecondsFlow,
+                            fallbackTodaySeconds = initialTodaySeconds,
                             todayEntity = activeTodayEntity,
                             dailyGoalMinutes = dailyGoalMinutes,
                             isCurrentlyActive = isTestCurrentlyRunning,
                             pulseAlpha = pulseAlpha,
                             onSetDailyGoal = onSetDailyGoalMinutes
                         )
+                    }
+
+                    if (pacingSummary != null && pacingSummary.hasPacingData) {
+                        item {
+                            PerQuestionPacingCard(pacingSummary = pacingSummary)
+                        }
                     }
 
                     // --- SECTION 2: MULTI-WEEK HORIZONTAL SWIPE ACTIVITY TRACKER ---
@@ -307,8 +324,9 @@ fun StudentHistoricalAnalysisDialog(
                 ) {
                     OutlinedButton(
                         onClick = {
+                            val liveTodaySecs = todayTestSecondsFlow?.value ?: activeTodayEntity.totalTestTimeSeconds
                             val report = buildStudyReportText(
-                                activeToday = activeTodayEntity,
+                                activeToday = activeTodayEntity.copy(totalTestTimeSeconds = liveTodaySecs),
                                 totalSeconds = totalAllTimeSeconds,
                                 totalTests = totalAllTimeTests,
                                 totalQuestions = totalAllTimeQuestions,
@@ -365,13 +383,15 @@ fun StudentHistoricalAnalysisDialog(
  */
 @Composable
 private fun TodayLiveTimerCard(
-    todaySeconds: Long,
+    todaySecondsFlow: StateFlow<Long>?,
+    fallbackTodaySeconds: Long,
     todayEntity: DailyStudyAnalyticsEntity,
     dailyGoalMinutes: Int,
     isCurrentlyActive: Boolean,
     pulseAlpha: Float,
     onSetDailyGoal: (Int) -> Unit
 ) {
+    val todaySeconds = todaySecondsFlow?.collectAsState()?.value ?: fallbackTodaySeconds
     val colors = ExamTheme.colors
     val goalSeconds = dailyGoalMinutes * 60L
     val progressFraction = if (goalSeconds > 0) {
@@ -1155,6 +1175,168 @@ private fun formatHistoryDate(dateStr: String, isToday: Boolean): String {
         }
     } catch (e: Exception) {
         dateStr
+    }
+}
+
+@Composable
+fun PerQuestionPacingCard(
+    pacingSummary: AttemptPacingSummary,
+    modifier: Modifier = Modifier
+) {
+    if (!pacingSummary.hasPacingData) return
+    val colors = ExamTheme.colors
+
+    fun formatSecs(secs: Double): String {
+        val rounded = kotlin.math.round(secs).toLong()
+        return if (rounded >= 60L) "${rounded / 60}m ${rounded % 60}s" else "${rounded}s"
+    }
+
+    fun formatExactSecs(secs: Long): String {
+        return if (secs >= 60L) "${secs / 60}m ${secs % 60}s" else "${secs}s"
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("per_question_pacing_card"),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        border = BorderStroke(1.dp, colors.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = colors.teal,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Per-Question Pacing Insights",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.tealLight
+                ) {
+                    Text(
+                        text = "${pacingSummary.trackedQuestionsCount} Qs tracked",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.teal,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LifetimeStatCard(
+                    title = "Avg / Question",
+                    value = formatSecs(pacingSummary.averageSecondsPerQuestion),
+                    subtitle = "Total ${formatExactSecs(pacingSummary.totalTrackedSeconds)}",
+                    modifier = Modifier.weight(1f)
+                )
+                LifetimeStatCard(
+                    title = "Correct Avg",
+                    value = pacingSummary.correctAvgSeconds?.let { formatSecs(it) } ?: "—",
+                    subtitle = "Answered right",
+                    modifier = Modifier.weight(1f)
+                )
+                LifetimeStatCard(
+                    title = "Incorrect Avg",
+                    value = pacingSummary.incorrectAvgSeconds?.let { formatSecs(it) } ?: "—",
+                    subtitle = "Time-sink check",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            if (pacingSummary.slowestQuestions.isNotEmpty()) {
+                Text(
+                    text = "Slowest Questions",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.inkBold
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    pacingSummary.slowestQuestions.forEach { entry ->
+                        val (statusLabel, statusTint) = when (entry.isCorrect) {
+                            true -> "Correct" to colors.green
+                            false -> "Wrong" to colors.red
+                            null -> "Skipped" to colors.muted
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.surfaceVariant,
+                            border = BorderStroke(0.8.dp, colors.borderLight),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = colors.tealLight
+                                ) {
+                                    Text(
+                                        text = "Q${entry.questionNum}",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = colors.teal,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = entry.questionPreview.ifBlank { "Question ${entry.questionNum}" },
+                                    fontSize = 11.5.sp,
+                                    color = colors.ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = statusTint.copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        text = statusLabel,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = statusTint,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = formatExactSecs(entry.secondsSpent),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = colors.inkBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -38,10 +38,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
@@ -149,11 +151,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.DueSuggestionCategory
+import com.example.model.TodoLinkType
 import com.example.ui.MainViewModel
 import com.example.ui.components.EditMetadataDialog
+import com.example.ui.components.ExamCountdownsDialog
 import com.example.ui.components.HeadwordInboxDialog
 import com.example.ui.components.InputBottomSheet
 import com.example.ui.components.OmrScannerDialog
+import com.example.ui.components.PinnedExamCountdownsStrip
 import com.example.ui.components.PrintConfigDialog
 import com.example.ui.components.PsychometricAnalysisDialog
 import com.example.data.AppFontScaleMode
@@ -197,6 +203,12 @@ fun HomeScreen(
     val isEditMetadataOverlayOpen by viewModel.isEditMetadataOverlayOpen.collectAsState()
     val editMetadataEnterQuestionEditAction by viewModel.editMetadataEnterQuestionEditAction.collectAsState()
     val isAddQuestionOverlayOpen by viewModel.isAddQuestionOverlayOpen.collectAsState()
+    val examCountdowns by viewModel.examCountdowns.collectAsState()
+    val countdownNowMillis by viewModel.countdownNowMillis.collectAsState()
+    val studyTodos by viewModel.studyTodos.collectAsState()
+    val studyDueSuggestions by viewModel.studyDueSuggestions.collectAsState()
+    val dismissedFormatTips by viewModel.dismissedFormatTips.collectAsState()
+    val vocabDecks by viewModel.vocabularyDecks.collectAsState()
 
     val isFullScreenTestActive = selectedTab == 2 && isExamStarted && !isExamSubmitted && currentPaper != null
 
@@ -215,6 +227,7 @@ fun HomeScreen(
     var showThemePaletteDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
     var showPsychometricDialog by remember { mutableStateOf(false) }
+    var showCountdownsDialog by remember { mutableStateOf(false) }
     var showTopBarOverflowMenu by remember { mutableStateOf(false) }
     var selectedSubjectFolder by remember { mutableStateOf<String?>(null) }
     var showConfirmExitDialog by remember { mutableStateOf(false) }
@@ -225,6 +238,18 @@ fun HomeScreen(
         when {
             drawerState.isOpen -> {
                 coroutineScope.launch { drawerState.close() }
+            }
+            viewModel.showHeadwordInboxOverlay -> {
+                viewModel.closeHeadwordInboxOverlay()
+            }
+            viewModel.showAppGuide -> {
+                viewModel.closeAppGuide()
+            }
+            viewModel.showStudyPlanner -> {
+                viewModel.closeStudyPlanner()
+            }
+            showCountdownsDialog -> {
+                showCountdownsDialog = false
             }
             showPsychometricDialog -> {
                 showPsychometricDialog = false
@@ -302,7 +327,7 @@ fun HomeScreen(
     Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -549,6 +574,52 @@ fun HomeScreen(
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_psychometrics")
                     )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = colors.border)
+
+                    Text(
+                        text = "PLANNER & HELP",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        color = colors.inkMuted,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
+                    )
+
+                    val pendingTodoCount = remember(studyTodos) { studyTodos.count { !it.isCompleted } }
+                    NavigationDrawerItem(
+                        label = { Text("Study Planner & Focus Clock", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Checklist, contentDescription = null, tint = colors.teal) },
+                        badge = if (pendingTodoCount > 0 || studyDueSuggestions.isNotEmpty()) {
+                            {
+                                Text(
+                                    text = "${pendingTodoCount + studyDueSuggestions.size}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.teal
+                                )
+                            }
+                        } else null,
+                        selected = viewModel.showStudyPlanner,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.openStudyPlanner()
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_study_planner")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("App Guide & Feature Finder", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = null, tint = colors.inkBold) },
+                        selected = viewModel.showAppGuide,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.openAppGuide()
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_app_guide")
+                    )
                 }
             }
         }
@@ -666,6 +737,20 @@ fun HomeScreen(
                                         imageVector = Icons.Default.Search,
                                         contentDescription = "Search & Open Saved Question Sets",
                                         tint = colors.inkBold
+                                    )
+                                }
+
+                                // Searchable App Guide Trigger
+                                IconButton(
+                                    onClick = { viewModel.openAppGuide() },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("topbar_app_guide_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                                        contentDescription = "Open App Guide & Feature Finder",
+                                        tint = colors.teal
                                     )
                                 }
 
@@ -965,6 +1050,26 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
+                // Pinned Exam-Day Countdowns & Dismissible Welcome Tip on Library Tab
+                if (!isFullScreenTestActive && selectedTab == 0) {
+                    PinnedExamCountdownsStrip(
+                        countdowns = examCountdowns,
+                        nowMillis = countdownNowMillis,
+                        onManageCountdowns = { showCountdownsDialog = true }
+                    )
+                    if (savedPapers.isEmpty() && "empty_library_welcome" !in dismissedFormatTips) {
+                        DismissibleFormatTipBanner(
+                            tipId = "empty_library_welcome",
+                            title = "Welcome to ExamSet",
+                            body = "Tap '+' to paste MCQs (numbered, Aiken, JSON, or Markdown table), track exam dates above, or tap '?' anytime for the searchable App Guide.",
+                            isDismissed = false,
+                            onDismissTip = { viewModel.dismissFormatTip("empty_library_welcome") },
+                            onOpenGuide = { viewModel.openAppGuide() },
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
                 // Main Tab Body
                 val paper = currentPaper
                 when (selectedTab) {
@@ -985,7 +1090,6 @@ fun HomeScreen(
                     2 -> if (isLoadingPaper && (paper == null || (currentPaperEntityId != null && paper.id != currentPaperEntityId))) {
                         PaperLoadingPlaceholder(title = "Student Test Series")
                     } else if (paper != null && paper.questions.isNotEmpty()) {
-                        val todayTestSeconds by viewModel.todayTestSeconds.collectAsState()
                         StudentTestTab(
                             paper = paper,
                             answers = studentAnswers,
@@ -997,12 +1101,12 @@ fun HomeScreen(
                             isExamStarted = isExamStarted,
                             isSubmitted = isExamSubmitted,
                             retryQuestionNumbers = viewModel.retryQuestionNumbers.collectAsState().value,
-                            timeSpentSeconds = viewModel.timeSpentSeconds.collectAsState().value,
-                            timeRemainingSeconds = viewModel.timeRemainingSeconds.collectAsState().value,
+                            timeSpentSeconds = 0L,
+                            timeRemainingSeconds = 0L,
                             timerMode = viewModel.timerMode.collectAsState().value,
                             customTimeLimitMinutes = viewModel.customTimeLimitMinutes.collectAsState().value,
                             attempts = viewModel.attempts.collectAsState().value,
-                            todayTestSeconds = todayTestSeconds,
+                            todayTestSeconds = 0L,
                             todayAnalytics = viewModel.todayStudyAnalytics.collectAsState().value,
                             historicalRecords = viewModel.allDailyAnalytics.collectAsState().value,
                             dailyGoalMinutes = viewModel.dailyGoalMinutes.collectAsState().value,
@@ -1023,7 +1127,12 @@ fun HomeScreen(
                             onOpenPsychometrics = { showPsychometricDialog = true },
                             onSaveWeakAreasToKnowledgeSet = { p, inc, unatt, ans ->
                                 viewModel.createWeakAreaKnowledgeSetFromTest(p, inc, unatt, ans)
-                            }
+                            },
+                            timeSpentSecondsFlow = viewModel.timeSpentSeconds,
+                            timeRemainingSecondsFlow = viewModel.timeRemainingSeconds,
+                            todayTestSecondsFlow = viewModel.todayTestSeconds,
+                            questionTimesFlow = viewModel.currentQuestionTimes,
+                            onActiveQuestionChanged = { viewModel.onActiveExamQuestionChanged(it) }
                         )
                 } else {
                     val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
@@ -1204,13 +1313,15 @@ fun HomeScreen(
     // Historical Analytics Dialog (available from topbar chip or test views)
     if (showHistoricalAnalyticsDialog) {
         StudentHistoricalAnalysisDialog(
-            todayTestSeconds = viewModel.todayTestSeconds.collectAsState().value,
+            todayTestSeconds = 0L,
             todayAnalytics = viewModel.todayStudyAnalytics.collectAsState().value,
             historicalRecords = viewModel.allDailyAnalytics.collectAsState().value,
             dailyGoalMinutes = viewModel.dailyGoalMinutes.collectAsState().value,
             isTestCurrentlyRunning = viewModel.isExamStarted.collectAsState().value && !isExamSubmitted,
             onSetDailyGoalMinutes = { viewModel.setDailyGoalMinutes(it) },
-            onDismiss = { showHistoricalAnalyticsDialog = false }
+            onDismiss = { showHistoricalAnalyticsDialog = false },
+            todayTestSecondsFlow = viewModel.todayTestSeconds,
+            pacingSummary = viewModel.resolveCurrentPaperPacingSummary()
         )
     }
 
@@ -1334,7 +1445,14 @@ fun HomeScreen(
             onDuplicatePromptPreset = { id -> viewModel.duplicatePromptPreset(id) },
             onTogglePinPromptPreset = { id -> viewModel.togglePinPromptPreset(id) },
             onDeletePromptPreset = { id -> viewModel.deletePromptPreset(id) },
-            onClearQuestionPreset = { viewModel.setActivePromptPresetId(com.example.model.PromptPresetMode.QUESTION_SET, null) }
+            onClearQuestionPreset = { viewModel.setActivePromptPresetId(com.example.model.PromptPresetMode.QUESTION_SET, null) },
+            showFormatTip = "input_mcq_formats" !in dismissedFormatTips,
+            onDismissFormatTip = { viewModel.dismissFormatTip("input_mcq_formats") },
+            onOpenAppGuide = {
+                showInputSheet = false
+                creationTargetFolderId = null
+                viewModel.openAppGuide()
+            }
         )
     }
 
@@ -1652,6 +1770,169 @@ fun HomeScreen(
         AddQuestionDialog(
             viewModel = viewModel,
             onDismiss = { viewModel.closeAddQuestionOverlay() }
+        )
+    }
+
+    // Exam-Day Countdowns Manager Dialog
+    if (showCountdownsDialog) {
+        ExamCountdownsDialog(
+            countdowns = examCountdowns,
+            nowMillis = countdownNowMillis,
+            onSaveCountdown = { id, title, dateStr, subject, colorHex, isPinned ->
+                viewModel.addOrUpdateExamCountdown(
+                    id = id,
+                    title = title,
+                    targetDateStr = dateStr,
+                    subject = subject,
+                    colorHex = colorHex,
+                    isPinned = isPinned
+                )
+            },
+            onTogglePin = { viewModel.togglePinExamCountdown(it) },
+            onDelete = { viewModel.deleteExamCountdown(it) },
+            onDismiss = { showCountdownsDialog = false }
+        )
+    }
+
+    // Top-level Headword Inbox Overlay (reachable from Study Planner & App Guide)
+    if (viewModel.showHeadwordInboxOverlay) {
+        HeadwordInboxDialog(
+            viewModel = viewModel,
+            initialLanguageFilter = viewModel.headwordInboxInitialLanguage,
+            onDismiss = { viewModel.closeHeadwordInboxOverlay() }
+        )
+    }
+
+    // Smart Study Planner & Deep Focus Clock Overlay
+    if (viewModel.showStudyPlanner) {
+        val vocabLanguages = remember(vocabDecks) {
+            vocabDecks.map { it.language.trim() }.filter { it.isNotBlank() }.distinct()
+        }
+        StudyPlannerScreen(
+            pomodoroStateFlow = viewModel.pomodoroState,
+            dueSuggestions = studyDueSuggestions,
+            todos = studyTodos,
+            savedPapers = savedPapers,
+            studyNotes = studyNotes,
+            vocabLanguages = vocabLanguages,
+            onStartFocus = { todoId, todoTitle, enableDnd ->
+                viewModel.focusPomodoroController.startFocus(
+                    todoId = todoId,
+                    todoTitle = todoTitle,
+                    enableDnd = enableDnd
+                )
+            },
+            onPauseFocus = { viewModel.focusPomodoroController.pause() },
+            onResumeFocus = { viewModel.focusPomodoroController.resume() },
+            onSkipToBreak = { viewModel.focusPomodoroController.skipToBreak() },
+            onSkipBreak = { viewModel.focusPomodoroController.skipBreak() },
+            onStopFocus = { viewModel.focusPomodoroController.stopAndReset() },
+            onSelectPreset = { preset -> viewModel.focusPomodoroController.setPreset(preset) },
+            onSetCustomDurations = { focusMins, breakMins ->
+                viewModel.focusPomodoroController.setCustomDurations(focusMins, breakMins)
+            },
+            onToggleDndPreference = { enabled ->
+                viewModel.focusPomodoroController.toggleSessionDndPreference(enabled)
+            },
+            onSetPreferredDndMode = { mode ->
+                viewModel.focusPomodoroController.setPreferredDndMode(mode)
+            },
+            onOpenDndSettings = { viewModel.focusPomodoroController.openDndSettings() },
+            onDisableDndImmediately = { viewModel.focusPomodoroController.disableDndImmediately() },
+            onAddTodo = { title, priority, dueDate, targetPomos, linkType, paperId, noteId, lang, label ->
+                viewModel.addStudyTodo(
+                    title = title,
+                    priority = priority,
+                    dueDateStr = dueDate,
+                    targetPomodoros = targetPomos,
+                    linkedType = linkType,
+                    linkedPaperId = paperId,
+                    linkedNoteId = noteId,
+                    linkedDeckLanguage = lang,
+                    linkedLabel = label
+                )
+            },
+            onToggleTodoCompleted = { id -> viewModel.toggleTodoCompleted(id) },
+            onDeleteTodo = { id -> viewModel.deleteTodoItem(id) },
+            onFocusTodo = { item -> viewModel.startFocusForTodo(item) },
+            onOpenDueSuggestion = { suggestion ->
+                when (suggestion.category) {
+                    DueSuggestionCategory.FLASHCARDS -> {
+                        suggestion.noteId?.let { nid ->
+                            viewModel.closeStudyPlanner()
+                            viewModel.openKnowledgeReader(nid)
+                        }
+                    }
+                    DueSuggestionCategory.VOCABULARY -> {
+                        viewModel.closeStudyPlanner()
+                        viewModel.openVocabularyHub(suggestion.language)
+                    }
+                    DueSuggestionCategory.HEADWORD_INBOX -> {
+                        viewModel.openHeadwordInboxOverlay(suggestion.language)
+                    }
+                    DueSuggestionCategory.PAUSED_TEST -> {
+                        val target = suggestion.paperId?.let { pid -> savedPapers.find { it.id == pid } }
+                        if (target != null) {
+                            viewModel.closeStudyPlanner()
+                            viewModel.loadSavedPaper(target) { viewModel.selectTab(2) }
+                        }
+                    }
+                }
+            },
+            onOpenLinkedTodoResource = { item ->
+                when (item.linkedType) {
+                    TodoLinkType.PAPER -> {
+                        val target = item.linkedPaperId?.let { pid -> savedPapers.find { it.id == pid } }
+                        if (target != null) {
+                            viewModel.closeStudyPlanner()
+                            viewModel.loadSavedPaper(target) { viewModel.selectTab(2) }
+                        }
+                    }
+                    TodoLinkType.NOTE -> {
+                        val target = item.linkedNoteId?.let { nid -> studyNotes.find { it.id == nid } }
+                        if (target != null) {
+                            viewModel.closeStudyPlanner()
+                            viewModel.openKnowledgeReader(target.id)
+                        }
+                    }
+                    TodoLinkType.VOCAB_DECK -> {
+                        viewModel.closeStudyPlanner()
+                        viewModel.openVocabularyHub(item.linkedDeckLanguage.takeIf { it.isNotBlank() })
+                    }
+                    TodoLinkType.NONE -> Unit
+                }
+            },
+            onDismiss = { viewModel.closeStudyPlanner() }
+        )
+    }
+
+    // Searchable App Guide & Feature Finder Overlay
+    if (viewModel.showAppGuide) {
+        AppGuideScreen(
+            onDismiss = { viewModel.closeAppGuide() },
+            onNavigateDestination = { dest ->
+                viewModel.closeAppGuide()
+                when (dest) {
+                    GuideDestination.EXAMS_LIBRARY -> viewModel.selectTab(0)
+                    GuideDestination.INPUT_MCQ_SHEET -> {
+                        viewModel.selectTab(0)
+                        showInputSheet = true
+                    }
+                    GuideDestination.STUDENT_TEST -> viewModel.selectTab(2)
+                    GuideDestination.PRINT_OMR -> viewModel.selectTab(3)
+                    GuideDestination.AI_PROMPT_STUDIO -> viewModel.selectTab(5)
+                    GuideDestination.KNOWLEDGE_STUDIO -> viewModel.selectTab(0)
+                    GuideDestination.VOCABULARY_HUB -> viewModel.openVocabularyHub()
+                    GuideDestination.HEADWORD_INBOX -> viewModel.openHeadwordInboxOverlay()
+                    GuideDestination.STUDY_PLANNER -> viewModel.openStudyPlanner()
+                    GuideDestination.ANALYTICS -> showHistoricalAnalyticsDialog = true
+                    GuideDestination.BACKUP_VAULT -> viewModel.selectTab(6)
+                    GuideDestination.COUNTDOWNS -> {
+                        viewModel.selectTab(0)
+                        showCountdownsDialog = true
+                    }
+                }
+            }
         )
     }
     }

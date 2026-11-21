@@ -69,12 +69,33 @@ data class AttemptEntity(
         } catch (e: Exception) { "" }
     }
 
+    fun getQuestionTimesMap(): Map<Int, Long> {
+        val map = mutableMapOf<Int, Long>()
+        try {
+            val json = JSONObject(answersJson)
+            val qTimeObj = json.optJSONObject("_qTime") ?: return emptyMap()
+            qTimeObj.keys().forEach { key ->
+                val qNum = key.toIntOrNull()
+                if (qNum != null) {
+                    val secs = qTimeObj.optLong(key, 0L)
+                    if (secs > 0L) {
+                        map[qNum] = secs
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Ignore malformed legacy metadata
+        }
+        return map
+    }
+
     companion object {
         fun buildAnswersJson(
             map: Map<Int, String>,
             rollNumber: String? = null,
             bookletNumber: String? = null,
-            bookletCode: String? = null
+            bookletCode: String? = null,
+            questionTimes: Map<Int, Long>? = null
         ): String {
             val json = JSONObject()
             try {
@@ -82,6 +103,19 @@ data class AttemptEntity(
                 if (!rollNumber.isNullOrBlank()) json.put("_rollNumber", rollNumber)
                 if (!bookletNumber.isNullOrBlank()) json.put("_bookletNumber", bookletNumber)
                 if (!bookletCode.isNullOrBlank()) json.put("_bookletCode", bookletCode)
+                if (!questionTimes.isNullOrEmpty()) {
+                    val qTimeObj = JSONObject()
+                    var hasAny = false
+                    questionTimes.forEach { (qNum, secs) ->
+                        if (qNum > 0 && secs > 0L) {
+                            qTimeObj.put(qNum.toString(), secs)
+                            hasAny = true
+                        }
+                    }
+                    if (hasAny) {
+                        json.put("_qTime", qTimeObj)
+                    }
+                }
             } catch (e: Exception) {
                 // Ignore
             }
@@ -89,3 +123,91 @@ data class AttemptEntity(
         }
     }
 }
+
+data class SlowQuestionPacingEntry(
+    val questionNum: Int,
+    val secondsSpent: Long,
+    val isCorrect: Boolean?,
+    val questionPreview: String
+)
+
+data class AttemptPacingSummary(
+    val hasPacingData: Boolean = false,
+    val trackedQuestionsCount: Int = 0,
+    val totalTrackedSeconds: Long = 0L,
+    val averageSecondsPerQuestion: Double = 0.0,
+    val slowestQuestions: List<SlowQuestionPacingEntry> = emptyList(),
+    val correctAvgSeconds: Double? = null,
+    val incorrectAvgSeconds: Double? = null
+)
+
+object QuestionPacingAnalyzer {
+    fun computeSummary(
+        paper: com.example.model.QuestionPaper?,
+        attempt: AttemptEntity?
+    ): AttemptPacingSummary {
+        if (attempt == null) return AttemptPacingSummary()
+        return computeSummary(
+            paper = paper,
+            answers = attempt.getAnswersMap(),
+            questionTimes = attempt.getQuestionTimesMap()
+        )
+    }
+
+    fun computeSummary(
+        paper: com.example.model.QuestionPaper?,
+        answers: Map<Int, String>,
+        questionTimes: Map<Int, Long>
+    ): AttemptPacingSummary {
+        val validTimes = questionTimes.filter { (qNum, secs) -> qNum > 0 && secs > 0L }
+        if (validTimes.isEmpty()) return AttemptPacingSummary()
+
+        val questionsByNum = paper?.questions?.associateBy { it.num }.orEmpty()
+        val totalSecs = validTimes.values.sum()
+        val avgSecs = totalSecs.toDouble() / validTimes.size.toDouble()
+
+        val correctTimes = mutableListOf<Long>()
+        val incorrectTimes = mutableListOf<Long>()
+
+        val entries = validTimes.map { (qNum, secs) ->
+            val q = questionsByNum[qNum]
+            val userAns = answers[qNum]
+            val isCorrect: Boolean? = if (q != null) {
+                when {
+                    q.isNeutralized -> true
+                    userAns.isNullOrBlank() -> null
+                    q.correctAnswer.isNullOrBlank() -> null
+                    else -> q.correctAnswer.equals(userAns, ignoreCase = true)
+                }
+            } else null
+
+            when (isCorrect) {
+                true -> correctTimes.add(secs)
+                false -> incorrectTimes.add(secs)
+                null -> Unit
+            }
+
+            SlowQuestionPacingEntry(
+                questionNum = qNum,
+                secondsSpent = secs,
+                isCorrect = isCorrect,
+                questionPreview = q?.question?.replace(Regex("\\s+"), " ")?.trim()?.take(72).orEmpty()
+            )
+        }
+
+        val slowest = entries
+            .sortedWith(compareByDescending<SlowQuestionPacingEntry> { it.secondsSpent }.thenBy { it.questionNum })
+            .take(3)
+
+        return AttemptPacingSummary(
+            hasPacingData = true,
+            trackedQuestionsCount = validTimes.size,
+            totalTrackedSeconds = totalSecs,
+            averageSecondsPerQuestion = avgSecs,
+            slowestQuestions = slowest,
+            correctAvgSeconds = if (correctTimes.isNotEmpty()) correctTimes.average() else null,
+            incorrectAvgSeconds = if (incorrectTimes.isNotEmpty()) incorrectTimes.average() else null
+        )
+    }
+}
+

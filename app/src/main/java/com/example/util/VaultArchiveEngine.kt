@@ -965,6 +965,12 @@ object VaultArchiveEngine {
             put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
             put("headwordInboxJson", appPrefs.getHeadwordInboxRawJson())
             put("dismissedWordKeysJson", appPrefs.getDismissedWordKeysRawJson())
+            put("examCountdownsJson", appPrefs.getExamCountdownsRawJson())
+            put("studyTodosJson", appPrefs.getStudyTodosRawJson())
+            put("pomodoroPreset", appPrefs.getPomodoroPresetName())
+            put("pomodoroCustomFocusMinutes", appPrefs.getPomodoroCustomFocusMinutes())
+            put("pomodoroCustomBreakMinutes", appPrefs.getPomodoroCustomBreakMinutes())
+            put("preferredDndMode", appPrefs.getPreferredDndMode().name)
         }.toString()
     }
 
@@ -1077,6 +1083,55 @@ object VaultArchiveEngine {
 
             if (!skipVocabularyIfDedicatedEntry) {
                 applyVocabularyFields(obj, appPrefs, overwriteAll)
+            }
+
+            // Restore Exam Countdowns & Study Planner To-Dos
+            val incomingCountdownsRaw = obj.optString("examCountdownsJson", "")
+            if (incomingCountdownsRaw.isNotBlank()) {
+                val incomingCountdowns = com.example.model.ExamCountdownTarget.deserializeList(incomingCountdownsRaw)
+                if (overwriteAll) {
+                    appPrefs.saveExamCountdowns(incomingCountdowns)
+                } else if (incomingCountdowns.isNotEmpty()) {
+                    val merged = appPrefs.getExamCountdowns().associateBy { it.id }.toMutableMap()
+                    incomingCountdowns.forEach { target ->
+                        if (!merged.containsKey(target.id)) {
+                            merged[target.id] = target
+                        }
+                    }
+                    appPrefs.saveExamCountdowns(merged.values.sortedBy { it.targetDateStr })
+                }
+            }
+
+            val incomingTodosRaw = obj.optString("studyTodosJson", "")
+            if (incomingTodosRaw.isNotBlank()) {
+                val incomingTodos = com.example.model.StudyTodoItem.deserializeList(incomingTodosRaw)
+                if (overwriteAll) {
+                    appPrefs.saveStudyTodos(incomingTodos)
+                } else if (incomingTodos.isNotEmpty()) {
+                    val merged = appPrefs.getStudyTodos().associateBy { it.id }.toMutableMap()
+                    incomingTodos.forEach { todo ->
+                        val existing = merged[todo.id]
+                        if (existing == null || (todo.isCompleted && !existing.isCompleted) || todo.completedPomodoros > existing.completedPomodoros) {
+                            merged[todo.id] = todo
+                        }
+                    }
+                    appPrefs.saveStudyTodos(merged.values.sortedByDescending { it.createdAt })
+                }
+            }
+
+            if (overwriteAll) {
+                obj.optString("pomodoroPreset", "").takeIf { it.isNotBlank() }?.let {
+                    appPrefs.setPomodoroPresetName(com.example.model.PomodoroPreset.fromString(it).name)
+                }
+                if (obj.has("pomodoroCustomFocusMinutes")) {
+                    appPrefs.setPomodoroCustomFocusMinutes(obj.optInt("pomodoroCustomFocusMinutes", 30))
+                }
+                if (obj.has("pomodoroCustomBreakMinutes")) {
+                    appPrefs.setPomodoroCustomBreakMinutes(obj.optInt("pomodoroCustomBreakMinutes", 5))
+                }
+                obj.optString("preferredDndMode", "").takeIf { it.isNotBlank() }?.let {
+                    appPrefs.setPreferredDndMode(com.example.model.PomodoroDndMode.fromString(it))
+                }
             }
         }
     }

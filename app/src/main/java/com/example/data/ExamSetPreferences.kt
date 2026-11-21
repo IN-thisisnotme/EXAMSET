@@ -482,6 +482,116 @@ class ExamSetPreferences(context: Context) {
         prefs.edit().putBoolean(KEY_LEGACY_SAMPLES_CLEANED, cleaned).apply()
     }
 
+    // --- Exam-Day Countdowns ---
+
+    fun getExamCountdowns(): List<com.example.model.ExamCountdownTarget> {
+        val raw = prefs.getString(KEY_EXAM_COUNTDOWNS, null)
+        return com.example.model.ExamCountdownTarget.deserializeList(raw)
+    }
+
+    fun saveExamCountdowns(targets: List<com.example.model.ExamCountdownTarget>) {
+        prefs.edit().putString(
+            KEY_EXAM_COUNTDOWNS,
+            com.example.model.ExamCountdownTarget.serializeList(targets)
+        ).apply()
+    }
+
+    fun getExamCountdownsRawJson(): String {
+        return prefs.getString(KEY_EXAM_COUNTDOWNS, "[]") ?: "[]"
+    }
+
+    // --- Study Planner & Pomodoro Focus ---
+
+    fun getStudyTodos(): List<com.example.model.StudyTodoItem> {
+        val raw = prefs.getString(KEY_STUDY_TODOS, null)
+        return com.example.model.StudyTodoItem.deserializeList(raw)
+    }
+
+    fun saveStudyTodos(items: List<com.example.model.StudyTodoItem>) {
+        prefs.edit().putString(
+            KEY_STUDY_TODOS,
+            com.example.model.StudyTodoItem.serializeList(items)
+        ).apply()
+    }
+
+    fun getStudyTodosRawJson(): String {
+        return prefs.getString(KEY_STUDY_TODOS, "[]") ?: "[]"
+    }
+
+    fun getPomodoroPresetName(): String {
+        return prefs.getString(KEY_POMODORO_PRESET, com.example.model.PomodoroPreset.CLASSIC_25_5.name)
+            ?: com.example.model.PomodoroPreset.CLASSIC_25_5.name
+    }
+
+    fun setPomodoroPresetName(name: String) {
+        prefs.edit().putString(KEY_POMODORO_PRESET, name).apply()
+    }
+
+    fun getPomodoroCustomFocusMinutes(): Int {
+        return prefs.getInt(KEY_POMODORO_CUSTOM_FOCUS_MINS, 30).coerceIn(5, 180)
+    }
+
+    fun setPomodoroCustomFocusMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_POMODORO_CUSTOM_FOCUS_MINS, minutes.coerceIn(5, 180)).apply()
+    }
+
+    fun getPomodoroCustomBreakMinutes(): Int {
+        return prefs.getInt(KEY_POMODORO_CUSTOM_BREAK_MINS, 5).coerceIn(1, 60)
+    }
+
+    fun setPomodoroCustomBreakMinutes(minutes: Int) {
+        prefs.edit().putInt(KEY_POMODORO_CUSTOM_BREAK_MINS, minutes.coerceIn(1, 60)).apply()
+    }
+
+    fun getPreferredDndMode(): com.example.model.PomodoroDndMode {
+        val raw = prefs.getString(KEY_POMODORO_DND_MODE, com.example.model.PomodoroDndMode.PRIORITY_CALLS.name)
+        return com.example.model.PomodoroDndMode.fromString(raw)
+    }
+
+    fun setPreferredDndMode(mode: com.example.model.PomodoroDndMode) {
+        prefs.edit().putString(KEY_POMODORO_DND_MODE, mode.name).apply()
+    }
+
+    fun getDndPolicyBackup(): com.example.model.DndPolicyBackup {
+        return com.example.model.DndPolicyBackup(
+            wasDndManagedByApp = prefs.getBoolean(KEY_DND_MANAGED_BY_APP, false),
+            previousInterruptionFilter = prefs.getInt(KEY_DND_PREVIOUS_FILTER, 1),
+            managedSessionStartedAt = prefs.getLong(KEY_DND_SESSION_STARTED_AT, 0L)
+        )
+    }
+
+    /**
+     * Synchronous commit so process death never loses the pre-Focus DND state.
+     */
+    fun saveDndPolicyBackupSync(backup: com.example.model.DndPolicyBackup): Boolean {
+        return prefs.edit()
+            .putBoolean(KEY_DND_MANAGED_BY_APP, backup.wasDndManagedByApp)
+            .putInt(KEY_DND_PREVIOUS_FILTER, backup.previousInterruptionFilter)
+            .putLong(KEY_DND_SESSION_STARTED_AT, backup.managedSessionStartedAt)
+            .commit()
+    }
+
+    fun isFormatTipDismissed(tipId: String): Boolean {
+        val dismissed = getDismissedFormatTips()
+        return tipId in dismissed
+    }
+
+    fun dismissFormatTip(tipId: String) {
+        val current = getDismissedFormatTips().toMutableSet()
+        if (current.add(tipId)) {
+            val arr = JSONArray().apply { current.forEach { put(it) } }
+            prefs.edit().putString(KEY_DISMISSED_FORMAT_TIPS, arr.toString()).apply()
+        }
+    }
+
+    private fun getDismissedFormatTips(): Set<String> {
+        val raw = prefs.getString(KEY_DISMISSED_FORMAT_TIPS, null) ?: return emptySet()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }.toSet()
+        }.getOrDefault(emptySet())
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -508,5 +618,15 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_HEADWORD_INBOX = "key_headword_inbox_v1"
         private const val KEY_DISMISSED_WORD_KEYS = "key_dismissed_word_keys_v1"
         private const val KEY_LEGACY_SAMPLES_CLEANED = "key_legacy_samples_cleaned_v1"
+        private const val KEY_EXAM_COUNTDOWNS = "key_exam_countdowns_v1"
+        private const val KEY_STUDY_TODOS = "key_study_todos_v1"
+        private const val KEY_POMODORO_PRESET = "key_pomodoro_preset_v1"
+        private const val KEY_POMODORO_CUSTOM_FOCUS_MINS = "key_pomodoro_custom_focus_v1"
+        private const val KEY_POMODORO_CUSTOM_BREAK_MINS = "key_pomodoro_custom_break_v1"
+        private const val KEY_POMODORO_DND_MODE = "key_pomodoro_dnd_mode_v1"
+        private const val KEY_DND_MANAGED_BY_APP = "key_dnd_managed_by_app_v1"
+        private const val KEY_DND_PREVIOUS_FILTER = "key_dnd_previous_filter_v1"
+        private const val KEY_DND_SESSION_STARTED_AT = "key_dnd_session_started_at_v1"
+        private const val KEY_DISMISSED_FORMAT_TIPS = "key_dismissed_format_tips_v1"
     }
 }
