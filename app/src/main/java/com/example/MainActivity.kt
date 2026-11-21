@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
         handleOAuthIntent(intent)
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
+            val colorSchemePreset by viewModel.colorSchemePreset.collectAsState()
             val isSystemDark = isSystemInDarkTheme()
             val isDark = when (themeMode) {
                 ThemeMode.SYSTEM -> isSystemDark
@@ -50,7 +51,7 @@ class MainActivity : ComponentActivity() {
                     fontScale = effectiveFontScale
                 )
             ) {
-                ExamSetTheme(darkTheme = isDark) {
+                ExamSetTheme(darkTheme = isDark, colorSchemePreset = colorSchemePreset) {
                     HomeScreen(viewModel = viewModel)
                 }
             }

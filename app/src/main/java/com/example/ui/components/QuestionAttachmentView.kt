@@ -97,7 +97,7 @@ fun QuestionAttachmentView(
                             Icon(
                                 imageVector = if (isChemistry) Icons.Default.Science else Icons.Default.Functions,
                                 contentDescription = null,
-                                tint = if (isChemistry) colors.teal else Color(0xFF6366F1),
+                                tint = if (isChemistry) colors.teal else colors.tealDark,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -111,13 +111,13 @@ fun QuestionAttachmentView(
 
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = if (isChemistry) colors.teal.copy(alpha = 0.12f) else Color(0xFF6366F1).copy(alpha = 0.12f)
+                            color = if (isChemistry) colors.teal.copy(alpha = 0.12f) else colors.tealDark.copy(alpha = 0.12f)
                         ) {
                             Text(
                                 text = if (isChemistry) "CHEM" else "MATH",
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isChemistry) colors.teal else Color(0xFF6366F1),
+                                color = if (isChemistry) colors.teal else colors.tealDark,
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }

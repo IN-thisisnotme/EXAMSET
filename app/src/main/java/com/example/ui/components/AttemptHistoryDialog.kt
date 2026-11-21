@@ -94,7 +94,7 @@ fun AttemptHistoryDialog(
                                                 text = "Roll: ${roll.ifBlank { "—" }}  •  Booklet: ${booklet.ifBlank { "—" }}${if (code.isNotBlank()) " (Set $code)" else ""}",
                                                 fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = androidx.compose.ui.graphics.Color(0xFF0284C7)
+                                                color = colors.teal
                                             )
                                         }
                                     } else {

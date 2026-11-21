@@ -23,6 +23,7 @@ import com.example.data.toQuestionPaper
 import com.example.data.SampleData
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
+import com.example.data.ColorSchemePreset
 import com.example.data.AppFontScaleMode
 import com.example.model.AutoBackupSchedule
 import com.example.model.AutoSaveStatus
@@ -164,6 +165,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Dark Mode preference
     private val _themeMode = MutableStateFlow(themePreferences.getThemeMode())
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    // Color Scheme preset preference
+    private val _colorSchemePreset = MutableStateFlow(themePreferences.getColorSchemePreset())
+    val colorSchemePreset: StateFlow<ColorSchemePreset> = _colorSchemePreset.asStateFlow()
 
     // Question card layout style: true for rounded cards, false for borderless exam paper
     private val _isCardBoxed = MutableStateFlow(true)
@@ -4709,6 +4714,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     com.example.util.VocabularyDailyReminderWorker.syncSchedule(getApplication(), refreshedReminder)
                     refreshActiveWordOfTheDay()
                     _themeMode.value = themePreferences.getThemeMode()
+                    _colorSchemePreset.value = themePreferences.getColorSchemePreset()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
@@ -5621,6 +5627,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ThemeMode.SYSTEM -> ThemeMode.DARK
         }
         setThemeMode(nextMode)
+    }
+
+    fun setColorSchemePreset(preset: ColorSchemePreset) {
+        _colorSchemePreset.value = preset
+        themePreferences.setColorSchemePreset(preset)
     }
 
     fun toggleCardBoxed() {

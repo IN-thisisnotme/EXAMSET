@@ -376,30 +376,30 @@ fun PedagogicalSectionCard(
         )
         PedagogicalSectionType.FORMULA -> SectionStyle(
             badgeText = section.title.ifEmpty { "FORMULA / EQUATION" }.uppercase(),
-            badgeColor = if (colors.isDark) Color(0xFF818CF8) else Color(0xFF4338CA),
-            badgeBg = if (colors.isDark) Color(0xFF312E81) else Color(0xFFEEF2FF),
-            cardBg = if (colors.isDark) Color(0xFF1E1B4B).copy(alpha = 0.4f) else Color(0xFFF5F3FF),
+            badgeColor = colors.tealDark,
+            badgeBg = colors.blueLight,
+            cardBg = colors.surfaceVariant.copy(alpha = if (colors.isDark) 0.35f else 0.5f),
             icon = Icons.Default.Functions
         )
         PedagogicalSectionType.KEY_IDEA -> SectionStyle(
             badgeText = section.title.ifEmpty { "KEY IDEA" }.uppercase(),
-            badgeColor = if (colors.isDark) Color(0xFFFBBF24) else Color(0xFFB45309),
-            badgeBg = if (colors.isDark) Color(0xFF78350F).copy(alpha = 0.4f) else Color(0xFFFEF3C7),
-            cardBg = if (colors.isDark) Color(0xFF451A03).copy(alpha = 0.25f) else Color(0xFFFFFBEB),
+            badgeColor = colors.amber,
+            badgeBg = colors.amberLight.copy(alpha = if (colors.isDark) 0.35f else 0.8f),
+            cardBg = colors.amberLight.copy(alpha = if (colors.isDark) 0.15f else 0.3f),
             icon = Icons.Default.Stars
         )
         PedagogicalSectionType.MEMORY_ANCHOR -> SectionStyle(
             badgeText = section.title.ifEmpty { "MEMORY ANCHOR" }.uppercase(),
-            badgeColor = if (colors.isDark) Color(0xFFA78BFA) else Color(0xFF6D28D9),
-            badgeBg = if (colors.isDark) Color(0xFF4C1D95).copy(alpha = 0.4f) else Color(0xFFEDE9FE),
-            cardBg = if (colors.isDark) Color(0xFF2E1065).copy(alpha = 0.25f) else Color(0xFFFAF5FF),
+            badgeColor = colors.navyBannerText,
+            badgeBg = colors.navyBanner,
+            cardBg = colors.surfaceVariant.copy(alpha = if (colors.isDark) 0.35f else 0.5f),
             icon = Icons.Default.Bookmark
         )
         PedagogicalSectionType.DERIVATION -> SectionStyle(
             badgeText = section.title.ifEmpty { "DERIVATION & ANALYSIS" }.uppercase(),
-            badgeColor = if (colors.isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
-            badgeBg = if (colors.isDark) Color(0xFF0C4A6E).copy(alpha = 0.4f) else Color(0xFFE0F2FE),
-            cardBg = if (colors.isDark) Color(0xFF082F49).copy(alpha = 0.25f) else Color(0xFFF0F9FF),
+            badgeColor = colors.teal,
+            badgeBg = colors.tealLight.copy(alpha = if (colors.isDark) 0.35f else 0.8f),
+            cardBg = colors.tealLight.copy(alpha = if (colors.isDark) 0.15f else 0.3f),
             icon = Icons.Default.Timeline
         )
         PedagogicalSectionType.SUMMARY -> SectionStyle(

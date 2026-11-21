@@ -3,66 +3,14 @@ package com.example.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-
-private val LightColorScheme = lightColorScheme(
-    primary = ExamNavy,
-    onPrimary = ExamWhite,
-    primaryContainer = ExamTealLight,
-    onPrimaryContainer = ExamNavy,
-    secondary = ExamTeal,
-    onSecondary = ExamWhite,
-    secondaryContainer = ExamTealLight,
-    onSecondaryContainer = ExamTealDark,
-    tertiary = ExamGreen,
-    onTertiary = ExamWhite,
-    tertiaryContainer = ExamGreenLight,
-    onTertiaryContainer = ExamGreen,
-    background = ExamBackground,
-    onBackground = ExamInk,
-    surface = ExamWhite,
-    onSurface = ExamInk,
-    surfaceVariant = ExamSurfaceVariant,
-    onSurfaceVariant = ExamMuted,
-    outline = ExamBorder,
-    outlineVariant = ExamBorderLight,
-    inverseSurface = ExamNavy,
-    inverseOnSurface = ExamWhite,
-    inversePrimary = ExamTealLight
-)
-
-private val DarkColorScheme = darkColorScheme(
-    primary = DarkExamTeal,
-    onPrimary = DarkExamBackground,
-    primaryContainer = DarkExamTealLight,
-    onPrimaryContainer = DarkExamTeal,
-    secondary = DarkExamTealDark,
-    onSecondary = DarkExamNavyBannerText,
-    secondaryContainer = DarkExamBlueLight,
-    onSecondaryContainer = DarkExamTeal,
-    tertiary = DarkExamGreen,
-    onTertiary = DarkExamBackground,
-    tertiaryContainer = DarkExamGreenLight,
-    onTertiaryContainer = DarkExamGreen,
-    background = DarkExamBackground,
-    onBackground = DarkExamInk,
-    surface = DarkExamSurface,
-    onSurface = DarkExamInkBold,
-    surfaceVariant = DarkExamSurfaceVariant,
-    onSurfaceVariant = DarkExamMuted,
-    outline = DarkExamBorder,
-    outlineVariant = DarkExamBorderLight,
-    inverseSurface = DarkExamSurfaceElevated,
-    inverseOnSurface = DarkExamInkBold,
-    inversePrimary = DarkExamTeal
-)
+import com.example.data.ColorSchemePreset
 
 object ExamTheme {
     val colors: ExamColorPalette
@@ -74,10 +22,12 @@ object ExamTheme {
 @Composable
 fun ExamSetTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    colorSchemePreset: ColorSchemePreset = ColorSchemePreset.NORDIC_SLATE,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val examPalette = if (darkTheme) DarkExamColorPalette else LightExamColorPalette
+    val context = LocalContext.current
+    val colorScheme = resolveMaterialColorScheme(colorSchemePreset, darkTheme, context)
+    val examPalette = resolveExamColorPalette(colorSchemePreset, darkTheme, context)
 
     val view = LocalView.current
     if (!view.isInEditMode) {

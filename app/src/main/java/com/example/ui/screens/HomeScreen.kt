@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Quiz
@@ -186,6 +187,7 @@ fun HomeScreen(
     val isLoadingPaper by viewModel.isLoadingPaper.collectAsState()
     val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
     val fontScaleMode by viewModel.fontScaleMode.collectAsState()
+    val colorSchemePreset by viewModel.colorSchemePreset.collectAsState()
     val studyNotes by viewModel.studyNotes.collectAsState()
     val promptPresets by viewModel.promptPresets.collectAsState()
     val flashcardSrsByNote by viewModel.flashcardSrsByNote.collectAsState()
@@ -209,6 +211,7 @@ fun HomeScreen(
     var showOmrScannerDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
     var showFontSizeDialog by remember { mutableStateOf(false) }
+    var showThemePaletteDialog by remember { mutableStateOf(false) }
     var showHistoricalAnalyticsDialog by remember { mutableStateOf(false) }
     var showPsychometricDialog by remember { mutableStateOf(false) }
     var showTopBarOverflowMenu by remember { mutableStateOf(false) }
@@ -249,6 +252,9 @@ fun HomeScreen(
             }
             showFontSizeDialog -> {
                 showFontSizeDialog = false
+            }
+            showThemePaletteDialog -> {
+                showThemePaletteDialog = false
             }
             isAddQuestionOverlayOpen -> {
                 viewModel.closeAddQuestionOverlay()
@@ -384,6 +390,26 @@ fun HomeScreen(
                         onClick = { viewModel.toggleThemeMode() },
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_dark_mode")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Color Palette & Theme", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Palette, contentDescription = null, tint = colors.teal) },
+                        badge = {
+                            Text(
+                                text = colorSchemePreset.title,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.teal
+                            )
+                        },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            showThemePaletteDialog = true
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_theme_palette")
                     )
 
                     NavigationDrawerItem(
@@ -1403,6 +1429,14 @@ fun HomeScreen(
             currentMode = currentScaleMode,
             onModeSelected = { mode -> viewModel.setFontScaleMode(mode) },
             onDismissRequest = { showFontSizeDialog = false }
+        )
+    }
+
+    // Appearance & Color Palette Dialog
+    if (showThemePaletteDialog) {
+        com.example.ui.components.ThemePaletteDialog(
+            viewModel = viewModel,
+            onDismiss = { showThemePaletteDialog = false }
         )
     }
 

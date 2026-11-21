@@ -15,6 +15,7 @@ import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
+import com.example.data.ColorSchemePreset
 import com.example.model.BackupCounts
 import com.example.model.BackupManifest
 import com.example.model.FlashcardSrsState
@@ -947,6 +948,7 @@ object VaultArchiveEngine {
             put("fontScaleMode", appPrefs.getFontScaleMode().name)
             put("shuffleOptions", appPrefs.getShuffleOptions())
             put("themeMode", themePrefs.getThemeMode().name)
+            put("colorSchemePreset", themePrefs.getColorSchemePreset().name)
             put("promptPresetsJson", appPrefs.getPromptPresetsRawJson())
             appPrefs.getQuestionPromptDraft()?.let { put("questionPromptDraft", it.toJson().toString()) }
             appPrefs.getKnowledgePromptDraft()?.let { put("knowledgePromptDraft", it.toJson().toString()) }
@@ -979,6 +981,7 @@ object VaultArchiveEngine {
                 appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
                 appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
                 themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
+                themePrefs.setColorSchemePreset(ColorSchemePreset.fromString(obj.optString("colorSchemePreset")))
                 obj.optString("questionPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
                     runCatching {
                         appPrefs.saveQuestionPromptDraft(com.example.model.QuestionPromptConfig.fromJson(JSONObject(raw)))
