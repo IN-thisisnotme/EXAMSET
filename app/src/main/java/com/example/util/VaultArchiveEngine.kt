@@ -977,6 +977,8 @@ object VaultArchiveEngine {
             put("preferredDndMode", appPrefs.getPreferredDndMode().name)
             put("defaultMsqScoringPolicy", appPrefs.getDefaultMsqScoringPolicy().code)
             put("paperMsqPoliciesJson", appPrefs.getPaperMsqPoliciesRawJson())
+            appPrefs.getBrainLabStatsRawJson().takeIf { it.isNotBlank() }?.let { put("brainLabStatsJson", it) }
+            appPrefs.getBrainLabSettingsRawJson().takeIf { it.isNotBlank() }?.let { put("brainLabSettingsJson", it) }
         }.toString()
     }
 
@@ -1164,6 +1166,31 @@ object VaultArchiveEngine {
                         }
                     }
                     appPrefs.savePaperMsqPolicies(targetMap)
+                }
+            }
+
+            val incomingBrainStatsRaw = obj.optString("brainLabStatsJson", "")
+            if (incomingBrainStatsRaw.isNotBlank()) {
+                runCatching {
+                    val incomingStats = com.example.model.BrainLabStats.fromJson(JSONObject(incomingBrainStatsRaw))
+                    if (overwriteAll) {
+                        appPrefs.saveBrainLabStats(incomingStats)
+                    } else {
+                        val merged = com.example.model.BrainLabStats.mergeForRestore(
+                            existing = appPrefs.getBrainLabStats(),
+                            incoming = incomingStats
+                        )
+                        appPrefs.saveBrainLabStats(merged)
+                    }
+                }
+            } else if (overwriteAll) {
+                appPrefs.saveBrainLabStats(com.example.model.BrainLabStats())
+            }
+
+            val incomingBrainSettingsRaw = obj.optString("brainLabSettingsJson", "")
+            if (overwriteAll && incomingBrainSettingsRaw.isNotBlank()) {
+                runCatching {
+                    appPrefs.saveBrainLabSettings(com.example.model.BrainLabSettings.fromJson(JSONObject(incomingBrainSettingsRaw)))
                 }
             }
         }

@@ -316,6 +316,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var headwordInboxInitialLanguage by mutableStateOf<String?>(null)
         private set
+    var showBrainLab by mutableStateOf(false)
+        private set
+    var brainLabInitialActivity by mutableStateOf<com.example.model.BrainLabActivity?>(null)
+        private set
 
     fun openVocabularyHub(languageFilter: String? = null) {
         val cleanLang = languageFilter?.trim()?.ifBlank { null }?.takeUnless { it.equals("All", ignoreCase = true) }
@@ -352,6 +356,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeHeadwordInboxOverlay() {
         showHeadwordInboxOverlay = false
+    }
+
+    fun openBrainLab(initialActivity: com.example.model.BrainLabActivity? = null) {
+        brainLabInitialActivity = initialActivity
+        showBrainLab = true
+    }
+
+    fun closeBrainLab() {
+        showBrainLab = false
+        brainLabInitialActivity = null
     }
 
     fun setVocabularyReminderEnabled(enabled: Boolean) {
@@ -1747,6 +1761,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var examTimerLastTickElapsedMs: Long = 0L
     private var examTimerRemainderMs: Long = 0L
     private var examTimerLastRoomFlushElapsedMs: Long = 0L
+
+    // Brain & Calm Lab State & Telemetry
+    private val _brainLabStats = MutableStateFlow(appPreferences.getBrainLabStats())
+    val brainLabStats: StateFlow<com.example.model.BrainLabStats> = _brainLabStats.asStateFlow()
+
+    private val _brainLabSettings = MutableStateFlow(appPreferences.getBrainLabSettings())
+    val brainLabSettings: StateFlow<com.example.model.BrainLabSettings> = _brainLabSettings.asStateFlow()
+
+    fun updateBrainLabSettings(transform: (com.example.model.BrainLabSettings) -> com.example.model.BrainLabSettings) {
+        val updated = transform(_brainLabSettings.value)
+        _brainLabSettings.value = updated
+        appPreferences.saveBrainLabSettings(updated)
+    }
+
+    fun updateBrainLabStats(transform: (com.example.model.BrainLabStats) -> com.example.model.BrainLabStats) {
+        val now = TrustedTimeManager.getTrustedTimeMillis()
+        val updated = transform(_brainLabStats.value).copy(lastUpdatedAtMillis = now)
+        _brainLabStats.value = updated
+        appPreferences.saveBrainLabStats(updated)
+    }
+
+    fun recordBrainLabActiveSeconds(activity: com.example.model.BrainLabActivity, seconds: Long) {
+        if (seconds <= 0L) return
+        val settings = _brainLabSettings.value
+        val countsAsCognitive = activity.countsAsCognitiveStudy
+        updateBrainLabStats { cur ->
+            if (countsAsCognitive) {
+                cur.copy(totalCognitiveSeconds = cur.totalCognitiveSeconds + seconds)
+            } else {
+                cur.copy(totalCalmSeconds = cur.totalCalmSeconds + seconds)
+            }
+        }
+        if (countsAsCognitive || settings.countCalmInDailyStudyTime) {
+            recordStudySeconds(seconds)
+        }
+    }
 
     // Exam-Day Countdowns
     private val _examCountdowns = MutableStateFlow(appPreferences.getExamCountdowns())
@@ -5327,6 +5377,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
+                    _brainLabStats.value = appPreferences.getBrainLabStats()
+                    _brainLabSettings.value = appPreferences.getBrainLabSettings()
                     _restorePreview.value = null
                     _backupOpState.value = BackupOperationState.Success(
                         "Restored ${VaultArchiveEngine.formatCountsSummary(restored)}!"

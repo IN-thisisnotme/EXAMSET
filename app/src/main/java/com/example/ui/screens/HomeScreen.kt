@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
@@ -245,6 +246,9 @@ fun HomeScreen(
             viewModel.showAppGuide -> {
                 viewModel.closeAppGuide()
             }
+            viewModel.showBrainLab -> {
+                viewModel.closeBrainLab()
+            }
             viewModel.showStudyPlanner -> {
                 viewModel.closeStudyPlanner()
             }
@@ -327,7 +331,7 @@ fun HomeScreen(
     Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showBrainLab && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -607,6 +611,18 @@ fun HomeScreen(
                         },
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_study_planner")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Brain & Calm Lab", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.Psychology, contentDescription = null, tint = colors.teal) },
+                        selected = viewModel.showBrainLab,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.openBrainLab()
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_brain_lab")
                     )
 
                     NavigationDrawerItem(
@@ -1902,7 +1918,11 @@ fun HomeScreen(
                     TodoLinkType.NONE -> Unit
                 }
             },
-            onDismiss = { viewModel.closeStudyPlanner() }
+            onDismiss = { viewModel.closeStudyPlanner() },
+            onOpenBrainCalmBreak = {
+                viewModel.closeStudyPlanner()
+                viewModel.openBrainLab(com.example.model.BrainLabActivity.GUIDED_BREATHING)
+            }
         )
     }
 
@@ -1931,8 +1951,17 @@ fun HomeScreen(
                         viewModel.selectTab(0)
                         showCountdownsDialog = true
                     }
+                    GuideDestination.BRAIN_LAB -> viewModel.openBrainLab()
                 }
             }
+        )
+    }
+
+    if (viewModel.showBrainLab) {
+        BrainLabScreen(
+            viewModel = viewModel,
+            initialActivity = viewModel.brainLabInitialActivity,
+            onDismiss = { viewModel.closeBrainLab() }
         )
     }
     }

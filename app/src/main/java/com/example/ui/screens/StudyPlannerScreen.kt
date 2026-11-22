@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
@@ -166,6 +167,7 @@ fun StudyPlannerScreen(
     onOpenDueSuggestion: (StudyDueSuggestion) -> Unit,
     onOpenLinkedTodoResource: (StudyTodoItem) -> Unit,
     onDismiss: () -> Unit,
+    onOpenBrainCalmBreak: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -310,7 +312,8 @@ fun StudyPlannerScreen(
                         onToggleDndPreference = onToggleDndPreference,
                         onSetPreferredDndMode = onSetPreferredDndMode,
                         onOpenDndSettings = onOpenDndSettings,
-                        onDisableDndImmediately = onDisableDndImmediately
+                        onDisableDndImmediately = onDisableDndImmediately,
+                        onOpenBrainCalmBreak = onOpenBrainCalmBreak
                     )
                 }
 
@@ -463,7 +466,8 @@ private fun LiveFocusClockCard(
     onToggleDndPreference: (Boolean) -> Boolean,
     onSetPreferredDndMode: (PomodoroDndMode) -> Unit,
     onOpenDndSettings: () -> Unit,
-    onDisableDndImmediately: () -> Unit
+    onDisableDndImmediately: () -> Unit,
+    onOpenBrainCalmBreak: () -> Unit
 ) {
     val state by pomodoroStateFlow.collectAsState()
     val colors = ExamTheme.colors
@@ -833,6 +837,20 @@ private fun LiveFocusClockCard(
                             Icon(Icons.Default.Stop, contentDescription = null, tint = colors.red, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Stop", color = colors.red, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (state.phase == PomodoroPhase.BREAK) {
+                            OutlinedButton(
+                                onClick = onOpenBrainCalmBreak,
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, colors.teal),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("pomodoro_brain_calm_break_btn")
+                            ) {
+                                Icon(Icons.Default.Psychology, contentDescription = null, tint = colors.teal, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Brain & Calm Break", color = colors.teal, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                     PomodoroPhase.PAUSED -> {

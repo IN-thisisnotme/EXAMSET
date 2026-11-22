@@ -648,6 +648,36 @@ class ExamSetPreferences(context: Context) {
         }.getOrDefault(emptySet())
     }
 
+    fun getBrainLabStats(): com.example.model.BrainLabStats {
+        val raw = prefs.getString(KEY_BRAIN_LAB_STATS, null) ?: return com.example.model.BrainLabStats()
+        return runCatching {
+            com.example.model.BrainLabStats.fromJson(JSONObject(raw))
+        }.getOrDefault(com.example.model.BrainLabStats())
+    }
+
+    fun saveBrainLabStats(stats: com.example.model.BrainLabStats) {
+        prefs.edit().putString(KEY_BRAIN_LAB_STATS, stats.toJson().toString()).apply()
+    }
+
+    fun getBrainLabStatsRawJson(): String {
+        return prefs.getString(KEY_BRAIN_LAB_STATS, "") ?: ""
+    }
+
+    fun getBrainLabSettings(): com.example.model.BrainLabSettings {
+        val raw = prefs.getString(KEY_BRAIN_LAB_SETTINGS, null) ?: return com.example.model.BrainLabSettings()
+        return runCatching {
+            com.example.model.BrainLabSettings.fromJson(JSONObject(raw))
+        }.getOrDefault(com.example.model.BrainLabSettings())
+    }
+
+    fun saveBrainLabSettings(settings: com.example.model.BrainLabSettings) {
+        prefs.edit().putString(KEY_BRAIN_LAB_SETTINGS, settings.toJson().toString()).apply()
+    }
+
+    fun getBrainLabSettingsRawJson(): String {
+        return prefs.getString(KEY_BRAIN_LAB_SETTINGS, "") ?: ""
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -686,5 +716,7 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_DISMISSED_FORMAT_TIPS = "key_dismissed_format_tips_v1"
         private const val KEY_DEFAULT_MSQ_POLICY = "key_default_msq_policy_v1"
         private const val KEY_PAPER_MSQ_POLICIES = "key_paper_msq_policies_v1"
+        private const val KEY_BRAIN_LAB_STATS = "key_brain_lab_stats_v1"
+        private const val KEY_BRAIN_LAB_SETTINGS = "key_brain_lab_settings_v1"
     }
 }

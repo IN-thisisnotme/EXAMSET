@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
@@ -103,7 +104,8 @@ enum class GuideDestination {
     STUDY_PLANNER,
     ANALYTICS,
     BACKUP_VAULT,
-    COUNTDOWNS
+    COUNTDOWNS,
+    BRAIN_LAB
 }
 
 data class AppGuideEntry(
@@ -263,6 +265,18 @@ private val APP_GUIDE_CATALOG: List<AppGuideEntry> = listOf(
         keywords = listOf("backup", "vault", "restore", "zip", "sync", "drive", "onedrive", "export", "merge"),
         actionLabel = "Open Backup Vault",
         destination = GuideDestination.BACKUP_VAULT
+    ),
+    AppGuideEntry(
+        id = "brain_calm_lab",
+        title = "Brain & Calm Lab (N-Back, Logic, Schulte & Reset)",
+        category = AppGuideCategory.FOCUS_PRODUCTIVITY,
+        icon = Icons.Default.Psychology,
+        summary = "Offline cognitive drills (N-Back, Corsi, Stroop, Venn Syllogisms, Seating Grids, Schulte, Mental Quant) plus guided breathing and untimed Zen grids.",
+        quickTip = "Use the built-in 3–5 minute break budget before mock tests or during Pomodoro breaks to reset focus without procrastination.",
+        details = "All drills run 100% offline with deterministic verification, personal-best tracking, and Vault backup parity.",
+        keywords = listOf("brain", "calm", "n-back", "corsi", "stroop", "syllogism", "seating", "schulte", "quant", "breathing", "zen", "sudoku"),
+        actionLabel = "Open Brain & Calm Lab",
+        destination = GuideDestination.BRAIN_LAB
     )
 )
 
