@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -43,9 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.BrainLabStats
@@ -79,14 +82,15 @@ fun SyllogismArenaView(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "Venn-Verified Syllogism",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
                         text = "Streak: ${stats.reasoningStreak} (Best ${stats.bestReasoningStreak})",
@@ -245,10 +249,16 @@ fun ConstraintSeatingView(
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Constraint & Seating Puzzle", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                    Text(
+                        text = "Constraint & Seating Puzzle",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     Text("Solved: ${stats.constraintSolved}", fontSize = 12.sp, color = colors.teal)
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -256,23 +266,27 @@ fun ConstraintSeatingView(
                         selected = !isCircular,
                         onClick = { isCircular = false; selectedOption = null },
                         label = { Text("Linear Row") },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                     )
                     FilterChip(
                         selected = isCircular,
                         onClick = { isCircular = true; selectedOption = null },
                         label = { Text("Circular Table") },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                     )
                     FilterChip(
                         selected = seatCount == 4,
                         onClick = { seatCount = 4; selectedOption = null },
-                        label = { Text("4 Seats") }
+                        label = { Text("4 Seats") },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                     FilterChip(
                         selected = seatCount == 5,
                         onClick = { seatCount = 5; selectedOption = null },
-                        label = { Text("5 Seats") }
+                        label = { Text("5 Seats") },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                 }
                 puzzle.clues.forEachIndexed { idx, clue ->
@@ -297,50 +311,75 @@ fun ConstraintSeatingView(
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "1-Tap Mini Scratchpad (tap seat, then person)",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.muted
+                        color = colors.muted,
+                        modifier = Modifier.weight(1f)
                     )
-                    Text(
-                        text = "Clear",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.teal,
-                        modifier = Modifier.clickable {
-                            for (i in scratchSlots.indices) scratchSlots[i] = "?"
-                        }
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .clickable {
+                                for (i in scratchSlots.indices) scratchSlots[i] = "?"
+                            }
+                            .padding(horizontal = 10.dp)
+                    ) {
+                        Text(
+                            text = "Clear",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.teal
+                        )
+                    }
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    scratchSlots.forEachIndexed { idx, assigned ->
-                        val isSelected = activeScratchSlot == idx
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) colors.tealLight else colors.surface,
-                            border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) colors.teal else colors.border),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .clickable { activeScratchSlot = idx }
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text("#${idx + 1}", fontSize = 10.sp, color = colors.muted)
-                                Text(
-                                    text = assigned.take(6),
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold,
-                                    textAlign = TextAlign.Center
-                                )
+                val scratchFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val slotsPerRow = if (scratchSlots.size > 4 && (maxWidth < 340.dp || (scratchFontScale >= 1.2f && maxWidth < 390.dp))) {
+                        3
+                    } else {
+                        scratchSlots.size.coerceAtLeast(1)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        scratchSlots.withIndex().toList().chunked(slotsPerRow).forEach { rowSlots ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                rowSlots.forEach { (idx, assigned) ->
+                                    val isSelected = activeScratchSlot == idx
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) colors.tealLight else colors.surface,
+                                        border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) colors.teal else colors.border),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .clickable { activeScratchSlot = idx }
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Text("#${idx + 1}", fontSize = 10.sp, color = colors.muted)
+                                            Text(
+                                                text = assigned,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colors.inkBold,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                                repeat(slotsPerRow - rowSlots.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -354,7 +393,7 @@ fun ConstraintSeatingView(
                             },
                             border = BorderStroke(1.dp, colors.border),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.heightIn(min = 40.dp)
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Text(person, fontSize = 12.sp, color = colors.inkBold)
                         }
@@ -363,37 +402,46 @@ fun ConstraintSeatingView(
             }
         }
 
-        // Answer Options
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // Answer Options (2x2 clean rows to avoid FlowRow weight crowding)
+        Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().widthIn(max = 600.dp)
         ) {
-            puzzle.options.forEachIndexed { idx, opt ->
-                val isChosen = selectedOption == idx
-                val isRight = idx == puzzle.correctIndex
-                val bg = when {
-                    selectedOption == null -> colors.surface
-                    isRight -> colors.greenLight
-                    isChosen && !isRight -> colors.redLight
-                    else -> colors.surface
-                }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = bg,
-                    border = BorderStroke(1.dp, if (selectedOption != null && isRight) colors.green else colors.border),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .clickable(enabled = selectedOption == null) {
-                            selectedOption = idx
-                            val secs = ((System.currentTimeMillis() - startedAtMs) / 1000L).coerceIn(1L, 300L)
-                            onRecordSolved(idx == puzzle.correctIndex, secs)
-                        }
-                        .testTag("seating_opt_$idx")
+            puzzle.options.withIndex().toList().chunked(2).forEach { pair ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
-                        Text(opt, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                    pair.forEach { (idx, opt) ->
+                        val isChosen = selectedOption == idx
+                        val isRight = idx == puzzle.correctIndex
+                        val bg = when {
+                            selectedOption == null -> colors.surface
+                            isRight -> colors.greenLight
+                            isChosen && !isRight -> colors.redLight
+                            else -> colors.surface
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = bg,
+                            border = BorderStroke(1.dp, if (selectedOption != null && isRight) colors.green else colors.border),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .clickable(enabled = selectedOption == null) {
+                                    selectedOption = idx
+                                    val secs = ((System.currentTimeMillis() - startedAtMs) / 1000L).coerceIn(1L, 300L)
+                                    onRecordSolved(idx == puzzle.correctIndex, secs)
+                                }
+                                .testTag("seating_opt_$idx")
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
+                                Text(opt, fontWeight = FontWeight.Bold, color = colors.inkBold, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                    if (pair.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -450,15 +498,21 @@ fun ArgumentCritiqueView(
             modifier = Modifier.fillMaxWidth().widthIn(max = 600.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Surface(shape = RoundedCornerShape(6.dp), color = colors.tealLight) {
-                        Text(
-                            text = q.categoryTag,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.teal,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = colors.tealLight) {
+                            Text(
+                                text = q.categoryTag,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.teal,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
                     }
                     Text("Solved: ${stats.argumentSolved}", fontSize = 12.sp, color = colors.muted)
                 }
@@ -560,15 +614,21 @@ fun DataSufficiencyView(
             modifier = Modifier.fillMaxWidth().widthIn(max = 600.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Surface(shape = RoundedCornerShape(6.dp), color = colors.amberLight) {
-                        Text(
-                            text = q.trapTag,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.amber,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = colors.amberLight) {
+                            Text(
+                                text = q.trapTag,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.amber,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
                     }
                     Text("Solved: ${stats.dataSufficiencySolved}", fontSize = 12.sp, color = colors.muted)
                 }

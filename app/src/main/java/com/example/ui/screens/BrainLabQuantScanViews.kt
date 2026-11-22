@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -48,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -102,8 +104,18 @@ fun SchulteTrailView(
             modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Schulte & Trail Grid", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Schulte & Trail Grid",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     Text("Best: $bestLabel", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.teal)
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -112,14 +124,15 @@ fun SchulteTrailView(
                             selected = mode == m,
                             onClick = { mode = m },
                             label = { Text(m.label, softWrap = true) },
+                            modifier = Modifier.heightIn(min = 48.dp),
                             colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                         )
                     }
                 }
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     val nextTarget = board.expectedOrder.getOrNull(nextStepIdx) ?: "Done!"
                     Text(
@@ -138,10 +151,11 @@ fun SchulteTrailView(
             }
         }
 
-        // Center gaze dot hint + Grid
+        // Center gaze dot hint + Grid with cell-width-aware single-line font sizing
         val n = board.gridSize
         val centerIndex = (n * n) / 2
-        Box(
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = 380.dp)
                 .fillMaxWidth()
@@ -149,6 +163,9 @@ fun SchulteTrailView(
                 .background(colors.surface, RoundedCornerShape(16.dp))
                 .padding(8.dp)
         ) {
+            val cellSideDp = (maxWidth.value - (n - 1) * 5f) / n
+            val preferredSp = if (n == 6) 14f else 16f
+            val cellFontSp = minOf(preferredSp, (cellSideDp * 0.42f) / fontScale).coerceAtLeast(10f).sp
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 for (r in 0 until n) {
                     Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -200,9 +217,11 @@ fun SchulteTrailView(
                                     }
                                     Text(
                                         text = label,
-                                        fontSize = if (n == 6) 14.sp else 16.sp,
+                                        fontSize = cellFontSp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (alreadyTapped) colors.teal else colors.inkBold
+                                        color = if (alreadyTapped) colors.teal else colors.inkBold,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -267,12 +286,32 @@ fun MentalQuantBlitzView(
             modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("60s Mental Quant Blitz", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "60s Mental Quant Blitz",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     Text("Best Score: ${stats.bestQuantBlitzScore}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.teal)
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Score: $score / $attempted", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Score: $score / $attempted",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     Text("${remainingSeconds}s left", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                 }
                 LinearProgressIndicator(

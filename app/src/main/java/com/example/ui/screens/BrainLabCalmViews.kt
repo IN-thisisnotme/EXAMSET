@@ -11,9 +11,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -65,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -134,7 +137,7 @@ fun GuidedBreathingPacerView(
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -178,6 +181,7 @@ fun GuidedBreathingPacerView(
                                 sessionRecorded = false
                             },
                             label = { Text("${p.title} (${p.ratioLabel})", softWrap = true) },
+                            modifier = Modifier.heightIn(min = 48.dp),
                             colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                         )
                     }
@@ -190,14 +194,19 @@ fun GuidedBreathingPacerView(
             }
         }
 
-        // Smooth 60fps Canvas Pacer Ring
-        Box(
+        // Smooth 60fps Canvas Pacer Ring with diameter-aware center text scaling
+        val breathingFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = 280.dp)
                 .fillMaxWidth()
                 .aspectRatio(1f),
             contentAlignment = Alignment.Center
         ) {
+            val ringDiameterDp = minOf(maxWidth.value, maxHeight.value)
+            val cueSp = minOf(22f, (ringDiameterDp * 0.085f) / breathingFontScale).coerceAtLeast(13f).sp
+            val timerSp = minOf(28f, (ringDiameterDp * 0.105f) / breathingFontScale).coerceAtLeast(15f).sp
+            val cycleSp = minOf(12f, (ringDiameterDp * 0.055f) / breathingFontScale).coerceAtLeast(9.5f).sp
             val ringAccent = colors.teal
             val ringSoft = colors.tealLight
             val borderCol = colors.border
@@ -226,21 +235,24 @@ fun GuidedBreathingPacerView(
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = if (isRunning) sample.cue.label else "Ready",
-                    fontSize = 22.sp,
+                    fontSize = cueSp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.inkBold
+                    color = colors.inkBold,
+                    textAlign = TextAlign.Center
                 )
                 if (isRunning) {
                     Text(
                         text = "${sample.secondsRemainingInPhase}s",
-                        fontSize = 28.sp,
+                        fontSize = timerSp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = colors.teal
+                        color = colors.teal,
+                        textAlign = TextAlign.Center
                     )
                     Text(
                         text = "Cycle ${sample.cycleCount + 1}",
-                        fontSize = 12.sp,
-                        color = colors.muted
+                        fontSize = cycleSp,
+                        color = colors.muted,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
@@ -455,8 +467,18 @@ fun ZenLogicGridView(
             modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Untimed Zen Logic Grid", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Untimed Zen Logic Grid",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     Text("Completed: ${stats.zenGridsCompleted}", fontSize = 12.sp, color = colors.teal)
                 }
                 Text(
@@ -469,21 +491,24 @@ fun ZenLogicGridView(
                         selected = gridSize == 4,
                         onClick = { gridSize = 4 },
                         label = { Text("4×4 Calm Grid") },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                     )
                     FilterChip(
                         selected = gridSize == 6,
                         onClick = { gridSize = 6 },
                         label = { Text("6×6 Calm Grid") },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                     )
                 }
             }
         }
 
-        // Grid Board
+        // Grid Board with cell-width-aware digit scaling
         val n = puzzle.size
-        Box(
+        val zenFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = 360.dp)
                 .fillMaxWidth()
@@ -491,6 +516,9 @@ fun ZenLogicGridView(
                 .background(colors.surface, RoundedCornerShape(16.dp))
                 .padding(8.dp)
         ) {
+            val cellSideDp = (maxWidth.value - (n - 1) * 4f - 8f) / n
+            val preferredSp = if (n == 6) 16f else 20f
+            val cellDigitSp = minOf(preferredSp, (cellSideDp * 0.45f) / zenFontScale).coerceAtLeast(11f).sp
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (r in 0 until n) {
                     val extraTopGap = if (r > 0 && r % puzzle.boxRows == 0) 4.dp else 0.dp
@@ -529,9 +557,11 @@ fun ZenLogicGridView(
                                     if (value != 0) {
                                         Text(
                                             text = value.toString(),
-                                            fontSize = if (n == 6) 16.sp else 20.sp,
+                                            fontSize = cellDigitSp,
                                             fontWeight = if (isGiven) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                            color = if (isGiven) colors.inkBold else colors.teal
+                                            color = if (isGiven) colors.inkBold else colors.teal,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -570,7 +600,8 @@ fun ZenLogicGridView(
                         },
                         border = BorderStroke(1.dp, colors.border),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("zen_num_$num")
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.widthIn(min = 48.dp).heightIn(min = 48.dp).testTag("zen_num_$num")
                     ) {
                         Text(num.toString(), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                     }
@@ -583,6 +614,7 @@ fun ZenLogicGridView(
                     },
                     border = BorderStroke(1.dp, colors.border),
                     shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text("Erase", fontSize = 13.sp, color = colors.muted)

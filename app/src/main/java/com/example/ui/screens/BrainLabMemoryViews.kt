@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -57,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -158,7 +160,7 @@ fun NBackDrillView(
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -205,6 +207,7 @@ fun NBackDrillView(
                             onClick = { if (!isRunning) currentN = tier },
                             label = { Text("${tier}-Back") },
                             enabled = !isRunning,
+                            modifier = Modifier.heightIn(min = 48.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = colors.tealLight,
                                 selectedLabelColor = colors.teal
@@ -223,6 +226,7 @@ fun NBackDrillView(
                             onClick = { if (!isRunning) mode = m },
                             label = { Text(m.label, softWrap = true) },
                             enabled = !isRunning,
+                            modifier = Modifier.heightIn(min = 48.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = colors.tealLight,
                                 selectedLabelColor = colors.teal
@@ -249,8 +253,9 @@ fun NBackDrillView(
                 color = colors.muted
             )
 
-            // 3x3 Visual Grid
-            Box(
+            // 3x3 Visual Grid with cell-width-aware font sizing
+            val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+            BoxWithConstraints(
                 modifier = Modifier
                     .widthIn(max = 320.dp)
                     .fillMaxWidth()
@@ -258,6 +263,8 @@ fun NBackDrillView(
                     .background(colors.surface, RoundedCornerShape(16.dp))
                     .padding(10.dp)
             ) {
+                val tileSideDp = (maxWidth.value - 16f) / 3f
+                val letterSp = minOf(26f, (tileSideDp * 0.45f) / fontScale).coerceAtLeast(14f).sp
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -289,9 +296,11 @@ fun NBackDrillView(
                                         if ((isActive || isCenterLetterOnly) && mode != NBackMode.POSITION_ONLY) {
                                             Text(
                                                 text = activeTrial.letter.toString(),
-                                                fontSize = 26.sp,
+                                                fontSize = letterSp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -308,24 +317,21 @@ fun NBackDrillView(
                     fontSize = 12.sp,
                     color = colors.muted
                 )
-            } else if (showStimulus) {
+            } else {
                 Text(
-                    text = "Letter: ${activeTrial.letter}",
+                    text = if (showStimulus) "Letter: ${activeTrial.letter}" else " ",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.inkBold
                 )
-            } else {
-                Spacer(modifier = Modifier.height(24.dp))
             }
 
             val canTapMatch = currentStep >= currentN
             val posTapped = currentStep in posTaps
             val letTapped = currentStep in letterTaps
 
-            FlowRow(
+            Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp)
             ) {
                 if (mode != NBackMode.LETTER_ONLY) {
@@ -339,12 +345,17 @@ fun NBackDrillView(
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp)
                             .testTag("nback_position_match_btn")
                     ) {
-                        Text(if (posTapped) "Position Marked ✓" else "Position Match", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (posTapped) "Position Marked ✓" else "Position Match",
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
                 if (mode != NBackMode.POSITION_ONLY) {
@@ -358,12 +369,17 @@ fun NBackDrillView(
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp)
                             .testTag("nback_letter_match_btn")
                     ) {
-                        Text(if (letTapped) "Letter Marked ✓" else "Letter Match", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (letTapped) "Letter Marked ✓" else "Letter Match",
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
@@ -486,28 +502,33 @@ fun CorsiSpanDrillView(
                         selected = reverseMode,
                         onClick = { if (phase == "IDLE" || phase == "RESULT") reverseMode = true },
                         label = { Text("Reverse Recall") },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                     )
                     FilterChip(
                         selected = !reverseMode,
                         onClick = { if (phase == "IDLE" || phase == "RESULT") reverseMode = false },
                         label = { Text("Forward Recall") },
+                        modifier = Modifier.heightIn(min = 48.dp),
                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = colors.tealLight, selectedLabelColor = colors.teal)
                     )
                     FilterChip(
                         selected = gridSize == 4,
                         onClick = { if (phase == "IDLE" || phase == "RESULT") gridSize = 4 },
-                        label = { Text("4×4 Board") }
+                        label = { Text("4×4 Board") },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                     FilterChip(
                         selected = gridSize == 5,
                         onClick = { if (phase == "IDLE" || phase == "RESULT") gridSize = 5 },
-                        label = { Text("5×5 Board") }
+                        label = { Text("5×5 Board") },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                     FilterChip(
                         selected = withAlphanumeric,
                         onClick = { if (phase == "IDLE" || phase == "RESULT") withAlphanumeric = !withAlphanumeric },
-                        label = { Text("Alphanumeric Tags") }
+                        label = { Text("Alphanumeric Tags") },
+                        modifier = Modifier.heightIn(min = 48.dp)
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -515,7 +536,8 @@ fun CorsiSpanDrillView(
                         FilterChip(
                             selected = span == s,
                             onClick = { if (phase == "IDLE" || phase == "RESULT") span = s },
-                            label = { Text("Span $s") }
+                            label = { Text("Span $s") },
+                            modifier = Modifier.heightIn(min = 48.dp)
                         )
                     }
                 }
@@ -550,7 +572,8 @@ fun CorsiSpanDrillView(
         )
 
         val activeGrid = puzzle?.gridSize ?: gridSize
-        Box(
+        val corsiFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        BoxWithConstraints(
             modifier = Modifier
                 .widthIn(max = 340.dp)
                 .fillMaxWidth()
@@ -558,6 +581,8 @@ fun CorsiSpanDrillView(
                 .background(colors.surface, RoundedCornerShape(16.dp))
                 .padding(10.dp)
         ) {
+            val cellSideDp = (maxWidth.value - (activeGrid - 1) * 6f) / activeGrid
+            val cellTagSp = minOf(13f, (cellSideDp * 0.34f) / corsiFontScale).coerceAtLeast(9.5f).sp
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (r in 0 until activeGrid) {
                     Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -601,9 +626,11 @@ fun CorsiSpanDrillView(
                                     if (label.isNotEmpty()) {
                                         Text(
                                             text = label,
-                                            fontSize = 13.sp,
+                                            fontSize = cellTagSp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isLit || tapOrder >= 0) Color.White else colors.ink
+                                            color = if (isLit || tapOrder >= 0) Color.White else colors.ink,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -692,7 +719,8 @@ fun StroopRuleSwitchView(
                 FilterChip(
                     selected = allowArrows,
                     onClick = { if (!isRunning) allowArrows = !allowArrows },
-                    label = { Text("Include Arrow / Opposite-Direction Conflicts") }
+                    label = { Text("Include Arrow / Opposite-Direction Conflicts") },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 )
             }
         }
@@ -719,12 +747,14 @@ fun StroopRuleSwitchView(
                         text = t.rule.badge,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        textAlign = TextAlign.Center
                     )
                     Text(
                         text = t.rule.instruction,
                         fontSize = 12.sp,
-                        color = colors.ink
+                        color = colors.ink,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
@@ -754,7 +784,8 @@ fun StroopRuleSwitchView(
                             text = t.displayWord.label,
                             fontSize = 40.sp,
                             fontWeight = FontWeight.Black,
-                            color = mapStroopColor(t.inkColor)
+                            color = mapStroopColor(t.inkColor),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -764,44 +795,54 @@ fun StroopRuleSwitchView(
                 Text(text = it, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.muted)
             }
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            val indexedChoices = t.choices.withIndex().toList()
+            Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp)
             ) {
-                t.choices.forEachIndexed { idx, label ->
-                    Button(
-                        onClick = {
-                            val rt = (System.currentTimeMillis() - trialShownMs).coerceIn(100L, 10_000L)
-                            totalReactionMs += rt
-                            val ok = idx == t.expectedChoiceIndex
-                            if (ok) correctCount++
-                            lastFeedback = if (ok) "Clean (${rt}ms)" else "Inhibition slip (${rt}ms)"
-                            val nextIdx = trialIndex + 1
-                            if (nextIdx >= totalTrials) {
-                                isRunning = false
-                                val acc = ((correctCount.toFloat() / totalTrials) * 100f).toInt()
-                                val avgRt = totalReactionMs / totalTrials
-                                val activeSec = (totalReactionMs / 1000L).coerceAtLeast(1L)
-                                roundSummary = "Accuracy: $acc% ($correctCount/$totalTrials) • Avg Reaction: ${avgRt} ms"
-                                onRecordRound(acc, avgRt, activeSec)
-                            } else {
-                                trialIndex = nextIdx
-                                currentTrial = BrainLabMemoryEngine.generateStroopTrial(
-                                    stepIndex = nextIdx,
-                                    allowArrowMode = allowArrows,
-                                    previousRule = t.rule
-                                )
-                                trialShownMs = System.currentTimeMillis()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant, contentColor = colors.inkBold),
-                        border = BorderStroke(1.dp, colors.border),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                        modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag("stroop_choice_$idx")
+                indexedChoices.chunked(2).forEach { pair ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(label, fontWeight = FontWeight.Bold)
+                        pair.forEach { (idx, label) ->
+                            Button(
+                                onClick = {
+                                    val rt = (System.currentTimeMillis() - trialShownMs).coerceIn(100L, 10_000L)
+                                    totalReactionMs += rt
+                                    val ok = idx == t.expectedChoiceIndex
+                                    if (ok) correctCount++
+                                    lastFeedback = if (ok) "Clean (${rt}ms)" else "Inhibition slip (${rt}ms)"
+                                    val nextIdx = trialIndex + 1
+                                    if (nextIdx >= totalTrials) {
+                                        isRunning = false
+                                        val acc = ((correctCount.toFloat() / totalTrials) * 100f).toInt()
+                                        val avgRt = totalReactionMs / totalTrials
+                                        val activeSec = (totalReactionMs / 1000L).coerceAtLeast(1L)
+                                        roundSummary = "Accuracy: $acc% ($correctCount/$totalTrials) • Avg Reaction: ${avgRt} ms"
+                                        onRecordRound(acc, avgRt, activeSec)
+                                    } else {
+                                        trialIndex = nextIdx
+                                        currentTrial = BrainLabMemoryEngine.generateStroopTrial(
+                                            stepIndex = nextIdx,
+                                            allowArrowMode = allowArrows,
+                                            previousRule = t.rule
+                                        )
+                                        trialShownMs = System.currentTimeMillis()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant, contentColor = colors.inkBold),
+                                border = BorderStroke(1.dp, colors.border),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag("stroop_choice_$idx")
+                            ) {
+                                Text(label, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                            }
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }

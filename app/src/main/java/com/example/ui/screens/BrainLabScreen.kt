@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.BrainLabActivity
@@ -166,12 +168,16 @@ fun BrainLabScreen(
                                     text = activeActivity?.title ?: "Brain & Calm Lab",
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
+                                    color = colors.inkBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = activeActivity?.pillar?.title ?: "Evidence-aligned cognitive drills & nervous-system reset",
                                     fontSize = 11.5.sp,
-                                    color = colors.teal
+                                    color = colors.teal,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
@@ -441,7 +447,7 @@ private fun BrainLabHubContent(
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -457,7 +463,6 @@ private fun BrainLabHubContent(
                                 color = colors.muted
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = onToggleBreakBudget,
                             colors = ButtonDefaults.buttonColors(
@@ -475,7 +480,9 @@ private fun BrainLabHubContent(
                                 } else {
                                     "Start ${settings.preferredBudgetMinutes}m"
                                 },
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -658,13 +665,16 @@ private fun BrainLabSettingsDialog(
         containerColor = colors.surface,
         title = { Text("Brain & Calm Lab Preferences", fontWeight = FontWeight.Bold, color = colors.inkBold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("N-Back Audio Cues", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                         Text("Muted by default for quiet study halls.", fontSize = 11.5.sp, color = colors.muted)
                     }
@@ -676,11 +686,11 @@ private fun BrainLabSettingsDialog(
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Breathing Haptic Pulses", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                         Text("Gentle vibration cue on Inhale / Hold / Exhale.", fontSize = 11.5.sp, color = colors.muted)
                     }
@@ -692,11 +702,11 @@ private fun BrainLabSettingsDialog(
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Count Calm Resets in Study Timer", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
                         Text("Cognitive drills always log; toggle to include Calm/Zen too.", fontSize = 11.5.sp, color = colors.muted)
                     }
@@ -708,12 +718,13 @@ private fun BrainLabSettingsDialog(
                 }
 
                 Text("Quick Break Budget", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 4, 5).forEach { mins ->
                         FilterChip(
                             selected = settings.preferredBudgetMinutes == mins,
                             onClick = { onUpdateSettings { it.copy(preferredBudgetMinutes = mins) } },
-                            label = { Text("$mins min") }
+                            label = { Text("$mins min") },
+                            modifier = Modifier.heightIn(min = 48.dp)
                         )
                     }
                 }
