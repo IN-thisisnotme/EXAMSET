@@ -4,6 +4,7 @@ import android.util.JsonWriter
 import com.example.data.PaperEntity
 import com.example.model.FolderItem
 import com.example.model.McqQuestion
+import com.example.model.MsqScoringPolicy
 import com.example.model.PaperMetadata
 import com.example.model.QuestionOptions
 import com.example.model.QuestionPaper
@@ -43,6 +44,7 @@ object ExamJsonHelper {
             put("rollNumber", paper.metadata.rollNumber)
             put("bookletNumber", paper.metadata.bookletNumber)
             put("targetExam", paper.metadata.exam)
+            put("msqScoringPolicy", paper.metadata.msqScoringPolicy.code)
             put("createdAt", paper.createdAt)
             if (!paper.metadata.folderId.isNullOrBlank()) {
                 put("folderId", paper.metadata.folderId)
@@ -179,6 +181,7 @@ object ExamJsonHelper {
         writer.name("rollNumber").value(paper.metadata.rollNumber)
         writer.name("bookletNumber").value(paper.metadata.bookletNumber)
         writer.name("targetExam").value(paper.metadata.exam)
+        writer.name("msqScoringPolicy").value(paper.metadata.msqScoringPolicy.code)
         writer.name("createdAt").value(paper.createdAt)
         if (!paper.metadata.folderId.isNullOrBlank()) {
             writer.name("folderId").value(paper.metadata.folderId)
@@ -372,6 +375,9 @@ object ExamJsonHelper {
                 folderId = folder,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
+                msqScoringPolicy = MsqScoringPolicy.fromCode(
+                    metaObj.optString("msqScoringPolicy", root.optString("msqScoringPolicy", ""))
+                ),
                 createdAt = metaObj.optLong("createdAt", System.currentTimeMillis())
             )
         } else {
@@ -394,6 +400,7 @@ object ExamJsonHelper {
                 folderId = folder,
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
+                msqScoringPolicy = MsqScoringPolicy.fromCode(root.optString("msqScoringPolicy", "")),
                 createdAt = root.optLong("createdAt", System.currentTimeMillis())
             )
         }
@@ -458,19 +465,29 @@ object ExamJsonHelper {
             )
         }
 
-        val rawAns = if (qObj.isNull("correctAnswer")) {
-            qObj.optString("answer", qObj.optString("ans", qObj.optString("correctOption", "")))
-        } else {
-            qObj.optString("correctAnswer", "")
+        val rawAnsAny: Any? = when {
+            qObj.has("correctAnswer") && !qObj.isNull("correctAnswer") -> qObj.get("correctAnswer")
+            qObj.has("correctAnswers") && !qObj.isNull("correctAnswers") -> qObj.get("correctAnswers")
+            qObj.has("answer") && !qObj.isNull("answer") -> qObj.get("answer")
+            qObj.has("ans") && !qObj.isNull("ans") -> qObj.get("ans")
+            qObj.has("correctOption") && !qObj.isNull("correctOption") -> qObj.get("correctOption")
+            else -> null
         }
-        val ans = rawAns.trim().uppercase().takeIf { it in listOf("A", "B", "C", "D", "E", "1", "2", "3", "4", "5") }?.let {
-            when (it) {
-                "1" -> "A"; "2" -> "B"; "3" -> "C"; "4" -> "D"; "5" -> "E"; else -> it
-            }
+        val rawAnsString = when (rawAnsAny) {
+            is JSONArray -> (0 until rawAnsAny.length()).mapNotNull { idx ->
+                rawAnsAny.optString(idx).takeIf { it.isNotBlank() }
+            }.joinToString(",")
+            else -> rawAnsAny?.toString().orEmpty()
         }
+        val ans = AnswerKeyMatcher.normalizeKey(rawAnsString).ifBlank { null }
 
         val exp = qObj.optString("explanation", qObj.optString("detailedExplanation", qObj.optString("solution", qObj.optString("rationale", qObj.optString("exp", ""))))).ifBlank { null }
-        val qType = qObj.optString("questionType", qObj.optString("type", "")).ifBlank { null }
+        val explicitQType = qObj.optString("questionType", qObj.optString("type", "")).ifBlank { null }
+        val qType = if (explicitQType == null && AnswerKeyMatcher.parseSelectedLetters(ans).size >= 2) {
+            "MSQ"
+        } else {
+            explicitQType
+        }
         val diagramUrl = qObj.optString("diagramUrl", "").ifBlank { null }
         val diagramLabel = qObj.optString("diagramLabel", "").ifBlank { null }
         val formula = qObj.optString("formula", "").ifBlank { null }

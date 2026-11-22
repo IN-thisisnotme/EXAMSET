@@ -1096,20 +1096,21 @@ object StudyNoteParser {
                 } else {
                     "Skipped"
                 }
-                val correctLetter = q.correctAnswer?.uppercase()
-                val correctOptionText = when (correctLetter) {
-                    "A" -> q.options.a
-                    "B" -> q.options.b
-                    "C" -> q.options.c
-                    "D" -> q.options.d
-                    "E" -> q.options.e
-                    else -> ""
-                }.trim()
+                val correctLetters = AnswerKeyMatcher.parseSelectedLetters(q.correctAnswer)
+                val correctAnsSummary = if (correctLetters.isNotEmpty()) {
+                    correctLetters.joinToString("; ") { letter ->
+                        val optText = q.options[letter].trim()
+                        if (optText.isNotBlank()) "($letter) $optText" else letter
+                    }
+                } else ""
 
                 val cleanStem = q.question.replace(Regex("""\s+"""), " ").trim()
                 val nonBlankOptions = q.options.asList.filter { it.second.isNotBlank() }
-                val inferredType = q.questionType?.takeIf { it.isNotBlank() }
-                    ?: inferQuestionTypeLabel(cleanStem, nonBlankOptions, q.formula.orEmpty())
+                val inferredType = when {
+                    AnswerKeyMatcher.isMultiSelect(q) -> "Multiple-Select (MSQ)"
+                    !q.questionType.isNullOrBlank() -> q.questionType
+                    else -> inferQuestionTypeLabel(cleanStem, nonBlankOptions, q.formula.orEmpty())
+                }
 
                 appendLine("${seq++}. **Q${q.num}: $cleanStem**")
                 appendLine("  - Question Type: $inferredType")
@@ -1118,9 +1119,8 @@ object StudyNoteParser {
                     val cleanOpt = optText.replace(Regex("""\s+"""), " ").trim()
                     appendLine("  - ($optLetter) $cleanOpt")
                 }
-                if (correctLetter != null) {
-                    val ansLine = if (correctOptionText.isNotBlank()) "($correctLetter) $correctOptionText" else correctLetter
-                    appendLine("  - Correct Answer: $ansLine")
+                if (correctAnsSummary.isNotBlank()) {
+                    appendLine("  - Correct Answer: $correctAnsSummary")
                 }
                 if (!q.formula.isNullOrBlank()) {
                     appendLine("  - Formula: ${q.formula.trim()}")
@@ -1170,19 +1170,14 @@ object StudyNoteParser {
                     return@forEach
                 }
 
-                val correctOpt = when (q.correctAnswer?.uppercase()) {
-                    "A" -> q.options.a
-                    "B" -> q.options.b
-                    "C" -> q.options.c
-                    "D" -> q.options.d
-                    "E" -> q.options.e
-                    else -> ""
-                }.trim()
-
+                val correctLetters = AnswerKeyMatcher.parseSelectedLetters(q.correctAnswer)
                 val takeaway = q.explanation?.trim().orEmpty()
                 val formula = q.formula?.trim().orEmpty()
-                val ansLine = if (q.correctAnswer != null) {
-                    if (correctOpt.isNotBlank()) "(${q.correctAnswer.uppercase()}) $correctOpt" else q.correctAnswer.uppercase()
+                val ansLine = if (correctLetters.isNotEmpty()) {
+                    correctLetters.joinToString("; ") { letter ->
+                        val optText = q.options[letter].trim()
+                        if (optText.isNotBlank()) "($letter) $optText" else letter
+                    }
                 } else ""
 
                 deduplicatedCards.add(
@@ -1318,11 +1313,20 @@ object StudyNoteParser {
             selected.take(25).forEachIndexed { idx, blk ->
                 val qNum = idx + 1
                 if (blk is StudyNoteBlock.MultiLinerCard && blk.isQuestionCard && blk.optionsList.size >= 2 && blk.correctAnswer.isNotBlank()) {
-                    val ansLetterMatch = Regex("""^\(?([A-E])\)?""").find(blk.correctAnswer.trim().uppercase())
-                    val ansLetter = ansLetterMatch?.groupValues?.get(1) ?: "A"
-                    appendLine("Q$qNum. ${blk.title}")
+                    val extractedLetters = Regex("""\(([A-E])\)""")
+                        .findAll(blk.correctAnswer.uppercase())
+                        .map { it.groupValues[1] }
+                        .distinct()
+                        .sorted()
+                        .toList()
+                    val ansKey = when {
+                        extractedLetters.isNotEmpty() -> extractedLetters.joinToString(",")
+                        else -> AnswerKeyMatcher.normalizeKey(blk.correctAnswer).ifBlank { "A" }
+                    }
+                    val msqTag = if (AnswerKeyMatcher.isExplicitMsqType(blk.questionType) || extractedLetters.size >= 2) "[MSQ] " else ""
+                    appendLine("Q$qNum. $msqTag${blk.title}")
                     blk.optionsList.forEach { (l, txt) -> appendLine("($l) $txt") }
-                    appendLine("Correct Answer: $ansLetter")
+                    appendLine("Correct Answer: $ansKey")
                     val expText = blk.keyTakeaway.ifBlank { blk.correctAnswer }
                     appendLine("Explanation: $expText")
                     appendLine()

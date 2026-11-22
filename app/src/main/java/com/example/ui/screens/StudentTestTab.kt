@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
@@ -138,6 +140,7 @@ import com.example.data.DailyStudyAnalyticsEntity
 import com.example.data.QuestionPacingAnalyzer
 import com.example.model.ExamConfig
 import com.example.model.McqQuestion
+import com.example.model.MsqScoringPolicy
 import com.example.model.QuestionPaper
 import com.example.ui.ExamTimerMode
 import com.example.ui.components.StudentPracticeCard
@@ -147,11 +150,12 @@ import com.example.ui.components.ExamPaletteSideSheet
 import com.example.ui.components.PerQuestionPacingCard
 import com.example.ui.components.StudentHistoricalAnalysisDialog
 import com.example.ui.theme.ExamTheme
+import com.example.util.AnswerKeyMatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-enum class ReviewFilter { ALL, CORRECT, INCORRECT, UNANSWERED }
+enum class ReviewFilter { ALL, CORRECT, PARTIAL, INCORRECT, UNANSWERED }
 
 enum class ResultHubTab(val label: String) {
     SCORECARD("Scorecard"),
@@ -604,7 +608,7 @@ private fun ExamStartOverviewView(
             }
         }
 
-        // Scoring Scheme Info Strip
+        // Scoring Scheme Info Strip (Font-Scale Safe)
         item {
             val formattedPenalty = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
             val formattedPos = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
@@ -614,6 +618,8 @@ private fun ExamStartOverviewView(
             } else {
                 "0.00"
             }
+            val msqCount = remember(paper.questions) { paper.questions.count { AnswerKeyMatcher.isMultiSelect(it) } }
+            val effectiveMsqPolicy = paper.metadata.msqScoringPolicy
 
             Surface(
                 shape = RoundedCornerShape(10.dp),
@@ -621,41 +627,80 @@ private fun ExamStartOverviewView(
                 border = BorderStroke(1.dp, colors.border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = colors.teal,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "$formattedPos Correct  •  $formattedPenalty Incorrect  •  $formattedUnk Unattended",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.inkBold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "$formattedPos Correct  •  $formattedPenalty Incorrect  •  $formattedUnk Unattended",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.inkBold,
+                                softWrap = true
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.tealLight.copy(alpha = 0.5f)
+                        ) {
+                            Text(
+                                text = "Net Scoring",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = colors.tealLight.copy(alpha = 0.5f)
-                    ) {
-                        Text(
-                            text = "Net Scoring",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.tealDark,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
+
+                    if (msqCount > 0) {
+                        val policyLabel = if (effectiveMsqPolicy == MsqScoringPolicy.PARTIAL_STRICT) {
+                            "Partial Credit (zero wrong selections)"
+                        } else {
+                            "All-or-Nothing"
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.amberLight,
+                            border = BorderStroke(0.8.dp, colors.amber.copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckBox,
+                                    contentDescription = null,
+                                    tint = colors.amber,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Contains $msqCount MSQ (Multiple-Select) item${if (msqCount == 1) "" else "s"} • Grading: $policyLabel",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.amber,
+                                    softWrap = true
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1954,12 +1999,14 @@ private fun ActiveExamView(
 
             val posStr = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
             val negStr = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
+            val isCurrentMsq = remember(currentQuestion) { AnswerKeyMatcher.isMultiSelect(currentQuestion) }
 
+            @OptIn(ExperimentalLayoutApi::class)
             val questionMetaHeader: @Composable () -> Unit = {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = "Question No. ${currentQuestion.num}",
@@ -1967,6 +2014,35 @@ private fun ActiveExamView(
                         fontWeight = FontWeight.ExtraBold,
                         color = colors.inkBold
                     )
+
+                    if (isCurrentMsq) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.amberLight,
+                            border = BorderStroke(1.dp, colors.amber.copy(alpha = 0.7f)),
+                            modifier = Modifier.testTag("cbt_msq_badge_${currentQuestion.num}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckBox,
+                                    contentDescription = null,
+                                    tint = colors.amber,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "MSQ • Select all that apply",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.amber,
+                                    softWrap = true
+                                )
+                            }
+                        }
+                    }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Surface(shape = RoundedCornerShape(4.dp), color = colors.badgeSuccessBg) {
@@ -2080,9 +2156,19 @@ private fun ActiveExamView(
 
                     rawOptions.forEach { (key, optText) ->
                         if (optText.isNotBlank()) {
-                            val isSelected = pendingOption.equals(key, ignoreCase = true)
+                            val isSelected = if (isCurrentMsq) {
+                                AnswerKeyMatcher.containsOption(pendingOption, key)
+                            } else {
+                                pendingOption.equals(key, ignoreCase = true)
+                            }
                             Surface(
-                                onClick = { pendingOption = key },
+                                onClick = {
+                                    pendingOption = if (isCurrentMsq) {
+                                        AnswerKeyMatcher.toggleSelection(pendingOption, key)
+                                    } else {
+                                        key
+                                    }
+                                },
                                 shape = RoundedCornerShape(8.dp),
                                 color = if (isSelected) selectedOptionBg else colors.surface,
                                 border = BorderStroke(
@@ -2092,6 +2178,7 @@ private fun ActiveExamView(
                                 shadowElevation = if (isSelected && !colors.isDark) 1.dp else 0.dp,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
                                     .testTag("option_${key}_q${currentQuestion.num}")
                             ) {
                                 Row(
@@ -2102,8 +2189,15 @@ private fun ActiveExamView(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
-                                        contentDescription = null,
+                                        imageVector = when {
+                                            isCurrentMsq && isSelected -> Icons.Default.CheckBox
+                                            isCurrentMsq -> Icons.Default.CheckBoxOutlineBlank
+                                            isSelected -> Icons.Default.RadioButtonChecked
+                                            else -> Icons.Default.RadioButtonUnchecked
+                                        },
+                                        contentDescription = if (isCurrentMsq) {
+                                            if (isSelected) "Option $key checked" else "Option $key unchecked"
+                                        } else null,
                                         tint = if (isSelected) selectedOptionBorder else colors.muted,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -2536,6 +2630,7 @@ private fun ActiveExamView(
                     itemsIndexed(activeQuestions, key = { _, q -> "scroll_q_${q.num}" }) { _, q ->
                         val isMarked = markedForReview.contains(q.num)
                         val selectedAns = answers[q.num] ?: ""
+                        val isCardMsq = remember(q) { AnswerKeyMatcher.isMultiSelect(q) }
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -2545,13 +2640,18 @@ private fun ActiveExamView(
                             elevation = CardDefaults.cardElevation(defaultElevation = if (colors.isDark) 0.dp else 1.dp)
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                // Header: Number + Marks + Review Bookmark Icon
+                                // Header: Number + MSQ highlight (only when MSQ) + Marks + Review Bookmark Icon
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    @OptIn(ExperimentalLayoutApi::class)
+                                    FlowRow(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
                                         Surface(
                                             shape = RoundedCornerShape(6.dp),
                                             color = if (selectedAns.isNotBlank()) colors.badgeSuccessBg else colors.surfaceVariant,
@@ -2565,7 +2665,34 @@ private fun ActiveExamView(
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             )
                                         }
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        if (isCardMsq) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = colors.amberLight,
+                                                border = BorderStroke(0.9.dp, colors.amber.copy(alpha = 0.7f)),
+                                                modifier = Modifier.testTag("scroll_msq_badge_${q.num}")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckBox,
+                                                        contentDescription = null,
+                                                        tint = colors.amber,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "MSQ • Select all that apply",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.amber,
+                                                        softWrap = true
+                                                    )
+                                                }
+                                            }
+                                        }
                                         val scrollPosStr = if (positiveMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", positiveMarks) else String.format(java.util.Locale.US, "+%.2f", positiveMarks)
                                         val scrollNegStr = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
                                         Text(
@@ -2574,6 +2701,22 @@ private fun ActiveExamView(
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.muted
                                         )
+                                        if (isCardMsq && selectedAns.isNotBlank()) {
+                                            Surface(
+                                                onClick = { onSelectAnswer(q.num, "") },
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = colors.surfaceVariant,
+                                                border = BorderStroke(0.8.dp, colors.border)
+                                            ) {
+                                                Text(
+                                                    text = "Clear",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colors.ink,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
                                     }
 
                                     IconButton(
@@ -2581,7 +2724,7 @@ private fun ActiveExamView(
                                             if (markedForReview.contains(q.num)) markedForReview.remove(q.num)
                                             else markedForReview.add(q.num)
                                         },
-                                        modifier = Modifier.size(30.dp)
+                                        modifier = Modifier.size(34.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Bookmark,
@@ -2622,7 +2765,7 @@ private fun ActiveExamView(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Options List (Instant Tap Response)
+                                // Options List (Instant Tap Response; checkbox toggle for MSQ, 1-tap radio for MCQ)
                                 val options = listOfNotNull(
                                     "A" to q.options.a,
                                     "B" to q.options.b,
@@ -2633,11 +2776,19 @@ private fun ActiveExamView(
 
                                 options.forEach { (key, optText) ->
                                     if (optText.isNotBlank()) {
-                                        val isChosen = selectedAns.equals(key, ignoreCase = true)
+                                        val isChosen = if (isCardMsq) {
+                                            AnswerKeyMatcher.containsOption(selectedAns, key)
+                                        } else {
+                                            selectedAns.equals(key, ignoreCase = true)
+                                        }
+                                        val indicatorShape = if (isCardMsq) RoundedCornerShape(5.dp) else CircleShape
                                         Surface(
                                             onClick = {
-                                                // Instant selection toggle
-                                                onSelectAnswer(q.num, if (isChosen) "" else key)
+                                                if (isCardMsq) {
+                                                    onSelectAnswer(q.num, AnswerKeyMatcher.toggleSelection(selectedAns, key))
+                                                } else {
+                                                    onSelectAnswer(q.num, if (isChosen) "" else key)
+                                                }
                                             },
                                             shape = RoundedCornerShape(8.dp),
                                             color = if (isChosen) selectedOptionBg else colors.surfaceVariant.copy(alpha = 0.6f),
@@ -2647,25 +2798,36 @@ private fun ActiveExamView(
                                             ),
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
                                                 .padding(vertical = 3.dp)
+                                                .testTag("scroll_option_${key}_q${q.num}")
                                         ) {
                                             Row(
                                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Surface(
-                                                    shape = CircleShape,
+                                                    shape = indicatorShape,
                                                     color = if (isChosen) Color(0xFF2563EB) else colors.surface,
                                                     border = BorderStroke(1.2.dp, if (isChosen) Color(0xFF2563EB) else colors.border),
-                                                    modifier = Modifier.size(22.dp)
+                                                    modifier = Modifier.size(24.dp)
                                                 ) {
                                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                                        Text(
-                                                            text = key,
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = if (isChosen) Color.White else colors.inkBold
-                                                        )
+                                                        if (isCardMsq && isChosen) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Check,
+                                                                contentDescription = "Checked $key",
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        } else {
+                                                            Text(
+                                                                text = key,
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (isChosen) Color.White else colors.inkBold
+                                                            )
+                                                        }
                                                     }
                                                 }
                                                 Spacer(modifier = Modifier.width(10.dp))
@@ -2984,33 +3146,55 @@ private fun ExamResultAndReviewView(
     val effectiveTimeSpentSeconds = timeSpentSecondsFlow?.collectAsState()?.value ?: timeSpentSeconds
     val effectiveQuestionTimes = questionTimesFlow?.collectAsState()?.value ?: questionTimes
 
-    // Official one-time evaluation
+    // Official one-time evaluation (MSQ-aware)
     val officialAnswers = if (submittedAnswers.isNotEmpty()) submittedAnswers else answers
+    val effectiveMsqPolicy = submittedStats?.msqScoringPolicy ?: paper.metadata.msqScoringPolicy
     val stats = submittedStats ?: com.example.ui.MainViewModel.calculateTestStats(
-        paper,
-        officialAnswers,
-        positiveMarks,
-        negativeMarks,
-        unattendedMarks
+        paper = paper,
+        answers = officialAnswers,
+        positiveMarks = positiveMarks,
+        negativeMarks = negativeMarks,
+        unattendedMarks = unattendedMarks,
+        msqScoringPolicy = effectiveMsqPolicy
     )
     val total = stats.total
     val correctCount = stats.correct
+    val partialCount = stats.partial
     val wrongCount = stats.incorrect
     val unattempted = stats.unanswered
     val percentage = stats.percentage
+    val paperHasMsq = remember(paper.questions) { paper.questions.any { AnswerKeyMatcher.isMultiSelect(it) } }
 
-    // Persistent review logs locked at submission time
-    val persistentIncorrect = remember(incorrectQuestionLog, paper.questions, officialAnswers) {
-        if (incorrectQuestionLog.isNotEmpty()) {
+    val persistentPartial = remember(paper.questions, officialAnswers, effectiveMsqPolicy) {
+        paper.questions.filter { q ->
+            AnswerKeyMatcher.scoreQuestion(
+                question = q,
+                userAnswer = officialAnswers[q.num],
+                positiveMarks = positiveMarks,
+                negativeMarks = negativeMarks,
+                unattendedMarks = unattendedMarks,
+                msqPolicy = effectiveMsqPolicy
+            ).status == AnswerKeyMatcher.QuestionGradeStatus.PARTIAL
+        }.map { it.num }.toSet()
+    }
+
+    // Pure incorrect questions (excluding partial MSQs so Correct/Partial/Incorrect/Unattended partition cleanly)
+    val persistentIncorrect = remember(incorrectQuestionLog, paper.questions, officialAnswers, effectiveMsqPolicy, persistentPartial) {
+        val baseIncorrect = if (incorrectQuestionLog.isNotEmpty()) {
             incorrectQuestionLog
         } else {
             paper.questions.filter { q ->
-                !q.isNeutralized && run {
-                    val ans = officialAnswers[q.num]
-                    !ans.isNullOrBlank() && !ans.equals(q.correctAnswer, ignoreCase = true)
-                }
+                AnswerKeyMatcher.scoreQuestion(
+                    question = q,
+                    userAnswer = officialAnswers[q.num],
+                    positiveMarks = positiveMarks,
+                    negativeMarks = negativeMarks,
+                    unattendedMarks = unattendedMarks,
+                    msqPolicy = effectiveMsqPolicy
+                ).status == AnswerKeyMatcher.QuestionGradeStatus.INCORRECT
             }.map { it.num }.toSet()
         }
+        baseIncorrect - persistentPartial
     }
 
     val persistentUnattended = remember(unattendedQuestionLog, paper.questions, officialAnswers) {
@@ -3023,12 +3207,17 @@ private fun ExamResultAndReviewView(
         }
     }
 
-    val filteredQuestions = remember(filter, paper.questions, persistentIncorrect, persistentUnattended) {
+    val persistentRetryErrors = remember(persistentIncorrect, persistentPartial) {
+        persistentIncorrect + persistentPartial
+    }
+
+    val filteredQuestions = remember(filter, paper.questions, persistentIncorrect, persistentPartial, persistentUnattended) {
         when (filter) {
             ReviewFilter.ALL -> paper.questions
             ReviewFilter.CORRECT -> paper.questions.filter {
-                it.isNeutralized || (it.num !in persistentIncorrect && it.num !in persistentUnattended)
+                it.isNeutralized || (it.num !in persistentIncorrect && it.num !in persistentPartial && it.num !in persistentUnattended)
             }
+            ReviewFilter.PARTIAL -> paper.questions.filter { it.num in persistentPartial }
             ReviewFilter.INCORRECT -> paper.questions.filter { it.num in persistentIncorrect }
             ReviewFilter.UNANSWERED -> paper.questions.filter { it.num in persistentUnattended }
         }
@@ -3047,8 +3236,8 @@ private fun ExamResultAndReviewView(
         ExamNumberGenerator.formatSetDisplayLabel(paper.metadata.setNumber)
     }
 
-    val pacingSummary = remember(paper, officialAnswers, effectiveQuestionTimes) {
-        QuestionPacingAnalyzer.computeSummary(paper, officialAnswers, effectiveQuestionTimes)
+    val pacingSummary = remember(paper, officialAnswers, effectiveQuestionTimes, effectiveMsqPolicy) {
+        QuestionPacingAnalyzer.computeSummary(paper, officialAnswers, effectiveQuestionTimes, effectiveMsqPolicy)
     }
 
     val h = effectiveTimeSpentSeconds / 3600
@@ -3064,6 +3253,7 @@ private fun ExamResultAndReviewView(
         ReviewQuestionPaletteDialog(
             questions = filteredQuestions,
             persistentIncorrect = persistentIncorrect,
+            persistentPartial = persistentPartial,
             persistentUnattended = persistentUnattended,
             currentFocusedIdx = focusedQuestionIdx.coerceIn(0, (filteredQuestions.size - 1).coerceAtLeast(0)),
             onSelectIndex = { idx ->
@@ -3385,6 +3575,14 @@ private fun ExamResultAndReviewView(
                                                         .background(colors.green)
                                                 )
                                             }
+                                            if (partialCount > 0) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(partialCount.toFloat())
+                                                        .fillMaxHeight()
+                                                        .background(colors.amber)
+                                                )
+                                            }
                                             if (wrongCount > 0) {
                                                 Box(
                                                     modifier = Modifier
@@ -3410,6 +3608,12 @@ private fun ExamResultAndReviewView(
                                     val formattedPenalty = if (negativeMarks % 1.0 == 0.0) String.format(java.util.Locale.US, "-%.0f", negativeMarks) else String.format(java.util.Locale.US, "-%.2f", negativeMarks)
                                     val pointsCorrect = correctCount * positiveMarks
                                     val formattedPointsCorrect = if (pointsCorrect % 1.0 == 0.0) String.format(java.util.Locale.US, "+%.0f", pointsCorrect) else String.format(java.util.Locale.US, "+%.2f", pointsCorrect)
+                                    val partialPointsTotal = remember(paper.questions, officialAnswers, positiveMarks, negativeMarks, unattendedMarks, effectiveMsqPolicy) {
+                                        paper.questions.sumOf { q ->
+                                            val r = AnswerKeyMatcher.scoreQuestion(q, officialAnswers[q.num], positiveMarks, negativeMarks, unattendedMarks, effectiveMsqPolicy)
+                                            if (r.status == AnswerKeyMatcher.QuestionGradeStatus.PARTIAL) r.marks else 0.0
+                                        }
+                                    }
                                     val unattendedPenaltyStr = if (stats.penaltyUnattended > 0.0) {
                                         "-${String.format(java.util.Locale.US, "%.2f", stats.penaltyUnattended)}"
                                     } else {
@@ -3467,13 +3671,40 @@ private fun ExamResultAndReviewView(
                                             },
                                             modifier = Modifier.weight(1f)
                                         )
+                                        if (partialCount > 0) {
+                                            ScoreStatTile(
+                                                title = "Partial MSQ ($partialCount)",
+                                                value = "+${String.format(java.util.Locale.US, "%.2f", partialPointsTotal)}",
+                                                subtitle = "Proportional • View",
+                                                color = colors.amber,
+                                                onClick = {
+                                                    filter = ReviewFilter.PARTIAL
+                                                    activeTab = ResultHubTab.SOLUTIONS
+                                                },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("partial_score_stat_tile")
+                                            )
+                                        } else {
+                                            ScoreStatTile(
+                                                title = "Duration",
+                                                value = durationFormatted,
+                                                subtitle = if (total > 0) "${effectiveTimeSpentSeconds / total}s avg / Q" else "Exam time",
+                                                color = colors.teal,
+                                                onClick = onOpenAnalytics,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                    if (partialCount > 0) {
+                                        Spacer(modifier = Modifier.height(8.dp))
                                         ScoreStatTile(
                                             title = "Duration",
                                             value = durationFormatted,
-                                            subtitle = if (total > 0) "${effectiveTimeSpentSeconds / total}s avg / Q" else "Exam time",
+                                            subtitle = if (total > 0) "${effectiveTimeSpentSeconds / total}s avg / Q • Tap analytics" else "Exam time",
                                             color = colors.teal,
                                             onClick = onOpenAnalytics,
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
 
@@ -3584,9 +3815,9 @@ private fun ExamResultAndReviewView(
                                             Text("Retake Full Test", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                                         }
 
-                                        if (persistentIncorrect.isNotEmpty()) {
+                                        if (persistentRetryErrors.isNotEmpty()) {
                                             OutlinedButton(
-                                                onClick = { onRetryQuestions(persistentIncorrect.toList()) },
+                                                onClick = { onRetryQuestions(persistentRetryErrors.toList()) },
                                                 shape = RoundedCornerShape(10.dp),
                                                 border = BorderStroke(1.dp, colors.red.copy(alpha = 0.6f)),
                                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.red),
@@ -3595,7 +3826,7 @@ private fun ExamResultAndReviewView(
                                             ) {
                                                 Icon(Icons.Default.Replay, contentDescription = null, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Retry Errors (${persistentIncorrect.size})", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                                Text("Retry Errors (${persistentRetryErrors.size})", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, softWrap = true)
                                             }
                                         }
 
@@ -3610,18 +3841,18 @@ private fun ExamResultAndReviewView(
                                             ) {
                                                 Icon(Icons.Default.HelpOutline, contentDescription = null, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Retry Skipped (${persistentUnattended.size})", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                                Text("Retry Skipped (${persistentUnattended.size})", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, softWrap = true)
                                             }
                                         }
 
-                                        if (onSaveWeakAreasToKnowledgeSet != null && (persistentIncorrect.isNotEmpty() || persistentUnattended.isNotEmpty())) {
+                                        if (onSaveWeakAreasToKnowledgeSet != null && (persistentRetryErrors.isNotEmpty() || persistentUnattended.isNotEmpty())) {
                                             OutlinedButton(
                                                 onClick = {
                                                     if (!isSavedToKnowledge) {
                                                         isSavedToKnowledge = true
                                                         onSaveWeakAreasToKnowledgeSet(
                                                             paper,
-                                                            persistentIncorrect,
+                                                            persistentRetryErrors,
                                                             persistentUnattended,
                                                             officialAnswers
                                                         )
@@ -3647,8 +3878,7 @@ private fun ExamResultAndReviewView(
                                                     if (isSavedToKnowledge) "Saved to Knowledge Studio ✓" else "Save Missed to Knowledge Set",
                                                     fontSize = 12.5.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    maxLines = 1,
-                                                    softWrap = false
+                                                    softWrap = true
                                                 )
                                             }
                                         }
@@ -3719,11 +3949,12 @@ private fun ExamResultAndReviewView(
             }
 
             ResultHubTab.SOLUTIONS -> {
-                val correctReviewCount = (total - persistentIncorrect.size - persistentUnattended.size).coerceAtLeast(0)
+                val correctReviewCount = (total - persistentIncorrect.size - persistentPartial.size - persistentUnattended.size).coerceAtLeast(0)
                 var showFilterMenu by remember { mutableStateOf(false) }
 
                 val (activeFilterLabel, activeFilterColor) = when (filter) {
                     ReviewFilter.ALL -> "All ($total)" to colors.inkBold
+                    ReviewFilter.PARTIAL -> "Partial (${persistentPartial.size})" to colors.amber
                     ReviewFilter.INCORRECT -> "Incorrect (${persistentIncorrect.size})" to colors.red
                     ReviewFilter.UNANSWERED -> "Unattended (${persistentUnattended.size})" to colors.muted
                     ReviewFilter.CORRECT -> "Correct ($correctReviewCount)" to colors.green
@@ -3790,12 +4021,15 @@ private fun ExamResultAndReviewView(
                                     expanded = showFilterMenu,
                                     onDismissRequest = { showFilterMenu = false }
                                 ) {
-                                    val filterOptions = listOf(
-                                        Triple(ReviewFilter.ALL, "All ($total)", colors.inkBold),
-                                        Triple(ReviewFilter.INCORRECT, "Incorrect (${persistentIncorrect.size})", colors.red),
-                                        Triple(ReviewFilter.UNANSWERED, "Unattended (${persistentUnattended.size})", colors.muted),
-                                        Triple(ReviewFilter.CORRECT, "Correct ($correctReviewCount)", colors.green)
-                                    )
+                                    val filterOptions = buildList {
+                                        add(Triple(ReviewFilter.ALL, "All ($total)", colors.inkBold))
+                                        if (persistentPartial.isNotEmpty() || paperHasMsq) {
+                                            add(Triple(ReviewFilter.PARTIAL, "Partial (${persistentPartial.size})", colors.amber))
+                                        }
+                                        add(Triple(ReviewFilter.INCORRECT, "Incorrect (${persistentIncorrect.size})", colors.red))
+                                        add(Triple(ReviewFilter.UNANSWERED, "Unattended (${persistentUnattended.size})", colors.muted))
+                                        add(Triple(ReviewFilter.CORRECT, "Correct ($correctReviewCount)", colors.green))
+                                    }
                                     filterOptions.forEach { (itemFilter, text, accentColor) ->
                                         DropdownMenuItem(
                                             text = {
@@ -3936,6 +4170,7 @@ private fun ExamResultAndReviewView(
                                 ) {
                                     Text(
                                         text = when (filter) {
+                                            ReviewFilter.PARTIAL -> "No partial-credit MSQ answers recorded in this test."
                                             ReviewFilter.INCORRECT -> "Outstanding! No incorrect answers in this test."
                                             ReviewFilter.UNANSWERED -> "Great! All questions were attended in this test."
                                             ReviewFilter.CORRECT -> "No correct answers recorded yet."
@@ -3964,10 +4199,12 @@ private fun ExamResultAndReviewView(
                                     officialAnswer = officialAnswers[q.num],
                                     currentPracticeAnswer = answers[q.num],
                                     isOriginallyIncorrect = q.num in persistentIncorrect,
+                                    isOriginallyPartial = q.num in persistentPartial,
                                     isOriginallyUnattended = q.num in persistentUnattended,
                                     positiveMarks = stats.positiveMarks,
                                     negativeMarks = stats.negativeMarks,
-                                    unattendedMarks = stats.unattendedMarks
+                                    unattendedMarks = stats.unattendedMarks,
+                                    msqScoringPolicy = effectiveMsqPolicy
                                 )
                             }
                         }
@@ -3988,10 +4225,12 @@ private fun ExamResultAndReviewView(
                                     officialAnswer = officialAnswers[activeQuestion.num],
                                     currentPracticeAnswer = answers[activeQuestion.num],
                                     isOriginallyIncorrect = activeQuestion.num in persistentIncorrect,
+                                    isOriginallyPartial = activeQuestion.num in persistentPartial,
                                     isOriginallyUnattended = activeQuestion.num in persistentUnattended,
                                     positiveMarks = stats.positiveMarks,
                                     negativeMarks = stats.negativeMarks,
-                                    unattendedMarks = stats.unattendedMarks
+                                    unattendedMarks = stats.unattendedMarks,
+                                    msqScoringPolicy = effectiveMsqPolicy
                                 )
                             }
 
@@ -4210,17 +4449,17 @@ private fun ExamResultAndReviewView(
                                     tint = colors.amber,
                                     onClick = onOpenHistory
                                 )
-                                if (onSaveWeakAreasToKnowledgeSet != null && (persistentIncorrect.isNotEmpty() || persistentUnattended.isNotEmpty())) {
+                                if (onSaveWeakAreasToKnowledgeSet != null && (persistentRetryErrors.isNotEmpty() || persistentUnattended.isNotEmpty())) {
                                     DiagnosticActionRow(
                                         title = if (isSavedToKnowledge) "Missed Questions Saved ✓" else "Save Missed to Knowledge Studio",
-                                        subtitle = if (isSavedToKnowledge) "Active Recall cards saved and uniquely identified in Knowledge Studio" else "Convert ${persistentIncorrect.size + persistentUnattended.size} missed items into Active Recall cards",
+                                        subtitle = if (isSavedToKnowledge) "Active Recall cards saved and uniquely identified in Knowledge Studio" else "Convert ${persistentRetryErrors.size + persistentUnattended.size} missed items into Active Recall cards",
                                         icon = if (isSavedToKnowledge) Icons.Default.Check else Icons.AutoMirrored.Filled.MenuBook,
                                         tint = colors.green,
                                         onClick = {
                                             isSavedToKnowledge = true
                                             onSaveWeakAreasToKnowledgeSet(
                                                 paper,
-                                                persistentIncorrect,
+                                                persistentRetryErrors,
                                                 persistentUnattended,
                                                 officialAnswers
                                             )
@@ -4417,14 +4656,16 @@ private fun ReviewQuestionCardBlock(
     officialAnswer: String?,
     currentPracticeAnswer: String?,
     isOriginallyIncorrect: Boolean,
+    isOriginallyPartial: Boolean = false,
     isOriginallyUnattended: Boolean,
     positiveMarks: Double,
     negativeMarks: Double,
-    unattendedMarks: Double
+    unattendedMarks: Double,
+    msqScoringPolicy: MsqScoringPolicy = MsqScoringPolicy.ALL_OR_NOTHING
 ) {
     val colors = ExamTheme.colors
     val isCorrectNow = !currentPracticeAnswer.isNullOrBlank() &&
-        currentPracticeAnswer.equals(question.correctAnswer, ignoreCase = true)
+        AnswerKeyMatcher.areKeysEquivalent(currentPracticeAnswer, question.correctAnswer)
 
     Column(modifier = Modifier.fillMaxWidth()) {
         if (question.isNeutralized) {
@@ -4447,6 +4688,29 @@ private fun ReviewQuestionCardBlock(
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.teal
+                    )
+                }
+            }
+        } else if (isOriginallyPartial) {
+            Surface(
+                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                color = colors.amberLight,
+                border = BorderStroke(0.8.dp, colors.amber.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.CheckBox, contentDescription = null, tint = colors.amber, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Partial MSQ Credit awarded at submission • Inspect missed option(s) below",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.amber
                     )
                 }
             }
@@ -4519,15 +4783,18 @@ private fun ReviewQuestionCardBlock(
             showResult = true,
             positiveMarks = positiveMarks,
             negativeMarks = negativeMarks,
-            unattendedMarks = unattendedMarks
+            unattendedMarks = unattendedMarks,
+            msqScoringPolicy = msqScoringPolicy
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReviewQuestionPaletteDialog(
     questions: List<McqQuestion>,
     persistentIncorrect: Set<Int>,
+    persistentPartial: Set<Int> = emptySet(),
     persistentUnattended: Set<Int>,
     currentFocusedIdx: Int,
     onSelectIndex: (Int) -> Unit,
@@ -4556,13 +4823,16 @@ private fun ReviewQuestionPaletteDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Color Legend
-                Row(
+                // Color Legend (wraps cleanly on large font scale)
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     PaletteLegendChip("Correct", colors.green)
+                    if (persistentPartial.isNotEmpty()) {
+                        PaletteLegendChip("Partial", colors.amber)
+                    }
                     PaletteLegendChip("Wrong", colors.red)
                     PaletteLegendChip("Skipped", colors.muted)
                 }
@@ -4579,6 +4849,7 @@ private fun ReviewQuestionPaletteDialog(
                         val q = questions[idx]
                         val tileColor = when {
                             q.isNeutralized -> colors.teal
+                            q.num in persistentPartial -> colors.amber
                             q.num in persistentIncorrect -> colors.red
                             q.num in persistentUnattended -> colors.muted
                             else -> colors.green
@@ -4589,7 +4860,7 @@ private fun ReviewQuestionPaletteDialog(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isCurrent) tileColor else tileColor.copy(alpha = 0.14f),
                             border = BorderStroke(if (isCurrent) 1.5.dp else 0.8.dp, tileColor),
-                            modifier = Modifier.height(44.dp)
+                            modifier = Modifier.heightIn(min = 44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(

@@ -47,6 +47,7 @@ import com.example.model.LinkedCloudFileStatus
 import com.example.model.HeadwordQueueItem
 import com.example.model.HeadwordFilterResult
 import com.example.model.McqQuestion
+import com.example.model.MsqScoringPolicy
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.model.ParseResult
@@ -73,6 +74,7 @@ import com.example.ui.screens.KnowledgePromptState
 import com.example.ui.screens.PromptBuilderMode
 import com.example.ui.screens.QuestionPromptState
 import com.example.ui.screens.VocabularyPromptState
+import com.example.util.AnswerKeyMatcher
 import com.example.util.CloudBackupClients
 import com.example.util.McqParser
 import com.example.util.BatchExamImporter
@@ -1647,6 +1649,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 positiveMarks = savedPositive,
                 negativeMarks = savedNegative,
                 unattendedMarks = savedUnattended,
+                msqScoringPolicy = appPreferences.getPaperMsqPolicy(freshEntity.id),
                 createdAt = freshEntity.createdAt
             )
         )
@@ -2392,8 +2395,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         withContext(Dispatchers.Main) {
                             _submittedStats.value = stats
                             _incorrectQuestionLog.value = updatedPaper.questions.filter { q ->
-                                val userAns = answersMap[q.num]
-                                !userAns.isNullOrBlank() && !userAns.equals(q.correctAnswer, ignoreCase = true)
+                                val grade = AnswerKeyMatcher.scoreQuestion(
+                                    question = q,
+                                    userAnswer = answersMap[q.num],
+                                    positiveMarks = stats.positiveMarks,
+                                    negativeMarks = stats.negativeMarks,
+                                    unattendedMarks = stats.unattendedMarks,
+                                    msqPolicy = updatedPaper.metadata.msqScoringPolicy
+                                )
+                                grade.status == AnswerKeyMatcher.QuestionGradeStatus.INCORRECT ||
+                                    grade.status == AnswerKeyMatcher.QuestionGradeStatus.PARTIAL
                             }.map { it.num }.toSet()
                             _unattendedQuestionLog.value = updatedPaper.questions.filter { q ->
                                 answersMap[q.num].isNullOrBlank()
@@ -2455,6 +2466,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val nextNum = active.questions.size + 1
+        val normalizedAnswer = AnswerKeyMatcher.normalizeKey(correctAnswer).takeIf { it.isNotBlank() }
+        val resolvedType = when {
+            AnswerKeyMatcher.parseSelectedLetters(normalizedAnswer).size >= 2 -> "MSQ"
+            AnswerKeyMatcher.isExplicitMsqType(questionType) -> "MSQ"
+            else -> questionType.ifBlank { "Direct Fact" }
+        }
         val newQ = McqQuestion(
             num = nextNum,
             question = questionText.trim(),
@@ -2465,9 +2482,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 d = optionD.trim().ifBlank { "Option D" },
                 e = optionE.trim()
             ),
-            correctAnswer = correctAnswer?.trim()?.uppercase()?.takeIf { it in listOf("A", "B", "C", "D", "E") },
+            correctAnswer = normalizedAnswer,
             explanation = explanation?.trim()?.takeIf { it.isNotBlank() },
-            questionType = questionType.ifBlank { "Direct Fact" },
+            questionType = resolvedType,
             diagramUrl = diagramUrl?.trim()?.ifBlank { null },
             diagramLabel = diagramLabel?.trim()?.ifBlank { null },
             formula = formula?.trim()?.ifBlank { null }
@@ -2721,7 +2738,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         positiveMarks: Double? = null,
         negativeMarks: Double? = null,
         unattendedMarks: Double? = null,
-        manualCategory: String? = null
+        manualCategory: String? = null,
+        msqScoringPolicy: MsqScoringPolicy? = null
     ) {
         val active = _currentPaper.value ?: return
         val cleanTitle = title.trim().ifBlank { "MCQ Practice Set" }
@@ -2749,6 +2767,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val finalNegMarks = negativeMarks ?: active.metadata.negativeMarks
         val finalUnkMarks = unattendedMarks ?: active.metadata.unattendedMarks
         val finalCategory = manualCategory?.trim() ?: active.metadata.manualCategory
+        val finalMsqPolicy = msqScoringPolicy ?: active.metadata.msqScoringPolicy
 
         val newMetadata = active.metadata.copy(
             title = cleanTitle,
@@ -2762,7 +2781,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             durationMinutes = finalDuration,
             positiveMarks = finalPosMarks,
             negativeMarks = finalNegMarks,
-            unattendedMarks = finalUnkMarks
+            unattendedMarks = finalUnkMarks,
+            msqScoringPolicy = finalMsqPolicy
         )
         val updatedPaper = active.copy(metadata = newMetadata)
 
@@ -2776,6 +2796,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             positiveMarks = finalPosMarks,
             negativeMarks = finalNegMarks,
             unattendedMarks = finalUnkMarks,
+            msqScoringPolicy = finalMsqPolicy,
             timeAllowed = "$finalDuration Minutes",
             maxMarks = "${(finalPosMarks * updatedPaper.questions.size).toInt()}"
         )
@@ -2786,8 +2807,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val oldTitle = active.metadata.title
-        schedulePaperAutoSave(updatedPaper)
         val linkedId = _currentPaperEntityId.value ?: (if (active.id > 0L) active.id else null)
+        if (linkedId != null && linkedId > 0L && msqScoringPolicy != null) {
+            appPreferences.setPaperMsqPolicy(linkedId, finalMsqPolicy)
+        }
+        schedulePaperAutoSave(updatedPaper)
         if (linkedId != null && oldTitle.isNotBlank() && oldTitle != cleanTitle) {
             syncLinkedKnowledgeSetTitles(linkedId, oldTitle, cleanTitle)
         }
@@ -2809,7 +2833,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customPositiveMarks: Double? = null,
         customNegativeMarks: Double? = null,
         customUnattendedMarks: Double? = null,
-        customManualCategory: String? = null
+        customManualCategory: String? = null,
+        customMsqScoringPolicy: MsqScoringPolicy? = null
     ) {
         // Immediately cancel any running or scheduled auto-save debounces and decouple active paper ID
         paperDebounceJob?.cancel()
@@ -2909,6 +2934,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ).code
             }
 
+            val resolvedMsqPolicy = customMsqScoringPolicy
+                ?: if (existing != null) appPreferences.getPaperMsqPolicy(existing.id)
+                else if (parsed.metadata.msqScoringPolicy != MsqScoringPolicy.ALL_OR_NOTHING) parsed.metadata.msqScoringPolicy
+                else appPreferences.getDefaultMsqScoringPolicy()
+
             val finalMetadata = parsed.metadata.copy(
                 title = effectiveTitle,
                 subject = finalSubject,
@@ -2921,7 +2951,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 durationMinutes = effectiveDuration,
                 positiveMarks = effectivePositiveMarks,
                 negativeMarks = effectiveNegativeMarks,
-                unattendedMarks = effectiveUnattendedMarks
+                unattendedMarks = effectiveUnattendedMarks,
+                msqScoringPolicy = resolvedMsqPolicy
             )
             val finalPaper = parsed.copy(metadata = finalMetadata)
 
@@ -2986,6 +3017,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             if (entityId > 0) {
                 appPreferences.setLastActivePaperId(entityId)
+                if (customMsqScoringPolicy != null || resolvedMsqPolicy != MsqScoringPolicy.ALL_OR_NOTHING) {
+                    appPreferences.setPaperMsqPolicy(entityId, resolvedMsqPolicy)
+                }
             }
             appPreferences.setDraftRawText(text)
 
@@ -3015,6 +3049,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     positiveMarks = effectivePositiveMarks,
                     negativeMarks = effectiveNegativeMarks,
                     unattendedMarks = effectiveUnattendedMarks,
+                    msqScoringPolicy = resolvedMsqPolicy,
                     maxMarks = String.format(java.util.Locale.US, "%.2f", effectivePositiveMarks * finalPaper.questions.size),
                     rollNumber = finalMetadata.rollNumber,
                     bookletNumber = finalMetadata.bookletNumber
@@ -3073,6 +3108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val savedPositive = if (freshEntity.positiveMarks > 0.0) freshEntity.positiveMarks else 4.0
         val savedNegative = if (freshEntity.negativeMarks >= 0.0) freshEntity.negativeMarks else 1.0
         val savedUnattended = if (freshEntity.unattendedMarks >= 0.0) freshEntity.unattendedMarks else 0.0
+        val savedMsqPolicy = appPreferences.getPaperMsqPolicy(freshEntity.id)
 
         val parsed = result.paper.copy(
             id = freshEntity.id,
@@ -3091,6 +3127,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 positiveMarks = savedPositive,
                 negativeMarks = savedNegative,
                 unattendedMarks = savedUnattended,
+                msqScoringPolicy = savedMsqPolicy,
                 createdAt = freshEntity.createdAt
             )
         )
@@ -3149,6 +3186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 positiveMarks = savedPositive,
                 negativeMarks = savedNegative,
                 unattendedMarks = savedUnattended,
+                msqScoringPolicy = savedMsqPolicy,
                 timeAllowed = "$savedDuration Minutes",
                 rollNumber = finalRoll,
                 bookletNumber = finalBooklet,
@@ -3289,6 +3327,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             bookletNumber = if (paper.metadata.bookletNumber.isNotBlank()) paper.metadata.bookletNumber else (existing?.bookletNumber ?: ExamNumberGenerator.generateBookletNumber())
                         )
                         val insertedId = paperDao.insertPaper(entity)
+                        if (paper.metadata.msqScoringPolicy != MsqScoringPolicy.ALL_OR_NOTHING) {
+                            appPreferences.setPaperMsqPolicy(insertedId, paper.metadata.msqScoringPolicy)
+                        }
                         importedCount++
                         if (importedCount == 1) {
                             val activePaper = paper.copy(id = insertedId)
@@ -3315,7 +3356,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     customSetNumber = paper.metadata.setNumber,
                     customRollNumber = paper.metadata.rollNumber,
                     customBookletNumber = paper.metadata.bookletNumber,
-                    customFolderId = paper.metadata.folderId
+                    customFolderId = paper.metadata.folderId,
+                    customDurationMinutes = paper.metadata.durationMinutes,
+                    customPositiveMarks = paper.metadata.positiveMarks,
+                    customNegativeMarks = paper.metadata.negativeMarks,
+                    customUnattendedMarks = paper.metadata.unattendedMarks,
+                    customManualCategory = paper.metadata.manualCategory,
+                    customMsqScoringPolicy = paper.metadata.msqScoringPolicy
                 )
                 _statusMessage.value = "Imported: ${paper.metadata.title} (${paper.metadata.setNumber} | Roll: ${paper.metadata.rollNumber} | Booklet: ${paper.metadata.bookletNumber})"
                 true
@@ -3405,24 +3452,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun exportAllPapersAsJson(): String? {
         val papers = savedPapers.value
         if (papers.isEmpty()) return null
-        val questionPapers = papers.map { entity ->
-            val parsed = McqParser.parse(entity.rawText)
-            parsed.copy(
-                id = entity.id,
-                metadata = PaperMetadata(
-                    id = "paper-${entity.id}",
-                    title = entity.title,
-                    subject = entity.subject,
-                    topic = entity.topic,
-                    setNumber = entity.setNumber.ifBlank { "Set 1" },
-                    exam = entity.exam,
-                    folderId = entity.folderId,
-                    rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
-                    bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
-                    createdAt = entity.createdAt
-                )
-            )
-        }
+        val questionPapers = papers.map(::buildQuestionPaperForExport)
         val firstTitle = questionPapers.firstOrNull()?.metadata?.title ?: "Examination Package"
         val firstFolder = questionPapers.firstOrNull()?.metadata?.folderId
         return ExamJsonHelper.bundleToJson(firstTitle, firstFolder, questionPapers)
@@ -3431,24 +3461,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun exportSelectedPapersAsJson(selectedPaperIds: Set<Long>): String? {
         val papers = savedPapers.value.filter { it.id in selectedPaperIds }
         if (papers.isEmpty()) return null
-        val questionPapers = papers.map { entity ->
-            val parsed = McqParser.parse(entity.rawText)
-            parsed.copy(
-                id = entity.id,
-                metadata = PaperMetadata(
-                    id = "paper-${entity.id}",
-                    title = entity.title,
-                    subject = entity.subject,
-                    topic = entity.topic,
-                    setNumber = entity.setNumber.ifBlank { "Set 1" },
-                    exam = entity.exam,
-                    folderId = entity.folderId,
-                    rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
-                    bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
-                    createdAt = entity.createdAt
-                )
-            )
-        }
+        val questionPapers = papers.map(::buildQuestionPaperForExport)
         val firstTitle = questionPapers.firstOrNull()?.metadata?.title ?: "Examination Package"
         val firstFolder = questionPapers.firstOrNull()?.metadata?.folderId
         return ExamJsonHelper.bundleToJson(firstTitle, firstFolder, questionPapers)
@@ -3483,24 +3496,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val folderTree = _folders.value.filter { it.id in descendantIds }
         val papers = savedPapers.value.filter { it.folderId != null && it.folderId in descendantIds }
 
-        val questionPapers = papers.map { entity ->
-            val parsed = McqParser.parse(entity.rawText)
-            parsed.copy(
-                id = entity.id,
-                metadata = PaperMetadata(
-                    id = "paper-${entity.id}",
-                    title = entity.title,
-                    subject = entity.subject,
-                    topic = entity.topic,
-                    setNumber = entity.setNumber.ifBlank { "Set 1" },
-                    exam = entity.exam,
-                    folderId = entity.folderId,
-                    rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
-                    bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
-                    createdAt = entity.createdAt
-                )
-            )
-        }
+        val questionPapers = papers.map(::buildQuestionPaperForExport)
 
         return ExamJsonHelper.subtreeBundleToJson(rootFolder, folderTree, questionPapers)
     }
@@ -3565,23 +3561,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Exports a single paper entity as structured JSON string.
      */
     fun exportSinglePaperAsJson(paper: PaperEntity): String {
-        val parsed = McqParser.parse(paper.rawText)
-        val questionPaper = parsed.copy(
-            id = paper.id,
-            metadata = PaperMetadata(
-                id = "paper-${paper.id}",
-                title = paper.title,
-                subject = paper.subject,
-                topic = paper.topic,
-                setNumber = paper.setNumber.ifBlank { "Set 1" },
-                exam = paper.exam,
-                folderId = paper.folderId,
-                rollNumber = if (paper.rollNumber.isNotBlank()) paper.rollNumber else ExamNumberGenerator.generateRollNumber(),
-                bookletNumber = if (paper.bookletNumber.isNotBlank()) paper.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
-                createdAt = paper.createdAt
-            )
-        )
-        return ExamJsonHelper.toJson(questionPaper)
+        return ExamJsonHelper.toJson(buildQuestionPaperForExport(paper))
     }
 
     fun exportPapersAsFormattedText(selectedPaperIds: Set<Long>? = null): String? {
@@ -5000,8 +4980,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 setNumber = entity.setNumber.ifBlank { "Set 1" },
                 exam = entity.exam,
                 folderId = entity.folderId,
+                manualCategory = entity.manualCategory,
                 rollNumber = if (entity.rollNumber.isNotBlank()) entity.rollNumber else ExamNumberGenerator.generateRollNumber(),
                 bookletNumber = if (entity.bookletNumber.isNotBlank()) entity.bookletNumber else ExamNumberGenerator.generateBookletNumber(),
+                durationMinutes = if (entity.durationMinutes > 0) entity.durationMinutes else 60,
+                positiveMarks = if (entity.positiveMarks > 0.0) entity.positiveMarks else 4.0,
+                negativeMarks = if (entity.negativeMarks >= 0.0) entity.negativeMarks else 1.0,
+                unattendedMarks = if (entity.unattendedMarks >= 0.0) entity.unattendedMarks else 0.0,
+                msqScoringPolicy = appPreferences.getPaperMsqPolicy(entity.id),
                 createdAt = entity.createdAt
             )
         )
@@ -5735,11 +5721,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // --- Student Test Interactions & Attempt Persistence ---
 
     fun selectAnswer(qNum: Int, option: String) {
+        val normalized = AnswerKeyMatcher.normalizeKey(option)
         val current = _studentAnswers.value.toMutableMap()
-        if (option.isBlank()) {
+        if (normalized.isBlank()) {
             current.remove(qNum)
         } else {
-            current[qNum] = option
+            current[qNum] = normalized
         }
         _studentAnswers.value = current
 
@@ -5748,6 +5735,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!_isExamSubmitted.value) {
             saveCurrentAttempt()
         }
+    }
+
+    fun toggleMultiAnswerOption(qNum: Int, option: String) {
+        val existing = _studentAnswers.value[qNum]
+        val next = AnswerKeyMatcher.toggleSelection(existing, option)
+        selectAnswer(qNum, next)
     }
 
     fun updateTimeSpent(seconds: Long) {
@@ -5968,10 +5961,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val stats = calculateTestStats(paper, answersSnapshot)
         _submittedStats.value = stats
 
-        // Make log for review of all questions answered incorrectly at submission time
+        // Make log for review of all questions answered incorrectly or partially at submission time
         val incorrectSet = paper.questions.filter { q ->
-            val userAns = answersSnapshot[q.num]
-            !userAns.isNullOrBlank() && !userAns.equals(q.correctAnswer, ignoreCase = true)
+            val grade = AnswerKeyMatcher.scoreQuestion(
+                question = q,
+                userAnswer = answersSnapshot[q.num],
+                positiveMarks = stats.positiveMarks,
+                negativeMarks = stats.negativeMarks,
+                unattendedMarks = stats.unattendedMarks,
+                msqPolicy = paper.metadata.msqScoringPolicy
+            )
+            grade.status == AnswerKeyMatcher.QuestionGradeStatus.INCORRECT ||
+                grade.status == AnswerKeyMatcher.QuestionGradeStatus.PARTIAL
         }.map { it.num }.toSet()
         _incorrectQuestionLog.value = incorrectSet
 
@@ -6111,8 +6112,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val incorrectSet = result.questionResults.values
             .filter { q ->
-                val officialAns = paper.questions.getOrNull(q.questionNum - 1)?.correctAnswer?.uppercase()?.firstOrNull()?.toString()
-                q.isMultipleMarked || (q.selectedOption != null && !q.selectedOption.toString().equals(officialAns, ignoreCase = true))
+                val officialAns = paper.questions.getOrNull(q.questionNum - 1)?.correctAnswer
+                q.isMultipleMarked || (q.selectedOption != null && !AnswerKeyMatcher.areKeysEquivalent(officialAns, q.selectedOption.toString()))
             }
             .map { it.questionNum }
             .toSet()
@@ -6260,8 +6261,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val stats = calculateTestStats(paper, answersMap)
             _submittedStats.value = stats
             _incorrectQuestionLog.value = paper.questions.filter { q ->
-                val userAns = answersMap[q.num]
-                !userAns.isNullOrBlank() && !userAns.equals(q.correctAnswer, ignoreCase = true)
+                val grade = AnswerKeyMatcher.scoreQuestion(
+                    question = q,
+                    userAnswer = answersMap[q.num],
+                    positiveMarks = stats.positiveMarks,
+                    negativeMarks = stats.negativeMarks,
+                    unattendedMarks = stats.unattendedMarks,
+                    msqPolicy = paper.metadata.msqScoringPolicy
+                )
+                grade.status == AnswerKeyMatcher.QuestionGradeStatus.INCORRECT ||
+                    grade.status == AnswerKeyMatcher.QuestionGradeStatus.PARTIAL
             }.map { it.num }.toSet()
             _unattendedQuestionLog.value = paper.questions.filter { q ->
                 answersMap[q.num].isNullOrBlank()
@@ -6307,10 +6316,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 durationMinutes = config.durationMinutes,
                 positiveMarks = config.positiveMarks,
                 negativeMarks = config.negativeMarks,
-                unattendedMarks = config.unattendedMarks
+                unattendedMarks = config.unattendedMarks,
+                msqScoringPolicy = config.msqScoringPolicy
             )
             val updatedPaper = active.copy(metadata = updatedMeta)
             _currentPaper.value = updatedPaper
+            val linkedId = _currentPaperEntityId.value ?: (if (active.id > 0L) active.id else null)
+            if (linkedId != null && linkedId > 0L) {
+                appPreferences.setPaperMsqPolicy(linkedId, config.msqScoringPolicy)
+            }
             schedulePaperAutoSave(updatedPaper)
         }
         if (!_isExamStarted.value) {
@@ -6531,7 +6545,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val maxPossibleMarks: Double = total * 1.0,
             val positiveMarks: Double = 1.0,
             val negativeMarks: Double = 0.0,
-            val unattendedMarks: Double = 0.0
+            val unattendedMarks: Double = 0.0,
+            val partial: Int = 0,
+            val msqScoringPolicy: MsqScoringPolicy = MsqScoringPolicy.ALL_OR_NOTHING
         ) {
             val formattedScore: String
                 get() = String.format(java.util.Locale.US, "%.2f", score)
@@ -6547,52 +6563,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             answers: Map<Int, String>,
             positiveMarks: Double = paper.metadata.positiveMarks,
             negativeMarks: Double = paper.metadata.negativeMarks,
-            unattendedMarks: Double = paper.metadata.unattendedMarks
+            unattendedMarks: Double = paper.metadata.unattendedMarks,
+            msqScoringPolicy: MsqScoringPolicy = paper.metadata.msqScoringPolicy
         ): TestStats {
-            var correct = 0
-            var incorrect = 0
-            paper.questions.forEach { q ->
-                if (q.isNeutralized) {
-                    // Standard exam board rule: Neutralized / withdrawn questions award full marks to all candidates
-                    correct++
-                } else {
-                    val userAns = answers[q.num]
-                    if (!userAns.isNullOrBlank()) {
-                        if (q.correctAnswer.equals(userAns, ignoreCase = true)) {
-                            correct++
-                        } else {
-                            incorrect++
-                        }
-                    }
-                }
-            }
-            val unanswered = paper.questions.size - (correct + incorrect)
-
             val pos = if (positiveMarks > 0.0) positiveMarks else 4.0
             val neg = if (negativeMarks >= 0.0) negativeMarks else 1.0
             val unk = if (unattendedMarks >= 0.0) unattendedMarks else 0.0
 
-            val penaltyIncorrect = Math.round(incorrect * neg * 100.0) / 100.0
-            val penaltyUnattended = Math.round(unanswered * unk * 100.0) / 100.0
-            val rawScore = (correct * pos) - penaltyIncorrect - penaltyUnattended
-            val rawScoreRounded = Math.round(rawScore * 100.0) / 100.0
+            var correct = 0
+            var partial = 0
+            var incorrect = 0
+            var rawScore = 0.0
+            var penaltyIncorrect = 0.0
+            var penaltyUnattended = 0.0
 
-            val finalScore = rawScoreRounded
-            val maxMarks = paper.questions.size * pos
+            paper.questions.forEach { q ->
+                val result = AnswerKeyMatcher.scoreQuestion(
+                    question = q,
+                    userAnswer = answers[q.num],
+                    positiveMarks = pos,
+                    negativeMarks = neg,
+                    unattendedMarks = unk,
+                    msqPolicy = msqScoringPolicy
+                )
+                rawScore += result.marks
+                when (result.status) {
+                    AnswerKeyMatcher.QuestionGradeStatus.NEUTRALIZED,
+                    AnswerKeyMatcher.QuestionGradeStatus.CORRECT -> correct++
+                    AnswerKeyMatcher.QuestionGradeStatus.PARTIAL -> partial++
+                    AnswerKeyMatcher.QuestionGradeStatus.INCORRECT -> {
+                        incorrect++
+                        penaltyIncorrect += neg
+                    }
+                    AnswerKeyMatcher.QuestionGradeStatus.UNANSWERED -> {
+                        penaltyUnattended += unk
+                    }
+                }
+            }
+            val unanswered = paper.questions.size - (correct + partial + incorrect)
+
+            val penaltyIncorrectRounded = Math.round(penaltyIncorrect * 100.0) / 100.0
+            val penaltyUnattendedRounded = Math.round(penaltyUnattended * 100.0) / 100.0
+            val rawScoreRounded = Math.round(rawScore * 100.0) / 100.0
+            val maxMarks = Math.round((paper.questions.size * pos) * 100.0) / 100.0
 
             return TestStats(
                 total = paper.questions.size,
                 correct = correct,
                 incorrect = incorrect,
                 unanswered = unanswered,
-                score = finalScore,
+                score = rawScoreRounded,
                 rawScore = rawScoreRounded,
-                penaltyIncorrect = penaltyIncorrect,
-                penaltyUnattended = penaltyUnattended,
+                penaltyIncorrect = penaltyIncorrectRounded,
+                penaltyUnattended = penaltyUnattendedRounded,
                 maxPossibleMarks = maxMarks,
                 positiveMarks = pos,
                 negativeMarks = neg,
-                unattendedMarks = unk
+                unattendedMarks = unk,
+                partial = partial,
+                msqScoringPolicy = msqScoringPolicy
             )
         }
     }

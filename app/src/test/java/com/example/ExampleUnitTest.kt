@@ -2510,16 +2510,18 @@ Subsystems \(A\) and \(B\) satisfy constraints.
     val paper = McqParser.parse(rawBenchmark)
     assertEquals(5, paper.questions.size)
 
-    // Q1
+    // Q1 (Multi-select A, C, D, E)
     assertEquals(1, paper.questions[0].num)
-    assertEquals("A", paper.questions[0].correctAnswer)
+    assertEquals("A,C,D,E", paper.questions[0].correctAnswer)
+    assertTrue(com.example.util.AnswerKeyMatcher.isMultiSelect(paper.questions[0]))
     assertEquals(5, paper.questions[0].options.asList.size)
     assertTrue("Has option E", paper.questions[0].options.e.isNotBlank())
     assertTrue("Has table in Q1", com.example.ui.components.TableParserHelper.isTableRow(paper.questions[0].question.lines().first { it.contains("Point") }))
 
-    // Q2
+    // Q2 (Single-choice B)
     assertEquals(2, paper.questions[1].num)
     assertEquals("B", paper.questions[1].correctAnswer)
+    assertFalse(com.example.util.AnswerKeyMatcher.isMultiSelect(paper.questions[1]))
 
     // Q3
     assertEquals(3, paper.questions[2].num)

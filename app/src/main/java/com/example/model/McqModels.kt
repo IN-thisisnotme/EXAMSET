@@ -82,6 +82,29 @@ enum class PaperCategory(val code: String, val label: String) {
 }
 
 /**
+ * Grading policy applied to Multiple-Selection Questions (MSQ) with 2+ correct options.
+ */
+enum class MsqScoringPolicy(val code: String, val label: String, val shortLabel: String) {
+    ALL_OR_NOTHING(
+        code = "ALL_OR_NOTHING",
+        label = "All-or-Nothing (Full Marks Only)",
+        shortLabel = "All-or-Nothing"
+    ),
+    PARTIAL_STRICT(
+        code = "PARTIAL_STRICT",
+        label = "Partial Credit (No Wrong Choices)",
+        shortLabel = "Partial Strict"
+    );
+
+    companion object {
+        fun fromCode(code: String?): MsqScoringPolicy {
+            val normalized = code?.trim()?.uppercase() ?: return ALL_OR_NOTHING
+            return entries.firstOrNull { it.code == normalized || it.name == normalized } ?: ALL_OR_NOTHING
+        }
+    }
+}
+
+/**
  * Extracted header metadata.
  */
 data class PaperMetadata(
@@ -99,6 +122,7 @@ data class PaperMetadata(
     val positiveMarks: Double = 4.0,
     val negativeMarks: Double = 1.0,
     val unattendedMarks: Double = 0.0,
+    val msqScoringPolicy: MsqScoringPolicy = MsqScoringPolicy.ALL_OR_NOTHING,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -178,6 +202,7 @@ data class ExamConfig(
     val positiveMarks: Double = 4.0,
     val negativeMarks: Double = 1.0,
     val unattendedMarks: Double = 0.0,
+    val msqScoringPolicy: MsqScoringPolicy = MsqScoringPolicy.ALL_OR_NOTHING,
     val negativeMarking: String = "1.00 Mark Deduction",
     val includeCandidateDetails: Boolean = true,
     val includeInstructions: Boolean = true,

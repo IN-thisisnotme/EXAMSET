@@ -45,6 +45,7 @@ object QuestionAuditHelper {
             appendLine()
             appendLine("2. MARKED ANSWER KEY VERIFICATION:")
             appendLine("   - Fact-check the marked answer key against authoritative academic standards.")
+            appendLine("   - Single-choice MCQ keys use a single letter (e.g. \"A\"); Multiple-Selection (MSQ) keys use sorted comma-separated letters (e.g. \"A,C\").")
             appendLine("   - If the marked key is correct, confirm it with \"status\": \"CLEAN\" and \"suggestedKey\": \"<markedKey>\".")
             appendLine("   - If incorrect or mismarked, set \"status\": \"WRONG_KEY\" and specify the true \"suggestedKey\".")
             appendLine()
@@ -108,7 +109,7 @@ object QuestionAuditHelper {
             appendLine("3. COMPLETE MCQ PACKAGE: Must include:")
             appendLine("   - \"question\": Clear, unambiguous question stem.")
             appendLine("   - \"options\": Distinct, valid choices {\"a\": \"...\", \"b\": \"...\", \"c\": \"...\", \"d\": \"...\"} (include \"e\" if the paper uses 5 choices).")
-            appendLine("   - \"correctAnswer\": Exact correct key letter (A, B, C, D, or E).")
+            appendLine("   - \"correctAnswer\": Exact correct key letter (A, B, C, D, or E) or sorted comma-separated MSQ letters (e.g. \"A,C\").")
             appendLine("   - \"explanation\": Clear, pedagogical step-by-step solution explaining why the key is correct.")
             appendLine()
             appendLine("=== EXACT JSON SCHEMA FOR PHASE 2 ===")
@@ -280,7 +281,7 @@ object QuestionAuditHelper {
             appendLine("=== TWO-STEP AUDITING WORKFLOW ===")
             appendLine("STEP 1: ANSWER KEY VERIFICATION & MISMARK CORRECTION")
             appendLine("   - Fact-check every single question against authoritative textbooks and scientific principles.")
-            appendLine("   - If the marked answer key is WRONG or MISMARKED, identify the true correct key (A, B, C, D, or E).")
+            appendLine("   - If the marked answer key is WRONG or MISMARKED, identify the true correct key (A..E for MCQ or sorted \"A,C\" for MSQ).")
             appendLine("   - MANDATORY RECHECKED EXPLANATION: For ANY wrong or modified key, you MUST provide a detailed, step-by-step rechecked explanation in \"recheckedExplanation\" proving WHY the current key is incorrect.")
             appendLine("   - Set status to \"WRONG_KEY\". If the marked key is already correct, do NOT flag it as wrong.")
             appendLine()
@@ -322,7 +323,7 @@ object QuestionAuditHelper {
         appendLine("--------------------------------------------------")
 
         questions.forEach { q ->
-            appendLine("Q${q.num}. ${q.question.trim()}")
+            appendLine("Q${q.num}${if (AnswerKeyMatcher.isMultiSelect(q)) " [MSQ]" else ""}. ${q.question.trim()}")
             if (!q.diagramLabel.isNullOrBlank()) {
                 appendLine("   [Diagram / Figure Reference: ${q.diagramLabel}]")
             }
@@ -523,14 +524,16 @@ object QuestionAuditHelper {
                 val optC = originalQ.options.c.ifBlank { "Alternative outcome" }
                 val optD = originalQ.options.d.ifBlank { "Independent constant" }
                 val optE = originalQ.options.e.trim()
-                val key = originalQ.correctAnswer?.takeIf { it in listOf("A", "B", "C", "D", "E") } ?: "A"
+                val key = AnswerKeyMatcher.normalizeKey(originalQ.correctAnswer).ifBlank { "A" }
+                val keyDisp = AnswerKeyMatcher.formatKeyForDisplay(key).ifBlank { key }
 
                 McqQuestion(
                     num = num,
                     question = cleanStem,
                     options = QuestionOptions(a = optA, b = optB, c = optC, d = optD, e = optE),
                     correctAnswer = key,
-                    explanation = "Step 1: Direct analysis of the scientific premise confirms Option $key.\nStep 2: Alternate options fail to satisfy the governing theorem.\n**Core Concept:** Standard academic syllabus alignment.\n**Key Idea:** Option $key is the uniquely correct choice."
+                    questionType = if (AnswerKeyMatcher.parseSelectedLetters(key).size >= 2) "MSQ" else originalQ.questionType,
+                    explanation = "Step 1: Direct analysis of the scientific premise confirms Option $keyDisp.\nStep 2: Alternate options fail to satisfy the governing theorem.\n**Core Concept:** Standard academic syllabus alignment.\n**Key Idea:** Option $keyDisp satisfies all required criteria."
                 )
             }
         }
@@ -540,21 +543,18 @@ object QuestionAuditHelper {
      * Synthesizes a structured step-by-step pedagogical explanation for any question.
      */
     fun generateSmartPedagogicalExplanation(question: McqQuestion): String {
-        val key = question.correctAnswer ?: "A"
-        val correctOptText = when (key.uppercase()) {
-            "A" -> question.options.a
-            "B" -> question.options.b
-            "C" -> question.options.c
-            "D" -> question.options.d
-            "E" -> question.options.e
-            else -> question.options.a
-        }.ifBlank { "the marked option" }
+        val letters = AnswerKeyMatcher.parseSelectedLetters(question.correctAnswer).ifEmpty { setOf("A") }
+        val keyDisp = letters.joinToString(", ")
+        val correctOptText = letters.mapNotNull { letter ->
+            val optText = question.options[letter].trim()
+            if (optText.isNotBlank()) "$letter) \"$optText\"" else null
+        }.joinToString("; ").ifBlank { "the marked choice(s)" }
 
         return buildString {
             appendLine("Step 1: Analyze the question premise: \"${question.question.trim().removeSuffix("?")}\".")
-            appendLine("Step 2: Fact-checking and evaluation of candidate choices establishes that Option $key (\"$correctOptText\") is conceptually and mathematically correct.")
+            appendLine("Step 2: Fact-checking and evaluation of candidate choices establishes that Option $keyDisp ($correctOptText) ${if (letters.size > 1) "are" else "is"} conceptually and mathematically correct.")
             appendLine("**Core Concept:** Verified academic definition and governing physical/theoretical framework.")
-            appendLine("**Key Idea:** Option $key accurately reflects the authoritative textbook solution.")
+            appendLine("**Key Idea:** Option $keyDisp accurately ${if (letters.size > 1) "reflect" else "reflects"} the authoritative textbook solution.")
             append("**Distractor Analysis:** The remaining alternative options either contradict governing laws, contain dimensional mismatch, or represent classic misconception traps.")
         }
     }
@@ -609,7 +609,7 @@ object QuestionAuditHelper {
 
                 val isKeyMismatch = !mergedSuggestedKey.isNullOrBlank() &&
                         !q.correctAnswer.isNullOrBlank() &&
-                        !mergedSuggestedKey.equals(q.correctAnswer, ignoreCase = true)
+                        !AnswerKeyMatcher.areKeysEquivalent(mergedSuggestedKey, q.correctAnswer)
 
                 val effectiveStatus = when {
                     existing.isResolved && incoming.replacementQuestion == null && incoming.status == AuditIssueType.CLEAN -> AuditIssueType.CLEAN
@@ -657,31 +657,18 @@ object QuestionAuditHelper {
 
                 val originalQ = qMap[qNum]
                 val statusStr = obj.optString("status", "").uppercase()
-                val currentKey = (
-                    obj.optString("currentKey").ifBlank {
-                        obj.optString("cur").ifBlank {
-                            obj.optString("markedKey").ifBlank {
-                                obj.optString("current", "")
-                            }
-                        }
-                    }
-                ).trim().uppercase().ifBlank { originalQ?.correctAnswer }
+                val rawCurrentKey = extractAuditKeyValue(obj, listOf("currentKey", "cur", "markedKey", "current"))
+                val currentKey = rawCurrentKey?.let {
+                    AnswerKeyMatcher.normalizeKey(it).ifBlank { it }
+                } ?: originalQ?.correctAnswer?.let { AnswerKeyMatcher.normalizeKey(it).ifBlank { it } }
 
-                val suggestedKey = (
-                    obj.optString("suggestedKey").ifBlank {
-                        obj.optString("key").ifBlank {
-                            obj.optString("correctKey").ifBlank {
-                                obj.optString("correctedKey").ifBlank {
-                                    obj.optString("suggested").ifBlank {
-                                        obj.optString("answer").ifBlank {
-                                            obj.optString("correctAnswer", "")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                ).trim().uppercase().ifBlank { null }
+                val rawSuggestedKey = extractAuditKeyValue(
+                    obj,
+                    listOf("suggestedKey", "key", "correctKey", "correctedKey", "suggested", "answer", "correctAnswer", "correctAnswers")
+                )
+                val suggestedKey = rawSuggestedKey?.let {
+                    AnswerKeyMatcher.normalizeKey(it).ifBlank { it }
+                }
 
                 val flawReason = (
                     obj.optString("flawReason").ifBlank {
@@ -734,15 +721,14 @@ object QuestionAuditHelper {
                         )
                         else -> QuestionOptions()
                     }
-                    val repKey = (
-                        replacementObj.optString("correctAnswer").ifBlank {
-                            replacementObj.optString("answer").ifBlank {
-                                replacementObj.optString("key").ifBlank {
-                                    replacementObj.optString("correctKey", "")
-                                }
-                            }
-                        }
-                    ).trim().uppercase().ifBlank { null }
+                    val rawRepKey = extractAuditKeyValue(
+                        replacementObj,
+                        listOf("correctAnswer", "correctAnswers", "answer", "key", "correctKey")
+                    )
+                    val repKey = rawRepKey?.let { AnswerKeyMatcher.normalizeKey(it).ifBlank { it } }
+                    val repType = replacementObj.optString("questionType", replacementObj.optString("type", "")).ifBlank {
+                        if (AnswerKeyMatcher.parseSelectedLetters(repKey).size >= 2) "MSQ" else null
+                    }
 
                     val repExp = (
                         replacementObj.optString("explanation").ifBlank {
@@ -758,13 +744,14 @@ object QuestionAuditHelper {
                             question = repStem.trim(),
                             options = repOptions,
                             correctAnswer = repKey,
-                            explanation = repExp
+                            explanation = repExp,
+                            questionType = repType
                         )
                     } else null
                 } else null
 
                 // Strict key-matching check: Never mark WRONG_KEY if suggested == current
-                val isKeyIdentical = suggestedKey != null && currentKey != null && suggestedKey.equals(currentKey, ignoreCase = true)
+                val isKeyIdentical = suggestedKey != null && currentKey != null && AnswerKeyMatcher.areKeysEquivalent(suggestedKey, currentKey)
                 val isTrueKeyMismatch = suggestedKey != null && currentKey != null && !isKeyIdentical
 
                 val status = when {
@@ -835,6 +822,23 @@ object QuestionAuditHelper {
         } else {
             parsedList
         }
+    }
+
+    private fun extractAuditKeyValue(obj: JSONObject, keys: List<String>): String? {
+        for (k in keys) {
+            if (!obj.has(k) || obj.isNull(k)) continue
+            val value = obj.get(k)
+            val str = when (value) {
+                is JSONArray -> (0 until value.length()).mapNotNull { idx ->
+                    value.optString(idx).takeIf { it.isNotBlank() }
+                }.joinToString(",")
+                else -> value?.toString().orEmpty()
+            }.trim().uppercase()
+            if (str.isNotBlank() && str != "NULL") {
+                return str
+            }
+        }
+        return null
     }
 
     private fun extractJsonArray(text: String): JSONArray? {
@@ -917,21 +921,21 @@ object QuestionAuditHelper {
                 continue
             }
 
-            val keyRegex = Regex("""\b([A-E])\b.*?(?:->|to|should be|correct|instead of).*?\b([A-E])\b""", RegexOption.IGNORE_CASE)
+            val keyRegex = Regex("""\b([A-E](?:\s*[,&]\s*[A-E])*)\b.*?(?:->|to|should be|correct|instead of).*?\b([A-E](?:\s*[,&]\s*[A-E])*)\b""", RegexOption.IGNORE_CASE)
             val keyMatch = keyRegex.find(remainder)
 
             if (keyMatch != null) {
-                val cur = keyMatch.groupValues[1].uppercase()
-                val sug = keyMatch.groupValues[2].uppercase()
-                // Only mark wrong key if cur != sug
-                if (!cur.equals(sug, ignoreCase = true)) {
+                val cur = AnswerKeyMatcher.normalizeKey(keyMatch.groupValues[1]).ifBlank { keyMatch.groupValues[1].uppercase() }
+                val sug = AnswerKeyMatcher.normalizeKey(keyMatch.groupValues[2]).ifBlank { keyMatch.groupValues[2].uppercase() }
+                // Only mark wrong key if key sets differ
+                if (!AnswerKeyMatcher.areKeysEquivalent(cur, sug) && !cur.equals(sug, ignoreCase = true)) {
                     parsedReports[qNum] = AuditQuestionReport(
                         qNum = qNum,
                         status = AuditIssueType.WRONG_KEY,
                         currentKey = cur,
                         suggestedKey = sug,
                         flawReason = remainder,
-                        recheckedExplanation = "Rechecked derivation: Option $sug is verified as the correct answer (previously marked as $cur).",
+                        recheckedExplanation = "Rechecked derivation: Option ${AnswerKeyMatcher.formatKeyForDisplay(sug).ifBlank { sug }} is verified as the correct answer (previously marked as $cur).",
                         originalQuestion = originalQ
                     )
                 }

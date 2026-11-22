@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.ExamTheme
+import com.example.util.AnswerKeyMatcher
 import com.example.util.McqParser
 import com.example.util.RichTextHelper
 
@@ -287,7 +288,10 @@ object ExplanationBreakdownParser {
                     McqParser.canonicalOption(it) ?: it.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]").removePrefix("OPTION").trim().removeSuffix(".")
                 }
 
-                val lineIsCorrect = isCorrectWord || (canonicalExpected != null && letter.equals(canonicalExpected, ignoreCase = true)) || letter.equals(correctLetter?.trim(), ignoreCase = true)
+                val lineIsCorrect = isCorrectWord ||
+                    AnswerKeyMatcher.containsOption(correctLetter, letter) ||
+                    (canonicalExpected != null && letter.equals(canonicalExpected, ignoreCase = true)) ||
+                    letter.equals(correctLetter?.trim(), ignoreCase = true)
 
                 currentLetter = letter
                 currentIsCorrect = lineIsCorrect

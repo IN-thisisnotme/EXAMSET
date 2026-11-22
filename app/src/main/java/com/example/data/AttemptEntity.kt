@@ -3,6 +3,7 @@ package com.example.data
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
+import com.example.util.AnswerKeyMatcher
 import org.json.JSONObject
 
 @Entity(
@@ -157,7 +158,8 @@ object QuestionPacingAnalyzer {
     fun computeSummary(
         paper: com.example.model.QuestionPaper?,
         answers: Map<Int, String>,
-        questionTimes: Map<Int, Long>
+        questionTimes: Map<Int, Long>,
+        msqPolicyOverride: com.example.model.MsqScoringPolicy? = null
     ): AttemptPacingSummary {
         val validTimes = questionTimes.filter { (qNum, secs) -> qNum > 0 && secs > 0L }
         if (validTimes.isEmpty()) return AttemptPacingSummary()
@@ -169,6 +171,7 @@ object QuestionPacingAnalyzer {
         val correctTimes = mutableListOf<Long>()
         val incorrectTimes = mutableListOf<Long>()
 
+        val msqPolicy = msqPolicyOverride ?: paper?.metadata?.msqScoringPolicy ?: com.example.model.MsqScoringPolicy.ALL_OR_NOTHING
         val entries = validTimes.map { (qNum, secs) ->
             val q = questionsByNum[qNum]
             val userAns = answers[qNum]
@@ -177,7 +180,14 @@ object QuestionPacingAnalyzer {
                     q.isNeutralized -> true
                     userAns.isNullOrBlank() -> null
                     q.correctAnswer.isNullOrBlank() -> null
-                    else -> q.correctAnswer.equals(userAns, ignoreCase = true)
+                    else -> AnswerKeyMatcher.scoreQuestion(
+                        question = q,
+                        userAnswer = userAns,
+                        positiveMarks = paper?.metadata?.positiveMarks ?: 4.0,
+                        negativeMarks = paper?.metadata?.negativeMarks ?: 1.0,
+                        unattendedMarks = paper?.metadata?.unattendedMarks ?: 0.0,
+                        msqPolicy = msqPolicy
+                    ).isFullyCorrect
                 }
             } else null
 

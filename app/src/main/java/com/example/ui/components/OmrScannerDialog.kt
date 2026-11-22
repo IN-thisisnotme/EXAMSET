@@ -488,6 +488,27 @@ private fun ScannerUploadPromptsView(
                         color = colors.muted
                     )
 
+                    val msqCount = remember(paper.questions) {
+                        paper.questions.count { com.example.util.AnswerKeyMatcher.isMultiSelect(it) }
+                    }
+                    if (msqCount > 0) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = colors.amberLight,
+                            border = BorderStroke(0.8.dp, colors.amber.copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Note: Paper contains $msqCount MSQ item(s). Optical OMR scanning captures one bubble per row (single-choice); take the in-app CBT or interactive HTML test for multi-selection grading.",
+                                fontSize = 11.5.sp,
+                                color = colors.amber,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Row(

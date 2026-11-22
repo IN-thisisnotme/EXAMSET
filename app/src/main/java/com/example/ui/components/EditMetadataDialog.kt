@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 import com.example.model.ExamConfig
 import com.example.model.FolderItem
+import com.example.model.MsqScoringPolicy
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
@@ -141,6 +142,15 @@ fun EditMetadataDialog(
         val initialUnk = if (initialMetadata.unattendedMarks > 0.0) initialMetadata.unattendedMarks else initialConfig.unattendedMarks
         mutableStateOf(String.format(java.util.Locale.US, "%.2f", initialUnk))
     }
+    var msqScoringPolicy by remember(initialMetadata.id, initialMetadata.msqScoringPolicy, initialConfig.msqScoringPolicy) {
+        mutableStateOf(
+            if (initialMetadata.id.isNotBlank() || initialMetadata.msqScoringPolicy != MsqScoringPolicy.ALL_OR_NOTHING) {
+                initialMetadata.msqScoringPolicy
+            } else {
+                initialConfig.msqScoringPolicy
+            }
+        )
+    }
 
     fun persistEditsAndClose(enterQuestionEditor: Boolean = false) {
         keyboardController?.hide()
@@ -165,6 +175,7 @@ fun EditMetadataDialog(
                 positiveMarks = parsedPosMarks,
                 negativeMarks = parsedNegMarks,
                 unattendedMarks = parsedUnkMarks,
+                msqScoringPolicy = msqScoringPolicy,
                 negativeMarking = String.format(java.util.Locale.US, "%.2f Marks", parsedNegMarks)
             )
         )
@@ -971,32 +982,103 @@ fun EditMetadataDialog(
                                 }
                             }
 
-                            // Quick duration preset chips
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
+                            // Quick duration preset chips (wraps cleanly under large font sizes)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text("Duration:", fontSize = 10.5.sp, color = colors.muted, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                Text(
+                                    text = "Duration:",
+                                    fontSize = 10.5.sp,
+                                    color = colors.muted,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
                                 listOf(30, 45, 60, 90, 120, 180).forEach { mins ->
                                     val isSelected = durationMinutesStr == mins.toString()
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
                                         color = if (isSelected) colors.teal else colors.surface,
                                         border = BorderStroke(0.8.dp, if (isSelected) colors.teal else colors.border),
-                                        modifier = Modifier.clickable { durationMinutesStr = mins.toString() }
+                                        modifier = Modifier
+                                            .heightIn(min = 36.dp)
+                                            .clickable { durationMinutesStr = mins.toString() }
                                     ) {
-                                        Text(
-                                            text = "${mins}m",
-                                            fontSize = 10.5.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.White else colors.ink,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = "${mins}m",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else colors.ink,
+                                                softWrap = true
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = colors.border.copy(alpha = 0.6f), thickness = 0.6.dp)
+
+                            // Multi-Select (MSQ) Scoring Policy Picker
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "Multi-Select (MSQ) Grading Rule",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    softWrap = true
+                                )
+                                Text(
+                                    text = "Applies only to questions with multiple correct choices. Single-choice MCQs always use full marks or negative penalty.",
+                                    fontSize = 10.sp,
+                                    color = colors.muted,
+                                    lineHeight = 14.sp,
+                                    softWrap = true
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    MsqScoringPolicy.entries.forEach { policy ->
+                                        val isPolicySelected = msqScoringPolicy == policy
+                                        val subtitle = if (policy == MsqScoringPolicy.ALL_OR_NOTHING) {
+                                            "Exact option set required"
+                                        } else {
+                                            "Proportional if 0 wrong choices"
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isPolicySelected) colors.tealLight else colors.surface,
+                                            border = BorderStroke(1.dp, if (isPolicySelected) colors.teal else colors.border),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("edit_msq_policy_${policy.code.lowercase()}")
+                                                .clickable { msqScoringPolicy = policy }
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Text(
+                                                    text = policy.label,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = if (isPolicySelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                    color = if (isPolicySelected) colors.tealDark else colors.inkBold,
+                                                    softWrap = true
+                                                )
+                                                Text(
+                                                    text = subtitle,
+                                                    fontSize = 10.sp,
+                                                    color = if (isPolicySelected) colors.tealDark.copy(alpha = 0.85f) else colors.muted,
+                                                    softWrap = true
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

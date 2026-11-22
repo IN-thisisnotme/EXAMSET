@@ -319,7 +319,16 @@ fun PromptGeneratorTab(
                 "Numerical & Calculation" -> "Pattern Focus: Quantitative & numerical problem-solving with exact formulas, numeric options ordered lowest-to-highest, and verified calculation steps."
                 "Assertion-Reason & Statement-Based" -> "Pattern Focus: Analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'."
                 "Case Study & Passage-Based" -> "Pattern Focus: Context-driven scenarios, experimental setups, or clinical/field case studies evaluating applied judgment."
+                "Multiple-Select (MSQ)" -> "Pattern Focus: STRICTLY Multiple-Selection Questions (MSQ) where 2 or more options (e.g., A & C, or B, C & D) are simultaneously correct—or occasionally 1 when tagged [MSQ]. Include clear multi-select stems such as '(Select all that apply)'."
+                "Mixed Objective (MCQ + MSQ)" -> "Pattern Focus: Mix Single-Choice MCQs (~60–70%) and Multiple-Selection MSQs (~30–40%) cleanly. Prefix or tag MSQ items clearly with '(Select all that apply)' and reserve multi-letter answer keys strictly for MSQ items."
                 else -> "Pattern Diversity: Actively distribute the $countInt questions across direct conceptual, statement-evaluation, numerical/application, and assertion/analytical formats rather than repeating single-sentence recall."
+            }
+            val isMsqPattern = qState.questionType == "Multiple-Select (MSQ)" || qState.questionType == "Mixed Objective (MCQ + MSQ)"
+            val validOptionLettersList = if (qState.optionCount == 5) "A, B, C, D, or E" else "A, B, C, or D"
+            val correctAnswerRuleText = when (qState.questionType) {
+                "Multiple-Select (MSQ)" -> "The \"correctAnswer\" value MUST list ALL correct uppercase letters sorted alphabetically and comma-separated (e.g., \"A,C\" or \"B,C,D\" using letters from $validOptionLettersList), and include \"questionType\": \"MSQ\"."
+                "Mixed Objective (MCQ + MSQ)" -> "For single-choice MCQs, \"correctAnswer\" must be exactly one uppercase letter ($validOptionLettersList). For MSQ items, \"correctAnswer\" must list all correct uppercase letters sorted alphabetically and comma-separated (e.g., \"A,C\") and set \"questionType\": \"MSQ\"."
+                else -> "The \"correctAnswer\" value must be exactly one uppercase letter: ${if (qState.optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct."
             }
 
             if (qState.targetOutputFormat == "Strict JSON") {
@@ -328,7 +337,7 @@ fun PromptGeneratorTab(
                         """
                         Act as a senior psychometrician and chief examination paper setter for $targetExam.
 
-                        Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject in $qLang at ${qState.difficulty} difficulty (Question Pattern: ${qState.questionType}).
+                        Generate exactly $countInt ${if (isMsqPattern) "objective questions" else "multiple-choice questions (MCQs)"} for $targetSubject in $qLang at ${qState.difficulty} difficulty (Question Pattern: ${qState.questionType}).
 
                         ### 1. STRICT JSON OUTPUT REQUIREMENTS
                         Output only a valid JSON array containing the complete question set, correct answers, and explanations. Do not include introductory remarks, Markdown code fences, or trailing commentary.
@@ -337,14 +346,14 @@ fun PromptGeneratorTab(
                         [
                             {
                                 "num": 1,
-                                "question": "Question text here",
+                                "question": "${if (isMsqPattern) "[MSQ] Question text here (Select all that apply)" else "Question text here"}",
                                 "options": {
                                 "a": "Option A text",
                                 "b": "Option B text",
                                 "c": "Option C text",
                                 "d": "Option D text"${if (qState.optionCount == 5) ",\n                                \"e\": \"Option E text\"" else ""}
                                 },
-                                "correctAnswer": "A",
+                                ${if (isMsqPattern) "\"questionType\": \"MSQ\",\n                                \"correctAnswer\": \"A,C\"," else "\"correctAnswer\": \"A\","}
                                 "explanation": "Explanation text here"
                             }
                         ]
@@ -355,7 +364,7 @@ fun PromptGeneratorTab(
                         3. $patternCalibration
                         4. Each question must contain EXACTLY ${qState.optionCount} options, with keys ${if (qState.optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.${if (qState.optionCount == 4) " Never include an option \"e\" or any additional options." else ""}
                         5. Distractor Quality: Make all options plausible, mutually exclusive, and grammatically parallel. Never use "All of the above", "None of the above", or "Both A and B". Order numeric/date options lowest to highest, and do not make the correct option noticeably longest.
-                        6. The "correctAnswer" value must be exactly one uppercase letter: ${if (qState.optionCount == 5) "\"A\", \"B\", \"C\", \"D\", or \"E\"" else "\"A\", \"B\", \"C\", or \"D\""}. It must identify the option that is factually and logically correct.
+                        6. $correctAnswerRuleText
                         7. Distribute correct answers approximately evenly across ${if (qState.optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"} when feasible. Never compromise correctness to balance the answer key.
                         ${if (qState.promptPhasingStyle == "Reasoning-First") "8. Reasoning-First Answer Verification: For every item, mentally derive the complete solution and verify all calculations/logic BEFORE committing the \"correctAnswer\" key so the key never contradicts the explanation." else ""}
 
@@ -450,7 +459,7 @@ fun PromptGeneratorTab(
                         - Question numbers are sequential, starting at 1.
                         - Every object contains exactly the fields "num", "question", "options", "correctAnswer", and "explanation".
                         - Every options object contains exactly the keys ${if (qState.optionCount == 5) "\"a\", \"b\", \"c\", \"d\", and \"e\"" else "\"a\", \"b\", \"c\", and \"d\""}.
-                        - Every correctAnswer matches the correct option and uses one uppercase letter.
+                        - Every correctAnswer matches the correct option(s) and uses ${if (isMsqPattern) "uppercase letter(s) like \"A\" for MCQ or sorted \"A,C\" for MSQ" else "one uppercase letter"}.
                         - Explanations follow the selected explanation depth and option-explanation setting.
                         - All JSON strings are correctly escaped and there are no trailing commas or comments.
 
@@ -461,7 +470,7 @@ fun PromptGeneratorTab(
             } else if (qState.targetOutputFormat == "Markdown Table") {
                 buildString {
                     append("Act as a senior psychometrician and examination paper setter for $targetExam.\n\n")
-                    append("Generate exactly $countInt multiple-choice questions (MCQs) for $targetSubject at ${qState.difficulty} difficulty in $qLang (Question Pattern: ${qState.questionType}).\n\n")
+                    append("Generate exactly $countInt ${if (isMsqPattern) "objective questions" else "multiple-choice questions (MCQs)"} for $targetSubject at ${qState.difficulty} difficulty in $qLang (Question Pattern: ${qState.questionType}).\n\n")
                     append("OUTPUT FORMAT: MARKDOWN TABLE\n")
                     append("Format the entire question set as a clean, standardized Markdown table with the following column headers:\n")
                     if (qState.optionCount == 5) {
@@ -481,7 +490,9 @@ fun PromptGeneratorTab(
                     append("2. $patternCalibration\n")
                     append("3. STRICT ${qState.optionCount}-OPTION CONSTRAINT: Each question must have EXACTLY ${qState.optionCount} options (${if (qState.optionCount == 5) "Option A, B, C, D, E" else "Option A, B, Option C, Option D"}). Never use 'All of the above' or 'None of the above'; keep options parallel and length-balanced.\n")
                     append("4. SINGLE-ROW INTEGRITY: Put each question in a single table row and NEVER place raw `|` characters or line breaks inside cell text (use words or `\\lvert x \\rvert`).\n")
-                    append("5. In the 'Answer' column, write strictly ${if (qState.optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}.\n")
+                    append(
+                        "5. In the 'Answer' column, write ${if (isMsqPattern) "comma-separated uppercase letters like 'A, C' for MSQ rows (or single 'A'..'${if (qState.optionCount == 5) "E" else "D"}' for MCQ rows)" else "strictly ${if (qState.optionCount == 5) "'A', 'B', 'C', 'D', or 'E'" else "'A', 'B', 'C', or 'D'"}"}.\n"
+                    )
                     append("6. In the 'Explanation' column, provide a ${if (qState.promptDensity == "Concise") "concise" else "detailed"} rationale in $effectiveExplanationLanguage, $optionStrategyNote${if (qState.enableQuantityCorrectionRule) ", kept strictly within 2–3 sentences to prevent truncation" else ""}.\n")
                     append("7. Balanced key distribution across ${if (qState.optionCount == 5) "A, B, C, D, and E" else "A, B, C, and D"}.\n")
                     var nextTableRule = 8
@@ -521,6 +532,8 @@ fun PromptGeneratorTab(
                         "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
                         "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items alternating between 'Assertion (A) & Reason (R)' and 'Statement I & Statement II / Consider the following statements'.\n")
                         "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
+                        "Multiple-Select (MSQ)" -> append("2. QUESTION FORMAT FOCUS (STRICT MSQ): All $countInt questions MUST be Multiple-Selection Questions with 2+ correct options. Prefix every stem with '[MSQ] ' and format Answer Key lines as Q1: (A, C).\n")
+                        "Mixed Objective (MCQ + MSQ)" -> append("2. QUESTION FORMAT FOCUS (MIXED MCQ + MSQ): Combine ~65% single-choice MCQs (key Q1: (A)) with ~35% MSQs (prefix stem with '[MSQ] ' and format key as Q2: (A, C)).\n")
                         else -> {
                             append("2. MANDATORY FORMAT DIVERSITY (AUTHENTIC COMPETITIVE EXAM BLUEPRINT):\n")
                             append("   Do NOT generate only plain, single-sentence recall questions. You MUST actively distribute these $countInt questions across diverse examination formats.\n")
@@ -575,12 +588,10 @@ fun PromptGeneratorTab(
                             append("Option (E) [Correct/Incorrect]: [Explanation]\n")
                         }
                         append("\nPhase 3: Answer Key\n\n")
-                        append("Q1: (A)\n")
-                        append("Q2: (C)\n\n")
+                        append(if (qState.questionType == "Multiple-Select (MSQ)") "Q1: (A, C)\nQ2: (B, D)\n\n" else if (qState.questionType == "Mixed Objective (MCQ + MSQ)") "Q1: (A)\nQ2: (B, D)\n\n" else "Q1: (A)\nQ2: (C)\n\n")
                     } else {
                         append("Phase 2: Answer Key\n\n")
-                        append("Q1: (A)\n")
-                        append("Q2: (C)\n\n")
+                        append(if (qState.questionType == "Multiple-Select (MSQ)") "Q1: (A, C)\nQ2: (B, D)\n\n" else if (qState.questionType == "Mixed Objective (MCQ + MSQ)") "Q1: (A)\nQ2: (B, D)\n\n" else "Q1: (A)\nQ2: (C)\n\n")
                         append("Phase 3: Explanations & Solution\n\n")
                         append("Q1.\n")
                         append("Core Concept & Reasoning: [Reasoning]\n")
@@ -1375,7 +1386,8 @@ fun PromptGeneratorTab(
                                 text = "Question Format & Pattern",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = colors.inkBold
+                                color = colors.inkBold,
+                                softWrap = true
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
@@ -1383,9 +1395,8 @@ fun PromptGeneratorTab(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.teal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.End,
+                                softWrap = true,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                         }
@@ -1399,7 +1410,9 @@ fun PromptGeneratorTab(
                                 "Conceptual & Theory",
                                 "Numerical & Calculation",
                                 "Assertion-Reason & Statement-Based",
-                                "Case Study & Passage-Based"
+                                "Case Study & Passage-Based",
+                                "Multiple-Select (MSQ)",
+                                "Mixed Objective (MCQ + MSQ)"
                             ).forEach { qType ->
                                 val isSelected = qState.questionType == qType
                                 Surface(
@@ -1409,13 +1422,17 @@ fun PromptGeneratorTab(
                                     },
                                     shape = RoundedCornerShape(6.dp),
                                     color = if (isSelected) colors.teal else colors.surfaceVariant,
-                                    border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border)
+                                    border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border),
+                                    modifier = Modifier
+                                        .heightIn(min = 36.dp)
+                                        .testTag("prompt_pattern_${qType.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')}")
                                 ) {
                                     Text(
                                         text = qType,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (isSelected) Color.White else colors.inkBold,
+                                        softWrap = true,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }

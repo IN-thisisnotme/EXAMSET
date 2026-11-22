@@ -756,6 +756,8 @@ fun InputBottomSheet(
                 "Numerical & Calculation" -> append("2. QUESTION FORMAT FOCUS: Quantitative & numerical problem-solving with exact formulas, numerical options, and clear calculation steps.\n")
                 "Assertion-Reason & Statement-Based" -> append("2. QUESTION FORMAT FOCUS: Deep analytical items including 'Assertion (A) & Reason (R)', 'Statement I & Statement II', and 'Which of the statements given above is/are correct?'.\n")
                 "Case Study & Passage-Based" -> append("2. QUESTION FORMAT FOCUS: Practical context-driven scenarios, experimental setups, clinical/field case studies, or passage evaluation.\n")
+                "Multiple-Select (MSQ)" -> append("2. QUESTION FORMAT FOCUS (STRICT MSQ): All questions MUST be Multiple-Selection Questions with 2+ correct options. Prefix every stem with '[MSQ] ' (or include 'Select all that apply.') and format Phase 2 keys as Q1: (A, C).\n")
+                "Mixed Objective (MCQ + MSQ)" -> append("2. QUESTION FORMAT FOCUS (MIXED MCQ + MSQ): Include ~65% single-choice MCQs and ~35% true MSQs (2+ correct options). Tag ONLY MSQ items with '[MSQ] ' and format their keys as Q2: (A, C); keep single-choice MCQs untagged.\n")
                 else -> append("2. QUESTION FORMAT FOCUS: Dynamic mix of direct conceptual items, multi-statement questions, numerical application, and scenario analysis.\n")
             }
             append("3. DISTRACTOR HOMOGENEITY: All 4 options must be mutually exclusive and grammatically parallel (all identical parts of speech/sentence structure).\n")
@@ -779,7 +781,7 @@ fun InputBottomSheet(
 
             append("### EXACT OUTPUT FORMAT TEMPLATE:\n\n")
             append("Phase 1: Questions\n")
-            append("Q1. [Clear, unambiguous question stem or scenario]\n")
+            append(if (promptQuestionType == "Multiple-Select (MSQ)") "Q1. [MSQ] [Clear question stem with 2+ correct options (Select all that apply)]\n" else "Q1. [Clear, unambiguous question stem or scenario]\n")
             append("(A) [Option A]\n")
             append("(B) [Option B]\n")
             append("(C) [Option C]\n")
@@ -787,8 +789,20 @@ fun InputBottomSheet(
             append("[Repeat through Q$countVal]\n\n")
 
             append("Phase 2: Answer Key\n")
-            append("Q1: (A)\n")
-            append("Q2: (C)\n")
+            when (promptQuestionType) {
+                "Multiple-Select (MSQ)" -> {
+                    append("Q1: (A, C)\n")
+                    append("Q2: (B, D)\n")
+                }
+                "Mixed Objective (MCQ + MSQ)" -> {
+                    append("Q1: (A)\n")
+                    append("Q2: (A, C)\n")
+                }
+                else -> {
+                    append("Q1: (A)\n")
+                    append("Q2: (C)\n")
+                }
+            }
             append("[Repeat through Q$countVal]\n\n")
 
             append("Phase 3: Explanations & Solution\n")
@@ -3194,23 +3208,29 @@ fun InputBottomSheet(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Question Format & Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-                                Text(promptQuestionType, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                                Text("Question Format & Pattern", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.ink, softWrap = true)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(promptQuestionType, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal, softWrap = true, modifier = Modifier.weight(1f, fill = false))
                             }
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 listOf(
                                     "Mixed Formats",
                                     "Conceptual & Theory",
                                     "Numerical & Calculation",
                                     "Assertion-Reason & Statement-Based",
-                                    "Case Study & Passage-Based"
+                                    "Case Study & Passage-Based",
+                                    "Multiple-Select (MSQ)",
+                                    "Mixed Objective (MCQ + MSQ)"
                                 ).forEach { qType ->
                                     val isSelected = promptQuestionType == qType
                                     Surface(
-                                        modifier = Modifier.clickable { promptQuestionType = qType },
+                                        modifier = Modifier
+                                            .heightIn(min = 36.dp)
+                                            .clickable { promptQuestionType = qType },
                                         shape = RoundedCornerShape(6.dp),
                                         color = if (isSelected) colors.teal else colors.surfaceVariant,
                                         border = BorderStroke(0.5.dp, colors.border)
@@ -3220,7 +3240,8 @@ fun InputBottomSheet(
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                            softWrap = true,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                                         )
                                     }
                                 }

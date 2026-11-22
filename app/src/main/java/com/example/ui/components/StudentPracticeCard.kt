@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.Card
@@ -36,8 +39,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.McqQuestion
+import com.example.model.MsqScoringPolicy
 import com.example.ui.theme.ExamTheme
 import com.example.ui.theme.RobotoMonoFontFamily
+import com.example.util.AnswerKeyMatcher
 import com.example.util.QuestionFormatter
 import com.example.util.RichTextHelper
 import com.example.util.rememberProcessedQuestion
@@ -68,6 +73,7 @@ internal fun hasCompoundOrPositionalReference(options: List<Pair<String, String>
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StudentPracticeCard(
     question: McqQuestion,
@@ -79,11 +85,15 @@ fun StudentPracticeCard(
     sessionSeed: Long = 0L,
     positiveMarks: Double = 4.0,
     negativeMarks: Double = 1.0,
-    unattendedMarks: Double = 0.0
+    unattendedMarks: Double = 0.0,
+    msqScoringPolicy: MsqScoringPolicy = MsqScoringPolicy.ALL_OR_NOTHING
 ) {
     val colors = ExamTheme.colors
     val haptic = LocalHapticFeedback.current
     val q = rememberProcessedQuestion(question)
+    val isMsq = remember(q) { AnswerKeyMatcher.isMultiSelect(q) }
+    val selectedLetters = remember(selectedAnswer) { AnswerKeyMatcher.parseSelectedLetters(selectedAnswer) }
+    val expectedLetters = remember(q.correctAnswer) { AnswerKeyMatcher.parseSelectedLetters(q.correctAnswer) }
 
     Card(
         modifier = modifier
@@ -99,71 +109,95 @@ fun StudentPracticeCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Header: Question number & type badge & result status badge
+            // Header: Question number, MSQ highlight (only when MSQ), & result status badge in font-scale-safe FlowRow
             val arParts = QuestionFormatter.parseAssertionReason(q.question)
-            val qType = q.questionType ?: if (arParts != null) "Assertion–Reason" else null
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = "Question ${q.num}",
-                        fontFamily = RobotoMonoFontFamily,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
-                    )
+                Text(
+                    text = "Question ${q.num}",
+                    fontFamily = RobotoMonoFontFamily,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.inkBold
+                )
 
-                    // Question type badge (Conceptual, Numerical, etc.) commented out per user request:
-                    /*
-                    if (!qType.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = when {
-                                qType.contains("Assertion") -> colors.tealLight
-                                qType.contains("Match") -> Color(0xFFFEF3C7).copy(alpha = if (colors.isDark) 0.2f else 1f)
-                                qType.contains("Statement") -> Color(0xFFE0E7FF).copy(alpha = if (colors.isDark) 0.2f else 1f)
-                                else -> colors.surfaceVariant
-                            },
-                            border = BorderStroke(
-                                0.6.dp,
-                                when {
-                                    qType.contains("Assertion") -> colors.teal.copy(alpha = 0.5f)
-                                    qType.contains("Match") -> Color(0xFFD97706).copy(alpha = 0.5f)
-                                    qType.contains("Statement") -> Color(0xFF6366F1).copy(alpha = 0.5f)
-                                    else -> colors.border
-                                }
-                            )
+                if (isMsq) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.amberLight,
+                        border = BorderStroke(1.dp, colors.amber.copy(alpha = 0.7f)),
+                        modifier = Modifier.testTag("msq_question_badge_${q.num}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckBox,
+                                contentDescription = null,
+                                tint = colors.amber,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = qType,
+                                text = "MSQ • Select all that apply",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = when {
-                                    qType.contains("Assertion") -> colors.tealDark
-                                    qType.contains("Match") -> if (colors.isDark) Color(0xFFFBBF24) else Color(0xFFB45309)
-                                    qType.contains("Statement") -> if (colors.isDark) Color(0xFFA5B4FC) else Color(0xFF4338CA)
-                                    else -> colors.ink
-                                },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                fontWeight = FontWeight.Bold,
+                                color = colors.amber,
+                                softWrap = true
                             )
                         }
                     }
-                    */
+                }
+
+                if (!showResult && isMsq && selectedLetters.isNotEmpty()) {
+                    Surface(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelectAnswer("")
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.surfaceVariant,
+                        border = BorderStroke(0.9.dp, colors.border),
+                        modifier = Modifier
+                            .heightIn(min = 36.dp)
+                            .testTag("msq_clear_button_${q.num}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear MSQ Selection",
+                                tint = colors.muted,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Clear (${selectedLetters.size})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.ink,
+                                softWrap = true
+                            )
+                        }
+                    }
                 }
 
                 if (showResult) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    val isNeutralized = question.isNeutralized
-                    val isCorrect = selectedAnswer != null && selectedAnswer.equals(question.correctAnswer, ignoreCase = true)
-                    val isAnswered = selectedAnswer != null
+                    val gradeResult = AnswerKeyMatcher.scoreQuestion(
+                        question = q,
+                        userAnswer = selectedAnswer,
+                        positiveMarks = positiveMarks,
+                        negativeMarks = negativeMarks,
+                        unattendedMarks = unattendedMarks,
+                        msqPolicy = msqScoringPolicy
+                    )
                     val posStr = String.format(java.util.Locale.US, "%.2f", positiveMarks)
                     val negStr = String.format(java.util.Locale.US, "%.2f", negativeMarks)
                     val unkBadgeLabel = if (unattendedMarks > 0.0) {
@@ -171,23 +205,35 @@ fun StudentPracticeCard(
                     } else {
                         "— Unattended (0.00)"
                     }
-                    val (badgeText, badgeBg, badgeTextCol) = when {
-                        isNeutralized -> Triple("★ Bonus Marks (+$posStr)", colors.teal.copy(alpha = 0.15f), colors.teal)
-                        isCorrect -> Triple("✓ Correct (+$posStr)", colors.greenLight, colors.green)
-                        isAnswered -> Triple("✗ Incorrect (-$negStr)", colors.redLight, colors.red)
-                        else -> Triple(unkBadgeLabel, colors.borderLight, colors.muted)
+                    val (badgeText, badgeBg, badgeTextCol) = when (gradeResult.status) {
+                        AnswerKeyMatcher.QuestionGradeStatus.NEUTRALIZED ->
+                            Triple("★ Bonus Marks (+$posStr)", colors.teal.copy(alpha = 0.15f), colors.teal)
+                        AnswerKeyMatcher.QuestionGradeStatus.CORRECT ->
+                            Triple("✓ Correct (+$posStr)", colors.greenLight, colors.green)
+                        AnswerKeyMatcher.QuestionGradeStatus.PARTIAL ->
+                            Triple(
+                                "~ Partial (+${String.format(java.util.Locale.US, "%.2f", gradeResult.marks)})",
+                                colors.amberLight,
+                                colors.amber
+                            )
+                        AnswerKeyMatcher.QuestionGradeStatus.INCORRECT ->
+                            Triple("✗ Incorrect (-$negStr)", colors.redLight, colors.red)
+                        AnswerKeyMatcher.QuestionGradeStatus.UNANSWERED ->
+                            Triple(unkBadgeLabel, colors.borderLight, colors.muted)
                     }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = badgeBg,
-                        border = BorderStroke(1.dp, badgeTextCol.copy(alpha = 0.4f))
+                        border = BorderStroke(1.dp, badgeTextCol.copy(alpha = 0.4f)),
+                        modifier = Modifier.testTag("practice_result_badge_${q.num}")
                     ) {
                         Text(
                             text = badgeText,
                             color = badgeTextCol,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.5.dp)
+                            softWrap = true,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -356,16 +402,29 @@ fun StudentPracticeCard(
             if (optionsToRender.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 optionsToRender.forEach { item ->
-                    val isSelected = selectedAnswer.equals(item.originalKey, ignoreCase = true)
-                    val isCorrect = q.correctAnswer.equals(item.originalKey, ignoreCase = true) ||
-                            q.correctAnswer?.split(Regex("[,; ]+"))?.any { it.equals(item.originalKey, ignoreCase = true) } == true
+                    val optionUpper = item.originalKey.uppercase()
+                    val isSelected = if (isMsq) {
+                        optionUpper in selectedLetters
+                    } else {
+                        selectedAnswer.equals(item.originalKey, ignoreCase = true) || optionUpper in selectedLetters
+                    }
+                    val isCorrect = optionUpper in expectedLetters || q.correctAnswer.equals(item.originalKey, ignoreCase = true)
+                    val isMissedCorrect = showResult && isCorrect && !isSelected
+                    val isChosenCorrect = showResult && isCorrect && isSelected
 
                     val (bgColor, borderColor, textColor) = when {
-                        showResult && isCorrect -> Triple(colors.greenLight, colors.green, colors.green)
+                        showResult && isChosenCorrect -> Triple(colors.greenLight, colors.green, colors.green)
+                        showResult && isMissedCorrect -> Triple(
+                            if (isMsq) colors.greenLight.copy(alpha = 0.55f) else colors.greenLight,
+                            colors.green,
+                            colors.green
+                        )
                         showResult && isSelected && !isCorrect -> Triple(colors.redLight, colors.red, colors.red)
                         isSelected -> Triple(colors.tealLight, colors.teal, colors.teal)
                         else -> Triple(Color.Transparent, colors.border, colors.ink)
                     }
+
+                    val indicatorShape = if (isMsq) RoundedCornerShape(6.dp) else CircleShape
 
                     Surface(
                         modifier = Modifier
@@ -373,8 +432,13 @@ fun StudentPracticeCard(
                             .heightIn(min = 48.dp)
                             .clickable(enabled = !showResult) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (isSelected) onSelectAnswer("") else onSelectAnswer(item.originalKey)
-                            },
+                                if (isMsq) {
+                                    onSelectAnswer(AnswerKeyMatcher.toggleSelection(selectedAnswer, item.originalKey))
+                                } else {
+                                    if (isSelected) onSelectAnswer("") else onSelectAnswer(item.originalKey)
+                                }
+                            }
+                            .testTag("practice_option_${item.originalKey}_q${q.num}"),
                         shape = RoundedCornerShape(8.dp),
                         color = bgColor,
                         border = BorderStroke(if (isSelected || (showResult && isCorrect)) 1.2.dp else 0.8.dp, borderColor)
@@ -385,13 +449,17 @@ fun StudentPracticeCard(
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            // Uniform 30.dp circular badge
+                            // Circle badge for single-choice MCQ; rounded-square checkbox for MSQ
                             Surface(
                                 modifier = Modifier
                                     .padding(top = 1.dp)
                                     .size(30.dp),
-                                shape = CircleShape,
-                                color = if (isSelected || (showResult && isCorrect)) borderColor else Color.Transparent,
+                                shape = indicatorShape,
+                                color = when {
+                                    showResult && isMissedCorrect && isMsq -> Color.Transparent
+                                    isSelected || (showResult && isCorrect) -> borderColor
+                                    else -> Color.Transparent
+                                },
                                 border = BorderStroke(1.2.dp, borderColor)
                             ) {
                                 Box(
@@ -401,14 +469,21 @@ fun StudentPracticeCard(
                                     if (showResult && isCorrect) {
                                         Icon(
                                             imageVector = Icons.Default.Check,
-                                            contentDescription = "Correct",
-                                            tint = if (colors.isDark) Color.Black else Color.White,
+                                            contentDescription = if (isMissedCorrect && isMsq) "Missed Correct" else "Correct",
+                                            tint = if (isMissedCorrect && isMsq) colors.green else (if (colors.isDark) Color.Black else Color.White),
                                             modifier = Modifier.size(16.dp)
                                         )
                                     } else if (showResult && isSelected && !isCorrect) {
                                         Icon(
                                             imageVector = Icons.Default.Close,
                                             contentDescription = "Incorrect",
+                                            tint = if (colors.isDark) Color.Black else Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    } else if (isMsq && isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected ${item.displayLabel}",
                                             tint = if (colors.isDark) Color.Black else Color.White,
                                             modifier = Modifier.size(16.dp)
                                         )
@@ -426,14 +501,32 @@ fun StudentPracticeCard(
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            LatexText(
-                                text = item.text,
-                                color = textColor,
-                                fontSize = 16.sp,
-                                isBold = isSelected || (showResult && isCorrect),
-                                lineHeight = 24.sp,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                LatexText(
+                                    text = item.text,
+                                    color = textColor,
+                                    fontSize = 16.sp,
+                                    isBold = isSelected || (showResult && isCorrect),
+                                    lineHeight = 24.sp
+                                )
+                                if (showResult && isMsq) {
+                                    val stateHint = when {
+                                        isChosenCorrect -> "Selected • Correct"
+                                        isMissedCorrect -> "Correct (Missed)"
+                                        isSelected && !isCorrect -> "Selected • Wrong"
+                                        else -> null
+                                    }
+                                    if (stateHint != null) {
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = stateHint,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isCorrect) colors.green else colors.red
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -514,7 +607,7 @@ fun StudentPracticeCard(
 
                         StructuredExplanationContent(
                             rawExplanation = q.explanation,
-                            correctLetter = q.correctAnswer,
+                            correctLetter = AnswerKeyMatcher.normalizeKey(q.correctAnswer).ifBlank { q.correctAnswer },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

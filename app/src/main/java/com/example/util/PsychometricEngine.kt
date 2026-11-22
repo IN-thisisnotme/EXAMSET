@@ -63,6 +63,7 @@ object PsychometricEngine {
         val bookletCode: String,
         val totalScore: Double,
         val correctCount: Int,
+        val partialCount: Int = 0,
         val incorrectCount: Int,
         val unansweredCount: Int,
         val accuracyPercent: Int,
@@ -75,8 +76,15 @@ object PsychometricEngine {
         val bookletCode: String,
         val answers: Map<Int, Char?>,
         val submittedAt: Long = System.currentTimeMillis(),
-        val precomputedScore: Double? = null
-    )
+        val precomputedScore: Double? = null,
+        val multiAnswers: Map<Int, String> = emptyMap()
+    ) {
+        fun effectiveAnswerFor(qNum: Int): String? {
+            val multi = multiAnswers[qNum]
+            if (!multi.isNullOrBlank()) return multi
+            return answers[qNum]?.toString()
+        }
+    }
 
     data class CohortPsychometricReport(
         val candidateCount: Int,
@@ -160,44 +168,61 @@ object PsychometricEngine {
         val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 1.0
         val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 0.0
         val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
+        val msqPolicy = paper.metadata.msqScoringPolicy
 
         // 1. Calculate each candidate's raw score & correct counts
         data class CandidateEval(
             val sub: CandidateSubmission,
             val score: Double,
             val correct: Int,
+            val partial: Int,
             val incorrect: Int,
             val unanswered: Int
         )
 
         val candidateEvals = submissions.map { sub ->
             var correct = 0
+            var partial = 0
             var incorrect = 0
             var unanswered = 0
+            var netScoreSum = 0.0
 
             paper.questions.forEach { q ->
-                val chosen = sub.answers[q.num]
-                val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
-                if (chosen != null && correctChar != null) {
-                    if (chosen.uppercaseChar() == correctChar) {
+                val rawAns = sub.effectiveAnswerFor(q.num)
+                if (rawAns.isNullOrBlank() || q.correctAnswer.isNullOrBlank()) {
+                    if (q.isNeutralized) {
                         correct++
+                        netScoreSum += posMarks
                     } else {
-                        incorrect++
+                        unanswered++
+                        netScoreSum -= unkMarks
                     }
                 } else {
-                    unanswered++
+                    val res = AnswerKeyMatcher.scoreQuestion(
+                        question = q,
+                        userAnswer = rawAns,
+                        positiveMarks = posMarks,
+                        negativeMarks = negMarks,
+                        unattendedMarks = unkMarks,
+                        msqPolicy = msqPolicy
+                    )
+                    when (res.status) {
+                        AnswerKeyMatcher.QuestionGradeStatus.CORRECT,
+                        AnswerKeyMatcher.QuestionGradeStatus.NEUTRALIZED -> correct++
+                        AnswerKeyMatcher.QuestionGradeStatus.PARTIAL -> partial++
+                        AnswerKeyMatcher.QuestionGradeStatus.INCORRECT -> incorrect++
+                        AnswerKeyMatcher.QuestionGradeStatus.UNANSWERED -> unanswered++
+                    }
+                    netScoreSum += res.marks
                 }
             }
 
             val score = if (sub.precomputedScore != null) {
                 sub.precomputedScore
             } else {
-                val penaltyIncorrect = Math.round(incorrect * negMarks * 100.0) / 100.0
-                val penaltyUnattended = Math.round(unanswered * unkMarks * 100.0) / 100.0
-                val raw = (correct * posMarks) - penaltyIncorrect - penaltyUnattended
-                Math.round(raw * 100.0) / 100.0
+                Math.round(netScoreSum * 100.0) / 100.0
             }
-            CandidateEval(sub, score, correct, incorrect, unanswered)
+            CandidateEval(sub, score, correct, partial, incorrect, unanswered)
         }
 
         val rawScores = candidateEvals.map { it.score }
@@ -222,15 +247,15 @@ object PsychometricEngine {
         } else {
             1
         }
-        val upperCohort = sortedByScore.take(cohort27Size).map { it.sub.answers }
+        val upperCohort = sortedByScore.take(cohort27Size).map { it.sub }
         val lowerCohort = if (n > 1) {
-            sortedByScore.takeLast(cohort27Size).map { it.sub.answers }
+            sortedByScore.takeLast(cohort27Size).map { it.sub }
         } else {
             emptyList()
         }
 
         val hasE = paper.questions.any {
-            it.options.e.isNotBlank() || it.correctAnswer.equals("E", ignoreCase = true)
+            it.options.e.isNotBlank() || AnswerKeyMatcher.containsOption(it.correctAnswer, "E")
         }
         val optionChars = if (hasE) listOf('A', 'B', 'C', 'D', 'E') else listOf('A', 'B', 'C', 'D')
 
@@ -238,20 +263,23 @@ object PsychometricEngine {
         val itemEvals = mutableListOf<ItemEvaluation>()
 
         paper.questions.forEach { q ->
-            val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
+            val expectedLetters = AnswerKeyMatcher.parseSelectedLetters(q.correctAnswer)
             var correctCount = 0
             var unattemptedCount = 0
             val optionFreqs = optionChars.associateWith { 0 }.toMutableMap()
 
-            // For point-biserial correlation: scores of candidates who answered correctly
+            // For point-biserial correlation: scores of candidates who answered fully correctly
             val scoresOfCorrect = mutableListOf<Double>()
 
             candidateEvals.forEach { cEval ->
-                val choice = cEval.sub.answers[q.num]
-                if (choice != null) {
-                    val upperChoice = choice.uppercaseChar()
-                    optionFreqs[upperChoice] = (optionFreqs[upperChoice] ?: 0) + 1
-                    if (correctChar != null && upperChoice == correctChar) {
+                val rawAns = cEval.sub.effectiveAnswerFor(q.num)
+                val selectedLetters = AnswerKeyMatcher.parseSelectedLetters(rawAns)
+                if (selectedLetters.isNotEmpty()) {
+                    selectedLetters.forEach { letter ->
+                        val ch = letter.first()
+                        optionFreqs[ch] = (optionFreqs[ch] ?: 0) + 1
+                    }
+                    if (expectedLetters.isNotEmpty() && selectedLetters == expectedLetters) {
                         correctCount++
                         scoresOfCorrect.add(cEval.score)
                     }
@@ -266,9 +294,13 @@ object PsychometricEngine {
             sumItemVariances += itemVariance
 
             // Upper 27% vs Lower 27% discrimination D
-            val dIndex = if (n >= 2 && upperCohort.isNotEmpty() && lowerCohort.isNotEmpty()) {
-                val upperCorrect = upperCohort.count { it[q.num]?.uppercaseChar() == correctChar }
-                val lowerCorrect = lowerCohort.count { it[q.num]?.uppercaseChar() == correctChar }
+            val dIndex = if (n >= 2 && expectedLetters.isNotEmpty() && upperCohort.isNotEmpty() && lowerCohort.isNotEmpty()) {
+                val upperCorrect = upperCohort.count {
+                    AnswerKeyMatcher.parseSelectedLetters(it.effectiveAnswerFor(q.num)) == expectedLetters
+                }
+                val lowerCorrect = lowerCohort.count {
+                    AnswerKeyMatcher.parseSelectedLetters(it.effectiveAnswerFor(q.num)) == expectedLetters
+                }
                 val pUpper = upperCorrect.toFloat() / upperCohort.size
                 val pLower = lowerCorrect.toFloat() / lowerCohort.size
                 (pUpper - pLower).coerceIn(-1.0f, 1.0f)
@@ -285,7 +317,7 @@ object PsychometricEngine {
             // Distractor efficiency: non-functioning if chosen by < 5% of candidates (only evaluated when n >= 20)
             val nonFunctioning = mutableListOf<Char>()
             optionChars.forEach { opt ->
-                if (opt != correctChar) {
+                if (opt.toString() !in expectedLetters) {
                     val count = optionFreqs[opt] ?: 0
                     val pct = count.toFloat() / n
                     if (pct < 0.05f) {
@@ -336,7 +368,7 @@ object PsychometricEngine {
 
         // 4. Build ranked candidate scorecards
         val scorecards = sortedByScore.mapIndexed { idx, cEval ->
-            val totalAtt = cEval.correct + cEval.incorrect
+            val totalAtt = cEval.correct + cEval.partial + cEval.incorrect
             val acc = if (totalAtt > 0) ((cEval.correct.toFloat() / totalAtt) * 100).toInt() else 0
             CandidateScorecard(
                 rank = idx + 1,
@@ -345,6 +377,7 @@ object PsychometricEngine {
                 bookletCode = cEval.sub.bookletCode,
                 totalScore = cEval.score,
                 correctCount = cEval.correct,
+                partialCount = cEval.partial,
                 incorrectCount = cEval.incorrect,
                 unansweredCount = cEval.unanswered,
                 accuracyPercent = acc,
@@ -379,29 +412,51 @@ object PsychometricEngine {
         val rand = java.util.Random(paper.metadata.title.hashCode().toLong())
         val sets = listOf("A", "B", "C", "D")
         val hasE = paper.questions.any {
-            it.options.e.isNotBlank() || it.correctAnswer.equals("E", ignoreCase = true)
+            it.options.e.isNotBlank() || AnswerKeyMatcher.containsOption(it.correctAnswer, "E")
         }
         val defaultOptions = if (hasE) listOf('A', 'B', 'C', 'D', 'E') else listOf('A', 'B', 'C', 'D')
 
         return (1..candidateCount).map { i ->
             val ability = (rand.nextGaussian() * 0.8).coerceIn(-2.0, 2.0)
             val answersMap = mutableMapOf<Int, Char?>()
+            val multiMap = mutableMapOf<Int, String>()
 
             paper.questions.forEach { q ->
-                val correctChar = q.correctAnswer?.uppercase()?.firstOrNull() ?: 'A'
+                val expectedSet = AnswerKeyMatcher.parseSelectedLetters(q.correctAnswer).ifEmpty { setOf("A") }
+                val correctChar = expectedSet.first().first()
                 val itemDiff = ((q.question.length % 7) - 3) * 0.3
                 val probCorrect = 1.0 / (1.0 + Math.exp(-(ability - itemDiff)))
+                val isMsq = AnswerKeyMatcher.isMultiSelect(q) && expectedSet.size >= 2
 
                 if (rand.nextDouble() < 0.06) {
                     answersMap[q.num] = null // Skipped
                 } else if (rand.nextDouble() < probCorrect) {
-                    answersMap[q.num] = correctChar // Correct
+                    answersMap[q.num] = correctChar
+                    if (isMsq) {
+                        multiMap[q.num] = expectedSet.sorted().joinToString(",")
+                    }
                 } else {
                     val qOpts = if (q.options.isValid) {
                         q.options.asList.map { it.first.uppercase().first() }
                     } else defaultOptions
-                    val distractors = qOpts.filter { it != correctChar }.ifEmpty { defaultOptions.filter { it != correctChar } }
-                    answersMap[q.num] = distractors[rand.nextInt(distractors.size)]
+                    if (isMsq) {
+                        if (rand.nextDouble() < 0.45 && expectedSet.size >= 2) {
+                            // Partial correct subset
+                            val subset = expectedSet.take(expectedSet.size - 1).sorted().joinToString(",")
+                            multiMap[q.num] = subset
+                            answersMap[q.num] = subset.first()
+                        } else {
+                            val wrongPick = qOpts.filter { it.toString() !in expectedSet }
+                                .ifEmpty { defaultOptions.filter { it != correctChar } }
+                                .randomOrNull() ?: correctChar
+                            val combined = (setOf(expectedSet.first(), wrongPick.toString())).sorted().joinToString(",")
+                            multiMap[q.num] = combined
+                            answersMap[q.num] = wrongPick
+                        }
+                    } else {
+                        val distractors = qOpts.filter { it != correctChar }.ifEmpty { defaultOptions.filter { it != correctChar } }
+                        answersMap[q.num] = distractors[rand.nextInt(distractors.size)]
+                    }
                 }
             }
 
@@ -410,7 +465,8 @@ object PsychometricEngine {
                 bookletNumber = String.format(java.util.Locale.US, "710%04d", i),
                 bookletCode = sets[i % sets.size],
                 answers = answersMap,
-                submittedAt = TrustedTimeManager.getTrustedTimeMillis() - ((candidateCount - i) * 60000L)
+                submittedAt = TrustedTimeManager.getTrustedTimeMillis() - ((candidateCount - i) * 60000L),
+                multiAnswers = multiMap
             )
         }
     }
@@ -506,11 +562,13 @@ object PsychometricEngine {
         candidate: CandidateScorecard,
         paper: QuestionPaper,
         answers: Map<Int, Char?>? = null,
-        totalCohortSize: Int = 1
+        totalCohortSize: Int = 1,
+        multiAnswers: Map<Int, String>? = null
     ): String {
         val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 1.0
         val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 0.0
         val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
+        val msqPolicy = paper.metadata.msqScoringPolicy
 
         val totalMarks = paper.questions.size * posMarks
         val formattedScore = String.format(java.util.Locale.US, "%.2f", candidate.totalScore)
@@ -562,12 +620,15 @@ object PsychometricEngine {
 
         sb.append("SCORING & PENALTY BREAKDOWN:\n")
         sb.append("  Correct Responses : ${candidate.correctCount}  [+${String.format(java.util.Locale.US, "%.2f", earnedCorrect)} marks (+${String.format(java.util.Locale.US, "%.2f", posMarks)} each)]\n")
+        if (candidate.partialCount > 0) {
+            sb.append("  Partial MSQ Credit: ${candidate.partialCount}  (${msqPolicy.shortLabel})\n")
+        }
         sb.append("  Incorrect Responses : ${candidate.incorrectCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyIncorrect)} penalty marks (-${String.format(java.util.Locale.US, "%.2f", negMarks)} each)]\n")
         sb.append("  Unattempted / Skip  : ${candidate.unansweredCount}  [-${String.format(java.util.Locale.US, "%.2f", penaltyUnattended)} penalty marks (-${String.format(java.util.Locale.US, "%.2f", unkMarks)} each)]\n")
         sb.append("  Net Score         : $formattedScore marks\n")
         sb.append("  Total Questions   : ${paper.questions.size}\n\n")
 
-        if (!answers.isNullOrEmpty()) {
+        if (!answers.isNullOrEmpty() || !multiAnswers.isNullOrEmpty()) {
             sb.append("--------------------------------------------------------------------------------\n")
             sb.append("                      DETAILED QUESTION AUDIT & RESPONSE LOG                    \n")
             sb.append("--------------------------------------------------------------------------------\n")
@@ -575,17 +636,29 @@ object PsychometricEngine {
             sb.append("  ---  -------------   ------------   -------------   -----------------\n")
 
             paper.questions.forEach { q ->
-                val chosen = answers[q.num]?.uppercaseChar()
-                val correctChar = q.correctAnswer?.uppercase()?.firstOrNull()
-                val (pts, status) = when {
-                    chosen == null -> Pair(if (unkMarks > 0.0) "-${String.format(java.util.Locale.US, "%.2f", unkMarks)}" else "0.00", "UNATTENDED / SKIPPED")
-                    chosen == correctChar -> Pair("+${String.format(java.util.Locale.US, "%.2f", posMarks)}", "CORRECT")
-                    else -> Pair(if (negMarks > 0.0) "-${String.format(java.util.Locale.US, "%.2f", negMarks)}" else "0.00", "INCORRECT")
+                val rawAns = multiAnswers?.get(q.num)?.takeIf { it.isNotBlank() } ?: answers?.get(q.num)?.toString()
+                val chosenDisp = rawAns?.let { AnswerKeyMatcher.normalizeKey(it).ifBlank { it } }
+                val keyDisp = q.correctAnswer?.let { AnswerKeyMatcher.normalizeKey(it).ifBlank { it } }
+                val (pts, status) = if (rawAns.isNullOrBlank()) {
+                    Pair(if (unkMarks > 0.0) "-${String.format(java.util.Locale.US, "%.2f", unkMarks)}" else "0.00", "UNATTENDED / SKIPPED")
+                } else {
+                    val res = AnswerKeyMatcher.scoreQuestion(q, rawAns, posMarks, negMarks, unkMarks, msqPolicy)
+                    val ptsStr = when {
+                        res.marks > 0.0 -> "+${String.format(java.util.Locale.US, "%.2f", res.marks)}"
+                        res.marks < 0.0 -> String.format(java.util.Locale.US, "%.2f", res.marks)
+                        else -> "0.00"
+                    }
+                    val stLabel = when (res.status) {
+                        AnswerKeyMatcher.QuestionGradeStatus.NEUTRALIZED -> "NEUTRALIZED"
+                        AnswerKeyMatcher.QuestionGradeStatus.CORRECT -> "CORRECT"
+                        AnswerKeyMatcher.QuestionGradeStatus.PARTIAL -> "PARTIAL CREDIT"
+                        AnswerKeyMatcher.QuestionGradeStatus.INCORRECT -> "INCORRECT"
+                        AnswerKeyMatcher.QuestionGradeStatus.UNANSWERED -> "UNATTENDED / SKIPPED"
+                    }
+                    Pair(ptsStr, stLabel)
                 }
-                val markedDisplay = chosen?.toString() ?: "—"
-                val keyDisplay = correctChar?.toString() ?: "—"
                 sb.append(String.format(java.util.Locale.US, "  %03d      %-10s      %-8s        %-6s       %s\n",
-                    q.num, markedDisplay, keyDisplay, pts, status))
+                    q.num, chosenDisp ?: "—", keyDisp ?: "—", pts, status))
             }
             sb.append("--------------------------------------------------------------------------------\n")
         }
@@ -607,12 +680,13 @@ object PsychometricEngine {
         val submissionsMap = candidateSubmissions?.associateBy { it.rollNumber }
         val sb = StringBuilder()
         report.candidates.forEachIndexed { index, candidate ->
-            val answers = submissionsMap?.get(candidate.rollNumber)?.answers
+            val sub = submissionsMap?.get(candidate.rollNumber)
             sb.append(generateStudentReportCard(
                 candidate = candidate,
                 paper = paper,
-                answers = answers,
-                totalCohortSize = report.candidateCount
+                answers = sub?.answers,
+                totalCohortSize = report.candidateCount,
+                multiAnswers = sub?.multiAnswers
             ))
             if (index < report.candidates.size - 1) {
                 sb.append("\n\n\n")

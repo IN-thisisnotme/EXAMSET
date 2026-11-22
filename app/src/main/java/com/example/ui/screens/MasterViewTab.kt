@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -107,6 +108,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
+import com.example.util.AnswerKeyMatcher
 import com.example.util.McqParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1416,15 +1418,17 @@ private fun MasterQuestionCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row: Q#, Category Badge, Controls
+            // Header Row: Q#, MSQ Badge (if MSQ), Missing Options, Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val qType = QuestionFormatter.displayType(question)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                val isMsqQuestion = AnswerKeyMatcher.isMultiSelect(question)
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Surface(
@@ -1440,42 +1444,33 @@ private fun MasterQuestionCard(
                         )
                     }
 
-                    // Question category badge (Conceptual, Numerical, etc.) commented out per user request:
-                    /*
-                    if (!qType.isNullOrBlank()) {
+                    if (isMsqQuestion) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = when {
-                                qType.contains("Assertion") -> colors.tealLight
-                                qType.contains("Match") -> Color(0xFFFEF3C7).copy(alpha = if (colors.isDark) 0.2f else 1f)
-                                qType.contains("Statement") -> Color(0xFFE0E7FF).copy(alpha = if (colors.isDark) 0.2f else 1f)
-                                else -> colors.surfaceVariant
-                            },
-                            border = BorderStroke(
-                                0.6.dp,
-                                when {
-                                    qType.contains("Assertion") -> colors.teal.copy(alpha = 0.5f)
-                                    qType.contains("Match") -> Color(0xFFD97706).copy(alpha = 0.5f)
-                                    qType.contains("Statement") -> Color(0xFF6366F1).copy(alpha = 0.5f)
-                                    else -> colors.border
-                                }
-                            )
+                            color = colors.amberLight,
+                            border = BorderStroke(0.8.dp, colors.amber.copy(alpha = 0.7f)),
+                            modifier = Modifier.testTag("master_msq_badge_${question.num}")
                         ) {
-                            Text(
-                                text = qType,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = when {
-                                    qType.contains("Assertion") -> colors.tealDark
-                                    qType.contains("Match") -> if (colors.isDark) Color(0xFFFBBF24) else Color(0xFFB45309)
-                                    qType.contains("Statement") -> if (colors.isDark) Color(0xFFA5B4FC) else Color(0xFF4338CA)
-                                    else -> colors.ink
-                                },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckBox,
+                                    contentDescription = null,
+                                    tint = colors.amber,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "MSQ",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.amber
+                                )
+                            }
                         }
                     }
-                    */
 
                     if (question.options.hasMissingOptions) {
                         Surface(
@@ -1498,7 +1493,8 @@ private fun MasterQuestionCard(
                                     text = "Missing Option (${question.options.missingOptions.joinToString(",")})",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.amber
+                                    color = colors.amber,
+                                    softWrap = true
                                 )
                             }
                         }
@@ -1537,15 +1533,16 @@ private fun MasterQuestionCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Answer Key Display / Editor Row
+            // Answer Key Display / Editor Row (Font-scale safe FlowRow)
             if (isEditProtected) {
                 // Read-only Answer Row (Protected against accidental touch)
-                Row(
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1564,17 +1561,24 @@ private fun MasterQuestionCard(
                         )
                     }
 
-                    if (question.correctAnswer != null) {
+                    if (!question.correctAnswer.isNullOrBlank()) {
+                        val displayKey = AnswerKeyMatcher.formatKeyForDisplay(question.correctAnswer)
+                            .ifBlank { question.correctAnswer.uppercase() }
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.greenLight,
                             border = BorderStroke(0.8.dp, colors.green.copy(alpha = 0.5f))
                         ) {
                             Text(
-                                text = "Option ${question.correctAnswer.uppercase()}",
+                                text = if (AnswerKeyMatcher.parseSelectedLetters(question.correctAnswer).size >= 2) {
+                                    "Options $displayKey"
+                                } else {
+                                    "Option $displayKey"
+                                },
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.green,
+                                softWrap = true,
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.5.dp)
                             )
                         }
@@ -1595,34 +1599,84 @@ private fun MasterQuestionCard(
                     }
                 }
             } else {
-                // Interactive Answer Key Selector Row
-                Row(
+                // Interactive Answer Key Selector Row (supports 1-tap MCQ or MSQ multi-key toggle)
+                val isMsqNow = AnswerKeyMatcher.isMultiSelect(question)
+                val keysToOffer = remember(question.options.e, question.correctAnswer) {
+                    if (question.options.e.isNotBlank() || AnswerKeyMatcher.containsOption(question.correctAnswer, "E")) {
+                        listOf("A", "B", "C", "D", "E")
+                    } else {
+                        listOf("A", "B", "C", "D")
+                    }
+                }
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Icon(Icons.Default.Edit, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Set Correct Key:",
+                            text = if (isMsqNow) "MSQ Keys:" else "Set Key:",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.inkBold
                         )
+                        Surface(
+                            onClick = {
+                                if (isMsqNow) {
+                                    val firstKey = AnswerKeyMatcher.parseSelectedLetters(question.correctAnswer).firstOrNull()
+                                    onUpdateQuestion(
+                                        question.copy(
+                                            questionType = "Direct Conceptual",
+                                            correctAnswer = firstKey
+                                        )
+                                    )
+                                } else {
+                                    onUpdateQuestion(question.copy(questionType = "MSQ"))
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isMsqNow) colors.amberLight else colors.surface,
+                            border = BorderStroke(0.9.dp, if (isMsqNow) colors.amber else colors.border),
+                            modifier = Modifier.testTag("master_msq_toggle_${question.num}")
+                        ) {
+                            Text(
+                                text = if (isMsqNow) "MSQ On" else "+ MSQ",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isMsqNow) colors.amber else colors.muted,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            )
+                        }
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("A", "B", "C", "D").forEach { opt ->
-                            val isSelected = question.correctAnswer.equals(opt, ignoreCase = true)
+                        keysToOffer.forEach { opt ->
+                            val isSelected = if (isMsqNow) {
+                                AnswerKeyMatcher.containsOption(question.correctAnswer, opt)
+                            } else {
+                                question.correctAnswer.equals(opt, ignoreCase = true)
+                            }
                             Surface(
                                 modifier = Modifier
-                                    .size(32.dp)
-                                    .clickable { onSelectAnswer(opt) },
-                                shape = CircleShape,
+                                    .size(34.dp)
+                                    .clickable {
+                                        if (isMsqNow) {
+                                            val toggled = AnswerKeyMatcher.toggleSelection(question.correctAnswer, opt)
+                                            onSelectAnswer(toggled.ifBlank { opt })
+                                        } else {
+                                            onSelectAnswer(opt)
+                                        }
+                                    }
+                                    .testTag("master_key_opt_${opt}_q${question.num}"),
+                                shape = if (isMsqNow) RoundedCornerShape(6.dp) else CircleShape,
                                 color = if (isSelected) Color(0xFF059669) else colors.surface,
                                 border = BorderStroke(
                                     1.2.dp,
@@ -2158,32 +2212,48 @@ fun AddQuestionDialog(
                                     )
                                 }
 
-                                // Correct Answer Selector
+                                // Correct Answer Selector & Question Type (supports MSQ multi-key)
                                 item {
+                                    val isAddMsq = AnswerKeyMatcher.isExplicitMsqType(questionType) ||
+                                        AnswerKeyMatcher.parseSelectedLetters(selectedAnswer).size >= 2
                                     Column(modifier = Modifier.padding(top = 4.dp)) {
                                         Text(
-                                            text = "Correct Answer Key:",
+                                            text = if (isAddMsq) "Correct Answer Keys (Select all that apply):" else "Correct Answer Key:",
                                             fontSize = 11.5.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.ink
                                         )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
                                             val keysToOffer = if (optE.isNotBlank()) listOf("A", "B", "C", "D", "E") else listOf("A", "B", "C", "D")
                                             keysToOffer.forEach { opt ->
-                                                val isSel = selectedAnswer == opt
+                                                val isSel = if (isAddMsq) {
+                                                    AnswerKeyMatcher.containsOption(selectedAnswer, opt)
+                                                } else {
+                                                    selectedAnswer == opt
+                                                }
                                                 Surface(
                                                     modifier = Modifier
-                                                        .size(32.dp)
-                                                        .clickable { selectedAnswer = opt },
-                                                    shape = CircleShape,
+                                                        .size(36.dp)
+                                                        .clickable {
+                                                            if (isAddMsq) {
+                                                                val next = AnswerKeyMatcher.toggleSelection(selectedAnswer, opt)
+                                                                if (next.isNotBlank()) selectedAnswer = next
+                                                            } else {
+                                                                selectedAnswer = opt
+                                                            }
+                                                        },
+                                                    shape = if (isAddMsq) RoundedCornerShape(6.dp) else CircleShape,
                                                     color = if (isSel) Color(0xFF059669) else colors.surfaceVariant,
                                                     border = BorderStroke(1.dp, if (isSel) Color(0xFF047857) else colors.border)
                                                 ) {
                                                     Box(contentAlignment = Alignment.Center) {
                                                         Text(
                                                             text = opt,
-                                                            fontSize = 12.sp,
+                                                            fontSize = 12.5.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = if (isSel) Color.White else colors.inkBold
                                                         )
@@ -2203,22 +2273,32 @@ fun AddQuestionDialog(
                                             fontWeight = FontWeight.SemiBold,
                                             color = colors.ink
                                         )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            listOf("Direct Fact", "Statement Based", "Assertion & Reason").forEach { type ->
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            listOf("Direct Fact", "Statement Based", "Assertion & Reason", "Multiple Select (MSQ)").forEach { type ->
                                                 val isSel = questionType == type
                                                 Surface(
-                                                    modifier = Modifier.clickable { questionType = type },
+                                                    modifier = Modifier.clickable {
+                                                        questionType = type
+                                                        if (type != "Multiple Select (MSQ)") {
+                                                            val single = AnswerKeyMatcher.parseSelectedLetters(selectedAnswer).firstOrNull() ?: "A"
+                                                            selectedAnswer = single
+                                                        }
+                                                    },
                                                     shape = RoundedCornerShape(12.dp),
                                                     color = if (isSel) Color(0xFF7E22CE) else colors.surfaceVariant,
                                                     border = BorderStroke(0.5.dp, if (isSel) Color(0xFF6B21A8) else colors.border)
                                                 ) {
                                                     Text(
                                                         text = type,
-                                                        fontSize = 10.sp,
+                                                        fontSize = 11.sp,
                                                         fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                                                         color = if (isSel) Color.White else colors.ink,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        softWrap = true,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                                     )
                                                 }
                                             }

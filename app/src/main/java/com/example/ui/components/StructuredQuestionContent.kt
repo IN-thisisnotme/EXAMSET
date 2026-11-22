@@ -10,9 +10,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -21,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -29,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.McqQuestion
 import com.example.ui.theme.ExamTheme
 import com.example.ui.theme.RobotoMonoFontFamily
+import com.example.util.AnswerKeyMatcher
 import com.example.util.McqParser
 import com.example.util.QuestionFormatter
 import com.example.util.RichTextHelper
@@ -41,6 +48,7 @@ import com.example.util.RichTextHelper
  * 3. 2x2 grid for compact single-line options with aligned badges.
  * 4. Diagrams, formulas, and attachments seamlessly integrated.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StructuredQuestionContent(
     question: McqQuestion,
@@ -51,16 +59,17 @@ fun StructuredQuestionContent(
 ) {
     val colors = ExamTheme.colors
     val arParts = QuestionFormatter.parseAssertionReason(question.question)
+    val isMsq = AnswerKeyMatcher.isMultiSelect(question)
 
     Column(modifier = modifier) {
-        // Question Header: Number + Type Badge (Type badge commented out per user request)
-        val qType = if (showTypeBadge) QuestionFormatter.displayType(question) else null
-        val shouldShowHeaderRow = showNumber
+        // Question Header: Number + MSQ indicator (only for genuine MSQs)
+        val shouldShowHeaderRow = showNumber || isMsq
 
         if (shouldShowHeaderRow) {
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (showNumber) {
                     Text(
@@ -72,45 +81,34 @@ fun StructuredQuestionContent(
                     )
                 }
 
-                // Question type badge (e.g. Conceptual, Numerical, etc.) commented out per user request:
-                /*
-                if (!qType.isNullOrBlank()) {
-                    if (showNumber) {
-                        Spacer(modifier = Modifier.width(10.dp))
-                    }
+                if (isMsq) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = when {
-                            qType.contains("Assertion") -> colors.tealLight
-                            qType.contains("Match") -> Color(0xFFFEF3C7).copy(alpha = if (colors.isDark) 0.2f else 1f)
-                            qType.contains("Statement") -> Color(0xFFE0E7FF).copy(alpha = if (colors.isDark) 0.2f else 1f)
-                            else -> colors.surfaceVariant
-                        },
-                        border = BorderStroke(
-                            0.6.dp,
-                            when {
-                                qType.contains("Assertion") -> colors.teal.copy(alpha = 0.5f)
-                                qType.contains("Match") -> Color(0xFFD97706).copy(alpha = 0.5f)
-                                qType.contains("Statement") -> Color(0xFF6366F1).copy(alpha = 0.5f)
-                                else -> colors.border
-                            }
-                        )
+                        color = colors.amberLight,
+                        border = BorderStroke(0.9.dp, colors.amber.copy(alpha = 0.7f)),
+                        modifier = Modifier.testTag("structured_msq_badge_${question.num}")
                     ) {
-                        Text(
-                            text = qType,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = when {
-                                qType.contains("Assertion") -> colors.tealDark
-                                qType.contains("Match") -> if (colors.isDark) Color(0xFFFBBF24) else Color(0xFFB45309)
-                                qType.contains("Statement") -> if (colors.isDark) Color(0xFFA5B4FC) else Color(0xFF4338CA)
-                                else -> colors.ink
-                            },
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckBox,
+                                contentDescription = null,
+                                tint = colors.amber,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "MSQ • Multiple Select",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.amber,
+                                softWrap = true
+                            )
+                        }
                     }
                 }
-                */
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -161,8 +159,9 @@ fun StructuredQuestionContent(
                         color = colors.green
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    val formattedKey = AnswerKeyMatcher.formatKeyForDisplay(question.correctAnswer).ifBlank { question.correctAnswer }
                     LatexText(
-                        text = question.correctAnswer,
+                        text = formattedKey,
                         fontSize = 15.sp,
                         color = colors.inkBold
                     )
@@ -357,10 +356,6 @@ private fun StackedOptionsList(
     val allOptions = question.options.asList
     if (allOptions.all { it.second.isBlank() }) return
 
-    val canonicalAnswer = question.correctAnswer?.let {
-        McqParser.canonicalOption(it) ?: it.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]").removePrefix("OPTION").trim().removeSuffix(".")
-    }
-
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         allOptions.forEach { (letter, text) ->
             val isBlank = text.isBlank()
@@ -381,9 +376,9 @@ private fun StackedOptionsList(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.amberLight,
                             border = BorderStroke(0.8.dp, colors.amber),
-                            modifier = Modifier.width(34.dp).height(28.dp)
+                            modifier = Modifier.widthIn(min = 34.dp).heightIn(min = 28.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                                 Text(
                                     text = letter,
                                     fontFamily = RobotoMonoFontFamily,
@@ -413,12 +408,8 @@ private fun StackedOptionsList(
                 }
             } else {
                 val isCorrect = showAnswerIndicator && (
-                    letter.equals(canonicalAnswer, ignoreCase = true) ||
-                    question.correctAnswer.equals(letter, ignoreCase = true) ||
-                    question.correctAnswer?.split(Regex("[,; ]+"))?.any { token ->
-                        val cToken = McqParser.canonicalOption(token) ?: token.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]")
-                        cToken.equals(letter, ignoreCase = true)
-                    } == true
+                    AnswerKeyMatcher.containsOption(question.correctAnswer, letter) ||
+                    question.correctAnswer.equals(letter, ignoreCase = true)
                 )
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -432,14 +423,14 @@ private fun StackedOptionsList(
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        // Uniform Option Badge
+                        // Uniform Option Badge (font-scale safe)
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = if (isCorrect) colors.greenLight else colors.tealLight,
                             border = BorderStroke(0.8.dp, if (isCorrect) colors.green else colors.teal),
-                            modifier = Modifier.width(34.dp).height(28.dp)
+                            modifier = Modifier.widthIn(min = 34.dp).heightIn(min = 28.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
                                 Text(
                                     text = letter,
                                     fontFamily = RobotoMonoFontFamily,
@@ -473,10 +464,6 @@ private fun GridOptionsLayout(
 ) {
     if (question.options.a.isBlank() && question.options.b.isBlank()) return
 
-    val canonicalAnswer = question.correctAnswer?.let {
-        McqParser.canonicalOption(it) ?: it.trim().uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]").removePrefix("OPTION").trim().removeSuffix(".")
-    }
-
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -485,13 +472,13 @@ private fun GridOptionsLayout(
             CompactOptionItem(
                 letter = "A",
                 text = question.options.a,
-                isCorrect = showAnswerIndicator && (canonicalAnswer == "A" || question.correctAnswer.equals("A", ignoreCase = true)),
+                isCorrect = showAnswerIndicator && AnswerKeyMatcher.containsOption(question.correctAnswer, "A"),
                 modifier = Modifier.weight(1f)
             )
             CompactOptionItem(
                 letter = "B",
                 text = question.options.b,
-                isCorrect = showAnswerIndicator && (canonicalAnswer == "B" || question.correctAnswer.equals("B", ignoreCase = true)),
+                isCorrect = showAnswerIndicator && AnswerKeyMatcher.containsOption(question.correctAnswer, "B"),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -502,13 +489,13 @@ private fun GridOptionsLayout(
             CompactOptionItem(
                 letter = "C",
                 text = question.options.c,
-                isCorrect = showAnswerIndicator && (canonicalAnswer == "C" || question.correctAnswer.equals("C", ignoreCase = true)),
+                isCorrect = showAnswerIndicator && AnswerKeyMatcher.containsOption(question.correctAnswer, "C"),
                 modifier = Modifier.weight(1f)
             )
             CompactOptionItem(
                 letter = "D",
                 text = question.options.d,
-                isCorrect = showAnswerIndicator && (canonicalAnswer == "D" || question.correctAnswer.equals("D", ignoreCase = true)),
+                isCorrect = showAnswerIndicator && AnswerKeyMatcher.containsOption(question.correctAnswer, "D"),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -520,7 +507,7 @@ private fun GridOptionsLayout(
                 CompactOptionItem(
                     letter = "E",
                     text = question.options.e,
-                    isCorrect = showAnswerIndicator && (canonicalAnswer == "E" || question.correctAnswer.equals("E", ignoreCase = true)),
+                    isCorrect = showAnswerIndicator && AnswerKeyMatcher.containsOption(question.correctAnswer, "E"),
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.weight(1f))

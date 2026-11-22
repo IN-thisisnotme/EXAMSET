@@ -3,16 +3,20 @@ package com.example.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Visibility
@@ -38,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.McqQuestion
 import com.example.ui.theme.ExamTheme
+import com.example.util.AnswerKeyMatcher
 import com.example.util.McqParser
 import com.example.util.QuestionFormatter
 
@@ -49,6 +54,7 @@ import com.example.util.QuestionFormatter
  * - Seamless multi-line aligned option breakdown and detailed pedagogical explanations.
  * - In-place editing capability integrated with the Master Set edit system.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExplanationCard(
     question: McqQuestion,
@@ -59,9 +65,13 @@ fun ExplanationCard(
 ) {
     val colors = ExamTheme.colors
     val rawAnswer = question.correctAnswer?.trim()
-    val canonicalLetter = rawAnswer?.let {
-        McqParser.canonicalOption(it) ?: it.uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]").removePrefix("OPTION").trim().removeSuffix(".")
+    val canonicalKey = AnswerKeyMatcher.normalizeKey(rawAnswer).ifBlank {
+        rawAnswer?.let {
+            McqParser.canonicalOption(it) ?: it.uppercase().removeSurrounding("(", ")").removeSurrounding("[", "]").removePrefix("OPTION").trim().removeSuffix(".")
+        }
     }
+    val displayKey = AnswerKeyMatcher.formatKeyForDisplay(rawAnswer)
+    val isMsq = AnswerKeyMatcher.isMultiSelect(question)
 
     var isEditing by remember { mutableStateOf(false) }
     var showPreviewInEditMode by remember { mutableStateOf(false) }
@@ -86,11 +96,11 @@ fun ExplanationCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Header Row: Question Number Badge & In-Place Edit Solution Action
-            Row(
+            // Header Row: Question Number + MSQ Badge + Edit Action (Font-scale wrapping)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -106,7 +116,36 @@ fun ExplanationCard(
                     )
                 }
 
+                if (isMsq) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = colors.amberLight,
+                        border = BorderStroke(0.8.dp, colors.amber.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckBox,
+                                contentDescription = null,
+                                tint = colors.amber,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (displayKey.isNotBlank()) "MSQ • Key: $displayKey" else "MSQ",
+                                color = colors.amber,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                softWrap = true
+                            )
+                        }
+                    }
+                }
+
                 if (onUpdateQuestion != null) {
+                    Spacer(modifier = Modifier.weight(1f))
                     Surface(
                         onClick = {
                             if (!isEditMode && onEnterEditMode != null) {
@@ -117,24 +156,27 @@ fun ExplanationCard(
                         shape = RoundedCornerShape(8.dp),
                         color = if (isEditing) colors.amberLight else colors.surfaceVariant,
                         border = BorderStroke(0.8.dp, if (isEditing) colors.amber else colors.border),
-                        modifier = Modifier.testTag("edit_explanation_btn_${question.num}")
+                        modifier = Modifier
+                            .heightIn(min = 36.dp)
+                            .testTag("edit_explanation_btn_${question.num}")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = if (isEditing) Icons.Default.Check else Icons.Default.Edit,
                                 contentDescription = if (isEditing) "Done Editing" else "Edit Solution",
                                 tint = if (isEditing) colors.amber else colors.inkBold,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (isEditing) "Done" else "Edit Solution",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (isEditing) colors.amber else colors.inkBold
+                                color = if (isEditing) colors.amber else colors.inkBold,
+                                softWrap = true
                             )
                         }
                     }
@@ -242,7 +284,7 @@ fun ExplanationCard(
                 val currentText = if (isEditing) editedExplanation else (question.explanation ?: "")
                 StructuredExplanationContent(
                     rawExplanation = currentText,
-                    correctLetter = canonicalLetter ?: question.correctAnswer,
+                    correctLetter = canonicalKey ?: question.correctAnswer,
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {

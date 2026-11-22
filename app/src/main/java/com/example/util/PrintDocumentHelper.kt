@@ -230,16 +230,7 @@ object PrintDocumentHelper {
     }
 
     private fun normalizeAnswerLetter(ans: String?): String {
-        if (ans.isNullOrBlank()) return ""
-        val trimmed = ans.trim().uppercase()
-        return when (trimmed) {
-            "1", "(1)", "A", "(A)", "OPT A", "OPTION A" -> "A"
-            "2", "(2)", "B", "(B)", "OPT B", "OPTION B" -> "B"
-            "3", "(3)", "C", "(C)", "OPT C", "OPTION C" -> "C"
-            "4", "(4)", "D", "(D)", "OPT D", "OPTION D" -> "D"
-            "5", "(5)", "E", "(E)", "OPT E", "OPTION E" -> "E"
-            else -> if (trimmed.length == 1 && trimmed[0] in 'A'..'E') trimmed else ""
-        }
+        return AnswerKeyMatcher.normalizeKey(ans)
     }
 
     private fun exportTempFileToExamSetDirectory(
@@ -321,6 +312,8 @@ object PrintDocumentHelper {
             put("totalQuestions", paper.questions.size)
             put("positiveMarks", positiveMarks)
             put("negativeMarks", negativeMarks)
+            put("unattendedMarks", config.unattendedMarks.takeIf { it >= 0.0 } ?: 0.0)
+            put("msqScoringPolicy", config.msqScoringPolicy.code)
         }
 
         val questionsArray = JSONArray()
@@ -330,6 +323,7 @@ object PrintDocumentHelper {
             qObj.put("num", q.num)
             qObj.put("stemRaw", q.question)
             qObj.put("stemHtml", escapeRichHtml(q.question))
+            qObj.put("isMsq", AnswerKeyMatcher.isMultiSelect(q))
 
             val optsArray = JSONArray()
             for ((key, text) in q.options.asList) {
@@ -342,7 +336,7 @@ object PrintDocumentHelper {
                 }
             }
             qObj.put("options", optsArray)
-            qObj.put("correctAnswer", normalizeAnswerLetter(q.correctAnswer))
+            qObj.put("correctAnswer", AnswerKeyMatcher.normalizeKey(q.correctAnswer))
             qObj.put("explanationHtml", if (!q.explanation.isNullOrBlank()) escapeRichHtml(q.explanation) else "")
             qObj.put("formula", q.formula ?: "")
             qObj.put("diagramLabel", q.diagramLabel ?: "")
@@ -828,10 +822,26 @@ object PrintDocumentHelper {
             flex-shrink: 0;
             transition: all 0.12s ease;
         }
+        .opt-bubble.msq-box {
+            border-radius: 6px;
+        }
         .option-item.selected .opt-bubble {
             border-color: var(--primary);
             background: var(--primary);
             color: #ffffff;
+        }
+        .msq-badge {
+            display: none;
+            align-items: center;
+            gap: 4px;
+            background: #eef2ff;
+            color: #4338ca;
+            border: 1px solid #c7d2fe;
+            border-radius: 5px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.2px;
         }
 
         .opt-text {
@@ -1263,6 +1273,7 @@ object PrintDocumentHelper {
             color: var(--text-muted);
         }
         .stat-card.correct { border-color: var(--success); background: #f0fdf4; color: var(--success); }
+        .stat-card.partial { border-color: #d97706; background: #fffbeb; color: #b45309; }
         .stat-card.incorrect { border-color: var(--danger); background: #fef2f2; color: var(--danger); }
         .stat-card.accuracy { border-color: var(--teal); background: var(--teal-light); color: var(--teal); }
 
@@ -1329,10 +1340,16 @@ object PrintDocumentHelper {
             margin-bottom: 10px;
             padding-bottom: 6px;
             border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 6px;
         }
         .sol-qnum {
             font-size: 14.5px;
             font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
         }
         .sol-tag {
             font-size: 11.5px;
@@ -1341,6 +1358,7 @@ object PrintDocumentHelper {
             border-radius: 5px;
         }
         .sol-tag.tag-correct { background: var(--success-light); color: var(--success); }
+        .sol-tag.tag-partial { background: #fef3c7; color: #b45309; }
         .sol-tag.tag-incorrect { background: var(--danger-light); color: var(--danger); }
         .sol-tag.tag-unattempted { background: #f1f5f9; color: var(--text-muted); }
 
@@ -1369,6 +1387,11 @@ object PrintDocumentHelper {
             background: #f0fdf4;
             font-weight: 700;
         }
+        .sol-opt-row.is-missed-correct {
+            border-color: #0d9488;
+            background: #f0fdfa;
+            font-weight: 700;
+        }
         .sol-opt-row.is-wrong-selection {
             border-color: var(--danger);
             background: #fef2f2;
@@ -1386,8 +1409,15 @@ object PrintDocumentHelper {
             background: #e2e8f0;
             flex-shrink: 0;
         }
+        .sol-opt-badge.msq-box {
+            border-radius: 5px;
+        }
         .sol-opt-row.is-correct .sol-opt-badge {
             background: var(--success);
+            color: #ffffff;
+        }
+        .sol-opt-row.is-missed-correct .sol-opt-badge {
+            background: #0d9488;
             color: #ffffff;
         }
         .sol-opt-row.is-wrong-selection .sol-opt-badge {
@@ -1607,10 +1637,13 @@ object PrintDocumentHelper {
         <main class="cbt-main-panel">
             <div class="q-scroll-area">
                 <div class="q-meta-bar">
-                    <div class="q-num-tag" id="q-title-display">Question 1</div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div class="q-num-tag" id="q-title-display">Question 1</div>
+                        <span class="msq-badge" id="q-msq-badge">MSQ &bull; Select all that apply</span>
+                    </div>
                     <div class="q-marking-tag">
-                        <span class="mark-pos">+4.00</span>
-                        <span class="mark-neg">-1.00</span>
+                        <span class="mark-pos">+$posFormatted</span>
+                        <span class="mark-neg">-$negFormatted</span>
                     </div>
                 </div>
 
@@ -1769,6 +1802,10 @@ object PrintDocumentHelper {
                 <span class="st-val" id="res-correct-cnt">0</span>
                 <span class="st-label" id="res-correct-lbl">Correct</span>
             </div>
+            <div class="stat-card partial" id="res-partial-card" style="display: none;">
+                <span class="st-val" id="res-partial-cnt">0</span>
+                <span class="st-label">Partial Credit</span>
+            </div>
             <div class="stat-card incorrect">
                 <span class="st-val" id="res-wrong-cnt">0</span>
                 <span class="st-label" id="res-wrong-lbl">Incorrect</span>
@@ -1792,6 +1829,7 @@ object PrintDocumentHelper {
             <div class="filter-tabs">
                 <button class="filter-btn active" onclick="filterSolutions('ALL', this)">All (<span id="flt-all">0</span>)</button>
                 <button class="filter-btn" onclick="filterSolutions('CORRECT', this)">Correct (<span id="flt-cor">0</span>)</button>
+                <button class="filter-btn" id="flt-par-btn" style="display: none;" onclick="filterSolutions('PARTIAL', this)">Partial (<span id="flt-par">0</span>)</button>
                 <button class="filter-btn" onclick="filterSolutions('INCORRECT', this)">Incorrect (<span id="flt-inc">0</span>)</button>
                 <button class="filter-btn" onclick="filterSolutions('UNATTEMPTED', this)">Unattempted (<span id="flt-una">0</span>)</button>
             </div>
@@ -1965,12 +2003,13 @@ object PrintDocumentHelper {
                 if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
 
                 const key = e.key.toUpperCase();
-                if (['1', '2', '3', '4', 'A', 'B', 'C', 'D'].includes(key)) {
+                if (['1', '2', '3', '4', '5', 'A', 'B', 'C', 'D', 'E'].includes(key)) {
                     let optKey = key;
                     if (key === '1') optKey = 'A';
                     if (key === '2') optKey = 'B';
                     if (key === '3') optKey = 'C';
                     if (key === '4') optKey = 'D';
+                    if (key === '5') optKey = 'E';
                     selectOption(optKey);
                 } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
                     saveAndNext();
@@ -2072,6 +2111,23 @@ object PrintDocumentHelper {
             document.getElementById('qp-modal').style.display = 'none';
         }
 
+        function parseKeyLetters(raw) {
+            if (!raw || typeof raw !== 'string') return [];
+            const seen = new Set();
+            raw.toUpperCase().split(/[,;\s]+/).forEach(tok => {
+                const t = tok.trim();
+                if (['A', 'B', 'C', 'D', 'E'].includes(t)) seen.add(t);
+            });
+            return Array.from(seen).sort();
+        }
+
+        function toggleMsqSelection(currentRaw, key) {
+            const set = new Set(parseKeyLetters(currentRaw));
+            if (set.has(key)) set.delete(key);
+            else set.add(key);
+            return Array.from(set).sort().join(',');
+        }
+
         function loadQuestion(index) {
             if (index < 0 || index >= EXAM_DATA.questions.length) return;
             currentIndex = index;
@@ -2079,8 +2135,15 @@ object PrintDocumentHelper {
             pendingAnswer = answers[index] || '';
 
             const q = EXAM_DATA.questions[index];
+            const isMsq = q.isMsq === true;
+            const selectedSet = new Set(parseKeyLetters(pendingAnswer));
+
             document.getElementById('hdr-q-indicator').textContent = 'Q ' + (q.num || (index + 1)) + ' / ' + EXAM_DATA.questions.length;
             document.getElementById('q-title-display').textContent = 'Question ' + (q.num || (index + 1));
+            const msqBadge = document.getElementById('q-msq-badge');
+            if (msqBadge) {
+                msqBadge.style.display = isMsq ? 'inline-flex' : 'none';
+            }
             document.getElementById('q-stem-display').innerHTML = q.stemHtml || q.stemRaw || '';
 
             const formulaBox = document.getElementById('q-formula-box');
@@ -2095,14 +2158,16 @@ object PrintDocumentHelper {
             optsContainer.innerHTML = '';
 
             q.options.forEach(opt => {
+                const isSel = selectedSet.has(opt.key);
                 const optItem = document.createElement('div');
-                optItem.className = 'option-item' + (pendingAnswer === opt.key ? ' selected' : '');
+                optItem.className = 'option-item' + (isSel ? ' selected' : '');
                 optItem.id = 'opt-row-' + opt.key;
                 optItem.onclick = () => selectOption(opt.key);
 
                 const bubble = document.createElement('div');
-                bubble.className = 'opt-bubble';
-                bubble.textContent = opt.key;
+                bubble.className = 'opt-bubble' + (isMsq ? ' msq-box' : '');
+                bubble.id = 'opt-bubble-' + opt.key;
+                bubble.textContent = (isMsq && isSel) ? '✓' : opt.key;
 
                 const textSpan = document.createElement('div');
                 textSpan.className = 'opt-text';
@@ -2128,14 +2193,25 @@ object PrintDocumentHelper {
 
         function selectOption(key) {
             if (isSavingNext) return;
-            pendingAnswer = key;
             const q = EXAM_DATA.questions[currentIndex];
             if (!q) return;
+            const isMsq = q.isMsq === true;
+            if (isMsq) {
+                pendingAnswer = toggleMsqSelection(pendingAnswer, key);
+            } else {
+                pendingAnswer = key;
+            }
+            const selectedSet = new Set(parseKeyLetters(pendingAnswer));
             q.options.forEach(opt => {
+                const isSel = selectedSet.has(opt.key);
                 const row = document.getElementById('opt-row-' + opt.key);
                 if (row) {
-                    if (opt.key === key) row.classList.add('selected');
+                    if (isSel) row.classList.add('selected');
                     else row.classList.remove('selected');
+                }
+                const bubble = document.getElementById('opt-bubble-' + opt.key);
+                if (bubble) {
+                    bubble.textContent = (isMsq && isSel) ? '✓' : opt.key;
                 }
             });
         }
@@ -2150,6 +2226,8 @@ object PrintDocumentHelper {
                 q.options.forEach(opt => {
                     const row = document.getElementById('opt-row-' + opt.key);
                     if (row) row.classList.remove('selected');
+                    const bubble = document.getElementById('opt-bubble-' + opt.key);
+                    if (bubble) bubble.textContent = opt.key;
                 });
             }
             updatePaletteItem(currentIndex);
@@ -2325,41 +2403,69 @@ object PrintDocumentHelper {
             document.getElementById('res-cand-name').textContent = candidateName;
             document.getElementById('res-cand-roll').textContent = candidateRoll;
 
-            let correctCount = 0, wrongCount = 0, unattemptedCount = 0;
+            let correctCount = 0, partialCount = 0, wrongCount = 0, unattemptedCount = 0;
+            let rawScore = 0.0;
             const posMarks = EXAM_DATA.meta.positiveMarks || 4.0;
-            const negMarks = EXAM_DATA.meta.negativeMarks || 1.0;
+            const negMarks = (typeof EXAM_DATA.meta.negativeMarks === 'number') ? EXAM_DATA.meta.negativeMarks : 1.0;
+            const unkMarks = (typeof EXAM_DATA.meta.unattendedMarks === 'number') ? EXAM_DATA.meta.unattendedMarks : 0.0;
+            const msqPolicy = EXAM_DATA.meta.msqScoringPolicy || 'ALL_OR_NOTHING';
 
             const solContainer = document.getElementById('solutions-container');
             solContainer.innerHTML = '';
 
             EXAM_DATA.questions.forEach((q, idx) => {
-                const userAns = answers[idx];
-                const officialAns = q.correctAnswer;
-                const isAttempted = !!userAns;
-                const isCorrect = isAttempted && (userAns === officialAns);
+                const isMsq = q.isMsq === true;
+                const userLetters = parseKeyLetters(answers[idx]);
+                const officialLetters = parseKeyLetters(q.correctAnswer);
+                const userSet = new Set(userLetters);
+                const officialSet = new Set(officialLetters);
 
-                if (!isAttempted) unattemptedCount++;
-                else if (isCorrect) correctCount++;
-                else wrongCount++;
+                const isAttempted = userLetters.length > 0;
+                const chosenCorrect = userLetters.filter(l => officialSet.has(l)).length;
+                const chosenWrong = userLetters.filter(l => !officialSet.has(l)).length;
+
+                let status = 'INCORRECT';
+                let qMarks = -negMarks;
+                if (!isAttempted) {
+                    status = 'UNATTEMPTED';
+                    qMarks = -unkMarks;
+                    unattemptedCount++;
+                } else if (officialLetters.length > 0 && chosenWrong === 0 && chosenCorrect === officialLetters.length) {
+                    status = 'CORRECT';
+                    qMarks = posMarks;
+                    correctCount++;
+                } else if (msqPolicy === 'PARTIAL_STRICT' && officialLetters.length >= 2 && chosenWrong === 0 && chosenCorrect > 0 && chosenCorrect < officialLetters.length) {
+                    status = 'PARTIAL';
+                    qMarks = Math.round((posMarks * (chosenCorrect / officialLetters.length)) * 100) / 100;
+                    partialCount++;
+                } else {
+                    status = 'INCORRECT';
+                    qMarks = -negMarks;
+                    wrongCount++;
+                }
+                rawScore += qMarks;
 
                 const card = document.createElement('div');
                 card.className = 'sol-card';
-                card.dataset.status = isCorrect ? 'CORRECT' : (!isAttempted ? 'UNATTEMPTED' : 'INCORRECT');
+                card.dataset.status = status;
 
                 const hdr = document.createElement('div');
                 hdr.className = 'sol-header';
 
                 const qNumEl = document.createElement('div');
                 qNumEl.className = 'sol-qnum';
-                qNumEl.textContent = 'Question ' + (q.num || (idx + 1));
+                qNumEl.innerHTML = 'Question ' + (q.num || (idx + 1)) + (isMsq ? ' <span class="msq-badge" style="display:inline-flex;">MSQ</span>' : '');
 
                 const tag = document.createElement('div');
-                if (isCorrect) {
+                if (status === 'CORRECT') {
                     tag.className = 'sol-tag tag-correct';
                     tag.textContent = 'CORRECT (+' + posMarks.toFixed(2) + ')';
-                } else if (!isAttempted) {
+                } else if (status === 'PARTIAL') {
+                    tag.className = 'sol-tag tag-partial';
+                    tag.textContent = 'PARTIAL (+' + qMarks.toFixed(2) + ')';
+                } else if (status === 'UNATTEMPTED') {
                     tag.className = 'sol-tag tag-unattempted';
-                    tag.textContent = 'UNATTEMPTED (0.00)';
+                    tag.textContent = unkMarks > 0 ? 'UNATTEMPTED (-' + unkMarks.toFixed(2) + ')' : 'UNATTEMPTED (0.00)';
                 } else {
                     tag.className = 'sol-tag tag-incorrect';
                     tag.textContent = 'INCORRECT (-' + negMarks.toFixed(2) + ')';
@@ -2379,15 +2485,16 @@ object PrintDocumentHelper {
 
                 q.options.forEach(opt => {
                     const row = document.createElement('div');
-                    const isThisCorrect = (opt.key === officialAns);
-                    const isThisSelected = (opt.key === userAns);
+                    const isThisCorrect = officialSet.has(opt.key);
+                    const isThisSelected = userSet.has(opt.key);
 
-                    if (isThisCorrect) row.className = 'sol-opt-row is-correct';
-                    else if (isThisSelected) row.className = 'sol-opt-row is-wrong-selection';
+                    if (isThisSelected && isThisCorrect) row.className = 'sol-opt-row is-correct';
+                    else if (!isThisSelected && isThisCorrect && (isMsq || isAttempted)) row.className = isMsq ? 'sol-opt-row is-missed-correct' : 'sol-opt-row is-correct';
+                    else if (isThisSelected && !isThisCorrect) row.className = 'sol-opt-row is-wrong-selection';
                     else row.className = 'sol-opt-row';
 
                     const badge = document.createElement('div');
-                    badge.className = 'sol-opt-badge';
+                    badge.className = 'sol-opt-badge' + (isMsq ? ' msq-box' : '');
                     badge.textContent = opt.key;
 
                     const txt = document.createElement('div');
@@ -2401,19 +2508,19 @@ object PrintDocumentHelper {
                         const note = document.createElement('span');
                         note.style.fontSize = '11px';
                         note.style.color = 'var(--success)';
-                        note.textContent = '✓ Your Answer (Correct)';
+                        note.textContent = '✓ Chosen (Correct)';
                         row.appendChild(note);
                     } else if (isThisSelected) {
                         const note = document.createElement('span');
                         note.style.fontSize = '11px';
                         note.style.color = 'var(--danger)';
-                        note.textContent = '✗ Your Answer';
+                        note.textContent = '✗ Your Choice';
                         row.appendChild(note);
                     } else if (isThisCorrect) {
                         const note = document.createElement('span');
                         note.style.fontSize = '11px';
-                        note.style.color = 'var(--success)';
-                        note.textContent = '✓ Correct Answer';
+                        note.style.color = isMsq ? '#0d9488' : 'var(--success)';
+                        note.textContent = isMsq ? '★ Missed Correct' : '✓ Correct Answer';
                         row.appendChild(note);
                     }
 
@@ -2440,17 +2547,28 @@ object PrintDocumentHelper {
                 solContainer.appendChild(card);
             });
 
-            const rawScore = (correctCount * posMarks) - (wrongCount * negMarks);
             const maxMarks = EXAM_DATA.questions.length * posMarks;
-            const attemptedTotal = correctCount + wrongCount;
+            const attemptedTotal = correctCount + partialCount + wrongCount;
             const accuracy = attemptedTotal > 0 ? Math.round((correctCount / attemptedTotal) * 100) : 0;
 
-            document.getElementById('res-score').textContent = rawScore.toFixed(1);
+            document.getElementById('res-score').textContent = (Math.round(rawScore * 100) / 100).toFixed(2);
             document.getElementById('res-max-score').textContent = '/ ' + maxMarks.toFixed(1);
             document.getElementById('res-total-q').textContent = EXAM_DATA.questions.length;
             document.getElementById('res-correct-cnt').textContent = correctCount;
             const corLbl = document.getElementById('res-correct-lbl');
             if (corLbl) corLbl.textContent = 'Correct (+' + posMarks.toFixed(2) + ')';
+
+            const parCard = document.getElementById('res-partial-card');
+            const parBtn = document.getElementById('flt-par-btn');
+            if (partialCount > 0 || msqPolicy === 'PARTIAL_STRICT') {
+                if (parCard) parCard.style.display = 'flex';
+                if (parBtn) parBtn.style.display = 'inline-block';
+            }
+            const parCntEl = document.getElementById('res-partial-cnt');
+            if (parCntEl) parCntEl.textContent = partialCount;
+            const fltParEl = document.getElementById('flt-par');
+            if (fltParEl) fltParEl.textContent = partialCount;
+
             document.getElementById('res-wrong-cnt').textContent = wrongCount;
             const wrgLbl = document.getElementById('res-wrong-lbl');
             if (wrgLbl) wrgLbl.textContent = 'Incorrect (-' + negMarks.toFixed(2) + ')';
@@ -2585,9 +2703,13 @@ object PrintDocumentHelper {
                     escapeRichHtml(normalizeQuestionSpacing(q.question))
                 }
 
+                val msqTag = if (AnswerKeyMatcher.isMultiSelect(q)) {
+                    """<span style="display:inline-block; font-size:7pt; font-weight:700; color:#4338ca; background:#eef2ff; border:0.8px solid #c7d2fe; padding:0.5px 5px; border-radius:4px; margin-left:4px; vertical-align:middle;">MSQ • Select all</span>"""
+                } else ""
+
                 append("""
                 <div class="student-q-item">
-                    <div class="q-head"><strong>${q.num}.</strong> $stemHtml</div>
+                    <div class="q-head"><strong>${q.num}.</strong>$msqTag $stemHtml</div>
                     <div class="$containerClass">
                         <div class="opt-cell"><span class="opt-key">(A)</span><span class="opt-text">${escapeRichHtml(q.options.a)}</span></div>
                         <div class="opt-cell"><span class="opt-key">(B)</span><span class="opt-text">${escapeRichHtml(q.options.b)}</span></div>
@@ -2876,25 +2998,22 @@ object PrintDocumentHelper {
                 val effectiveType = QuestionFormatter.displayType(q) ?: "Multiple Choice"
                 */
 
+                val isMsqItem = AnswerKeyMatcher.isMultiSelect(q)
                 append("""
                 <div class="q-card">
                     <div class="q-text">
-                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap;">
                             <strong>${q.num}.</strong>
-                            <!-- Question type badge commented out per user request:
-                            <span style="font-size: 7.5pt; font-weight: 700; color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; padding: 1px 5px; border-radius: 4px;">
-                                ${QuestionFormatter.displayType(q) ?: "Multiple Choice"}
-                            </span>
-                            -->
+                            ${if (isMsqItem) "<span style=\"font-size: 7.5pt; font-weight: 700; color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; padding: 1px 5px; border-radius: 4px;\">MSQ &bull; Multiple-Select</span>" else ""}
                         </div>
                         $stemHtml
                     </div>
                     <div class="$containerClass">
-                        <div class="opt-item ${if (q.correctAnswer.equals("A", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(A)</span> ${escapeRichHtml(q.options.a)}</div>
-                        <div class="opt-item ${if (q.correctAnswer.equals("B", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(B)</span> ${escapeRichHtml(q.options.b)}</div>
-                        <div class="opt-item ${if (q.correctAnswer.equals("C", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(C)</span> ${escapeRichHtml(q.options.c)}</div>
-                        <div class="opt-item ${if (q.correctAnswer.equals("D", ignoreCase = true)) "opt-correct" else ""}"><span class="opt-badge">(D)</span> ${escapeRichHtml(q.options.d)}</div>
-                        ${if (q.options.e.isNotBlank()) "<div class=\"opt-item ${if (q.correctAnswer.equals("E", ignoreCase = true)) "opt-correct" else ""}\"><span class=\"opt-badge\">(E)</span> ${escapeRichHtml(q.options.e)}</div>" else ""}
+                        <div class="opt-item ${if (AnswerKeyMatcher.containsOption(q.correctAnswer, "A")) "opt-correct" else ""}"><span class="opt-badge">(A)</span> ${escapeRichHtml(q.options.a)}</div>
+                        <div class="opt-item ${if (AnswerKeyMatcher.containsOption(q.correctAnswer, "B")) "opt-correct" else ""}"><span class="opt-badge">(B)</span> ${escapeRichHtml(q.options.b)}</div>
+                        <div class="opt-item ${if (AnswerKeyMatcher.containsOption(q.correctAnswer, "C")) "opt-correct" else ""}"><span class="opt-badge">(C)</span> ${escapeRichHtml(q.options.c)}</div>
+                        <div class="opt-item ${if (AnswerKeyMatcher.containsOption(q.correctAnswer, "D")) "opt-correct" else ""}"><span class="opt-badge">(D)</span> ${escapeRichHtml(q.options.d)}</div>
+                        ${if (q.options.e.isNotBlank()) "<div class=\"opt-item ${if (AnswerKeyMatcher.containsOption(q.correctAnswer, "E")) "opt-correct" else ""}\"><span class=\"opt-badge\">(E)</span> ${escapeRichHtml(q.options.e)}</div>" else ""}
                     </div>
                 </div>
                 """.trimIndent())
@@ -3147,9 +3266,9 @@ object PrintDocumentHelper {
                 val idx = r + c * rows
                 if (idx < total) {
                     val q = questions[idx]
-                    val ans = q.correctAnswer ?: "—"
+                    val ans = AnswerKeyMatcher.formatKeyForDisplay(q.correctAnswer).ifBlank { q.correctAnswer ?: "—" }
                     sb.append("<td class=\"ans-qnum\">${q.num}</td>")
-                    sb.append("<td class=\"ans-key\"><strong>$ans</strong></td>")
+                    sb.append("<td class=\"ans-key\"><strong>${escapeHtml(ans)}</strong></td>")
                 } else {
                     sb.append("<td></td><td></td>")
                 }
@@ -3165,21 +3284,39 @@ object PrintDocumentHelper {
         val sb = StringBuilder()
         for (q in paper.questions) {
             if (q.explanation == null && q.correctAnswer == null) continue
-            val letter = q.correctAnswer?.uppercase()?.trim()
-            val optText = when (letter) {
-                "A" -> q.options.a
-                "B" -> q.options.b
-                "C" -> q.options.c
-                "D" -> q.options.d
-                "E" -> q.options.e
-                else -> null
-            }
-            val ansLine = if (letter != null && !optText.isNullOrBlank()) {
-                "Correct Answer: ($letter) ${escapeRichHtml(optText)}"
-            } else if (letter != null) {
-                "Correct Answer: ($letter)"
-            } else {
-                "Correct Answer: —"
+            val letters = AnswerKeyMatcher.parseSelectedLetters(q.correctAnswer).toList()
+            val ansLine = when {
+                letters.size >= 2 -> {
+                    val formattedParts = letters.map { letter ->
+                        val text = when (letter) {
+                            "A" -> q.options.a
+                            "B" -> q.options.b
+                            "C" -> q.options.c
+                            "D" -> q.options.d
+                            "E" -> q.options.e
+                            else -> ""
+                        }
+                        if (text.isNotBlank()) "($letter) ${escapeRichHtml(text)}" else "($letter)"
+                    }
+                    "Correct Answers (MSQ): ${formattedParts.joinToString("; ")}"
+                }
+                letters.size == 1 -> {
+                    val letter = letters.first()
+                    val optText = when (letter) {
+                        "A" -> q.options.a
+                        "B" -> q.options.b
+                        "C" -> q.options.c
+                        "D" -> q.options.d
+                        "E" -> q.options.e
+                        else -> null
+                    }
+                    if (!optText.isNullOrBlank()) {
+                        "Correct Answer: ($letter) ${escapeRichHtml(optText)}"
+                    } else {
+                        "Correct Answer: ($letter)"
+                    }
+                }
+                else -> "Correct Answer: —"
             }
 
             val cleanExp = q.explanation?.let { McqParser.formatMultiLineExplanation(it) } ?: "No detailed explanation was provided in input."

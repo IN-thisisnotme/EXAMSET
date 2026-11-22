@@ -571,6 +571,62 @@ class ExamSetPreferences(context: Context) {
             .commit()
     }
 
+    // --- MSQ Scoring Policy (Per-Paper & Default, zero Room migration needed) ---
+
+    fun getDefaultMsqScoringPolicy(): com.example.model.MsqScoringPolicy {
+        val raw = prefs.getString(KEY_DEFAULT_MSQ_POLICY, com.example.model.MsqScoringPolicy.ALL_OR_NOTHING.code)
+        return com.example.model.MsqScoringPolicy.fromCode(raw)
+    }
+
+    fun setDefaultMsqScoringPolicy(policy: com.example.model.MsqScoringPolicy) {
+        prefs.edit().putString(KEY_DEFAULT_MSQ_POLICY, policy.code).apply()
+    }
+
+    fun getPaperMsqPolicy(paperId: Long): com.example.model.MsqScoringPolicy {
+        if (paperId <= 0L) return getDefaultMsqScoringPolicy()
+        val map = getAllPaperMsqPolicies()
+        return map[paperId] ?: getDefaultMsqScoringPolicy()
+    }
+
+    fun setPaperMsqPolicy(paperId: Long, policy: com.example.model.MsqScoringPolicy) {
+        if (paperId <= 0L) {
+            setDefaultMsqScoringPolicy(policy)
+            return
+        }
+        val map = getAllPaperMsqPolicies().toMutableMap()
+        map[paperId] = policy
+        savePaperMsqPolicies(map)
+    }
+
+    fun getAllPaperMsqPolicies(): Map<Long, com.example.model.MsqScoringPolicy> {
+        val raw = prefs.getString(KEY_PAPER_MSQ_POLICIES, null) ?: return emptyMap()
+        return runCatching {
+            val obj = JSONObject(raw)
+            val result = mutableMapOf<Long, com.example.model.MsqScoringPolicy>()
+            obj.keys().forEach { key ->
+                val paperId = key.toLongOrNull()
+                if (paperId != null && paperId > 0L) {
+                    result[paperId] = com.example.model.MsqScoringPolicy.fromCode(obj.optString(key))
+                }
+            }
+            result
+        }.getOrDefault(emptyMap())
+    }
+
+    fun savePaperMsqPolicies(policies: Map<Long, com.example.model.MsqScoringPolicy>) {
+        val obj = JSONObject()
+        policies.forEach { (paperId, policy) ->
+            if (paperId > 0L) {
+                obj.put(paperId.toString(), policy.code)
+            }
+        }
+        prefs.edit().putString(KEY_PAPER_MSQ_POLICIES, obj.toString()).apply()
+    }
+
+    fun getPaperMsqPoliciesRawJson(): String {
+        return prefs.getString(KEY_PAPER_MSQ_POLICIES, "{}") ?: "{}"
+    }
+
     fun isFormatTipDismissed(tipId: String): Boolean {
         val dismissed = getDismissedFormatTips()
         return tipId in dismissed
@@ -628,5 +684,7 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_DND_PREVIOUS_FILTER = "key_dnd_previous_filter_v1"
         private const val KEY_DND_SESSION_STARTED_AT = "key_dnd_session_started_at_v1"
         private const val KEY_DISMISSED_FORMAT_TIPS = "key_dismissed_format_tips_v1"
+        private const val KEY_DEFAULT_MSQ_POLICY = "key_default_msq_policy_v1"
+        private const val KEY_PAPER_MSQ_POLICIES = "key_paper_msq_policies_v1"
     }
 }

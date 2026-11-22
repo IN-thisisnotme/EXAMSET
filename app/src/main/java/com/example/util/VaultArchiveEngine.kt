@@ -400,7 +400,10 @@ object VaultArchiveEngine {
                         unattendedMarks = paper.metadata.unattendedMarks,
                         manualCategory = paper.metadata.manualCategory
                     )
-                    paperDao.insertPaper(entity)
+                    val savedId = paperDao.insertPaper(entity)
+                    if (paper.metadata.msqScoringPolicy != com.example.model.MsqScoringPolicy.ALL_OR_NOTHING) {
+                        appPrefs.setPaperMsqPolicy(savedId, paper.metadata.msqScoringPolicy)
+                    }
                 }
             }
             return BackupCounts(papersCount = imported.size)
@@ -566,6 +569,7 @@ object VaultArchiveEngine {
                     themePrefs = themePrefs,
                     overwriteAll = overwriteAll,
                     restoredNoteIdByUid = restoredNoteIdByUid,
+                    paperIdMap = paperIdMap,
                     skipVocabularyIfDedicatedEntry = !vocabArchiveJson.isNullOrBlank()
                 )
             }
@@ -971,6 +975,8 @@ object VaultArchiveEngine {
             put("pomodoroCustomFocusMinutes", appPrefs.getPomodoroCustomFocusMinutes())
             put("pomodoroCustomBreakMinutes", appPrefs.getPomodoroCustomBreakMinutes())
             put("preferredDndMode", appPrefs.getPreferredDndMode().name)
+            put("defaultMsqScoringPolicy", appPrefs.getDefaultMsqScoringPolicy().code)
+            put("paperMsqPoliciesJson", appPrefs.getPaperMsqPoliciesRawJson())
         }.toString()
     }
 
@@ -980,6 +986,7 @@ object VaultArchiveEngine {
         themePrefs: ThemePreferences,
         overwriteAll: Boolean,
         restoredNoteIdByUid: Map<String, Long> = emptyMap(),
+        paperIdMap: Map<Long, Long> = emptyMap(),
         skipVocabularyIfDedicatedEntry: Boolean = false
     ) {
         runCatching {
@@ -1131,6 +1138,32 @@ object VaultArchiveEngine {
                 }
                 obj.optString("preferredDndMode", "").takeIf { it.isNotBlank() }?.let {
                     appPrefs.setPreferredDndMode(com.example.model.PomodoroDndMode.fromString(it))
+                }
+                obj.optString("defaultMsqScoringPolicy", "").takeIf { it.isNotBlank() }?.let {
+                    appPrefs.setDefaultMsqScoringPolicy(com.example.model.MsqScoringPolicy.fromCode(it))
+                }
+            }
+
+            val incomingMsqPoliciesRaw = obj.optString("paperMsqPoliciesJson", "")
+            if (incomingMsqPoliciesRaw.isNotBlank()) {
+                runCatching {
+                    val policyObj = JSONObject(incomingMsqPoliciesRaw)
+                    val targetMap = if (overwriteAll) {
+                        mutableMapOf()
+                    } else {
+                        appPrefs.getAllPaperMsqPolicies().toMutableMap()
+                    }
+                    policyObj.keys().forEach { oldKey ->
+                        val oldPaperId = oldKey.toLongOrNull() ?: return@forEach
+                        val newPaperId = paperIdMap[oldPaperId] ?: oldPaperId
+                        if (newPaperId > 0L) {
+                            val policy = com.example.model.MsqScoringPolicy.fromCode(policyObj.optString(oldKey))
+                            if (overwriteAll || !targetMap.containsKey(newPaperId)) {
+                                targetMap[newPaperId] = policy
+                            }
+                        }
+                    }
+                    appPrefs.savePaperMsqPolicies(targetMap)
                 }
             }
         }
