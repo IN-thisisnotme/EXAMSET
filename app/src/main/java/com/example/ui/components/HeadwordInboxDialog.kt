@@ -1,9 +1,12 @@
 package com.example.ui.components
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,11 +15,15 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Block
@@ -176,431 +184,479 @@ fun HeadwordInboxDialog(
         }.coerceAtMost(15)
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+            .testTag("headword_inbox_dialog")
     ) {
-        Card(
+        BackHandler { onDismiss() }
+
+        Surface(
+            color = colors.background,
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .heightIn(max = 720.dp)
-                .padding(vertical = 12.dp)
-                .testTag("headword_inbox_dialog"),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = colors.surface),
-            border = BorderStroke(1.dp, colors.border)
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                // Header
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Full-screen Top App Bar
+                Surface(
+                    color = colors.surface,
+                    tonalElevation = 1.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(colors.tealLight),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Inbox,
-                            contentDescription = "Headword Inbox",
-                            tint = colors.tealDark,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "Headword Inbox",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                modifier = Modifier.align(Alignment.CenterVertically)
-                            )
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = colors.tealLight,
-                                modifier = Modifier.align(Alignment.CenterVertically)
-                            ) {
-                                Text(
-                                    text = "${inboxItems.size}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.tealDark,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Text(
-                            text = "Stored silently until Stage-2 enrichment",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.inkMuted
-                        )
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Close Headword Inbox",
-                            tint = colors.inkMuted
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Responsive Action Bar (FlowRow prevents horizontal clipping at any system font scale)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { showQuickCaptureDialog = true },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.primaryButtonBg,
-                            contentColor = colors.primaryButtonText
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("inbox_quick_capture_btn")
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            "Quick Capture",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = { showPasteImportDialog = true },
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, colors.teal),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("inbox_import_json_btn")
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            "Import JSON",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        )
-                    }
-
-                    if (inboxItems.isNotEmpty() && batchCountForActiveFilters > 0) {
-                        val levelSummary = if (!selectedLevelFilter.equals("All", ignoreCase = true)) {
-                            " ${VocabularyLevel.fromCode(selectedLevelFilter).compactBadgeForLanguage(targetLanguageForActions)}"
-                        } else {
-                            ""
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                val prompt = viewModel.generateEnrichmentPromptForBatch(
-                                    language = targetLanguageForActions,
-                                    maxCount = 15,
-                                    levelCodeFilter = selectedLevelFilter,
-                                    categoryFilter = selectedCategoryFilter
-                                )
-                                clipboardManager.setText(AnnotatedString(prompt))
-                                Toast.makeText(
-                                    context,
-                                    "Stage-2 prompt ($batchCountForActiveFilters$levelSummary $targetLanguageForActions words) copied!",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, colors.amber),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.amber),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .testTag("inbox_enrich_batch_btn")
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Enrich Batch ($batchCountForActiveFilters)",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { showPasteEnrichedDialog = true },
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, colors.green),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.green),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("inbox_paste_enriched_btn")
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            "Paste Enriched",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        )
-                    }
-
-                    if (inboxItems.isNotEmpty()) {
-                        OutlinedButton(
-                            onClick = { showConfirmClearDialog = true },
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, colors.border),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkMuted),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .testTag("inbox_clear_all_btn")
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                "Clear",
-                                style = MaterialTheme.typography.labelLarge,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Search bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            "Search queued words or notes...",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = null,
-                            tint = colors.inkMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    trailingIcon = if (searchQuery.isNotEmpty()) {
-                        {
                             IconButton(
-                                onClick = { searchQuery = "" },
+                                onClick = onDismiss,
                                 modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.Clear,
-                                    contentDescription = "Clear search",
-                                    tint = colors.inkMuted,
-                                    modifier = Modifier.size(18.dp)
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back from Headword Inbox",
+                                    tint = colors.inkBold
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.tealLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Inbox,
+                                    contentDescription = "Headword Inbox",
+                                    tint = colors.tealDark,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "Headword Inbox",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.inkBold,
+                                        modifier = Modifier.align(Alignment.CenterVertically)
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = colors.tealLight,
+                                        modifier = Modifier.align(Alignment.CenterVertically)
+                                    ) {
+                                        Text(
+                                            text = "${inboxItems.size}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.tealDark,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Stored silently until Stage-2 enrichment",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.inkMuted,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                    } else null,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.teal,
-                        unfocusedBorderColor = colors.border,
-                        focusedTextColor = colors.inkBold,
-                        unfocusedTextColor = colors.ink
-                    ),
-                    shape = RoundedCornerShape(10.dp),
+                        HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
+                    }
+                }
+
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("inbox_search_input")
-                )
-
-                // Language filter chips
-                if (distinctLanguages.size > 2) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        distinctLanguages.forEach { lang ->
-                            val isSel = selectedLang.equals(lang, ignoreCase = true)
-                            InboxFilterChip(
-                                label = lang,
-                                selected = isSel,
-                                onClick = {
-                                    selectedLang = lang
-                                    selectedLevelFilter = "All"
-                                    selectedCategoryFilter = "All"
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Level filter chips (language-calibrated: A1..C2 / JLPT / HSK etc.)
-                if (availableLevelFilters.size > 2) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        availableLevelFilters.forEach { (code, count) ->
-                            val isSel = selectedLevelFilter.equals(code, ignoreCase = true)
-                            val badge = if (code == "All") {
-                                "All Levels ($count)"
-                            } else {
-                                "${VocabularyLevel.fromCode(code).compactBadgeForLanguage(targetLanguageForActions)} ($count)"
-                            }
-                            InboxFilterChip(
-                                label = badge,
-                                selected = isSel,
-                                onClick = { selectedLevelFilter = code },
-                                testTag = "inbox_level_filter_${code.lowercase()}"
-                            )
-                        }
-                    }
-                }
-
-                // Category filter chips when multiple categories exist
-                if (distinctCategories.size > 2) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        distinctCategories.forEach { cat ->
-                            val isSel = selectedCategoryFilter.equals(cat, ignoreCase = true)
-                            InboxFilterChip(
-                                label = cat,
-                                selected = isSel,
-                                onClick = { selectedCategoryFilter = cat }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Inbox items list or empty state
-                if (filteredItems.isEmpty()) {
-                    Box(
+                        .weight(1f)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    // Single-line horizontal scroll action bar (keeps controls crisp & preserves list space)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 180.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(colors.surfaceVariant.copy(alpha = 0.35f))
-                            .padding(20.dp),
-                        contentAlignment = Alignment.Center
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                        Button(
+                            onClick = { showQuickCaptureDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primaryButtonBg,
+                                contentColor = colors.primaryButtonText
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("inbox_quick_capture_btn")
                         ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Quick Capture",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { showPasteImportDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, colors.teal),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("inbox_import_json_btn")
+                        ) {
+                            Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Import JSON",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        if (inboxItems.isNotEmpty() && batchCountForActiveFilters > 0) {
+                            val levelSummary = if (!selectedLevelFilter.equals("All", ignoreCase = true)) {
+                                " ${VocabularyLevel.fromCode(selectedLevelFilter).compactBadgeForLanguage(targetLanguageForActions)}"
+                            } else {
+                                ""
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val prompt = viewModel.generateEnrichmentPromptForBatch(
+                                        language = targetLanguageForActions,
+                                        maxCount = 15,
+                                        levelCodeFilter = selectedLevelFilter,
+                                        categoryFilter = selectedCategoryFilter
+                                    )
+                                    clipboardManager.setText(AnnotatedString(prompt))
+                                    Toast.makeText(
+                                        context,
+                                        "Stage-2 prompt ($batchCountForActiveFilters$levelSummary $targetLanguageForActions words) copied!",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, colors.amber),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.amber),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("inbox_enrich_batch_btn")
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Enrich Batch ($batchCountForActiveFilters)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { showPasteEnrichedDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, colors.green),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.green),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("inbox_paste_enriched_btn")
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Paste Enriched",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        if (inboxItems.isNotEmpty()) {
+                            OutlinedButton(
+                                onClick = { showConfirmClearDialog = true },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, colors.border),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkMuted),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("inbox_clear_all_btn")
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    "Clear",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Search bar
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = {
+                            Text(
+                                "Search queued words, category, or notes...",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        },
+                        leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.Inbox,
+                                Icons.Default.Search,
                                 contentDescription = null,
                                 tint = colors.inkMuted,
-                                modifier = Modifier.size(38.dp)
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = if (inboxItems.isEmpty()) "Headword Inbox is Empty" else "No matching queued words",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.inkBold,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = if (inboxItems.isEmpty()) {
-                                    "Use Quick Capture for bare words, or Import JSON from AI Prompt Builder's Headword Index mode. Queued words stay hidden from Word of the Day and SM-2 until enriched."
-                                } else {
-                                    "Try clearing your search query or adjusting the level filter."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.inkMuted,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
+                        },
+                        trailingIcon = if (searchQuery.isNotEmpty()) {
+                            {
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = "Clear search",
+                                        tint = colors.inkMuted,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        } else null,
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.teal,
+                            unfocusedBorderColor = colors.border,
+                            focusedTextColor = colors.inkBold,
+                            unfocusedTextColor = colors.ink
+                        ),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f, fill = false),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
-                    ) {
-                        items(filteredItems, key = { it.id }) { item ->
-                            HeadwordQueueItemCard(
-                                item = item,
-                                onDismissWord = { viewModel.dismissHeadword(item.id) },
-                                onRemoveFromQueue = { viewModel.removeHeadwordFromInbox(item.id) }
-                            )
+                            .testTag("inbox_search_input")
+                    )
+
+                    // Language filter chips (single-line horizontal scroll)
+                    if (distinctLanguages.size > 2) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            distinctLanguages.forEach { lang ->
+                                val isSel = selectedLang.equals(lang, ignoreCase = true)
+                                InboxFilterChip(
+                                    label = lang,
+                                    selected = isSel,
+                                    onClick = {
+                                        selectedLang = lang
+                                        selectedLevelFilter = "All"
+                                        selectedCategoryFilter = "All"
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Level filter chips (single-line horizontal scroll: All Levels, A1..C2 / JLPT / HSK)
+                    if (availableLevelFilters.size > 2) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            availableLevelFilters.forEach { (code, count) ->
+                                val isSel = selectedLevelFilter.equals(code, ignoreCase = true)
+                                val badge = if (code == "All") {
+                                    "All Levels ($count)"
+                                } else {
+                                    "${VocabularyLevel.fromCode(code).compactBadgeForLanguage(targetLanguageForActions)} ($count)"
+                                }
+                                InboxFilterChip(
+                                    label = badge,
+                                    selected = isSel,
+                                    onClick = { selectedLevelFilter = code },
+                                    testTag = "inbox_level_filter_${code.lowercase()}"
+                                )
+                            }
+                        }
+                    }
+
+                    // Category filter chips (single-line horizontal scroll when multiple categories exist)
+                    if (distinctCategories.size > 2) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            distinctCategories.forEach { cat ->
+                                val isSel = selectedCategoryFilter.equals(cat, ignoreCase = true)
+                                InboxFilterChip(
+                                    label = cat,
+                                    selected = isSel,
+                                    onClick = { selectedCategoryFilter = cat }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Full-height Inbox items list or empty state
+                    if (filteredItems.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(colors.surfaceVariant.copy(alpha = 0.35f))
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.verticalScroll(rememberScrollState())
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Inbox,
+                                    contentDescription = null,
+                                    tint = colors.inkMuted,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = if (inboxItems.isEmpty()) "Headword Inbox is Empty" else "No matching queued words",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = if (inboxItems.isEmpty()) {
+                                        "Use Quick Capture for bare words, or Import JSON from AI Prompt Builder's Headword Index mode. Queued words stay hidden from Word of the Day and SM-2 until enriched."
+                                    } else {
+                                        "Try clearing your search query or adjusting the level filter."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.inkMuted,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(filteredItems, key = { it.id }) { item ->
+                                HeadwordQueueItemCard(
+                                    item = item,
+                                    onDismissWord = { viewModel.dismissHeadword(item.id) },
+                                    onRemoveFromQueue = { viewModel.removeHeadwordFromInbox(item.id) }
+                                )
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Footer stats & Done (wraps cleanly at large font scales)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                // Bottom Footer Bar
+                Surface(
+                    color = colors.surface,
+                    tonalElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Skipped forever: ${dismissedKeys.size} word(s)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.inkMuted,
-                        modifier = Modifier.align(Alignment.CenterVertically)
-                    )
-                    Button(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.surfaceVariant,
-                            contentColor = colors.inkBold
-                        ),
-                        modifier = Modifier
-                            .align(Alignment.CenterVertically)
-                            .heightIn(min = 48.dp)
-                    ) {
-                        Text(
-                            "Done",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Showing ${filteredItems.size} of ${inboxItems.size} · Skipped forever: ${dismissedKeys.size}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.inkMuted,
+                                modifier = Modifier.align(Alignment.CenterVertically)
+                            )
+                            Button(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = colors.surfaceVariant,
+                                    contentColor = colors.inkBold
+                                ),
+                                modifier = Modifier
+                                    .align(Alignment.CenterVertically)
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Text(
+                                    "Done",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -966,25 +1022,35 @@ private fun QuickHeadwordCaptureDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     commonLanguages.forEach { presetLang ->
                         val active = language.equals(presetLang, ignoreCase = true)
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (active) colors.teal else colors.surfaceVariant,
-                            modifier = Modifier.clickable { language = presetLang }
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .clickable { language = presetLang }
                         ) {
-                            Text(
-                                text = presetLang,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                                color = if (active) colors.primaryButtonText else colors.ink,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                            )
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = presetLang,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (active) colors.primaryButtonText else colors.ink,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -1015,26 +1081,35 @@ private fun QuickHeadwordCaptureDialog(
                     color = colors.inkMuted
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     quickLevels.forEach { lvl ->
                         val active = selectedLevel == lvl
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (active) colors.teal else colors.surfaceVariant,
-                            modifier = Modifier.clickable { selectedLevel = lvl }
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .clickable { selectedLevel = lvl }
                         ) {
-                            Text(
-                                text = VocabularyLevel.fromCode(lvl).compactBadgeForLanguage(language),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                                color = if (active) colors.primaryButtonText else colors.ink,
-                                maxLines = 1,
+                            Box(
+                                contentAlignment = Alignment.Center,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                            ) {
+                                Text(
+                                    text = VocabularyLevel.fromCode(lvl).compactBadgeForLanguage(language),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (active) colors.primaryButtonText else colors.ink,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -1173,10 +1248,12 @@ private fun HeadwordJsonPasteDialog(
                     color = colors.inkMuted
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     levelOptions.forEach { lvl ->
                         val active = strictLevel.equals(lvl, ignoreCase = true)

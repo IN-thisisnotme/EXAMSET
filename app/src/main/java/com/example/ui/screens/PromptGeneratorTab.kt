@@ -67,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -784,64 +785,127 @@ fun PromptGeneratorTab(
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = copyAction,
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copied) colors.green else colors.navyBanner,
-                                contentColor = colors.navyBannerText
-                            ),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
-                                .testTag("prompt_header_copy_button")
+                    val stackTopActions = LocalDensity.current.fontScale >= 1.35f
+                    if (stackTopActions) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (copied) "Copied!" else "Copy Prompt",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
-                            )
-                        }
+                            Button(
+                                onClick = copyAction,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (copied) colors.green else colors.navyBanner,
+                                    contentColor = colors.navyBannerText
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_header_copy_button")
+                            ) {
+                                Icon(
+                                    if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (copied) "Copied!" else "Copy Prompt",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
 
-                        OutlinedButton(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                clearCurrentMode()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
-                            border = BorderStroke(0.8.dp, colors.border),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .heightIn(min = 44.dp)
-                                .testTag("prompt_reset_button")
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    clearCurrentMode()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                                border = BorderStroke(0.8.dp, colors.border),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_reset_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Reset prompt parameters",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.inkMuted
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Reset",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.ink
+                                )
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Reset prompt parameters",
-                                modifier = Modifier.size(16.dp),
-                                tint = colors.inkMuted
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Reset",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.ink
-                            )
+                            Button(
+                                onClick = copyAction,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (copied) colors.green else colors.navyBanner,
+                                    contentColor = colors.navyBannerText
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_header_copy_button")
+                            ) {
+                                Icon(
+                                    if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (copied) "Copied!" else "Copy Prompt",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    clearCurrentMode()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
+                                border = BorderStroke(0.8.dp, colors.border),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_reset_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Reset prompt parameters",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.inkMuted
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Reset",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.ink
+                                )
+                            }
                         }
                     }
                 }
@@ -1284,10 +1348,12 @@ fun PromptGeneratorTab(
                             }
                         }
 
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             presetCounts.forEach { cnt ->
                                 val isSelected = countInt == cnt
@@ -1305,6 +1371,8 @@ fun PromptGeneratorTab(
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSelected) Color.White else colors.inkBold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
@@ -1349,10 +1417,12 @@ fun PromptGeneratorTab(
                                 color = colors.teal
                             )
                         }
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             listOf("Easy", "Moderate", "Hard", "Extreme", "Mixed").forEach { diff ->
                                 val label = when (diff) {
@@ -1377,6 +1447,8 @@ fun PromptGeneratorTab(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (isSelected) Color.White else colors.inkBold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
@@ -1411,10 +1483,12 @@ fun PromptGeneratorTab(
                                 modifier = Modifier.weight(1f, fill = false)
                             )
                         }
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             listOf(
                                 "Mixed Formats",
@@ -1443,8 +1517,9 @@ fun PromptGeneratorTab(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (isSelected) Color.White else colors.inkBold,
-                                        softWrap = true,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                     )
                                 }
                             }
@@ -1660,10 +1735,12 @@ fun PromptGeneratorTab(
                             )
                         }
 
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             val explanationOptions = listOf(
                                 "Same as Question" to "Same as Question",
@@ -1689,6 +1766,8 @@ fun PromptGeneratorTab(
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSelected) Color.White else colors.inkBold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                                     )
                                 }
@@ -1765,10 +1844,12 @@ fun PromptGeneratorTab(
                             }
                         }
 
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             listOf("Strict JSON", "Standard Text (Aiken)", "Markdown Table").forEach { fmt ->
                                 val isSelected = qState.targetOutputFormat == fmt
@@ -1789,6 +1870,8 @@ fun PromptGeneratorTab(
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSelected) Color.White else colors.inkBold,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
@@ -2282,67 +2365,129 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = copyAction,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("prompt_footer_copy_button"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (copied) colors.green else colors.navyBanner,
-                                contentColor = colors.navyBannerText
-                            )
+                    val stackFooterActions = LocalDensity.current.fontScale >= 1.35f
+                    if (stackFooterActions) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (copied) "Prompt Copied!" else "Copy AI Prompt",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                            Button(
+                                onClick = copyAction,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_footer_copy_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (copied) colors.green else colors.navyBanner,
+                                    contentColor = colors.navyBannerText
+                                )
+                            ) {
+                                Icon(
+                                    if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (copied) "Prompt Copied!" else "Copy AI Prompt",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
 
-                        OutlinedButton(
-                            onClick = onNavigateToCreator,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("prompt_paste_response_button"),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = colors.teal,
-                                containerColor = colors.surface
-                            ),
-                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                            OutlinedButton(
+                                onClick = onNavigateToCreator,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_paste_response_button"),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = colors.teal,
+                                    containerColor = colors.surface
+                                ),
+                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.EditNote,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.teal
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Paste Response",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.EditNote,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = colors.teal
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Paste Response",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Button(
+                                onClick = copyAction,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_footer_copy_button"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (copied) colors.green else colors.navyBanner,
+                                    contentColor = colors.navyBannerText
+                                )
+                            ) {
+                                Icon(
+                                    if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (copied) "Prompt Copied!" else "Copy AI Prompt",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = onNavigateToCreator,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("prompt_paste_response_button"),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = colors.teal,
+                                    containerColor = colors.surface
+                                ),
+                                border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.EditNote,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.teal
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Paste Response",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

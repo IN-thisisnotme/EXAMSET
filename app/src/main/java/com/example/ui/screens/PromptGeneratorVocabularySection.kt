@@ -651,7 +651,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                     }
                 }
 
-                // Origin / Spelling Variant selector (wraps cleanly with FlowRow at any system font scale)
+                // Origin / Spelling Variant selector (single-line horizontal scroll)
                 if (VocabularyLanguageVariants.isEnglish(state.language)) {
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(
@@ -660,10 +660,12 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                             fontWeight = FontWeight.SemiBold,
                             color = colors.inkMuted
                         )
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             VocabularyLanguageVariants.ENGLISH_VARIANTS.forEach { variant ->
                                 val selected = state.languageVariant.equals(variant, ignoreCase = true)
@@ -683,7 +685,8 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (selected) colors.tealDark else colors.inkBold,
                                         maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                     )
                                 }
                             }
@@ -691,37 +694,73 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                     }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = state.language,
-                        onValueChange = { state.language = it },
-                        label = { Text("Target Language", fontSize = 11.5.sp) },
-                        placeholder = { Text("Any language...", fontSize = 11.5.sp) },
-                        singleLine = true,
-                        colors = fieldColors,
-                        shape = RoundedCornerShape(8.dp),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("vocab_prompt_language_input")
-                    )
+                val stackPairedFields = LocalDensity.current.fontScale >= 1.35f
+                if (stackPairedFields) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = state.language,
+                            onValueChange = { state.language = it },
+                            label = { Text("Target Language", fontSize = 11.5.sp) },
+                            placeholder = { Text("Any language...", fontSize = 11.5.sp) },
+                            singleLine = true,
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vocab_prompt_language_input")
+                        )
 
-                    OutlinedTextField(
-                        value = state.translationLanguage,
-                        onValueChange = { state.translationLanguage = it },
-                        label = { Text("Translation (Opt.)", fontSize = 11.5.sp) },
-                        placeholder = { Text("Blank = None", fontSize = 11.5.sp) },
-                        singleLine = true,
-                        colors = fieldColors,
-                        shape = RoundedCornerShape(8.dp),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("vocab_prompt_translation_input")
-                    )
+                        OutlinedTextField(
+                            value = state.translationLanguage,
+                            onValueChange = { state.translationLanguage = it },
+                            label = { Text("Translation (Opt.)", fontSize = 11.5.sp) },
+                            placeholder = { Text("Blank = None", fontSize = 11.5.sp) },
+                            singleLine = true,
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vocab_prompt_translation_input")
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = state.language,
+                            onValueChange = { state.language = it },
+                            label = { Text("Target Language", fontSize = 11.5.sp) },
+                            placeholder = { Text("Any language...", fontSize = 11.5.sp) },
+                            singleLine = true,
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("vocab_prompt_language_input")
+                        )
+
+                        OutlinedTextField(
+                            value = state.translationLanguage,
+                            onValueChange = { state.translationLanguage = it },
+                            label = { Text("Translation (Opt.)", fontSize = 11.5.sp) },
+                            placeholder = { Text("Blank = None", fontSize = 11.5.sp) },
+                            singleLine = true,
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(8.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("vocab_prompt_translation_input")
+                        )
+                    }
                 }
 
                 // Quick translation chips
@@ -861,10 +900,12 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         letterSpacing = 0.5.sp
                     )
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         VocabularyLevel.promptSelectableLevels().forEach { lvl ->
                             val selected = state.levelCode.equals(lvl.code, ignoreCase = true)
@@ -884,6 +925,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (selected) colors.tealDark else colors.inkBold,
                                     maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                 )
                             }
@@ -923,10 +965,12 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkBold
                     )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         COMMON_VOCAB_DOMAINS.forEach { dom ->
                             val selected = state.domain.equals(dom, ignoreCase = true)
@@ -945,7 +989,8 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (selected) colors.amber else colors.inkBold,
                                     maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                 )
                             }
                         }

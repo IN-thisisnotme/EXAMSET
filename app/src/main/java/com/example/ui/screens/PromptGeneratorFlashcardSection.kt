@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -495,10 +496,12 @@ fun LazyListScope.flashcardPromptBuilderItems(
                         }
                     }
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         presetCounts.forEach { cnt ->
                             val isSelected = countInt == cnt
@@ -516,6 +519,8 @@ fun LazyListScope.flashcardPromptBuilderItems(
                                     fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) Color.White else colors.inkBold,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
@@ -547,10 +552,12 @@ fun LazyListScope.flashcardPromptBuilderItems(
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkBold
                     )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         KnowledgeDepth.entries.forEach { d ->
                             val isSelected = state.depth == d
@@ -568,6 +575,8 @@ fun LazyListScope.flashcardPromptBuilderItems(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else colors.inkBold,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
@@ -844,74 +853,143 @@ fun LazyListScope.flashcardPromptBuilderItems(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = onCopyPrompt,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("flashcard_prompt_footer_copy_button"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (copied) colors.green else colors.navyBanner,
-                            contentColor = colors.navyBannerText
-                        )
+                val stackFooterButtons = LocalDensity.current.fontScale >= 1.35f
+                if (stackFooterButtons) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (copied) "Prompt Copied!" else "Copy Prompt",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            onOpenFlashcardStudio(
-                                state.topic.trim().ifBlank { state.subject.trim() },
-                                state.subject.trim(),
-                                KnowledgeCollectionType.FLASHCARDS,
-                                state.toFormatRule()
+                        Button(
+                            onClick = onCopyPrompt,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("flashcard_prompt_footer_copy_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
                             )
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("flashcard_prompt_open_studio_button"),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colors.teal,
-                            containerColor = colors.surface
-                        ),
-                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (copied) "Prompt Copied!" else "Copy Prompt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onOpenFlashcardStudio(
+                                    state.topic.trim().ifBlank { state.subject.trim() },
+                                    state.subject.trim(),
+                                    KnowledgeCollectionType.FLASHCARDS,
+                                    state.toFormatRule()
+                                )
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("flashcard_prompt_open_studio_button"),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = colors.teal,
+                                containerColor = colors.surface
+                            ),
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Style,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.teal
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Deck Studio",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Style,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = colors.teal
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Open Deck Studio",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Button(
+                            onClick = onCopyPrompt,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("flashcard_prompt_footer_copy_button"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
+                            )
+                        ) {
+                            Icon(
+                                if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (copied) "Prompt Copied!" else "Copy Prompt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onOpenFlashcardStudio(
+                                    state.topic.trim().ifBlank { state.subject.trim() },
+                                    state.subject.trim(),
+                                    KnowledgeCollectionType.FLASHCARDS,
+                                    state.toFormatRule()
+                                )
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("flashcard_prompt_open_studio_button"),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = colors.teal,
+                                containerColor = colors.surface
+                            ),
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Style,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = colors.teal
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Deck Studio",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

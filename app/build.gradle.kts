@@ -1,4 +1,7 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 plugins {
   alias(libs.plugins.android.application)
@@ -153,20 +156,61 @@ abstract class CopyExamSetApkTask : org.gradle.api.DefaultTask() {
   @org.gradle.api.tasks.TaskAction
   fun copyApk() {
     val src = sourceApk.get().asFile
+    if (!src.exists()) {
+      throw org.gradle.api.GradleException("Source APK not found at ${src.absolutePath}")
+    }
     val dst = targetApk.get().asFile
-    dst.parentFile?.mkdirs()
-    src.copyTo(dst, overwrite = true)
+    val parent = dst.parentFile ?: throw org.gradle.api.GradleException("Invalid target directory for ${dst.absolutePath}")
+    parent.mkdirs()
+
+    val tempFile = File.createTempFile("ExamSet.", ".apk.tmp", parent)
+    try {
+      src.copyTo(tempFile, overwrite = true)
+      if (tempFile.length() != src.length()) {
+        throw org.gradle.api.GradleException(
+          "Copied temp APK size mismatch (${tempFile.length()} != ${src.length()})"
+        )
+      }
+      Files.move(
+        tempFile.toPath(),
+        dst.toPath(),
+        StandardCopyOption.REPLACE_EXISTING
+      )
+      dst.setLastModified(System.currentTimeMillis())
+      if (!dst.exists() || dst.length() != src.length()) {
+        throw org.gradle.api.GradleException("Failed to replace ${dst.absolutePath} cleanly")
+      }
+      logger.lifecycle("ExamSet APK updated: ${dst.absolutePath} (${dst.length()} bytes)")
+    } finally {
+      if (tempFile.exists()) {
+        tempFile.delete()
+      }
+    }
   }
 }
 
 val copyDebugApkToFolder = tasks.register<CopyExamSetApkTask>("copyDebugApkToFolder") {
-  description = "Copies the compiled APK as ExamSet.apk to the visible /apk project directory"
+  description = "Atomically overwrites apk/ExamSet.apk with the newly built debug APK"
   sourceApk.set(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
   targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
   mustRunAfter("packageDebug")
   outputs.upToDateWhen { false }
+  outputs.cacheIf { false }
+}
+
+val copyReleaseApkToFolder = tasks.register<CopyExamSetApkTask>("copyReleaseApkToFolder") {
+  description = "Atomically overwrites apk/ExamSet.apk with the newly built release APK"
+  sourceApk.set(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
+  targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
+  mustRunAfter("packageRelease", copyDebugApkToFolder)
+  outputs.upToDateWhen { false }
+  outputs.cacheIf { false }
 }
 
 tasks.matching { it.name == "packageDebug" || it.name == "assembleDebug" }.configureEach {
   finalizedBy(copyDebugApkToFolder)
+}
+
+tasks.matching { it.name == "packageRelease" || it.name == "assembleRelease" }.configureEach {
+  finalizedBy(copyReleaseApkToFolder)
 }
