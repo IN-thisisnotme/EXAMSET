@@ -142,11 +142,29 @@ dependencies {
   "ksp"(libs.moshi.kotlin.codegen)
 }
 
-val copyDebugApkToFolder = tasks.register<Copy>("copyDebugApkToFolder") {
+abstract class CopyExamSetApkTask : org.gradle.api.DefaultTask() {
+  @get:org.gradle.api.tasks.InputFile
+  @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.NONE)
+  abstract val sourceApk: org.gradle.api.file.RegularFileProperty
+
+  @get:org.gradle.api.tasks.OutputFile
+  abstract val targetApk: org.gradle.api.file.RegularFileProperty
+
+  @org.gradle.api.tasks.TaskAction
+  fun copyApk() {
+    val src = sourceApk.get().asFile
+    val dst = targetApk.get().asFile
+    dst.parentFile?.mkdirs()
+    src.copyTo(dst, overwrite = true)
+  }
+}
+
+val copyDebugApkToFolder = tasks.register<CopyExamSetApkTask>("copyDebugApkToFolder") {
   description = "Copies the compiled APK as ExamSet.apk to the visible /apk project directory"
-  from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
-  into(rootProject.layout.projectDirectory.dir("apk"))
-  rename { "ExamSet.apk" }
+  sourceApk.set(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+  targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
+  mustRunAfter("packageDebug")
+  outputs.upToDateWhen { false }
 }
 
 tasks.matching { it.name == "packageDebug" || it.name == "assembleDebug" }.configureEach {

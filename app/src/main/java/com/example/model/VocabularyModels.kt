@@ -182,6 +182,9 @@ enum class VocabularyLevel(
         fun folderSelectableLevels(): List<VocabularyLevel> =
             listOf(BEGINNER, ELEMENTARY, INTERMEDIATE, UPPER_INTERMEDIATE, ADVANCED, MASTERY)
 
+        fun promptSelectableLevels(): List<VocabularyLevel> =
+            listOf(BEGINNER, ELEMENTARY, INTERMEDIATE, UPPER_INTERMEDIATE, ADVANCED, MASTERY, MIXED, CUSTOM)
+
         fun fromCode(raw: String?): VocabularyLevel {
             if (raw.isNullOrBlank()) return INTERMEDIATE
             val clean = raw.trim().lowercase(Locale.ROOT)
@@ -373,13 +376,32 @@ data class VocabularyEntry(
 
     companion object {
         fun normalizeVocabularyWordKey(raw: String): String {
-            val trimmed = raw.trim().replace(Regex("\\s+"), " ")
+            val trimmed = raw.trim()
+                .replace("\u00AD", "")
+                .replace(Regex("[\u2018\u2019\u02BC]"), "'")
+                .replace(Regex("[\u2010\u2011\u2012\u2013\u2014]"), "-")
+                .replace(Regex("\\s+"), " ")
             if (trimmed.isBlank()) return ""
             val nfkd = Normalizer.normalize(trimmed, Normalizer.Form.NFKD)
             val strippedCombining = nfkd.replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
             return strippedCombining
                 .lowercase(Locale.ROOT)
                 .replace(Regex("^[\\p{Punct}\\s]+|[\\p{Punct}\\s]+$"), "")
+        }
+
+        /**
+         * Secondary comparison key that collapses internal hyphens and spaces for Latin-script
+         * spelling variants (e.g., "psycho-pathic" vs "psychopathic") without altering non-Latin terms.
+         */
+        fun canonicalSpellingMatchKey(raw: String): String {
+            val base = normalizeVocabularyWordKey(raw)
+            if (base.isBlank()) return ""
+            val hasAsciiLetter = base.any { it in 'a'..'z' }
+            return if (hasAsciiLetter) {
+                base.replace(Regex("[-\\s']+"), "")
+            } else {
+                base
+            }
         }
 
         fun fromJson(obj: JSONObject?): VocabularyEntry? {
@@ -609,6 +631,17 @@ data class HeadwordQueueItem(
 ) {
     fun normalizedWordKey(): String = VocabularyEntry.normalizeVocabularyWordKey(word)
 
+    fun resolvedLevel(): VocabularyLevel = VocabularyLevel.fromCode(levelCode)
+
+    fun effectiveLevelBadge(lang: String = this.language): String {
+        val lvl = resolvedLevel()
+        return if (lvl == VocabularyLevel.CUSTOM && customLevelLabel.isNotBlank()) {
+            customLevelLabel.trim().take(12)
+        } else {
+            lvl.compactBadgeForLanguage(lang.ifBlank { this.language }, customLevelLabel)
+        }
+    }
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("word", word.trim())
@@ -633,7 +666,7 @@ data class HeadwordQueueItem(
                 levelCode = obj.optString("levelCode", "B2").trim().ifBlank { "B2" },
                 customLevelLabel = obj.optString("customLevelLabel", "").trim(),
                 partOfSpeech = obj.optString("partOfSpeech", "").trim(),
-                domain = obj.optString("domain", "Competitive Exam Editorial").trim().ifBlank { "Competitive Exam Editorial" },
+                domain = obj.optString("domain", "General").trim().ifBlank { "General" },
                 utilityReason = obj.optString("utilityReason", "").trim(),
                 addedAt = obj.optLong("addedAt", System.currentTimeMillis())
             )
@@ -646,6 +679,7 @@ data class HeadwordFilterResult(
     val skippedAlreadyInDeckCount: Int,
     val skippedAlreadyInQueueCount: Int,
     val skippedDismissedCount: Int,
-    val totalProcessedCount: Int
+    val totalProcessedCount: Int,
+    val skippedOffLevelCount: Int = 0
 )
 

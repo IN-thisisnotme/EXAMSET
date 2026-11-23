@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -69,6 +70,8 @@ import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
 import com.example.model.VocabularyUtilityTier
 import com.example.ui.theme.ExamColorPalette
+
+const val MAX_INLINE_VOCAB_EXCLUDE_WORDS = 100
 
 class VocabularyPromptState {
     var language by mutableStateOf("English")
@@ -203,7 +206,7 @@ class VocabularyPromptState {
                     appendLine("- Proficiency Calibration: Assign each word's exact A1–C2 level equivalent for $lang")
                 }
                 else -> {
-                    appendLine("- Target Proficiency Level: $levelLabel (standardized level code: ${lvl.code})")
+                    appendLine("- Target Proficiency Level: $levelLabel (STRICT level code: ${lvl.code} ONLY)")
                 }
             }
             appendLine("- Language Calibration: $langProficiencyGuide")
@@ -221,10 +224,16 @@ class VocabularyPromptState {
             appendLine("### STRICT QUALITY & ANTI-REPETITION RULES")
             appendLine("1. ZERO REPETITION: Every entry must be a distinct, unique headword. Never repeat the same word or near-identical inflections.")
             appendLine("2. SORTING: Return the final vocabulary list sorted strictly in ASCENDING alphabetical order (A -> Z).")
-            if (isMixedOrCustom) {
-                appendLine("3. EXACT PER-WORD LEVEL TAGGING: Calibrate EVERY word individually and set `level` to its exact tier code (`A1`, `A2`, `B1`, `B2`, `C1`, or `C2`) for $lang. NEVER write \"MIXED\", \"Progressive\", or \"CUSTOM\" in `level`. Also label partOfSpeech accurately.")
-            } else {
-                appendLine("3. CATEGORY & LEVEL PRECISION: Accurately label partOfSpeech (noun, verb, adjective, adverb, idiom, phrasal verb, etc.) and tag `level` with each word's true proficiency code (`A1`–`C2`, targeting `${lvl.code}`).")
+            when (lvl) {
+                VocabularyLevel.MIXED -> {
+                    appendLine("3. EXACT PER-WORD LEVEL TAGGING: Calibrate EVERY word individually and set `level` to its exact tier code (`A1`, `A2`, `B1`, `B2`, `C1`, or `C2`) for $lang. NEVER write \"MIXED\", \"Progressive\", or \"CUSTOM\" in `level`. Also label partOfSpeech accurately.")
+                }
+                VocabularyLevel.CUSTOM -> {
+                    appendLine("3. CUSTOM TRACK & LEVEL PRECISION: Align every word with `${cleanCustomTrack.ifBlank { "Custom Track" }}`, label partOfSpeech accurately, and set `level` to its exact CEFR equivalent (`A1`–`C2`).")
+                }
+                else -> {
+                    appendLine("3. STRICT LEVEL FILTER: Generate ONLY ${lvl.code} ($levelLabel) vocabulary in $lang. Do NOT include words from any other proficiency level. Every entry MUST use `\"level\": \"${lvl.code}\"` and accurately label partOfSpeech.")
+                }
             }
             if (variantDirective.isNotBlank()) {
                 appendLine("4. ORIGIN & SPELLING STANDARD: $variantDirective")
@@ -243,8 +252,18 @@ class VocabularyPromptState {
                 appendLine("${nextNum++}. USAGE & NUANCE NOTE: Add a brief 1-sentence note clarifying register, common learner mistake, or subtle difference from close synonyms.")
             }
             if (excludeAlreadySavedWords && existingWordsToAvoid.isNotEmpty()) {
-                val capped = existingWordsToAvoid.take(120).joinToString(", ")
-                appendLine("${nextNum++}. EXCLUDE ALREADY SAVED WORDS: Do NOT include any of these already-saved words: $capped")
+                val scopeLabel = when (lvl) {
+                    VocabularyLevel.MIXED -> "ALL $lang LEVELS COMBINED"
+                    VocabularyLevel.CUSTOM -> "${cleanCustomTrack.ifBlank { "Custom Track" }} $lang"
+                    else -> "${lvl.code} $lang"
+                }
+                val cappedList = existingWordsToAvoid.take(MAX_INLINE_VOCAB_EXCLUDE_WORDS)
+                val capNote = if (existingWordsToAvoid.size > MAX_INLINE_VOCAB_EXCLUDE_WORDS) {
+                    ", showing first ${cappedList.size} to protect token limits"
+                } else {
+                    ""
+                }
+                appendLine("${nextNum++}. EXCLUDE EXISTING $scopeLabel WORDS (${existingWordsToAvoid.size} already saved/queued in $scopeLabel$capNote): Do NOT repeat or include any of these existing $scopeLabel words: ${cappedList.joinToString(", ")}")
             }
             if (customInstruction.isNotBlank()) {
                 appendLine("${nextNum}. CUSTOM RULE: ${customInstruction.trim()}")
@@ -338,7 +357,17 @@ class VocabularyPromptState {
                 appendLine("- Regional Origin / Standard: ${VocabularyLanguageVariants.displayLabel(resolvedVariant)}")
             }
             appendLine("- Utility Tier: ${utilityTier.title} — ${utilityTier.subtitle}")
-            appendLine("- Target Proficiency Level: $levelLabel (code: ${lvl.code})")
+            when (lvl) {
+                VocabularyLevel.MIXED -> {
+                    appendLine("- Proficiency Spread: Mixed / Progressive across A1–C2 in $lang")
+                }
+                VocabularyLevel.CUSTOM -> {
+                    appendLine("- Curriculum / Track Focus: ${customLevelLabel.trim().ifBlank { "Custom Track" }}")
+                }
+                else -> {
+                    appendLine("- Target Proficiency Level: $levelLabel (STRICT level code: ${lvl.code} ONLY)")
+                }
+            }
             appendLine("- Language Calibration: $langProficiencyGuide")
             appendLine("- Domain / Register: $domainClean")
             appendLine("- Focus Theme / Source Context: $topicLine")
@@ -347,14 +376,34 @@ class VocabularyPromptState {
             appendLine("1. PRACTICAL HIGH-UTILITY ONLY: Include only meaningful words genuinely encountered in daily intelligent reading, editorials, literature, and competitive exams. Strictly SKIP archaic trivia, ultra-obscure dictionary curiosities, and redundant filler.")
             appendLine("2. ZERO REPETITION: Every entry must be a unique base headword (lemma). Do not repeat inflected forms.")
             appendLine("3. SORTING: Sort the JSON array strictly in ASCENDING alphabetical order (A -> Z).")
-            appendLine("4. CALIBRATED LEVEL: Set `level` accurately to each word's true tier (`A1`, `A2`, `B1`, `B2`, `C1`, or `C2`).")
+            when (lvl) {
+                VocabularyLevel.MIXED -> {
+                    appendLine("4. CALIBRATED LEVEL: Set `level` accurately to each word's true tier (`A1`, `A2`, `B1`, `B2`, `C1`, or `C2`).")
+                }
+                VocabularyLevel.CUSTOM -> {
+                    appendLine("4. CUSTOM TRACK LEVEL: Match `${customLevelLabel.trim().ifBlank { "Custom Track" }}` and set `level` to each word's true CEFR equivalent (`A1`–`C2`).")
+                }
+                else -> {
+                    appendLine("4. STRICT LEVEL FILTER: Include ONLY ${lvl.code} ($levelLabel) headwords in $lang. Set `\"level\": \"${lvl.code}\"` on EVERY item—do NOT mix in words from any other proficiency level.")
+                }
+            }
             var nextNum = 5
             if (variantDirective.isNotBlank()) {
                 appendLine("${nextNum++}. SPELLING STANDARD: $variantDirective")
             }
             if (excludeAlreadySavedWords && existingWordsToAvoid.isNotEmpty()) {
-                val capped = existingWordsToAvoid.take(150).joinToString(", ")
-                appendLine("${nextNum++}. EXCLUDE ALREADY SAVED / QUEUED / IGNORED WORDS: Do NOT include any of these words: $capped")
+                val scopeLabel = when (lvl) {
+                    VocabularyLevel.MIXED -> "ALL $lang LEVELS COMBINED"
+                    VocabularyLevel.CUSTOM -> "${customLevelLabel.trim().ifBlank { "Custom Track" }} $lang"
+                    else -> "${lvl.code} $lang"
+                }
+                val cappedList = existingWordsToAvoid.take(MAX_INLINE_VOCAB_EXCLUDE_WORDS)
+                val capNote = if (existingWordsToAvoid.size > MAX_INLINE_VOCAB_EXCLUDE_WORDS) {
+                    ", showing first ${cappedList.size} to protect token limits"
+                } else {
+                    ""
+                }
+                appendLine("${nextNum++}. EXCLUDE EXISTING $scopeLabel WORDS (${existingWordsToAvoid.size} already saved/queued/ignored in $scopeLabel$capNote): Do NOT repeat or include any of these $scopeLabel words: ${cappedList.joinToString(", ")}")
             }
             if (customInstruction.isNotBlank()) {
                 appendLine("${nextNum}. CUSTOM RULE: ${customInstruction.trim()}")
@@ -439,10 +488,10 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = "LANGUAGE & FOCUS THEME",
@@ -460,6 +509,9 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.tealDark,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
@@ -496,14 +548,14 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (selected) colors.tealDark else colors.inkBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = labelPair.second,
                                     fontSize = 10.sp,
                                     color = colors.inkMuted,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -599,7 +651,7 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                     }
                 }
 
-                // Origin / Spelling Variant selector (UK Oxford default for English, US / Neutral / custom option)
+                // Origin / Spelling Variant selector (wraps cleanly with FlowRow at any system font scale)
                 if (VocabularyLanguageVariants.isEnglish(state.language)) {
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(
@@ -608,11 +660,10 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                             fontWeight = FontWeight.SemiBold,
                             color = colors.inkMuted
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             VocabularyLanguageVariants.ENGLISH_VARIANTS.forEach { variant ->
                                 val selected = state.languageVariant.equals(variant, ignoreCase = true)
@@ -728,42 +779,6 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         .fillMaxWidth()
                         .testTag("vocab_prompt_topic_input")
                 )
-
-                // Exclude already-saved words helper when decks exist for this language
-                if (existingLanguageWordCount > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(9.dp),
-                        color = colors.tealLight.copy(alpha = 0.4f),
-                        border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.35f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { state.excludeAlreadySavedWords = !state.excludeAlreadySavedWords }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = state.excludeAlreadySavedWords,
-                                onCheckedChange = { state.excludeAlreadySavedWords = it },
-                                colors = CheckboxDefaults.colors(checkedColor = colors.teal)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Exclude $existingLanguageWordCount already-saved ${state.language.ifBlank { "English" }} words",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.inkBold
-                                )
-                                Text(
-                                    text = "Prevents AI from repeating vocabulary already in your Vocabulary Hub",
-                                    fontSize = 10.5.sp,
-                                    color = colors.inkMuted
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -846,13 +861,12 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         letterSpacing = 0.5.sp
                     )
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        VocabularyLevel.folderSelectableLevels().forEach { lvl ->
+                        VocabularyLevel.promptSelectableLevels().forEach { lvl ->
                             val selected = state.levelCode.equals(lvl.code, ignoreCase = true)
                             Surface(
                                 onClick = { state.levelCode = lvl.code },
@@ -869,13 +883,30 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                     fontSize = 11.5.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (selected) colors.tealDark else colors.inkBold,
+                                    maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                 )
                             }
                         }
                     }
 
-                    val activeDescriptor = VocabularyLevel.fromCode(state.levelCode)
+                    val selectedLvlEnum = VocabularyLevel.fromCode(state.levelCode)
+                    if (selectedLvlEnum == VocabularyLevel.CUSTOM) {
+                        OutlinedTextField(
+                            value = state.customLevelLabel,
+                            onValueChange = { state.customLevelLabel = it },
+                            label = { Text("Custom Curriculum / Exam Track", fontSize = 11.5.sp) },
+                            placeholder = { Text("e.g. JLPT N3, HSK 4, GRE, UPSC", fontSize = 11.5.sp) },
+                            singleLine = true,
+                            colors = vocabFieldColors(colors),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vocab_custom_level_input")
+                        )
+                    }
+
+                    val activeDescriptor = selectedLvlEnum
                         .descriptorForLanguage(state.language, state.customLevelLabel)
                     Text(
                         text = activeDescriptor.description,
@@ -892,11 +923,10 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkBold
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         COMMON_VOCAB_DOMAINS.forEach { dom ->
                             val selected = state.domain.equals(dom, ignoreCase = true)
@@ -914,7 +944,75 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                     fontSize = 11.5.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (selected) colors.amber else colors.inkBold,
+                                    maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = colors.borderLight)
+
+                    // Level-scoped Exclude control positioned right below Level & Domain selection
+                    val langTitle = state.language.trim().ifBlank { "English" }
+                    val levelScopeText = when (selectedLvlEnum) {
+                        VocabularyLevel.MIXED -> "All $langTitle levels"
+                        VocabularyLevel.CUSTOM -> "${state.customLevelLabel.trim().ifBlank { "Custom" }} $langTitle"
+                        else -> "${selectedLvlEnum.compactBadgeForLanguage(langTitle)} $langTitle"
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (existingLanguageWordCount > 0) {
+                            colors.tealLight.copy(alpha = 0.4f)
+                        } else {
+                            colors.surfaceVariant.copy(alpha = 0.35f)
+                        },
+                        border = BorderStroke(
+                            0.7.dp,
+                            if (existingLanguageWordCount > 0) colors.teal.copy(alpha = 0.35f) else colors.border
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (existingLanguageWordCount > 0) {
+                                    Modifier.clickable { state.excludeAlreadySavedWords = !state.excludeAlreadySavedWords }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .testTag("vocab_exclude_level_card")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (existingLanguageWordCount > 0) {
+                                Checkbox(
+                                    checked = state.excludeAlreadySavedWords,
+                                    onCheckedChange = { state.excludeAlreadySavedWords = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = colors.teal)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (existingLanguageWordCount > 0) {
+                                        "Exclude $existingLanguageWordCount existing $levelScopeText words"
+                                    } else {
+                                        "0 existing $levelScopeText words to exclude"
+                                    },
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = if (existingLanguageWordCount > MAX_INLINE_VOCAB_EXCLUDE_WORDS) {
+                                        "Filtered strictly to $levelScopeText (first $MAX_INLINE_VOCAB_EXCLUDE_WORDS listed in prompt to protect token limits; all duplicates filtered on import)"
+                                    } else {
+                                        "Filtered strictly to your $levelScopeText saved library & inbox (not all levels combined)"
+                                    },
+                                    fontSize = 10.5.sp,
+                                    color = colors.inkMuted,
+                                    lineHeight = 14.sp
                                 )
                             }
                         }
@@ -1112,10 +1210,10 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -1139,91 +1237,155 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.tealDark,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.surfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
-                        .border(0.7.dp, colors.border, RoundedCornerShape(10.dp))
-                        .horizontalScroll(rememberScrollState())
-                        .padding(12.dp)
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = colors.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(0.7.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = generatedPrompt,
                         fontSize = 11.5.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = colors.ink,
+                        color = colors.inkBold,
                         lineHeight = 17.sp,
-                        maxLines = 18,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
+                        softWrap = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                            .testTag("vocab_prompt_preview_text")
                     )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = onCopyPrompt,
-                        shape = RoundedCornerShape(9.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (copied) colors.green else colors.navyBanner,
-                            contentColor = colors.navyBannerText
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("vocab_prompt_copy_button")
+                val isLargeFontScale = LocalDensity.current.fontScale >= 1.3f
+                if (isLargeFontScale) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (copied) "Copied!" else "Copy Prompt",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
+                        Button(
+                            onClick = onCopyPrompt,
+                            shape = RoundedCornerShape(9.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("vocab_prompt_copy_button")
+                        ) {
+                            Icon(
+                                imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (copied) "Copied!" else "Copy Prompt",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
 
-                    OutlinedButton(
-                        onClick = onOpenVocabularyHub,
-                        shape = RoundedCornerShape(9.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = colors.surface,
-                            contentColor = colors.tealDark
-                        ),
-                        border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.55f)),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp)
-                            .testTag("vocab_prompt_open_hub_button")
+                        OutlinedButton(
+                            onClick = onOpenVocabularyHub,
+                            shape = RoundedCornerShape(9.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = colors.surface,
+                                contentColor = colors.tealDark
+                            ),
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.55f)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("vocab_prompt_open_hub_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Vocab Hub",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Translate,
-                            contentDescription = null,
-                            tint = colors.teal,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Open Vocab Hub",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Button(
+                            onClick = onCopyPrompt,
+                            shape = RoundedCornerShape(9.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (copied) colors.green else colors.navyBanner,
+                                contentColor = colors.navyBannerText
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("vocab_prompt_copy_button")
+                        ) {
+                            Icon(
+                                imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (copied) "Copied!" else "Copy Prompt",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenVocabularyHub,
+                            shape = RoundedCornerShape(9.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = colors.surface,
+                                contentColor = colors.tealDark
+                            ),
+                            border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.55f)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("vocab_prompt_open_hub_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Vocab Hub",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

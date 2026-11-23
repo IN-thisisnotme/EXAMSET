@@ -296,6 +296,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _dismissedWordKeys = MutableStateFlow(appPreferences.getDismissedWordKeys())
     val dismissedWordKeys: StateFlow<Set<String>> = _dismissedWordKeys.asStateFlow()
+    private val dismissedScopeByWordKey = mutableMapOf<String, Pair<String, String>>()
 
     private var activeWotdLanguage: String? = null
     private val _wordOfTheDayState = MutableStateFlow<WordOfTheDayUiState>(
@@ -449,6 +450,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val dismissed = _dismissedWordKeys.value.toList()
         return (deckWords + inboxWords + dismissed)
             .distinctBy { VocabularyEntry.normalizeVocabularyWordKey(it) }
+            .sortedBy { it.lowercase() }
+    }
+
+    /**
+     * Filters existing saved vocabulary, queued headwords, and level-tagged dismissed words
+     * strictly to the requested (language, levelCode) pair unless [levelCode] is MIXED.
+     */
+    fun existingVocabularyAndQueuedWords(
+        language: String,
+        levelCode: String,
+        customLevelLabel: String = ""
+    ): List<String> {
+        val targetLevel = VocabularyLevel.fromCode(levelCode)
+        if (targetLevel == VocabularyLevel.MIXED) {
+            return existingVocabularyAndQueuedWordsForLanguage(language)
+        }
+        val cleanLang = language.trim().lowercase().ifBlank { "english" }
+        val cleanCustom = customLevelLabel.trim()
+
+        val deckWords = _vocabularyDecks.value
+            .filter { it.language.trim().lowercase() == cleanLang }
+            .flatMap { deck ->
+                deck.entries.filter { entry ->
+                    val effectiveLevel = VocabularyLevel.fromCode(entry.levelCode.ifBlank { deck.levelCode })
+                    if (effectiveLevel != targetLevel) return@filter false
+                    if (targetLevel == VocabularyLevel.CUSTOM && cleanCustom.isNotBlank()) {
+                        val effectiveCustom = entry.customLevelLabel.ifBlank { deck.customLevelLabel }.trim()
+                        effectiveCustom.equals(cleanCustom, ignoreCase = true)
+                    } else {
+                        true
+                    }
+                }
+            }
+            .map { it.word.trim() }
+            .filter { it.isNotBlank() }
+
+        val inboxWords = _headwordInbox.value
+            .filter { item ->
+                if (item.language.trim().lowercase() != cleanLang) return@filter false
+                if (item.resolvedLevel() != targetLevel) return@filter false
+                if (targetLevel == VocabularyLevel.CUSTOM && cleanCustom.isNotBlank()) {
+                    item.customLevelLabel.trim().equals(cleanCustom, ignoreCase = true)
+                } else {
+                    true
+                }
+            }
+            .map { it.word.trim() }
+            .filter { it.isNotBlank() }
+
+        val scopedDismissed = _dismissedWordKeys.value.filter { rawKey ->
+            val norm = VocabularyEntry.normalizeVocabularyWordKey(rawKey)
+            val scope = dismissedScopeByWordKey[norm]
+            scope != null && scope.first == cleanLang && scope.second == targetLevel.code
+        }
+
+        return (deckWords + inboxWords + scopedDismissed)
+            .distinctBy {
+                VocabularyEntry.canonicalSpellingMatchKey(it)
+                    .ifBlank { VocabularyEntry.normalizeVocabularyWordKey(it) }
+            }
             .sortedBy { it.lowercase() }
     }
 
@@ -988,13 +1049,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _statusMessage.value = "Applied ${findings.size} vocabulary audit fix(es)"
     }
 
-    fun importHeadwordsJson(rawJson: String, defaultLanguage: String = "English"): HeadwordFilterResult {
+    fun importHeadwordsJson(
+        rawJson: String,
+        defaultLanguage: String = "English",
+        requiredLevelCode: String? = null,
+        requiredCustomLevelLabel: String = ""
+    ): HeadwordFilterResult {
         val parsed = VocabularyEngine.parseHeadwordsJson(rawJson, defaultLanguage)
         val filterResult = VocabularyEngine.filterNewHeadwords(
             incoming = parsed,
             existingDecks = _vocabularyDecks.value,
             existingQueue = _headwordInbox.value,
-            dismissedKeys = _dismissedWordKeys.value
+            dismissedKeys = _dismissedWordKeys.value,
+            requiredLevelCode = requiredLevelCode,
+            requiredCustomLevelLabel = requiredCustomLevelLabel
         )
         if (filterResult.addedItems.isNotEmpty()) {
             val updatedQueue = _headwordInbox.value + filterResult.addedItems
@@ -1003,13 +1071,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val skippedTotal = filterResult.skippedAlreadyInDeckCount +
             filterResult.skippedAlreadyInQueueCount +
-            filterResult.skippedDismissedCount
+            filterResult.skippedDismissedCount +
+            filterResult.skippedOffLevelCount
         val msg = if (filterResult.addedItems.isNotEmpty()) {
             "Added ${filterResult.addedItems.size} headword(s) to inbox" +
-                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/saved/dismissed)" else ""
+                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/off-level/dismissed)" else ""
         } else {
             "No new headwords added" +
-                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/saved/dismissed)" else ""
+                if (skippedTotal > 0) " (Skipped $skippedTotal duplicate/off-level/dismissed)" else ""
         }
         _statusMessage.value = msg
         return filterResult
@@ -1052,6 +1121,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissHeadword(queueItemId: String) {
         val item = _headwordInbox.value.firstOrNull { it.id == queueItemId } ?: return
         val norm = item.normalizedWordKey()
+        dismissedScopeByWordKey[norm] = item.language.trim().lowercase().ifBlank { "english" } to item.resolvedLevel().code
         val updatedQueue = _headwordInbox.value.filterNot { it.id == queueItemId }
         _headwordInbox.value = updatedQueue
         appPreferences.saveHeadwordInbox(updatedQueue)
@@ -1079,9 +1149,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun generateEnrichmentPromptForBatch(
         language: String,
         maxCount: Int = 15,
-        translationLanguage: String = vocabularyPromptState.translationLanguage
+        translationLanguage: String = vocabularyPromptState.translationLanguage,
+        levelCodeFilter: String? = null,
+        categoryFilter: String? = null
     ): String {
-        val langItems = _headwordInbox.value.filter { it.language.equals(language, ignoreCase = true) }
+        val cleanLevel = levelCodeFilter?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("All", ignoreCase = true)
+        }
+        val cleanCategory = categoryFilter?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("All", ignoreCase = true)
+        }
+        val langItems = _headwordInbox.value.filter { item ->
+            val matchLang = item.language.equals(language, ignoreCase = true)
+            val matchLevel = cleanLevel == null || item.resolvedLevel().code.equals(cleanLevel, ignoreCase = true)
+            val matchCat = cleanCategory == null || item.domain.equals(cleanCategory, ignoreCase = true)
+            matchLang && matchLevel && matchCat
+        }
         val batch = langItems.take(maxCount)
         return VocabularyEngine.buildStage2EnrichmentPrompt(
             items = batch,

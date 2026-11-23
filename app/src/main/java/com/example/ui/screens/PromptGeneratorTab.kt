@@ -609,8 +609,19 @@ fun PromptGeneratorTab(
         }
     }
 
-    val existingVocabWordsForLang = remember(vocabularyDecks, headwordInbox, dismissedWordKeys, vocabState.language) {
-        viewModel.existingVocabularyAndQueuedWordsForLanguage(vocabState.language)
+    val existingVocabWordsForLang = remember(
+        vocabularyDecks,
+        headwordInbox,
+        dismissedWordKeys,
+        vocabState.language,
+        vocabState.levelCode,
+        vocabState.customLevelLabel
+    ) {
+        viewModel.existingVocabularyAndQueuedWords(
+            language = vocabState.language,
+            levelCode = vocabState.levelCode,
+            customLevelLabel = vocabState.customLevelLabel
+        )
     }
     val generatedVocabPrompt = remember(
         vConfig, vocabState.topic, vocabState.excludeAlreadySavedWords, existingVocabWordsForLang
@@ -2337,15 +2348,14 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                 }
             }
         }
-
-                item(key = "bottom_spacer") {
-                    Spacer(
-                        modifier = Modifier
-                            .navigationBarsPadding()
-                            .height(24.dp)
-                    )
-                }
             }
+        }
+        item(key = "bottom_spacer") {
+            Spacer(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .height(24.dp)
+            )
         }
     }
 
@@ -2444,7 +2454,13 @@ Q1. Nitrogen accounts for approximately 78% of Earth's atmosphere by volume."""
                 PromptPresetMode.QUESTION_SET -> generatedPrompt
                 PromptPresetMode.KNOWLEDGE_SET -> knowledgeState.buildPrompt()
                 PromptPresetMode.FLASHCARD_SET -> flashcardState.buildPrompt()
-                PromptPresetMode.VOCABULARY -> vocabState.buildPrompt(viewModel.existingVocabularyWordsForLanguage(vocabState.language))
+                PromptPresetMode.VOCABULARY -> vocabState.buildPrompt(
+                    viewModel.existingVocabularyAndQueuedWords(
+                        language = vocabState.language,
+                        levelCode = vocabState.levelCode,
+                        customLevelLabel = vocabState.customLevelLabel
+                    )
+                )
             }
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clipboard.setPrimaryClip(ClipData.newPlainText(preset.name, promptToCopy))

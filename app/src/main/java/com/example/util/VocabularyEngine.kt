@@ -2569,7 +2569,7 @@ object VocabularyEngine {
                                 }
                                 val pos = firstNonBlank(rawElem, "pos", "partOfSpeech", "category", "wordClass")
                                 val domain = firstNonBlank(rawElem, "domain", "category", "register")
-                                    .ifBlank { "Competitive Exam Editorial" }
+                                    .ifBlank { "General" }
                                 val reason = firstNonBlank(rawElem, "utilityReason", "reason", "utility", "context", "hint")
                                 add(
                                     HeadwordQueueItem(
@@ -2597,54 +2597,89 @@ object VocabularyEngine {
         incoming: List<HeadwordQueueItem>,
         existingDecks: List<VocabularyDeck>,
         existingQueue: List<HeadwordQueueItem>,
-        dismissedKeys: Set<String>
+        dismissedKeys: Set<String>,
+        requiredLevelCode: String? = null,
+        requiredCustomLevelLabel: String = ""
     ): HeadwordFilterResult {
+        val strictLevel: VocabularyLevel? = requiredLevelCode
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && !it.equals("ALL", ignoreCase = true) && !it.equals("MIXED", ignoreCase = true) }
+            ?.let { VocabularyLevel.fromCode(it) }
+            ?.takeUnless { it == VocabularyLevel.MIXED }
+
         val existingDeckKeysByLang = mutableMapOf<String, MutableSet<String>>()
+        val existingDeckCanonicalByLang = mutableMapOf<String, MutableSet<String>>()
         existingDecks.forEach { deck ->
             val langKey = deck.language.trim().lowercase(Locale.ROOT)
             val set = existingDeckKeysByLang.getOrPut(langKey) { mutableSetOf() }
+            val canonSet = existingDeckCanonicalByLang.getOrPut(langKey) { mutableSetOf() }
             deck.entries.forEach { entry ->
                 val k = entry.normalizedWordKey()
                 if (k.isNotBlank()) set.add(k)
+                val ck = VocabularyEntry.canonicalSpellingMatchKey(entry.word)
+                if (ck.isNotBlank()) canonSet.add(ck)
             }
         }
 
         val queueKeysByLang = mutableMapOf<String, MutableSet<String>>()
+        val queueCanonicalByLang = mutableMapOf<String, MutableSet<String>>()
         existingQueue.forEach { item ->
             val langKey = item.language.trim().lowercase(Locale.ROOT)
             val set = queueKeysByLang.getOrPut(langKey) { mutableSetOf() }
+            val canonSet = queueCanonicalByLang.getOrPut(langKey) { mutableSetOf() }
             val k = item.normalizedWordKey()
             if (k.isNotBlank()) set.add(k)
+            val ck = VocabularyEntry.canonicalSpellingMatchKey(item.word)
+            if (ck.isNotBlank()) canonSet.add(ck)
         }
 
         val normalizedDismissed = dismissedKeys.map { VocabularyEntry.normalizeVocabularyWordKey(it) }.toSet()
+        val canonicalDismissed = dismissedKeys.map { VocabularyEntry.canonicalSpellingMatchKey(it) }.toSet()
 
         val added = mutableListOf<HeadwordQueueItem>()
         var skippedInDeck = 0
         var skippedInQueue = 0
         var skippedDismissed = 0
+        var skippedOffLevel = 0
 
         incoming.forEach { item ->
             val key = item.normalizedWordKey()
             if (key.isBlank()) return@forEach
+            val canonKey = VocabularyEntry.canonicalSpellingMatchKey(item.word)
+
+            if (strictLevel != null) {
+                val itemLvl = item.resolvedLevel()
+                val levelMatches = itemLvl == strictLevel && (
+                    strictLevel != VocabularyLevel.CUSTOM ||
+                        requiredCustomLevelLabel.isBlank() ||
+                        item.customLevelLabel.equals(requiredCustomLevelLabel.trim(), ignoreCase = true)
+                    )
+                if (!levelMatches) {
+                    skippedOffLevel++
+                    return@forEach
+                }
+            }
 
             val langKey = item.language.trim().lowercase(Locale.ROOT)
             val deckSet = existingDeckKeysByLang[langKey] ?: emptySet()
+            val deckCanon = existingDeckCanonicalByLang[langKey] ?: emptySet()
             val queueSet = queueKeysByLang.getOrPut(langKey) { mutableSetOf() }
+            val queueCanon = queueCanonicalByLang.getOrPut(langKey) { mutableSetOf() }
 
             when {
-                key in deckSet -> {
+                key in deckSet || (canonKey.isNotBlank() && canonKey in deckCanon) -> {
                     skippedInDeck++
                 }
-                key in queueSet -> {
+                key in queueSet || (canonKey.isNotBlank() && canonKey in queueCanon) -> {
                     skippedInQueue++
                 }
-                key in normalizedDismissed -> {
+                key in normalizedDismissed || (canonKey.isNotBlank() && canonKey in canonicalDismissed) -> {
                     skippedDismissed++
                 }
                 else -> {
                     added.add(item)
                     queueSet.add(key)
+                    if (canonKey.isNotBlank()) queueCanon.add(canonKey)
                 }
             }
         }
@@ -2654,7 +2689,8 @@ object VocabularyEngine {
             skippedAlreadyInDeckCount = skippedInDeck,
             skippedAlreadyInQueueCount = skippedInQueue,
             skippedDismissedCount = skippedDismissed,
-            totalProcessedCount = incoming.size
+            totalProcessedCount = incoming.size,
+            skippedOffLevelCount = skippedOffLevel
         )
     }
 
@@ -2676,6 +2712,9 @@ object VocabularyEngine {
             "- ${item.word.trim()}$posHint [Target Level: ${item.levelCode}]$hint"
         }
 
+        val distinctBatchLevels = items.map { it.resolvedLevel().code }.distinct()
+        val singleBatchLevel = distinctBatchLevels.singleOrNull()
+
         return buildString {
             appendLine("Act as a chief lexicographer, exam setter, and language pedagogue for $lang.")
             appendLine("Enrich ONLY the following ${items.size} headword(s) into complete vocabulary cards:")
@@ -2687,7 +2726,11 @@ object VocabularyEngine {
             if (variantDirective.isNotBlank()) {
                 appendLine("3. SPELLING & PRONUNCIATION: $variantDirective")
             }
-            appendLine("4. For each word verify/provide: accurate partOfSpeech, calibrated CEFR level (`A1`–`C2`), crisp learner-friendly meaning, IPA/romanization pronunciation, 3 natural example sentences across distinct contexts (Everyday, Workplace/Academic, Editorial/Formal), synonyms, antonyms, collocations, and a 1-sentence usageNote.")
+            if (singleBatchLevel != null) {
+                appendLine("4. STRICT LEVEL LOCK: Keep each word tagged to `$singleBatchLevel` (do not drift into other proficiency levels). Provide: accurate partOfSpeech, crisp learner-friendly meaning, IPA/romanization pronunciation, 3 natural example sentences across distinct contexts (Everyday, Workplace/Academic, Editorial/Formal), synonyms, antonyms, collocations, and a 1-sentence usageNote.")
+            } else {
+                appendLine("4. For each word verify/provide: accurate partOfSpeech, calibrated CEFR level (`A1`–`C2`), crisp learner-friendly meaning, IPA/romanization pronunciation, 3 natural example sentences across distinct contexts (Everyday, Workplace/Academic, Editorial/Formal), synonyms, antonyms, collocations, and a 1-sentence usageNote.")
+            }
             if (hasTrans) {
                 appendLine("5. Provide natural $transLang translations for each definition and example sentence.")
             }

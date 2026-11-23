@@ -16,6 +16,7 @@ import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
 import com.example.model.VocabularyUtilityTier
 import com.example.ui.MainViewModel
+import com.example.ui.screens.MAX_INLINE_VOCAB_EXCLUDE_WORDS
 import com.example.ui.screens.VocabularyPromptState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -1718,6 +1719,61 @@ class VocabularyEngineTest {
         assertEquals(listOf("sanction"), vm.headwordInbox.value.map { it.word.lowercase() })
         assertTrue(vm.vocabularyDecks.value.any { it.language == "English" && it.levelCode == "C1" && it.entries.any { e -> e.word == "Ephemeral" } })
         assertTrue(vm.vocabularyDecks.value.any { it.language == "English" && it.levelCode == "B2" && it.entries.any { e -> e.word == "Lucid" } })
+    }
+
+    @Test
+    fun levelScopedExclusion_andStrictLevelImport_andTokenCap_workAccurately() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        val vm = MainViewModel(app)
+
+        // Seed A1 and C1 words across saved decks and inbox
+        vm.promoteEnrichedEntryToDeck(
+            VocabularyEntry(word = "Apple", language = "English", levelCode = "A1", meaning = "A fruit")
+        )
+        vm.promoteEnrichedEntryToDeck(
+            VocabularyEntry(word = "Esoteric", language = "English", levelCode = "C1", meaning = "Understood by few")
+        )
+        vm.addQuickHeadwordsToInbox("Bread", "English", "A1")
+        vm.addQuickHeadwordsToInbox("Psycho-pathic", "English", "C1")
+
+        // Level-scoped query for A1 returns ONLY A1 words
+        val a1Words = vm.existingVocabularyAndQueuedWords("English", "A1").map { it.lowercase() }
+        assertEquals(listOf("apple", "bread"), a1Words)
+
+        // MIXED returns all levels combined
+        val mixedWords = vm.existingVocabularyAndQueuedWords("English", "MIXED").map { it.lowercase() }
+        assertTrue(mixedWords.containsAll(listOf("apple", "bread", "esoteric", "psycho-pathic")))
+
+        // Hyphen variant "Psychopathic" deduplicates against "Psycho-pathic"
+        val hyphenDupResult = vm.importHeadwordsJson(
+            """[{"word": "Psychopathic", "level": "C1"}]""",
+            defaultLanguage = "English",
+            requiredLevelCode = "C1"
+        )
+        assertEquals(1, hyphenDupResult.skippedAlreadyInQueueCount)
+        assertTrue(hyphenDupResult.addedItems.isEmpty())
+
+        // Strict A1 filter keeps A1 and rejects off-level C1
+        val strictA1Result = vm.importHeadwordsJson(
+            """[{"word": "Abstruse", "level": "C1"}, {"word": "Pragmatic", "level": "A1"}]""",
+            defaultLanguage = "English",
+            requiredLevelCode = "A1"
+        )
+        assertEquals(listOf("Pragmatic"), strictA1Result.addedItems.map { it.word })
+        assertEquals(1, strictA1Result.skippedOffLevelCount)
+
+        // Strict A1 prompt enforces A1 only, scopes exclusion to A1, and enforces MAX_INLINE_VOCAB_EXCLUDE_WORDS
+        val state = VocabularyPromptState().apply {
+            language = "English"
+            levelCode = "A1"
+            excludeAlreadySavedWords = true
+        }
+        val manyA1 = (1..135).map { "word$it" }
+        val prompt = state.buildPrompt(manyA1)
+        assertTrue(prompt.contains("STRICT LEVEL FILTER: Generate ONLY A1"))
+        assertTrue(prompt.contains("EXCLUDE EXISTING A1 English WORDS (135 already saved/queued in A1 English, showing first $MAX_INLINE_VOCAB_EXCLUDE_WORDS to protect token limits)"))
+        assertFalse(prompt.contains("word135"))
     }
 }
 

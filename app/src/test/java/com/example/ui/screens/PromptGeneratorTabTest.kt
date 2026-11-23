@@ -273,5 +273,41 @@ class PromptGeneratorTabTest {
 
         assertEquals(true, hubOpened)
     }
+
+    @Test
+    fun promptGeneratorTab_vocabularyModeFiltersExcludeBySelectedLevelAndShowsFullPreview() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("examset_app_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val viewModel = MainViewModel(app)
+        viewModel.addQuickHeadwordsToInbox("simple", "English", "A1")
+        viewModel.addQuickHeadwordsToInbox("abstruse, arcane, esoteric", "English", "C1")
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = false) {
+                PromptGeneratorTab(
+                    viewModel = viewModel,
+                    onNavigateToCreator = {},
+                    onOpenVocabularyHub = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("prompt_mode_vocabulary").performClick()
+        composeTestRule.waitForIdle()
+
+        val list = composeTestRule.onNodeWithTag("prompt_lazy_column")
+        list.performScrollToNode(hasTestTag("vocab_level_a1"))
+        composeTestRule.onNodeWithTag("vocab_level_a1").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        list.performScrollToNode(hasTestTag("vocab_exclude_level_card"))
+        composeTestRule.onNodeWithText("Exclude 1 existing A1 English words", substring = true).assertIsDisplayed()
+
+        list.performScrollToNode(hasTestTag("vocab_prompt_preview_text"))
+        composeTestRule.onNodeWithTag("vocab_prompt_preview_text").assertIsDisplayed()
+    }
 }
 
