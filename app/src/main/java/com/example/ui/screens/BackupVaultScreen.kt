@@ -974,8 +974,8 @@ fun RestorePreviewDialog(
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (preview.checksumVerified) colors.greenLight else colors.amberLight,
-                    border = BorderStroke(0.8.dp, if (preview.checksumVerified) colors.green else colors.amber),
+                    color = if (preview.checksumVerified) colors.greenLight else colors.redLight,
+                    border = BorderStroke(0.8.dp, if (preview.checksumVerified) colors.green else colors.red),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -1033,9 +1033,14 @@ fun RestorePreviewDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirmRestore(selectedMode) },
-                colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (preview.checksumVerified) colors.teal else colors.red
+                )
             ) {
-                Text("Restore Now", fontWeight = FontWeight.Bold)
+                Text(
+                    if (preview.checksumVerified) "Restore Now" else "Restore Unverified Archive",
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {

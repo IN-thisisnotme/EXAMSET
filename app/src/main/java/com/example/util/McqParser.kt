@@ -1814,7 +1814,31 @@ object McqParser {
         return result
     }
 
+    private const val PARSE_CACHE_MAX_ENTRIES = 64
+    private const val PARSE_CACHE_MAX_RAW_LENGTH = 250_000
+    private val parseResultCache = object : LinkedHashMap<String, com.example.model.ParseResult>(
+        PARSE_CACHE_MAX_ENTRIES + 1,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, com.example.model.ParseResult>?): Boolean {
+            return size > PARSE_CACHE_MAX_ENTRIES
+        }
+    }
+
+    internal fun clearParseCache() {
+        synchronized(parseResultCache) {
+            parseResultCache.clear()
+        }
+    }
+
     fun parseWithResult(rawText: String): com.example.model.ParseResult {
+        if (rawText.length <= PARSE_CACHE_MAX_RAW_LENGTH) {
+            synchronized(parseResultCache) {
+                parseResultCache[rawText]?.let { return it }
+            }
+        }
+
         val paper = parse(rawText)
         val rawCount = paper.questions.size
         val hasAnswerKeys = paper.questions.isNotEmpty() && paper.questions.all { it.correctAnswer != null }
@@ -1836,13 +1860,21 @@ object McqParser {
             warnings.add("Questions with fewer than 4 options: ${incompleteOptions.joinToString(", ")}")
         }
 
-        return com.example.model.ParseResult(
+        val result = com.example.model.ParseResult(
             paper = paper,
             rawCount = rawCount,
             hasAnswerKeys = hasAnswerKeys,
             hasExplanations = hasExplanations,
             warnings = warnings
         )
+
+        if (rawText.length <= PARSE_CACHE_MAX_RAW_LENGTH) {
+            synchronized(parseResultCache) {
+                parseResultCache[rawText] = result
+            }
+        }
+
+        return result
     }
 
     fun reconstructToRaw(paper: QuestionPaper): String {

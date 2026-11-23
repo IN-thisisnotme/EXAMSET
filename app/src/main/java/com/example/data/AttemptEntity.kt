@@ -2,12 +2,17 @@ package com.example.data
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.util.AnswerKeyMatcher
 import org.json.JSONObject
 
 @Entity(
     tableName = "test_attempts",
+    indices = [
+        Index(value = ["paperId"]),
+        Index(value = ["paperId", "createdAt"])
+    ],
     foreignKeys = [
         ForeignKey(
             entity = PaperEntity::class,

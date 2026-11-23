@@ -46,18 +46,35 @@ object HandwrittenNotesExtractor {
         }
 
         return withContext(Dispatchers.IO) {
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             try {
                 val inputImage = InputImage.fromFilePath(context, imageUri)
-                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-                val rawText: String = suspendCancellableCoroutine { continuation ->
+                val ocrResult: Result<String> = suspendCancellableCoroutine { continuation ->
+                    continuation.invokeOnCancellation {
+                        runCatching { recognizer.close() }
+                    }
                     recognizer.process(inputImage)
                         .addOnSuccessListener { visionText ->
-                            continuation.resume(visionText.text)
+                            if (continuation.isActive) {
+                                continuation.resume(Result.success(visionText.text))
+                            }
                         }
                         .addOnFailureListener { exception ->
-                            continuation.resume("")
+                            if (continuation.isActive) {
+                                continuation.resume(Result.failure(exception))
+                            }
                         }
+                }
+
+                val rawText = ocrResult.getOrElse { err ->
+                    return@withContext NotesExtractionResult(
+                        rawOcrText = "",
+                        normalizedText = "",
+                        parseResult = null,
+                        isSuccess = false,
+                        errorMessage = "OCR error: ${err.localizedMessage ?: "Text recognition unavailable"}"
+                    )
                 }
 
                 if (rawText.isBlank()) {
@@ -88,6 +105,8 @@ object HandwrittenNotesExtractor {
                     isSuccess = false,
                     errorMessage = "Error processing image: ${e.localizedMessage ?: "Unknown error"}"
                 )
+            } finally {
+                runCatching { recognizer.close() }
             }
         }
     }

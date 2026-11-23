@@ -6,8 +6,6 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Exclude OAuth token storage from cloud Auto Backup; user data uses explicit ExamSet Vault archives -->
+    <exclude domain="sharedpref" path="examset_cloud_vault_prefs.xml" />
 </full-backup-content>

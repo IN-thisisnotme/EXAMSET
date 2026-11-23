@@ -71,7 +71,8 @@ import com.example.model.VocabularyPromptConfig
 import com.example.model.VocabularyUtilityTier
 import com.example.ui.theme.ExamColorPalette
 
-const val MAX_INLINE_VOCAB_EXCLUDE_WORDS = 100
+// [DEPRECATED 2026-11-23] Reason: 100-word inline exclude cap omitted words beyond index 100, causing LLM repeats. Restore if: Strict inline prompt token capping is needed again.
+// const val MAX_INLINE_VOCAB_EXCLUDE_WORDS = 100
 
 class VocabularyPromptState {
     var language by mutableStateOf("English")
@@ -257,13 +258,9 @@ class VocabularyPromptState {
                     VocabularyLevel.CUSTOM -> "${cleanCustomTrack.ifBlank { "Custom Track" }} $lang"
                     else -> "${lvl.code} $lang"
                 }
-                val cappedList = existingWordsToAvoid.take(MAX_INLINE_VOCAB_EXCLUDE_WORDS)
-                val capNote = if (existingWordsToAvoid.size > MAX_INLINE_VOCAB_EXCLUDE_WORDS) {
-                    ", showing first ${cappedList.size} to protect token limits"
-                } else {
-                    ""
-                }
-                appendLine("${nextNum++}. EXCLUDE EXISTING $scopeLabel WORDS (${existingWordsToAvoid.size} already saved/queued in $scopeLabel$capNote): Do NOT repeat or include any of these existing $scopeLabel words: ${cappedList.joinToString(", ")}")
+                // [DEPRECATED 2026-11-23] Reason: Removed 100-word truncation so all existing scoped words are excluded from generated prompts. Restore if: Prompt token capping is re-enabled.
+                // val cappedList = existingWordsToAvoid.take(MAX_INLINE_VOCAB_EXCLUDE_WORDS)
+                appendLine("${nextNum++}. EXCLUDE EXISTING $scopeLabel WORDS (${existingWordsToAvoid.size} already saved/queued in $scopeLabel): Do NOT repeat or include any of these existing $scopeLabel words: ${existingWordsToAvoid.joinToString(", ")}")
             }
             if (customInstruction.isNotBlank()) {
                 appendLine("${nextNum}. CUSTOM RULE: ${customInstruction.trim()}")
@@ -397,13 +394,9 @@ class VocabularyPromptState {
                     VocabularyLevel.CUSTOM -> "${customLevelLabel.trim().ifBlank { "Custom Track" }} $lang"
                     else -> "${lvl.code} $lang"
                 }
-                val cappedList = existingWordsToAvoid.take(MAX_INLINE_VOCAB_EXCLUDE_WORDS)
-                val capNote = if (existingWordsToAvoid.size > MAX_INLINE_VOCAB_EXCLUDE_WORDS) {
-                    ", showing first ${cappedList.size} to protect token limits"
-                } else {
-                    ""
-                }
-                appendLine("${nextNum++}. EXCLUDE EXISTING $scopeLabel WORDS (${existingWordsToAvoid.size} already saved/queued/ignored in $scopeLabel$capNote): Do NOT repeat or include any of these $scopeLabel words: ${cappedList.joinToString(", ")}")
+                // [DEPRECATED 2026-11-23] Reason: Removed 100-word truncation so all existing scoped words are excluded from Stage-1 headword index prompts. Restore if: Prompt token capping is re-enabled.
+                // val cappedList = existingWordsToAvoid.take(MAX_INLINE_VOCAB_EXCLUDE_WORDS)
+                appendLine("${nextNum++}. EXCLUDE EXISTING $scopeLabel WORDS (${existingWordsToAvoid.size} already saved/queued/ignored in $scopeLabel): Do NOT repeat or include any of these $scopeLabel words: ${existingWordsToAvoid.joinToString(", ")}")
             }
             if (customInstruction.isNotBlank()) {
                 appendLine("${nextNum}. CUSTOM RULE: ${customInstruction.trim()}")
@@ -1050,8 +1043,8 @@ fun LazyListScope.vocabularyPromptGeneratorItems(
                                     color = colors.inkBold
                                 )
                                 Text(
-                                    text = if (existingLanguageWordCount > MAX_INLINE_VOCAB_EXCLUDE_WORDS) {
-                                        "Filtered strictly to $levelScopeText (first $MAX_INLINE_VOCAB_EXCLUDE_WORDS listed in prompt to protect token limits; all duplicates filtered on import)"
+                                    text = if (existingLanguageWordCount > 0) {
+                                        "Filtered strictly to $levelScopeText (all $existingLanguageWordCount existing words excluded in prompt & on import)"
                                     } else {
                                         "Filtered strictly to your $levelScopeText saved library & inbox (not all levels combined)"
                                     },

@@ -447,7 +447,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .filter { it.language.trim().lowercase() == clean }
             .map { it.word.trim() }
             .filter { it.isNotBlank() }
-        val dismissed = _dismissedWordKeys.value.toList()
+        val dismissed = _dismissedWordKeys.value.filter { rawKey ->
+            val norm = VocabularyEntry.normalizeVocabularyWordKey(rawKey)
+            val scope = dismissedScopeByWordKey[norm]
+            scope == null || scope.first == clean
+        }
         return (deckWords + inboxWords + dismissed)
             .distinctBy { VocabularyEntry.normalizeVocabularyWordKey(it) }
             .sortedBy { it.lowercase() }

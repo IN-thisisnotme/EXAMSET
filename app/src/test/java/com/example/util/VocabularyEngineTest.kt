@@ -16,7 +16,6 @@ import com.example.model.VocabularyLevel
 import com.example.model.VocabularyPromptConfig
 import com.example.model.VocabularyUtilityTier
 import com.example.ui.MainViewModel
-import com.example.ui.screens.MAX_INLINE_VOCAB_EXCLUDE_WORDS
 import com.example.ui.screens.VocabularyPromptState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -1465,7 +1464,7 @@ class VocabularyEngineTest {
             outputFormat = "Strict JSON"
         }
         val jpPrompt = jpState.buildPrompt()
-        assertTrue(jpPrompt.contains("Target Proficiency Level: JLPT N3 (Practical Fluency) (standardized level code: B1)"))
+        assertTrue(jpPrompt.contains("Target Proficiency Level: JLPT N3 (Practical Fluency) (STRICT level code: B1 ONLY)"))
         assertTrue(jpPrompt.contains("JLPT progression"))
 
         val saState = VocabularyPromptState().apply {
@@ -1474,7 +1473,7 @@ class VocabularyEngineTest {
             outputFormat = "Structured Text"
         }
         val saPrompt = saState.buildPrompt()
-        assertTrue(saPrompt.contains("Target Proficiency Level: Kāvya • काव्य (Classical Literature) (standardized level code: B2)"))
+        assertTrue(saPrompt.contains("Target Proficiency Level: Kāvya • काव्य (Classical Literature) (STRICT level code: B2 ONLY)"))
 
         val zhState = VocabularyPromptState().apply {
             language = "Chinese"
@@ -1482,7 +1481,7 @@ class VocabularyEngineTest {
             outputFormat = "Strict JSON"
         }
         val zhPrompt = zhState.buildPrompt()
-        assertTrue(zhPrompt.contains("Target Proficiency Level: HSK 6 (Advanced Academic) (standardized level code: C1)"))
+        assertTrue(zhPrompt.contains("Target Proficiency Level: HSK 6 (Advanced Academic) (STRICT level code: C1 ONLY)"))
     }
 
     @Test
@@ -1763,7 +1762,14 @@ class VocabularyEngineTest {
         assertEquals(listOf("Pragmatic"), strictA1Result.addedItems.map { it.word })
         assertEquals(1, strictA1Result.skippedOffLevelCount)
 
-        // Strict A1 prompt enforces A1 only, scopes exclusion to A1, and enforces MAX_INLINE_VOCAB_EXCLUDE_WORDS
+        // Dismissed word in German must NOT leak into English MIXED exclusion list
+        vm.addQuickHeadwordsToInbox("Schadenfreude", "German", "C1")
+        val germanId = vm.headwordInbox.value.first { it.word == "Schadenfreude" }.id
+        vm.dismissHeadword(germanId)
+        val englishMixed = vm.existingVocabularyAndQueuedWords("English", "MIXED").map { it.lowercase() }
+        assertFalse("Dismissed German word must not leak into English MIXED scope", "schadenfreude" in englishMixed)
+
+        // Strict A1 prompt enforces A1 only, scopes exclusion to A1, and includes all 135 existing words without a 100-word cap
         val state = VocabularyPromptState().apply {
             language = "English"
             levelCode = "A1"
@@ -1772,8 +1778,8 @@ class VocabularyEngineTest {
         val manyA1 = (1..135).map { "word$it" }
         val prompt = state.buildPrompt(manyA1)
         assertTrue(prompt.contains("STRICT LEVEL FILTER: Generate ONLY A1"))
-        assertTrue(prompt.contains("EXCLUDE EXISTING A1 English WORDS (135 already saved/queued in A1 English, showing first $MAX_INLINE_VOCAB_EXCLUDE_WORDS to protect token limits)"))
-        assertFalse(prompt.contains("word135"))
+        assertTrue(prompt.contains("EXCLUDE EXISTING A1 English WORDS (135 already saved/queued in A1 English):"))
+        assertTrue(prompt.contains("word135"))
     }
 }
 

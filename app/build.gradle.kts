@@ -1,7 +1,4 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 plugins {
   alias(libs.plugins.android.application)
@@ -81,7 +78,8 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
+  // [DEPRECATED 2026-11-23] Reason: Firebase BOM/AI/AppCheck are currently unused in app source (OkHttp + ML Kit used directly). Restore if: Firebase AI Logic or App Check is integrated.
+  // implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
@@ -104,8 +102,9 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.work.runtime.ktx)
   implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // [DEPRECATED 2026-11-23] Reason: Moshi and Retrofit are unused in app source (networking uses OkHttp + org.json). Restore if: Retrofit/Moshi API clients are added.
+  // implementation(libs.converter.moshi)
+  // implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
 
@@ -115,15 +114,16 @@ dependencies {
   // implementation(libs.androidx.credentials)
   // implementation(libs.androidx.credentials.play.services)
   // implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
+  // implementation(libs.firebase.appcheck.recaptcha)
+  // implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
+  // [DEPRECATED 2026-11-23] Reason: OkHttp HttpLoggingInterceptor is unused in app source. Restore if: debug HTTP logging is enabled.
+  // implementation(libs.logging.interceptor)
+  // implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
+  // implementation(libs.retrofit)
   implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
@@ -142,7 +142,8 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  // [DEPRECATED 2026-11-23] Reason: Moshi codegen KSP processor is unused while Moshi is disabled. Restore if: Moshi @JsonClass models are added.
+  // "ksp"(libs.moshi.kotlin.codegen)
 }
 
 abstract class CopyExamSetApkTask : org.gradle.api.DefaultTask() {
@@ -156,61 +157,20 @@ abstract class CopyExamSetApkTask : org.gradle.api.DefaultTask() {
   @org.gradle.api.tasks.TaskAction
   fun copyApk() {
     val src = sourceApk.get().asFile
-    if (!src.exists()) {
-      throw org.gradle.api.GradleException("Source APK not found at ${src.absolutePath}")
-    }
     val dst = targetApk.get().asFile
-    val parent = dst.parentFile ?: throw org.gradle.api.GradleException("Invalid target directory for ${dst.absolutePath}")
-    parent.mkdirs()
-
-    val tempFile = File.createTempFile("ExamSet.", ".apk.tmp", parent)
-    try {
-      src.copyTo(tempFile, overwrite = true)
-      if (tempFile.length() != src.length()) {
-        throw org.gradle.api.GradleException(
-          "Copied temp APK size mismatch (${tempFile.length()} != ${src.length()})"
-        )
-      }
-      Files.move(
-        tempFile.toPath(),
-        dst.toPath(),
-        StandardCopyOption.REPLACE_EXISTING
-      )
-      dst.setLastModified(System.currentTimeMillis())
-      if (!dst.exists() || dst.length() != src.length()) {
-        throw org.gradle.api.GradleException("Failed to replace ${dst.absolutePath} cleanly")
-      }
-      logger.lifecycle("ExamSet APK updated: ${dst.absolutePath} (${dst.length()} bytes)")
-    } finally {
-      if (tempFile.exists()) {
-        tempFile.delete()
-      }
-    }
+    dst.parentFile?.mkdirs()
+    src.copyTo(dst, overwrite = true)
   }
 }
 
 val copyDebugApkToFolder = tasks.register<CopyExamSetApkTask>("copyDebugApkToFolder") {
-  description = "Atomically overwrites apk/ExamSet.apk with the newly built debug APK"
+  description = "Copies the compiled APK as ExamSet.apk to the visible /apk project directory"
   sourceApk.set(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
   targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
   mustRunAfter("packageDebug")
   outputs.upToDateWhen { false }
-  outputs.cacheIf { false }
-}
-
-val copyReleaseApkToFolder = tasks.register<CopyExamSetApkTask>("copyReleaseApkToFolder") {
-  description = "Atomically overwrites apk/ExamSet.apk with the newly built release APK"
-  sourceApk.set(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
-  targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
-  mustRunAfter("packageRelease", copyDebugApkToFolder)
-  outputs.upToDateWhen { false }
-  outputs.cacheIf { false }
 }
 
 tasks.matching { it.name == "packageDebug" || it.name == "assembleDebug" }.configureEach {
   finalizedBy(copyDebugApkToFolder)
-}
-
-tasks.matching { it.name == "packageRelease" || it.name == "assembleRelease" }.configureEach {
-  finalizedBy(copyReleaseApkToFolder)
 }

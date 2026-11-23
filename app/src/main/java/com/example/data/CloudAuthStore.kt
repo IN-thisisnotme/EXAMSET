@@ -9,6 +9,7 @@ import com.example.model.AutoBackupSchedule
 import com.example.model.CloudAccountStatus
 import com.example.model.CloudProviderType
 import com.example.model.LinkedCloudFileStatus
+import com.example.util.TrustedTimeManager
 import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -23,8 +24,11 @@ data class OAuthTokenBundle(
     val email: String = "",
     val displayName: String = ""
 ) {
-    fun isAccessTokenValid(bufferMillis: Long = 90_000L): Boolean {
-        return accessToken.isNotBlank() && System.currentTimeMillis() + bufferMillis < expiresAtMillis
+    fun isAccessTokenValid(
+        bufferMillis: Long = 90_000L,
+        nowMillis: Long = TrustedTimeManager.getTrustedTimeMillis()
+    ): Boolean {
+        return accessToken.isNotBlank() && nowMillis + bufferMillis < expiresAtMillis
     }
 }
 
@@ -64,13 +68,20 @@ class CloudAuthStore(context: Context) {
             val access = obj.optString("accessToken", "")
             val refresh = obj.optString("refreshToken", "")
             if (access.isBlank() && refresh.isBlank()) return null
-            OAuthTokenBundle(
+            val bundle = OAuthTokenBundle(
                 accessToken = access,
                 refreshToken = refresh,
                 expiresAtMillis = obj.optLong("expiresAtMillis", 0L),
                 email = obj.optString("email", ""),
                 displayName = obj.optString("displayName", "")
             )
+            // Silently upgrade legacy PLAIN: entries to Keystore AES-GCM when available
+            if (raw.startsWith("PLAIN:")) {
+                runCatching { encryptTextOrThrow(decrypted) }.onSuccess { upgraded ->
+                    prefs.edit().putString(key, upgraded).apply()
+                }
+            }
+            bundle
         } catch (_: Exception) {
             null
         }
@@ -84,7 +95,7 @@ class CloudAuthStore(context: Context) {
             put("email", bundle.email)
             put("displayName", bundle.displayName)
         }.toString()
-        val encrypted = encryptText(json)
+        val encrypted = encryptTextOrThrow(json)
         prefs.edit().putString(tokenKey(provider), encrypted).apply()
     }
 
@@ -237,6 +248,20 @@ class CloudAuthStore(context: Context) {
         }
     }
 
+    private fun encryptTextOrThrow(plain: String): String {
+        val key = getOrCreateAesKey()
+            ?: throw IllegalStateException("Secure Keystore encryption is unavailable on this device. Cannot store OAuth tokens safely.")
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        val cipherText = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
+        val ivB64 = Base64.encodeToString(iv, Base64.NO_WRAP)
+        val ctB64 = Base64.encodeToString(cipherText, Base64.NO_WRAP)
+        return "GCM:$ivB64:$ctB64"
+    }
+
+    // [DEPRECATED 2026-11-23] Reason: Silent plaintext ("PLAIN:") OAuth token fallback weakens credential storage security. Restore if: Non-Keystore legacy compatibility is explicitly approved.
+    /*
     private fun encryptText(plain: String): String {
         return try {
             val key = getOrCreateAesKey() ?: return "PLAIN:${Base64.encodeToString(plain.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)}"
@@ -251,6 +276,7 @@ class CloudAuthStore(context: Context) {
             "PLAIN:${Base64.encodeToString(plain.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)}"
         }
     }
+    */
 
     private fun decryptText(encoded: String): String? {
         return try {

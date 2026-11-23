@@ -80,8 +80,12 @@ fun printStudyNoteAsPdf(context: Context, note: StudyNoteEntity) {
         useWideViewPort = true
     }
     webView.webViewClient = object : WebViewClient() {
+        private var printStarted = false
+
         override fun onPageFinished(view: WebView?, url: String?) {
-            val adapter = webView.createPrintDocumentAdapter(jobName)
+            if (printStarted) return
+            printStarted = true
+            val adapter = com.example.util.PrintDocumentHelper.createSelfCleaningPrintAdapter(webView, jobName)
             val attrs = PrintAttributes.Builder()
                 .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                 .setMinMargins(PrintAttributes.Margins.NO_MARGINS)

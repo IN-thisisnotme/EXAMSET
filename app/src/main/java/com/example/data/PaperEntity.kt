@@ -1,6 +1,7 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.model.PaperMetadata
 import com.example.model.QuestionPaper
@@ -10,7 +11,13 @@ import com.example.util.McqParser
 import com.example.model.PaperCategory
 import java.util.Locale
 
-@Entity(tableName = "question_papers")
+@Entity(
+    tableName = "question_papers",
+    indices = [
+        Index(value = ["folderId"]),
+        Index(value = ["bookletNumber"])
+    ]
+)
 data class PaperEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

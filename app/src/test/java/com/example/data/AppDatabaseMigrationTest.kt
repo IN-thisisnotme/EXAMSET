@@ -96,7 +96,7 @@ class AppDatabaseMigrationTest {
             )
         }
 
-        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->8, 8->9, 9->10
+        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->8, 8->9, 9->10, 10->11
         MIGRATION_1_2.migrate(rawDb)
         MIGRATION_2_3.migrate(rawDb)
         MIGRATION_3_4.migrate(rawDb)
@@ -106,9 +106,36 @@ class AppDatabaseMigrationTest {
         MIGRATION_7_8.migrate(rawDb)
         MIGRATION_8_9.migrate(rawDb)
         MIGRATION_9_10.migrate(rawDb)
+        MIGRATION_10_11.migrate(rawDb)
+
+        val indexCursor = rawDb.query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (" +
+                "'index_test_attempts_paperId', " +
+                "'index_test_attempts_paperId_createdAt', " +
+                "'index_question_papers_folderId', " +
+                "'index_question_papers_bookletNumber'" +
+            ")"
+        )
+        val foundIndices = mutableSetOf<String>()
+        try {
+            while (indexCursor.moveToNext()) {
+                foundIndices.add(indexCursor.getString(0))
+            }
+        } finally {
+            indexCursor.close()
+        }
+        assertEquals(
+            setOf(
+                "index_test_attempts_paperId",
+                "index_test_attempts_paperId_createdAt",
+                "index_question_papers_folderId",
+                "index_question_papers_bookletNumber"
+            ),
+            foundIndices
+        )
         rawDb.close()
 
-        // Step 3: Open migrated database with Room at Version 10 (triggers RoomOpenDelegate.onValidateSchema)
+        // Step 3: Open migrated database with Room at Version 11 (triggers RoomOpenDelegate.onValidateSchema)
         val roomDb = Room.databaseBuilder(context, AppDatabase::class.java, testDbName)
             .addMigrations(
                 MIGRATION_1_2,
@@ -119,7 +146,8 @@ class AppDatabaseMigrationTest {
                 MIGRATION_6_7,
                 MIGRATION_7_8,
                 MIGRATION_8_9,
-                MIGRATION_9_10
+                MIGRATION_9_10,
+                MIGRATION_10_11
             )
             .build()
 

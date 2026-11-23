@@ -353,6 +353,15 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_test_attempts_paperId` ON `test_attempts` (`paperId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_test_attempts_paperId_createdAt` ON `test_attempts` (`paperId`, `createdAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_papers_folderId` ON `question_papers` (`folderId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_papers_bookletNumber` ON `question_papers` (`bookletNumber`)")
+    }
+}
+
 @Database(
     entities = [
         PaperEntity::class,
@@ -361,7 +370,7 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         StudyNoteEntity::class,
         BackupSnapshotEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -389,7 +398,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_6_7,
                         MIGRATION_7_8,
                         MIGRATION_8_9,
-                        MIGRATION_9_10
+                        MIGRATION_9_10,
+                        MIGRATION_10_11
                     )
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

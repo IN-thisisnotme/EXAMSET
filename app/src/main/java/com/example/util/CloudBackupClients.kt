@@ -197,11 +197,17 @@ object CloudBackupClients {
                 val bundle = OAuthTokenBundle(
                     accessToken = accessToken,
                     refreshToken = refreshToken,
-                    expiresAtMillis = System.currentTimeMillis() + (expiresIn * 1000L),
+                    expiresAtMillis = TrustedTimeManager.getTrustedTimeMillis() + (expiresIn * 1000L),
                     email = email,
                     displayName = name
                 )
-                authStore.saveTokenBundle(pending.provider, bundle)
+                try {
+                    authStore.saveTokenBundle(pending.provider, bundle)
+                } catch (secErr: Exception) {
+                    val msg = secErr.localizedMessage ?: "Failed to securely store OAuth credentials."
+                    authStore.setLastError(pending.provider, msg)
+                    throw IllegalStateException(msg, secErr)
+                }
                 authStore.setLastError(pending.provider, null)
                 pending.provider
             }
@@ -255,9 +261,15 @@ object CloudBackupClients {
                 val updated = current.copy(
                     accessToken = newAccess,
                     refreshToken = newRefresh,
-                    expiresAtMillis = System.currentTimeMillis() + (expiresIn * 1000L)
+                    expiresAtMillis = TrustedTimeManager.getTrustedTimeMillis() + (expiresIn * 1000L)
                 )
-                authStore.saveTokenBundle(provider, updated)
+                try {
+                    authStore.saveTokenBundle(provider, updated)
+                } catch (secErr: Exception) {
+                    val msg = secErr.localizedMessage ?: "Failed to securely store refreshed OAuth credentials."
+                    authStore.setLastError(provider, msg)
+                    throw IllegalStateException(msg, secErr)
+                }
                 authStore.setLastError(provider, null)
                 newAccess
             }

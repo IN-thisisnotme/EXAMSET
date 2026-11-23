@@ -61,6 +61,76 @@ object PrintDocumentHelper {
         return "${subjectClean}_${rollClean}_${bookletClean}.pdf"
     }
 
+    internal fun escapeJsonForInlineScript(json: String): String {
+        return json
+            .replace("</", "<\\/")
+            .replace("<!--", "\\u003c!--")
+            .replace(Regex("<script", RegexOption.IGNORE_CASE)) { match ->
+                "\\u003c" + match.value.substring(1)
+            }
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029")
+    }
+
+    private class CleanupPrintDocumentAdapter(
+        private val delegate: PrintDocumentAdapter,
+        private val webView: WebView
+    ) : PrintDocumentAdapter() {
+        private var cleanedUp = false
+
+        private fun cleanupWebView() {
+            if (cleanedUp) return
+            cleanedUp = true
+            webView.post {
+                runCatching {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+            }
+        }
+
+        override fun onStart() {
+            delegate.onStart()
+        }
+
+        override fun onLayout(
+            oldAttributes: PrintAttributes?,
+            newAttributes: PrintAttributes?,
+            cancellationSignal: CancellationSignal?,
+            callback: LayoutResultCallback?,
+            extras: android.os.Bundle?
+        ) {
+            delegate.onLayout(oldAttributes, newAttributes, cancellationSignal, callback, extras)
+        }
+
+        override fun onWrite(
+            pages: Array<out PageRange>?,
+            destination: ParcelFileDescriptor?,
+            cancellationSignal: CancellationSignal?,
+            callback: WriteResultCallback?
+        ) {
+            delegate.onWrite(pages, destination, cancellationSignal, callback)
+        }
+
+        override fun onFinish() {
+            try {
+                delegate.onFinish()
+            } finally {
+                cleanupWebView()
+            }
+        }
+    }
+
+    internal fun createSelfCleaningPrintAdapter(
+        webView: WebView,
+        jobName: String
+    ): PrintDocumentAdapter {
+        return CleanupPrintDocumentAdapter(
+            delegate = webView.createPrintDocumentAdapter(jobName),
+            webView = webView
+        )
+    }
+
     /**
      * Triggers the native Android Print dialog using WebView and PrintDocumentAdapter.
      * Supports saving as PDF and printing directly to wireless printers.
@@ -82,8 +152,12 @@ object PrintDocumentHelper {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            private var printStarted = false
+
             override fun onPageFinished(view: WebView?, url: String?) {
-                val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                if (printStarted) return
+                printStarted = true
+                val printAdapter = createSelfCleaningPrintAdapter(webView, jobName)
                 val printAttributes = PrintAttributes.Builder()
                     .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                     .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
@@ -126,8 +200,21 @@ object PrintDocumentHelper {
             useWideViewPort = true
         }
 
+        fun destroyWebView() {
+            webView.post {
+                runCatching {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+            }
+        }
+
         webView.webViewClient = object : WebViewClient() {
+            private var renderStarted = false
+
             override fun onPageFinished(view: WebView?, url: String?) {
+                if (renderStarted) return
+                renderStarted = true
                 try {
                     val adapter = webView.createPrintDocumentAdapter(fileName.removeSuffix(".pdf"))
                     val attributes = PrintAttributes.Builder()
@@ -150,19 +237,23 @@ object PrintDocumentHelper {
                                     relativeSubDir = relativeSubDir,
                                     fileName = fileName
                                 )
-                                tempPdfFile.delete()
+                                runCatching { tempPdfFile.delete() }
+                                destroyWebView()
                                 onSuccess(finalPath)
                             } catch (e: Exception) {
-                                tempPdfFile.delete()
+                                runCatching { tempPdfFile.delete() }
+                                destroyWebView()
                                 onError("Failed to export PDF: ${e.localizedMessage ?: "Unknown error"}")
                             }
                         },
                         onError = { error ->
-                            tempPdfFile.delete()
+                            runCatching { tempPdfFile.delete() }
+                            destroyWebView()
                             onError("Failed to render PDF: $error")
                         }
                     )
                 } catch (e: Exception) {
+                    destroyWebView()
                     onError("Failed to initiate PDF generator: ${e.localizedMessage ?: "Unknown error"}")
                 }
             }
@@ -1860,7 +1951,7 @@ object PrintDocumentHelper {
 
     <!-- JavaScript Application Engine -->
     <script>
-        const EXAM_DATA = $examDataJson;
+        const EXAM_DATA = ${escapeJsonForInlineScript(examDataJson)};
         const STORAGE_KEY = 'CBT_SESSION_' + (EXAM_DATA.meta.bookletNumber || 'DEFAULT');
 
         let candidateName = 'Candidate';
@@ -2096,7 +2187,11 @@ object PrintDocumentHelper {
                 const stem = document.createElement('div');
                 stem.style.fontSize = '13.5px';
                 stem.style.marginBottom = '6px';
-                stem.innerHTML = q.stemHtml || q.stemRaw || '';
+                if (q.stemHtml) {
+                    stem.innerHTML = q.stemHtml;
+                } else {
+                    stem.textContent = q.stemRaw || '';
+                }
 
                 item.appendChild(hdr);
                 item.appendChild(stem);
@@ -2144,7 +2239,12 @@ object PrintDocumentHelper {
             if (msqBadge) {
                 msqBadge.style.display = isMsq ? 'inline-flex' : 'none';
             }
-            document.getElementById('q-stem-display').innerHTML = q.stemHtml || q.stemRaw || '';
+            const stemDisplayEl = document.getElementById('q-stem-display');
+            if (q.stemHtml) {
+                stemDisplayEl.innerHTML = q.stemHtml;
+            } else {
+                stemDisplayEl.textContent = q.stemRaw || '';
+            }
 
             const formulaBox = document.getElementById('q-formula-box');
             if (q.formula && q.formula.trim().length > 0) {
@@ -2171,7 +2271,11 @@ object PrintDocumentHelper {
 
                 const textSpan = document.createElement('div');
                 textSpan.className = 'opt-text';
-                textSpan.innerHTML = opt.rendered || opt.text || '';
+                if (opt.rendered) {
+                    textSpan.innerHTML = opt.rendered;
+                } else {
+                    textSpan.textContent = opt.text || '';
+                }
 
                 optItem.appendChild(bubble);
                 optItem.appendChild(textSpan);
@@ -2477,7 +2581,11 @@ object PrintDocumentHelper {
 
                 const stem = document.createElement('div');
                 stem.className = 'sol-qtext';
-                stem.innerHTML = q.stemHtml || q.stemRaw || '';
+                if (q.stemHtml) {
+                    stem.innerHTML = q.stemHtml;
+                } else {
+                    stem.textContent = q.stemRaw || '';
+                }
                 card.appendChild(stem);
 
                 const optsBox = document.createElement('div');
@@ -2499,7 +2607,11 @@ object PrintDocumentHelper {
 
                     const txt = document.createElement('div');
                     txt.style.flex = '1';
-                    txt.innerHTML = opt.rendered || opt.text || '';
+                    if (opt.rendered) {
+                        txt.innerHTML = opt.rendered;
+                    } else {
+                        txt.textContent = opt.text || '';
+                    }
 
                     row.appendChild(badge);
                     row.appendChild(txt);

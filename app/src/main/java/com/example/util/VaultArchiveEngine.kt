@@ -50,6 +50,7 @@ object VaultArchiveEngine {
     private const val VAULT_DIR_NAME = "vault_backups"
     private const val EXPORT_CACHE_DIR = "vault_exports"
     private const val MAX_ROLLING_AUTO_SNAPSHOTS = 5
+    internal const val MAX_ENTRY_UNCOMPRESSED_BYTES = 32L * 1024L * 1024L
 
     private const val ENTRY_MANIFEST = "manifest.json"
     private const val ENTRY_FOLDERS = "folders.json"
@@ -275,7 +276,7 @@ object VaultArchiveEngine {
         ZipFile(file).use { zip ->
             val manifestEntry = zip.getEntry(ENTRY_MANIFEST)
                 ?: throw IllegalStateException("Invalid ExamSet vault: missing $ENTRY_MANIFEST")
-            val manifestJson = zip.getInputStream(manifestEntry).bufferedReader(Charsets.UTF_8).readText()
+            val manifestJson = readZipEntryTextBounded(zip, manifestEntry)
             val manifest = parseManifest(JSONObject(manifestJson))
 
             var mismatchCount = 0
@@ -286,7 +287,7 @@ object VaultArchiveEngine {
                     mismatchCount++
                     continue
                 }
-                val actualHash = zip.getInputStream(entry).use { computeStreamSha256(it) }
+                val actualHash = openBoundedZipEntryStream(zip, entry).use { computeStreamSha256(it) }
                 if (!actualHash.equals(expectedHash, ignoreCase = true)) {
                     mismatchCount++
                 } else {
@@ -310,7 +311,7 @@ object VaultArchiveEngine {
                 var detectedPresets = manifest.counts.promptPresetsCount
                 if (vocabEntry != null) {
                     runCatching {
-                        val vObj = JSONObject(zip.getInputStream(vocabEntry).bufferedReader(Charsets.UTF_8).readText())
+                        val vObj = JSONObject(readZipEntryTextBounded(zip, vocabEntry))
                         val decks = VocabularyDeck.deserializeList(vObj.optString("vocabularyDecksJson", ""))
                         detectedDecks = decks.size
                         detectedWords = decks.sumOf { it.entries.size }
@@ -318,7 +319,7 @@ object VaultArchiveEngine {
                 }
                 if (prefsEntry != null) {
                     runCatching {
-                        val pObj = JSONObject(zip.getInputStream(prefsEntry).bufferedReader(Charsets.UTF_8).readText())
+                        val pObj = JSONObject(readZipEntryTextBounded(zip, prefsEntry))
                         if (detectedDecks == 0) {
                             val decks = VocabularyDeck.deserializeList(pObj.optString("vocabularyDecksJson", ""))
                             detectedDecks = decks.size
@@ -410,18 +411,15 @@ object VaultArchiveEngine {
         }
 
         val zipFile = preview.tempFile ?: throw IllegalStateException("Vault file unavailable for restore")
-        if (mode == RestoreMode.FULL_REPLACE) {
-            createLocalRollingSnapshot(context, db, appPrefs, themePrefs, providerTag = "LOCAL_AUTO", prefix = "pre_restore")
-        }
 
         ZipFile(zipFile).use { zip ->
             val folders = zip.getEntry(ENTRY_FOLDERS)?.let { entry ->
-                parseFoldersJson(zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText())
+                parseFoldersJson(readZipEntryTextBounded(zip, entry))
             }.orEmpty()
 
             val papers = mutableListOf<PaperEntity>()
             zip.getEntry(ENTRY_PAPERS)?.let { entry ->
-                BufferedReader(InputStreamReader(zip.getInputStream(entry), Charsets.UTF_8)).use { reader ->
+                BufferedReader(InputStreamReader(openBoundedZipEntryStream(zip, entry), Charsets.UTF_8)).use { reader ->
                     reader.lineSequence().forEach { line ->
                         if (line.isNotBlank()) papers.add(deserializePaper(JSONObject(line)))
                     }
@@ -430,7 +428,7 @@ object VaultArchiveEngine {
 
             val notes = mutableListOf<StudyNoteEntity>()
             zip.getEntry(ENTRY_NOTES)?.let { entry ->
-                BufferedReader(InputStreamReader(zip.getInputStream(entry), Charsets.UTF_8)).use { reader ->
+                BufferedReader(InputStreamReader(openBoundedZipEntryStream(zip, entry), Charsets.UTF_8)).use { reader ->
                     reader.lineSequence().forEach { line ->
                         if (line.isNotBlank()) notes.add(deserializeStudyNote(JSONObject(line)))
                     }
@@ -439,7 +437,7 @@ object VaultArchiveEngine {
 
             val attempts = mutableListOf<AttemptEntity>()
             zip.getEntry(ENTRY_ATTEMPTS)?.let { entry ->
-                BufferedReader(InputStreamReader(zip.getInputStream(entry), Charsets.UTF_8)).use { reader ->
+                BufferedReader(InputStreamReader(openBoundedZipEntryStream(zip, entry), Charsets.UTF_8)).use { reader ->
                     reader.lineSequence().forEach { line ->
                         if (line.isNotBlank()) attempts.add(deserializeAttempt(JSONObject(line)))
                     }
@@ -447,15 +445,33 @@ object VaultArchiveEngine {
             }
 
             val analytics = zip.getEntry(ENTRY_ANALYTICS)?.let { entry ->
-                parseAnalyticsJson(zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText())
+                parseAnalyticsJson(readZipEntryTextBounded(zip, entry))
             }.orEmpty()
 
             val vocabArchiveJson = zip.getEntry(ENTRY_VOCABULARY)?.let { entry ->
-                zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText()
+                readZipEntryTextBounded(zip, entry)
+            }
+            val vocabObj = vocabArchiveJson?.takeIf { it.isNotBlank() }?.let { raw ->
+                try {
+                    JSONObject(raw)
+                } catch (e: Exception) {
+                    throw IllegalStateException("Corrupted $ENTRY_VOCABULARY in vault archive: ${e.message}", e)
+                }
             }
 
             val prefsJson = zip.getEntry(ENTRY_PREFERENCES)?.let { entry ->
-                zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readText()
+                readZipEntryTextBounded(zip, entry)
+            }
+            val prefsObj = prefsJson?.takeIf { it.isNotBlank() }?.let { raw ->
+                try {
+                    JSONObject(raw)
+                } catch (e: Exception) {
+                    throw IllegalStateException("Corrupted $ENTRY_PREFERENCES in vault archive: ${e.message}", e)
+                }
+            }
+
+            if (mode == RestoreMode.FULL_REPLACE) {
+                createLocalRollingSnapshot(context, db, appPrefs, themePrefs, providerTag = "LOCAL_AUTO", prefix = "pre_restore")
             }
 
             val paperDao = db.paperDao()
@@ -562,19 +578,19 @@ object VaultArchiveEngine {
             }
 
             val overwriteAll = mode == RestoreMode.FULL_REPLACE
-            if (!prefsJson.isNullOrBlank()) {
+            if (prefsObj != null) {
                 applyPreferencesJson(
-                    json = prefsJson,
+                    obj = prefsObj,
                     appPrefs = appPrefs,
                     themePrefs = themePrefs,
                     overwriteAll = overwriteAll,
                     restoredNoteIdByUid = restoredNoteIdByUid,
                     paperIdMap = paperIdMap,
-                    skipVocabularyIfDedicatedEntry = !vocabArchiveJson.isNullOrBlank()
+                    skipVocabularyIfDedicatedEntry = vocabObj != null
                 )
             }
-            if (!vocabArchiveJson.isNullOrBlank()) {
-                applyVocabularyArchiveJson(vocabArchiveJson, appPrefs, overwriteAll)
+            if (vocabObj != null) {
+                applyVocabularyArchiveJson(vocabObj, appPrefs, overwriteAll)
             }
 
             val currentDecks = appPrefs.getVocabularyDecks()
@@ -589,6 +605,64 @@ object VaultArchiveEngine {
                 vocabWordsCount = preview.manifest.counts.vocabWordsCount.takeIf { it > 0 } ?: currentDecks.sumOf { it.entries.size },
                 promptPresetsCount = preview.manifest.counts.promptPresetsCount.takeIf { it > 0 } ?: currentPresets.size
             )
+        }
+    }
+
+    private class BoundedInputStream(
+        private val delegate: java.io.InputStream,
+        private val entryName: String,
+        private val maxBytes: Long = MAX_ENTRY_UNCOMPRESSED_BYTES
+    ) : java.io.InputStream() {
+        private var bytesRead = 0L
+
+        private fun checkLimit(added: Int) {
+            if (added > 0) {
+                bytesRead += added
+                if (bytesRead > maxBytes) {
+                    throw IllegalStateException(
+                        "Vault entry '$entryName' exceeds the maximum allowed uncompressed size (${maxBytes / (1024 * 1024)} MB)."
+                    )
+                }
+            }
+        }
+
+        override fun read(): Int {
+            val b = delegate.read()
+            if (b != -1) checkLimit(1)
+            return b
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val count = delegate.read(b, off, len)
+            checkLimit(count)
+            return count
+        }
+
+        override fun close() {
+            delegate.close()
+        }
+    }
+
+    private fun openBoundedZipEntryStream(
+        zip: ZipFile,
+        entry: ZipEntry,
+        maxBytes: Long = MAX_ENTRY_UNCOMPRESSED_BYTES
+    ): java.io.InputStream {
+        if (entry.size > maxBytes) {
+            throw IllegalStateException(
+                "Vault entry '${entry.name}' exceeds the maximum allowed uncompressed size (${maxBytes / (1024 * 1024)} MB)."
+            )
+        }
+        return BoundedInputStream(zip.getInputStream(entry), entry.name, maxBytes)
+    }
+
+    private fun readZipEntryTextBounded(
+        zip: ZipFile,
+        entry: ZipEntry,
+        maxBytes: Long = MAX_ENTRY_UNCOMPRESSED_BYTES
+    ): String {
+        return openBoundedZipEntryStream(zip, entry, maxBytes).use { bounded ->
+            bounded.bufferedReader(Charsets.UTF_8).readText()
         }
     }
 
@@ -910,14 +984,11 @@ object VaultArchiveEngine {
     }
 
     private fun applyVocabularyArchiveJson(
-        json: String,
+        obj: JSONObject,
         appPrefs: ExamSetPreferences,
         overwriteAll: Boolean
     ) {
-        runCatching {
-            val obj = JSONObject(json)
-            applyVocabularyFields(obj, appPrefs, overwriteAll)
-        }
+        applyVocabularyFields(obj, appPrefs, overwriteAll)
     }
 
     private fun serializePreferencesJson(
@@ -983,7 +1054,7 @@ object VaultArchiveEngine {
     }
 
     private fun applyPreferencesJson(
-        json: String,
+        obj: JSONObject,
         appPrefs: ExamSetPreferences,
         themePrefs: ThemePreferences,
         overwriteAll: Boolean,
@@ -991,16 +1062,14 @@ object VaultArchiveEngine {
         paperIdMap: Map<Long, Long> = emptyMap(),
         skipVocabularyIfDedicatedEntry: Boolean = false
     ) {
-        runCatching {
-            val obj = JSONObject(json)
-            if (overwriteAll || appPrefs.getDailyGoalMinutes() == 30) {
-                appPrefs.setDailyGoalMinutes(obj.optInt("dailyGoalMinutes", 30))
-            }
-            if (overwriteAll) {
-                appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
-                appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
-                themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
-                themePrefs.setColorSchemePreset(ColorSchemePreset.fromString(obj.optString("colorSchemePreset")))
+        if (overwriteAll || appPrefs.getDailyGoalMinutes() == 30) {
+            appPrefs.setDailyGoalMinutes(obj.optInt("dailyGoalMinutes", 30))
+        }
+        if (overwriteAll) {
+            appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
+            appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
+            themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
+            themePrefs.setColorSchemePreset(ColorSchemePreset.fromString(obj.optString("colorSchemePreset")))
                 obj.optString("questionPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
                     runCatching {
                         appPrefs.saveQuestionPromptDraft(com.example.model.QuestionPromptConfig.fromJson(JSONObject(raw)))
@@ -1193,7 +1262,6 @@ object VaultArchiveEngine {
                     appPrefs.saveBrainLabSettings(com.example.model.BrainLabSettings.fromJson(JSONObject(incomingBrainSettingsRaw)))
                 }
             }
-        }
     }
 
     private fun applyVocabularyFields(
