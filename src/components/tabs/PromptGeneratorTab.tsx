@@ -1,15 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Sparkles, 
-  Copy, 
-  Check, 
-  RefreshCw, 
-  FileText, 
-  CheckCircle2, 
+import React, { useMemo, useState } from 'react';
+import {
   ArrowRight,
+  BookOpen,
+  Check,
+  Copy,
   Sliders,
-  BookOpen
+  Sparkles,
 } from 'lucide-react';
+import { useTheme } from '../../theme/ThemeProvider';
 
 interface PromptGeneratorTabProps {
   onSendToCreator?: (text: string) => void;
@@ -18,13 +16,15 @@ interface PromptGeneratorTabProps {
 
 export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
   onSendToCreator,
-  onNavigateToCreator
+  onNavigateToCreator,
 }) => {
+  const { colors } = useTheme();
   const [examType, setExamType] = useState<string>('UPSC Civil Services Examination');
   const [subject, setSubject] = useState<string>('General Science & Environment');
   const [topic, setTopic] = useState<string>('Ecology, Biodiversity, Climate Change & Green Energy');
   const [questionCount, setQuestionCount] = useState<number>(20);
-  const [difficulty, setDifficulty] = useState<'Standard' | 'Hard' | 'Mixed' | 'Assertion-Reason'>('Mixed');
+  const [difficulty, setDifficulty] = useState<'Standard' | 'Hard' | 'Mixed' | 'Assertion-Reason' | 'MSQ'>('Mixed');
+  const [optionMode, setOptionMode] = useState<4 | 5>(4);
   const [questionLanguage, setQuestionLanguage] = useState<string>('English');
   const [explanationChoice, setExplanationChoice] = useState<string>('Same as Question');
   const [customExplanationLang, setCustomExplanationLang] = useState<string>('');
@@ -51,14 +51,22 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
     }
   }, [questionLanguage, explanationChoice, customExplanationLang]);
 
-  // Dynamically constructed AI prompt
   const generatedPrompt = useMemo(() => {
     const qLang = questionLanguage.trim() || 'English';
+    const isMsq = difficulty === 'MSQ';
+    const optRule =
+      optionMode === 5
+        ? 'Include 5 mutually exclusive options (a, b, c, d, e).'
+        : 'STRICT 4-OPTION CONSTRAINT: Exactly 4 mutually exclusive options (a, b, c, d). Never include option E.';
+    const keyRule = isMsq
+      ? '"correctAnswer" may contain comma-separated keys like "A,C" for Multiple-Select (MSQ) items.'
+      : `"correctAnswer" must be a single uppercase letter ${optionMode === 5 ? '"A".."E"' : '"A".."D"'}.`;
 
     if (targetFormat === 'JSON') {
+      const optEJson = optionMode === 5 ? ',\n      "e": "Option E text"' : '';
       if (promptDensity === 'Concise') {
-        return `Generate exactly ${questionCount} multiple-choice questions (MCQs) for ${examType} at ${difficulty} standard on ${subject}${topic ? ` (${topic})` : ''} in ${qLang}.
-Output ONLY a strict, valid JSON array of objects without markdown fences, comments, or extra text. Format:
+        return `Generate exactly ${questionCount} multiple-choice questions for ${examType} at ${difficulty} standard on ${subject}${topic ? ` (${topic})` : ''} in ${qLang}.
+Output ONLY a strict, valid JSON array of objects without markdown fences or extra text. Format:
 [
   {
     "num": 1,
@@ -67,19 +75,20 @@ Output ONLY a strict, valid JSON array of objects without markdown fences, comme
       "a": "Option A text",
       "b": "Option B text",
       "c": "Option C text",
-      "d": "Option D text"
+      "d": "Option D text"${optEJson}
     },
-    "correctAnswer": "A",
+    "correctAnswer": "${isMsq ? 'A,C' : 'A'}",
     "explanation": "Concise reasoning in ${effectiveExplanationLang}..."
   }
 ]
 Requirements:
-1. STRICT 4-OPTION CONSTRAINT: Exactly 4 mutually exclusive options (a, b, c, d). Never include option E or more than 4 options under any circumstances.
-2. "correctAnswer" must be a single uppercase letter "A", "B", "C", or "D".
+1. ${optRule}
+2. ${keyRule}
 3. Valid JSON only. Do not truncate.`;
-      } else {
-        return `Generate exactly ${questionCount} multiple-choice questions (MCQs) at ${difficulty} difficulty standard on ${subject}${topic ? ` (Focus Topics: ${topic})` : ''}, tailored specifically for ${examType} preparation in ${qLang}.
-Output MUST be an unbroken, valid JSON array of objects without markdown fences or extraneous text:
+      }
+
+      return `Generate exactly ${questionCount} rigorous questions at ${difficulty} difficulty standard on ${subject}${topic ? ` (Focus Topics: ${topic})` : ''}, tailored for ${examType} in ${qLang}.
+Output MUST be an unbroken, valid JSON array:
 [
   {
     "num": 1,
@@ -88,103 +97,117 @@ Output MUST be an unbroken, valid JSON array of objects without markdown fences 
       "a": "Option A text",
       "b": "Option B text",
       "c": "Option C text",
-      "d": "Option D text"
+      "d": "Option D text"${optEJson}
     },
-    "correctAnswer": "A",
-    "explanation": "Core principle and breakdown of why A is right and distractors are wrong in ${effectiveExplanationLang}."
+    "correctAnswer": "${isMsq ? 'A,C' : 'A'}",
+    "explanation": "Core principle and distractor analysis in ${effectiveExplanationLang}."
   }
 ]
 Strict Rules:
-- STRICT 4-OPTION CONSTRAINT: Exactly four distinct options: a, b, c, and d. Never include option e or more than 4 options.
-- Balanced Key Distribution: Distribute answers evenly across A, B, C, and D.
-- Return raw JSON only so it parses immediately without preprocessing.`;
-      }
+- ${optRule}
+- ${keyRule}
+- Balance answer key distribution evenly across options.
+- Return raw JSON only so it parses immediately.`;
     }
 
     if (targetFormat === 'Table') {
-      return `Generate exactly ${questionCount} multiple-choice questions (MCQs) on ${subject}${topic ? ` (${topic})` : ''} for ${examType} at ${difficulty} standard in ${qLang}.
-Output MUST be formatted as a Markdown Pipe Table with these exact column headers:
-| Question | Option A | Option B | Option C | Option D | Answer | Explanation |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Sample question text? | Choice A | Choice B | Choice C | Choice D | A | Detailed rationale in ${effectiveExplanationLang} |
+      const colEHeader = optionMode === 5 ? ' Option E |' : '';
+      const colESep = optionMode === 5 ? ' :--- |' : '';
+      const colEVal = optionMode === 5 ? ' Choice E |' : '';
+      return `Generate exactly ${questionCount} questions on ${subject}${topic ? ` (${topic})` : ''} for ${examType} at ${difficulty} standard in ${qLang}.
+Output MUST be a Markdown Pipe Table with these exact columns:
+| Question | Option A | Option B | Option C | Option D |${colEHeader} Answer | Explanation |
+| :--- | :--- | :--- | :--- | :--- |${colESep} :--- | :--- |
+| Sample question text? | Choice A | Choice B | Choice C | Choice D |${colEVal} ${isMsq ? 'A,C' : 'A'} | Rationale in ${effectiveExplanationLang} |
 
 Rules:
-1. STRICT 4-OPTION CONSTRAINT: Exactly 4 options (Option A, Option B, Option C, Option D). Never include Option E.
-2. Ensure each question is on its own row, with Answer being a single letter (A, B, C, or D).`;
+1. ${optRule}
+2. ${keyRule}`;
     }
 
-    // Default: Standard Text / Aiken
+    const optELine = optionMode === 5 ? '\n(E) Option E' : '';
     if (promptDensity === 'Concise') {
-      return `Generate ${questionCount} MCQs for ${examType} on ${subject}${topic ? ` (${topic})` : ''} in ${qLang}.
+      return `Generate ${questionCount} questions for ${examType} on ${subject}${topic ? ` (${topic})` : ''} in ${qLang}.
 Output format:
 Q1. Question text
 (A) Option A
 (B) Option B
 (C) Option C
-(D) Option D
-ANSWER: A
+(D) Option D${optELine}
+ANSWER: ${isMsq ? 'A,C' : 'A'}
 EXPLANATION: Solution in ${effectiveExplanationLang}
 
-(Repeat for all ${questionCount} questions sequentially)`;
+(Repeat sequentially for Q1 through Q${questionCount})`;
     }
 
-    return `Generate exactly ${questionCount} multiple-choice questions (MCQs) at ${difficulty} difficulty standard on ${subject}${topic ? ` (Focus Topics: ${topic})` : ''}, tailored specifically for ${examType} preparation, based on the latest authoritative syllabus and examination pattern.
-
-Language & Notation Specification:
-- Questions and options must be written entirely in ${qLang}.
-- Explanations must be written in ${effectiveExplanationLang}.
-- Universal Option Convention: Label options strictly as (A), (B), (C), and (D) across all languages.
-- Plain Text Anti-List & Zero-Indentation: Every single line must start flush-left at the margin.
+    return `Generate exactly ${questionCount} questions at ${difficulty} standard on ${subject}${topic ? ` (${topic})` : ''} for ${examType} in ${qLang}.
 
 ## Phase 1: Questions
-1. Provide Questions 1 through ${questionCount} first, labeled sequentially as Q1., Q2. through Q${questionCount}.
-2. Every question must have exactly four options: (A), (B), (C), and (D).
+Label sequentially Q1. through Q${questionCount}. Each with options (A) through (${optionMode === 5 ? 'E' : 'D'}).
+Every line must start flush-left.
 
 ## Phase 2: Answer Key
-Immediately after Question ${questionCount}, output the answer key:
-## Answer Key
-Q1: (C)
-Q2: (A)
+Q1: (${isMsq ? 'A,C' : 'C'})
 ...
 
-${includeExplanations ? `## Phase 3: Detailed Explanations
-## Detailed Explanation
-For each question Q1 to Q${questionCount}:
-Q1.
-Core Concept & Principle: [Explanation]
-Option (A) [Correct/Incorrect]: [Reasoning]
-Option (B) [Correct/Incorrect]: [Reasoning]
-Option (C) [Correct/Incorrect]: [Reasoning]
-Option (D) [Correct/Incorrect]: [Reasoning]
-Memory Anchor: [Key mnemonic/rule]
-` : ''}
-Execute the instructions now, starting directly with Phase 1.`;
-  }, [examType, subject, topic, questionCount, difficulty, questionLanguage, effectiveExplanationLang, includeExplanations, targetFormat, promptDensity]);
+${
+  includeExplanations
+    ? `## Phase 3: Detailed Explanations
+For each question Q1 to Q${questionCount}, explain core concept and distractors in ${effectiveExplanationLang}.`
+    : ''
+}`;
+  }, [
+    examType,
+    subject,
+    topic,
+    questionCount,
+    difficulty,
+    optionMode,
+    questionLanguage,
+    effectiveExplanationLang,
+    includeExplanations,
+    targetFormat,
+    promptDensity,
+  ]);
 
   const handleCopyPrompt = () => {
-    navigator.clipboard.writeText(generatedPrompt);
+    navigator.clipboard?.writeText(generatedPrompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2400);
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+      {/* Header */}
+      <div
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border"
+        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+      >
         <div>
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-500" />
-            AI Prompt Builder for ExamSet Parser
+          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
+            <Sparkles className="w-5 h-5" style={{ color: colors.amber }} />
+            AI Prompt Architect for ExamSet Parser
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Architect strict, zero-drift prompts for ChatGPT, Gemini, or Claude to generate exam sets formatted perfectly for instant 1-click import.
+          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+            Build zero-drift prompts supporting 4/5 options, MSQ, Assertion–Reason, and multilingual rationales for instant import.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onSendToCreator && (
+            <button
+              onClick={() => onSendToCreator(generatedPrompt)}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition"
+              style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              New Set with Prompt
+            </button>
+          )}
           <button
             onClick={handleCopyPrompt}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-sm"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition"
+            style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
           >
             {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
             <span>{copied ? 'Copied Prompt!' : 'Copy AI Prompt'}</span>
@@ -192,95 +215,125 @@ Execute the instructions now, starting directly with Phase 1.`;
         </div>
       </div>
 
-      {/* Main Grid: Parameters on Left, Generated Prompt on Right */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Form Controls */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+          <div
+            className="rounded-xl border p-5 space-y-4 text-xs"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <h4 className="font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: colors.muted }}>
               <Sliders className="w-3.5 h-3.5" />
-              Syllabus & Blueprint Parameters
+              Syllabus &amp; Blueprint Parameters
             </h4>
 
-            <div className="space-y-3.5 text-xs">
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Target Examination</label>
+                <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                  Target Examination
+                </label>
                 <select
                   value={examType}
                   onChange={(e) => setExamType(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+                  className="w-full px-3 py-2 rounded-lg border"
+                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 >
                   <option value="UPSC Civil Services Examination">UPSC Civil Services Examination</option>
                   <option value="SSC Combined Graduate Level (CGL)">SSC Combined Graduate Level (CGL)</option>
                   <option value="National Eligibility cum Entrance Test (NEET)">NEET Medical Entrance</option>
-                  <option value="JEE Main & Advanced">JEE Engineering Entrance</option>
-                  <option value="State Public Service Commission (PSC)">State PSC Exam</option>
+                  <option value="JEE Main & Advanced">JEE Engineering Entrance (SCQ + MSQ)</option>
+                  <option value="State Public Service Commission (PSC)">State PSC Exam (5 Options Supported)</option>
                   <option value="Banking Probationary Officer (IBPS PO / SBI)">Banking PO / Clerk</option>
                   <option value="Central Board of Secondary Education (CBSE Class 12)">CBSE Class 12 Board</option>
-                  <option value="All India National Talent Search / Olympiad">Olympiad & Talent Search</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Subject</label>
+                <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                  Subject
+                </label>
                 <input
                   type="text"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="e.g. Modern Indian History"
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 rounded-lg border"
+                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Specific Topics & Sub-themes</label>
+                <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                  Specific Topics
+                </label>
                 <textarea
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   rows={2}
-                  placeholder="e.g. Revolt of 1857, Socio-religious reform movements..."
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-1.5 rounded-lg border"
+                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 />
               </div>
 
-              {/* Target Format & Density Selector */}
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2.5">
+              {/* Format + Density */}
+              <div
+                className="p-3 rounded-lg border space-y-2.5"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+              >
                 <div className="flex items-center justify-between">
-                  <label className="text-slate-700 font-semibold">Target Output Format</label>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">{targetFormat}</span>
+                  <span className="font-semibold" style={{ color: colors.ink }}>Target Format</span>
+                  <div className="flex gap-1">
+                    {([4, 5] as const).map((optN) => (
+                      <button
+                        key={optN}
+                        type="button"
+                        onClick={() => setOptionMode(optN)}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                        style={
+                          optionMode === optN
+                            ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                            : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
+                        }
+                      >
+                        {optN} Opts
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
                 <div className="grid grid-cols-3 gap-1.5">
                   {(['JSON', 'Text', 'Table'] as const).map((fmt) => (
                     <button
                       key={fmt}
                       type="button"
                       onClick={() => setTargetFormat(fmt)}
-                      className={`px-2 py-1.5 rounded-md font-semibold text-xs border transition ${
+                      className="px-2 py-1.5 rounded-md font-bold border transition"
+                      style={
                         targetFormat === fmt
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
+                          ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText, borderColor: colors.primaryButtonBg }
+                          : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
+                      }
                     >
-                      {fmt === 'JSON' ? '{ } JSON' : fmt === 'Table' ? '⊞ Table' : '¶ Text'}
+                      {fmt}
                     </button>
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200">
-                  <span className="text-slate-600 text-[11px] font-medium">Prompt Length:</span>
+                <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: colors.borderLight }}>
+                  <span className="text-[11px]" style={{ color: colors.muted }}>Prompt Length:</span>
                   <div className="flex gap-1">
                     {(['Concise', 'Comprehensive'] as const).map((d) => (
                       <button
                         key={d}
                         type="button"
                         onClick={() => setPromptDensity(d)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition ${
+                        className="px-2 py-0.5 rounded text-[10px] font-bold"
+                        style={
                           promptDensity === d
-                            ? 'bg-slate-800 text-white'
-                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                        }`}
+                            ? { backgroundColor: colors.navyBanner, color: colors.navyBannerText }
+                            : { backgroundColor: colors.surface, color: colors.muted }
+                        }
                       >
-                        {d === 'Concise' ? 'Concise (Fast)' : 'Detailed'}
+                        {d}
                       </button>
                     ))}
                   </div>
@@ -289,104 +342,110 @@ Execute the instructions now, starting directly with Phase 1.`;
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Question Count</label>
+                  <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                    Question Count
+                  </label>
                   <select
                     value={questionCount}
                     onChange={(e) => setQuestionCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border"
+                    style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   >
-                    <option value={10}>10 Questions</option>
-                    <option value={20}>20 Questions</option>
-                    <option value={30}>30 Questions</option>
-                    <option value={50}>50 Questions</option>
-                    <option value={100}>100 Questions</option>
+                    {[10, 20, 30, 50, 100].map((n) => (
+                      <option key={n} value={n}>{n} Questions</option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Difficulty</label>
+                  <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                    Difficulty / Style
+                  </label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border"
+                    style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   >
                     <option value="Mixed">Mixed Standard</option>
                     <option value="Standard">Standard / Moderate</option>
                     <option value="Hard">Advanced / Hard</option>
-                    <option value="Assertion-Reason">Assertion-Reason Pattern</option>
+                    <option value="Assertion-Reason">Assertion–Reason</option>
+                    <option value="MSQ">Multiple-Select (MSQ)</option>
                   </select>
                 </div>
               </div>
 
-              {/* Language Configuration */}
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-slate-700 font-semibold">Question Language</label>
-                    <span className="text-[10px] text-blue-600 font-medium">Any language supported</span>
-                  </div>
-                  <input
-                    type="text"
-                    value={questionLanguage}
-                    onChange={(e) => setQuestionLanguage(e.target.value)}
-                    placeholder="e.g. English, Hindi, Tamil, Bengali, French, German..."
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 text-xs"
-                  />
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {['English', 'Hindi', 'Bengali', 'Marathi', 'Tamil', 'Telugu', 'Gujarati', 'Urdu', 'Spanish', 'French'].map((lng) => (
-                      <button
-                        key={lng}
-                        type="button"
-                        onClick={() => setQuestionLanguage(lng)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] border transition ${
-                          questionLanguage.toLowerCase() === lng.toLowerCase()
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        {lng}
-                      </button>
-                    ))}
-                  </div>
+              {/* Language */}
+              <div
+                className="p-3 rounded-lg border space-y-2.5"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+              >
+                <label className="block font-semibold" style={{ color: colors.ink }}>
+                  Question Language
+                </label>
+                <input
+                  type="text"
+                  value={questionLanguage}
+                  onChange={(e) => setQuestionLanguage(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border"
+                  style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
+                />
+                <div className="flex flex-wrap gap-1">
+                  {['English', 'Hindi', 'Bengali', 'Marathi', 'Tamil', 'Korean', 'French'].map((lng) => (
+                    <button
+                      key={lng}
+                      type="button"
+                      onClick={() => setQuestionLanguage(lng)}
+                      className="px-1.5 py-0.5 rounded text-[10px] border font-semibold"
+                      style={
+                        questionLanguage.toLowerCase() === lng.toLowerCase()
+                          ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                          : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
+                      }
+                    >
+                      {lng}
+                    </button>
+                  ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t" style={{ borderColor: colors.borderLight }}>
                   <div>
-                    <label className="block text-slate-700 font-semibold mb-1">Explanation Language</label>
+                    <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                      Explanation Language
+                    </label>
                     <select
                       value={explanationChoice}
                       onChange={(e) => setExplanationChoice(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 text-xs"
+                      className="w-full px-2 py-1.5 rounded-lg border"
+                      style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
                     >
                       <option value="Same as Question">Same as Question</option>
                       <option value="English">English</option>
                       <option value="Hindi">Hindi</option>
-                      <option value="Bilingual">
-                        {questionLanguage.toLowerCase() === 'english' ? 'Bilingual (Eng & Hindi)' : `Bilingual (Eng & ${questionLanguage || 'Regional'})`}
-                      </option>
+                      <option value="Bilingual">Bilingual</option>
                       <option value="Custom">Custom...</option>
                     </select>
-
                     {explanationChoice === 'Custom' && (
                       <input
                         type="text"
                         value={customExplanationLang}
                         onChange={(e) => setCustomExplanationLang(e.target.value)}
-                        placeholder="Type custom explanation language..."
-                        className="w-full mt-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 text-[11px]"
+                        placeholder="Language..."
+                        className="w-full mt-1 px-2 py-1 rounded border"
+                        style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
                       />
                     )}
                   </div>
 
-                  <div className="flex flex-col justify-end">
-                    <label className="flex items-center gap-2 cursor-pointer pb-2">
+                  <div className="flex items-end pb-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={includeExplanations}
                         onChange={(e) => setIncludeExplanations(e.target.checked)}
-                        className="rounded text-blue-600 focus:ring-0"
                       />
-                      <span className="text-slate-700 font-medium">Include Solutions</span>
+                      <span className="font-semibold" style={{ color: colors.ink }}>Include Solutions</span>
                     </label>
                   </div>
                 </div>
@@ -394,27 +453,34 @@ Execute the instructions now, starting directly with Phase 1.`;
             </div>
           </div>
 
-          {/* Quick Guide Card */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 space-y-2">
-            <h5 className="font-bold text-blue-950 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4 text-blue-600" />
-              Recommended Workflow:
-            </h5>
-            <ol className="list-decimal pl-4 space-y-1 text-blue-800/90 leading-relaxed">
-              <li>Click <strong>Copy AI Prompt</strong> above.</li>
-              <li>Paste into <strong>Gemini</strong>, <strong>ChatGPT</strong>, or <strong>Claude</strong>.</li>
-              <li>Copy the LLM’s response text.</li>
-              <li>Paste directly into the <strong>Question Creator</strong> tab to generate your test and single-sheet OMR!</li>
-            </ol>
+          <div
+            className="rounded-xl p-4 border text-xs space-y-1.5"
+            style={{ backgroundColor: colors.tealLight, borderColor: colors.border, color: colors.ink }}
+          >
+            <div className="font-bold flex items-center gap-1.5" style={{ color: colors.tealDark }}>
+              <BookOpen className="w-4 h-4" />
+              Recommended Workflow
+            </div>
+            <p className="leading-relaxed">
+              Copy this prompt into your AI workspace, then paste the returned JSON or text into{' '}
+              <button
+                onClick={() => onNavigateToCreator?.()}
+                className="underline font-bold"
+                style={{ color: colors.tealDark }}
+              >
+                Question Creator
+              </button>{' '}
+              or the Batch Importer.
+            </p>
           </div>
         </div>
 
-        {/* Right Output Text Box */}
+        {/* Right Output Box */}
         <div className="lg:col-span-7">
           <div className="bg-slate-900 rounded-xl p-5 shadow-lg border border-slate-800 flex flex-col h-full min-h-[480px]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 text-xs text-slate-400">
-              <span className="font-mono text-slate-300 flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <span className="font-mono text-slate-200 flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                 Ready-to-Run LLM Prompt
               </span>
               <span>{generatedPrompt.length} chars</span>
@@ -423,20 +489,19 @@ Execute the instructions now, starting directly with Phase 1.`;
             <textarea
               readOnly
               value={generatedPrompt}
-              className="flex-1 w-full bg-transparent text-slate-200 font-mono text-xs leading-relaxed border-0 resize-none focus:outline-none focus:ring-0"
+              className="flex-1 w-full bg-transparent text-slate-200 font-mono text-xs leading-relaxed border-0 resize-none focus:outline-none"
             />
 
             <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
               <span className="text-[11px] text-slate-400">
-                Guaranteed zero-drift structure for ExamSet Parser
+                Engineered for McqParser v2 (MSQ + 5-Option + Bilingual)
               </span>
-
               <button
                 onClick={handleCopyPrompt}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition shadow"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-                <span>{copied ? 'Copied to Clipboard' : 'Copy Prompt'}</span>
+                {copied ? <Check className="w-4 h-4 text-emerald-200" /> : <Copy className="w-4 h-4" />}
+                <span>{copied ? 'Copied' : 'Copy Prompt'}</span>
               </button>
             </div>
           </div>

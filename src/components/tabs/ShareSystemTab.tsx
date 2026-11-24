@@ -1,125 +1,180 @@
-import React, { useState } from 'react';
-import { 
-  Share2, 
-  Copy, 
-  Download, 
-  Upload, 
-  Check, 
-  QrCode, 
-  FileJson, 
-  Link, 
-  Globe, 
-  ExternalLink,
-  Sparkles,
-  Layers
+import React, { useMemo, useState } from 'react';
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  Download,
+  FileJson,
+  Layers,
+  Link,
+  Share2,
+  Upload,
 } from 'lucide-react';
 import { QuestionPaper } from '../../types/exam';
+import { useTheme } from '../../theme/ThemeProvider';
+import { BatchExamImporter } from '../../utils/batchExamImporter';
+import { SvgQrGenerator } from '../../utils/qrCodeHelper';
 
 interface ShareSystemTabProps {
   currentPaper: QuestionPaper;
+  allPapers?: QuestionPaper[];
   onImportPaper: (paper: QuestionPaper) => void;
+  onImportPapers?: (papers: QuestionPaper[]) => void;
+  onOpenBatchImport?: () => void;
 }
 
 export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
   currentPaper,
-  onImportPaper
+  allPapers = [],
+  onImportPaper,
+  onImportPapers,
+  onOpenBatchImport,
 }) => {
+  const { colors } = useTheme();
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [copiedJson, setCopiedJson] = useState<boolean>(false);
   const [importJsonText, setImportJsonText] = useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
-  // Generate lightweight payload for sharing
-  const sharePayload = JSON.stringify(currentPaper, null, 2);
+  const sharePayload = useMemo(() => JSON.stringify(currentPaper, null, 2), [currentPaper]);
 
-  // Safe base64 encode for link sharing
-  const encodedData = btoa(encodeURIComponent(JSON.stringify(currentPaper)));
-  const shareableUrl = `${window.location.origin}${window.location.pathname}#paper=${encodedData.slice(0, 120)}...`;
+  const offlineKeyQrSvg = useMemo(() => {
+    const payload = SvgQrGenerator.generatePayload(
+      currentPaper.metadata.id,
+      currentPaper.metadata.subject,
+      currentPaper.metadata.setNumber,
+      String(currentPaper.metadata.durationMinutes || 120),
+      String(currentPaper.questions.length * (currentPaper.metadata.positiveMarks || 2)),
+      currentPaper.questions.slice(0, 200)
+    );
+    return SvgQrGenerator.generateSvg(payload, 18, colors.navyBanner);
+  }, [currentPaper, colors.navyBanner]);
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    navigator.clipboard?.writeText(window.location.href);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2400);
   };
 
   const handleCopyJson = () => {
-    navigator.clipboard.writeText(sharePayload);
+    navigator.clipboard?.writeText(sharePayload);
     setCopiedJson(true);
     setTimeout(() => setCopiedJson(false), 2400);
   };
 
-  const handleDownloadJson = () => {
-    const blob = new Blob([sharePayload], { type: 'application/json' });
+  const downloadJson = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${currentPaper.metadata.title.replace(/\s+/g, '_')}.examset.json`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  const handleImportJson = () => {
-    setImportError(null);
-    try {
-      if (!importJsonText.trim()) {
-        setImportError('Please paste valid ExamSet JSON content.');
-        return;
-      }
-      const parsed = JSON.parse(importJsonText);
-      if (!parsed.questions || !Array.isArray(parsed.questions)) {
-        setImportError('Invalid format: JSON must include a "questions" array.');
-        return;
-      }
-      onImportPaper(parsed);
-      alert(`Successfully imported "${parsed.metadata?.title || 'Exam Paper'}" with ${parsed.questions.length} questions!`);
-      setImportJsonText('');
-    } catch (err: any) {
-      setImportError(`Parse error: ${err.message}`);
-    }
+  const handleDownloadSingleJson = () => {
+    downloadJson(
+      `${currentPaper.metadata.title.replace(/\s+/g, '_')}.examset.json`,
+      sharePayload
+    );
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
-        if (parsed.questions && Array.isArray(parsed.questions)) {
-          onImportPaper(parsed);
-          alert(`Successfully imported "${parsed.metadata?.title || 'Exam Paper'}"!`);
-        } else {
-          alert('Invalid file format: Missing questions list.');
-        }
-      } catch (err: any) {
-        alert(`Failed to load file: ${err.message}`);
-      }
+  const handleDownloadLibraryBundle = () => {
+    const bundle = {
+      schemaVersion: 2,
+      exportedAt: new Date().toISOString(),
+      papers: allPapers.length > 0 ? allPapers : [currentPaper],
     };
-    reader.readAsText(file);
+    downloadJson(
+      `ExamSet_Library_Bundle_${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(bundle, null, 2)
+    );
+  };
+
+  const processImportedText = (rawText: string) => {
+    setImportError(null);
+    setImportSuccess(null);
+
+    if (!rawText.trim()) {
+      setImportError('Please paste valid ExamSet JSON content.');
+      return;
+    }
+
+    const parsedItems = BatchExamImporter.parseFilesToItems(
+      [{ name: 'pasted_import.json', size: rawText.length, content: rawText }],
+      currentPaper.metadata.folderId || 'default'
+    );
+    const validPapers = parsedItems.map((i) => i.paper).filter((p): p is QuestionPaper => p !== null);
+
+    if (validPapers.length === 0) {
+      const firstErr = parsedItems[0]?.issues.find((x) => x.severity === 'ERROR')?.message;
+      setImportError(firstErr || 'Could not parse any valid ExamSet paper from the JSON payload.');
+      return;
+    }
+
+    if (validPapers.length > 1 && onImportPapers) {
+      onImportPapers(validPapers);
+      setImportSuccess(`Imported ${validPapers.length} papers into your workspace library.`);
+    } else {
+      onImportPaper(validPapers[0]);
+      setImportSuccess(
+        `Imported "${validPapers[0].metadata.title}" (${validPapers[0].questions.length} questions).`
+      );
+    }
+    setImportJsonText('');
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (files.length === 1) {
+      const text = await files[0].text();
+      processImportedText(text);
+    } else if (onOpenBatchImport) {
+      onOpenBatchImport();
+    } else {
+      const text = await files[0].text();
+      processImportedText(text);
+    }
+    e.target.value = '';
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Action Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+      {/* Header */}
+      <div
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border"
+        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+      >
         <div>
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Share2 className="w-5 h-5 text-blue-600" />
-            Share, Export & Peer Collaboration Hub
+          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
+            <Share2 className="w-5 h-5" style={{ color: colors.teal }} />
+            Share, Bundle Export &amp; Peer Import Hub
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Export assessments as structured JSON, distribute online practice links to candidates, or import question packages.
+          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+            Export single assessments (.examset.json), full library bundles, or scan/import peer packages seamlessly.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {allPapers.length > 1 && (
+            <button
+              onClick={handleDownloadLibraryBundle}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition"
+              style={{ backgroundColor: colors.surface, color: colors.inkBold, borderColor: colors.border }}
+            >
+              <Layers className="w-3.5 h-3.5" style={{ color: colors.teal }} />
+              Export All ({allPapers.length} Sets)
+            </button>
+          )}
           <button
-            onClick={handleDownloadJson}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-sm"
+            onClick={handleDownloadSingleJson}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition"
+            style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
           >
             <Download className="w-4 h-4" />
             Download .examset.json
@@ -127,104 +182,139 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
         </div>
       </div>
 
-      {/* Grid: Sharing Cards */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Shareable Link & QR Simulation */}
         <div className="lg:col-span-6 space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+          {/* Distribution Identity & Offline Key QR */}
+          <div
+            className="rounded-xl border p-5 space-y-4"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: colors.muted }}>
               <Link className="w-3.5 h-3.5" />
-              Direct Test & Paper Link
+              Workspace Link &amp; Machine Grading QR
             </h4>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Anyone with this link can open the paper directly inside ExamSet, print the continuous student paper or 1-sheet OMR, or take the timed test.
-            </p>
 
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 readOnly
                 value={window.location.href}
-                className="w-full text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-700 focus:outline-none"
+                className="w-full text-xs font-mono border rounded-lg px-3 py-2 focus:outline-none"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
               />
               <button
                 onClick={handleCopyLink}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition shadow-sm flex-shrink-0"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg flex-shrink-0"
+                style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedLink ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
 
-            {/* Visual Paper Identity Badge */}
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-4">
-              <div className="space-y-1">
-                <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">
-                  Ready for Distribution
+            <div
+              className="p-4 rounded-xl border flex items-center justify-between gap-4"
+              style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+            >
+              <div className="space-y-1 min-w-0">
+                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
+                  Offline Grading Matrix Ready
                 </span>
-                <h5 className="text-sm font-bold text-slate-900">{currentPaper.metadata.title}</h5>
-                <p className="text-xs text-slate-500">
-                  {currentPaper.metadata.subject} • {currentPaper.questions.length} Items • {currentPaper.metadata.setNumber}
+                <h5 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
+                  {currentPaper.metadata.title}
+                </h5>
+                <p className="text-xs" style={{ color: colors.muted }}>
+                  {currentPaper.metadata.subject} • {currentPaper.questions.length} Items • Set {currentPaper.metadata.setNumber}
                 </p>
               </div>
 
-              <div className="w-14 h-14 bg-white rounded-lg border border-slate-300 p-1 flex items-center justify-center flex-shrink-0 shadow-sm">
-                <QrCode className="w-10 h-10 text-slate-800" />
-              </div>
+              <div
+                className="p-1.5 rounded-lg border bg-white flex-shrink-0 shadow-sm"
+                style={{ borderColor: colors.border }}
+                dangerouslySetInnerHTML={{ __html: offlineKeyQrSvg }}
+                title="Serialized OMR Offline Answer Key QR"
+              />
             </div>
           </div>
 
-          {/* Import JSON Card */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Upload className="w-3.5 h-3.5" />
-              Import Paper from JSON
-            </h4>
-
-            <div className="space-y-3">
-              <textarea
-                value={importJsonText}
-                onChange={(e) => setImportJsonText(e.target.value)}
-                placeholder="Paste exported .examset.json text here..."
-                rows={4}
-                className="w-full p-3 font-mono text-xs text-slate-800 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-
-              {importError && (
-                <div className="text-xs text-rose-600 font-semibold">{importError}</div>
-              )}
-
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Choose File (.json)</span>
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-
+          {/* Import Card */}
+          <div
+            className="rounded-xl border p-5 space-y-3"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: colors.muted }}>
+                <Upload className="w-3.5 h-3.5" />
+                Import Paper or Multi-Paper Bundle
+              </h4>
+              {onOpenBatchImport && (
                 <button
-                  onClick={handleImportJson}
-                  className="px-4 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-sm"
+                  onClick={onOpenBatchImport}
+                  className="text-[11px] font-bold"
+                  style={{ color: colors.teal }}
                 >
-                  Load into Workspace
+                  Open Multi-File Batch Importer →
                 </button>
+              )}
+            </div>
+
+            <textarea
+              value={importJsonText}
+              onChange={(e) => setImportJsonText(e.target.value)}
+              placeholder="Paste single .examset.json or multi-paper bundle JSON here..."
+              rows={5}
+              className="w-full p-3 font-mono text-xs border rounded-lg focus:outline-none"
+              style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+            />
+
+            {importError && (
+              <div
+                className="p-2.5 rounded-lg text-xs font-semibold"
+                style={{ backgroundColor: colors.badgeDangerBg, color: colors.badgeDangerText }}
+              >
+                {importError}
               </div>
+            )}
+
+            {importSuccess && (
+              <div
+                className="p-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                style={{ backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }}
+              >
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{importSuccess}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <label
+                className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Choose .json File</span>
+                <input type="file" accept=".json,.txt" onChange={handleFileUpload} className="hidden" />
+              </label>
+
+              <button
+                onClick={() => processImportedText(importJsonText)}
+                className="px-4 py-1.5 text-xs font-bold rounded-lg shadow-sm"
+                style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
+              >
+                Load into Workspace
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Right Column: JSON Preview & Payload Inspector */}
+        {/* Right Column: JSON Payload Inspector */}
         <div className="lg:col-span-6">
           <div className="bg-slate-900 rounded-xl p-5 shadow-lg border border-slate-800 flex flex-col h-full min-h-[500px]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 text-xs text-slate-400">
-              <div className="flex items-center gap-2 font-mono text-slate-300">
+              <div className="flex items-center gap-2 font-mono text-slate-200">
                 <FileJson className="w-4 h-4 text-emerald-400" />
-                <span>Standard ExamSet Data Contract</span>
+                <span>ExamSet Standard JSON Contract</span>
               </div>
               <button
                 onClick={handleCopyJson}
@@ -238,15 +328,12 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
             <textarea
               readOnly
               value={sharePayload}
-              className="flex-1 w-full bg-transparent text-emerald-400 font-mono text-[11px] leading-relaxed border-0 resize-none focus:outline-none focus:ring-0"
+              className="flex-1 w-full bg-transparent text-emerald-400 font-mono text-[11px] leading-relaxed border-0 resize-none focus:outline-none"
             />
 
-            <div className="pt-4 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-              <span>Full metadata, questions, answer keys & explanations included</span>
-              <button
-                onClick={handleDownloadJson}
-                className="font-semibold text-blue-400 hover:text-blue-300"
-              >
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Includes metadata, MSQ keys, Option E, formulas &amp; explanations</span>
+              <button onClick={handleDownloadSingleJson} className="font-semibold text-sky-400 hover:text-sky-300">
                 Download File
               </button>
             </div>

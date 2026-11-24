@@ -309,3 +309,66 @@ Max Marks: 50
 
 ### 5. 'ㅎ'의 조음 위치와 방식
 (b) 후음/마찰음(Glottal fricative) — **Correct.** 'ㅎ'은 목구멍(후두) 부위에서 마찰을 일으키며 나는 소리로 국제음성기호로는 [h]에 해당합니다.`;
+
+export const SAMPLE_PHYSICS_MATH_MSQ = `# JEE / GATE Physics & Quantitative Sample (MSQ + Option E)
+Subject: Classical Mechanics & Electromagnetism
+Topic: Kinematics, Gauss's Law & Calculus
+Set: 04
+Time: 45 Minutes
+Max Marks: 20
+
+1. [MSQ — Multiple Select] Which of the following statements are CORRECT for a particle moving along a circle of radius $R$ with non-uniform speed $v(t)$?
+(A) Net acceleration is directed strictly toward the center at all instants.
+(B) Tangential acceleration equals $\\frac{dv}{dt}$ and changes speed.
+(C) Centripetal acceleration has magnitude $\\frac{v^2}{R}$ and acts radially inward.
+(D) Work done by the centripetal force over any displacement along the circle is zero.
+(E) Angular momentum about the center is always conserved.
+
+2. Evaluate the definite integral $I = \\int_0^{\\pi/2} \\sin^2(x)\\,dx$.
+(A) $\\frac{\\pi}{2}$
+(B) $\\frac{\\pi}{4}$
+(C) $\\frac{1}{2}$
+(D) $1$
+(E) $\\frac{\\pi}{8}$
+
+3. Assertion–Reason
+Assertion (A): Inside a uniformly charged spherical conducting shell, the electrostatic field is zero everywhere.
+Reason (R): By Gauss's Law, $\\oint \\vec{E}\\cdot d\\vec{A} = \\frac{q_{in}}{\\varepsilon_0}$, and no net charge is enclosed inside the cavity.
+(A) Both A and R are true, and R is the correct explanation of A.
+(B) Both A and R are true, but R is not the correct explanation of A.
+(C) A is true, but R is false.
+(D) A is false, but R is true.
+
+4. Match Column I with Column II:
+| Column I (Physical Quantity) | Column II (SI Unit) |
+| --- | --- |
+| A. Magnetic Flux ($\\Phi_B$) | 1. Tesla (T) |
+| B. Magnetic Field ($\\vec{B}$) | 2. Weber (Wb) |
+| C. Inductance ($L$) | 3. Henry (H) |
+| D. Permittivity ($\\varepsilon_0$) | 4. $\\text{C}^2\\text{N}^{-1}\\text{m}^{-2}$ |
+(A) A-2, B-1, C-3, D-4
+(B) A-1, B-2, C-3, D-4
+(C) A-2, B-3, C-1, D-4
+(D) A-4, B-1, C-2, D-3
+
+Answer Key
+1. B, C, D
+2. B
+3. A
+4. A
+
+Detailed Explanation
+1. Correct Answers: B, C, D
+In non-uniform circular motion, the net acceleration is $\\vec{a} = \\vec{a}_t + \\vec{a}_c$, where $a_t = \\frac{dv}{dt}$ and $a_c = \\frac{v^2}{R}$. Because centripetal force is perpendicular to instantaneous displacement, it does zero work. Angular momentum varies since net torque $\\tau = R m a_t \\neq 0$.
+
+2. Correct Answer: (B)
+**Core Concept:** Use the symmetry identity $\\sin^2 x + \\cos^2 x = 1$.
+Step 1: $I = \\int_0^{\\pi/2} \\sin^2 x\\,dx = \\int_0^{\\pi/2} \\cos^2 x\\,dx$.
+Step 2: $2I = \\int_0^{\\pi/2} 1\\,dx = \\frac{\\pi}{2} \\implies I = \\frac{\\pi}{4}$.
+
+3. Correct Answer: (A)
+**Core Concept:** Electrostatic shielding inside conductors follows directly from Gauss's Law with $q_{in} = 0$.
+
+4. Correct Answer: (A)
+Weber measures magnetic flux, Tesla measures flux density, Henry measures inductance, and $\\text{C}^2\\text{N}^{-1}\\text{m}^{-2}$ is the SI unit of permittivity.`;
+

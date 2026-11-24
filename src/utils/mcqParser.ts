@@ -1,37 +1,50 @@
-import { CorrectOption, QuestionItem, QuestionPaper, ParseResult, PaperMetadata, QuestionType, QuestionOptions } from '../types/exam';
+import { PaperMetadata, ParseResult, QuestionItem, QuestionOptions, QuestionType } from '../types/exam';
+import { AnswerKeyMatcher } from './answerKeyMatcher';
+import { ExamNumberGenerator } from './examNumberGenerator';
+
+const DEVANAGARI_DIGITS: Record<string, string> = {
+  '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+  '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+};
+const BENGALI_DIGITS: Record<string, string> = {
+  '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+  '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9',
+};
+
+function normalizeNumerals(input: string): string {
+  return input.replace(/[०-९০-৯]/g, (ch) => DEVANAGARI_DIGITS[ch] ?? BENGALI_DIGITS[ch] ?? ch);
+}
 
 export class McqParser {
-  // Regex patterns for structural separation
-  private static readonly ANSWER_HEADING_REGEX = 
+  private static readonly ANSWER_HEADING_REGEX =
     /^\s*(?:#{1,6}\s*)?(?:\*{1,3})?\s*(?:answer(?:\s*key)?|answers|correct\s*answers?|key\s*answers?|उत्तर(?:\s*कुंजी)?|उत्तरमाला)\s*(?:\*{1,3})?:?\s*$/i;
 
-  private static readonly EXPLANATION_HEADING_REGEX = 
+  private static readonly EXPLANATION_HEADING_REGEX =
     /^\s*(?:#{1,6}\s*)?(?:\*{1,3})?\s*(?:detailed\s*explanations?|explanations?|solutions?|detailed\s*solutions?|व्याख्या|विस्तृत\s*हल|हल)\s*(?:\*{1,3})?:?\s*$/i;
 
-  private static readonly COMBINED_HEADING_REGEX = 
+  private static readonly COMBINED_HEADING_REGEX =
     /(?:answer|उत्तर|solution|हल).*(?:detailed\s*explanation|explanation|व्याख्या)|(?:detailed\s*explanation|explanation|व्याख्या).*(?:answer|उत्तर)/i;
 
-  private static readonly QUESTION_START_REGEX = 
-    /^\s*(?:#{1,6}\s*)?(?:(?:\*\*|__)?\s*)?(?:Q(?:uestion)?\.?\s*)?(\d{1,4})\s*[\.\:\)\-]\s*(?:\*\*|__)?\s*(.*?)(?:\*\*|__)?\s*$/i;
+  private static readonly QUESTION_START_REGEX =
+    /^\s*(?:#{1,6}\s*)?(?:(?:\*\*|__)?\s*)?(?:Q(?:uestion)?\.?\s*)?(\d{1,4})\s*[.:)\-]\s*(?:\*\*|__)?\s*(.*?)(?:\*\*|__)?\s*$/i;
 
-  private static readonly OPTION_REGEX = 
-    /^\s*(?:(?:\*\*|__)?\s*)?[\(\[]?([A-Da-d])[\)\]\.\:]\s*(.*)$/;
+  private static readonly OPTION_REGEX =
+    /^\s*(?:(?:\*\*|__)?\s*)?[([]?([A-Ea-e])[)\].:]\s*(.*)$/;
 
-  /**
-   * Main entry point to parse raw string into a structured QuestionPaper.
-   */
   public static parse(rawText: string): ParseResult {
     const warnings: string[] = [];
     if (!rawText || !rawText.trim()) {
       return {
         paper: {
           metadata: this.createDefaultMetadata(),
-          questions: []
+          questions: [],
         },
         rawCount: 0,
         hasAnswerKeys: false,
         hasExplanations: false,
-        warnings: ['Empty input text provided.']
+        detectedMsqCount: 0,
+        detectedOptionECount: 0,
+        warnings: ['Empty input text provided.'],
       };
     }
 
@@ -46,95 +59,131 @@ export class McqParser {
           cleanJson = cleanJson.substring(0, cleanJson.lastIndexOf('```')).trim();
         }
         const parsed = JSON.parse(cleanJson);
-        const questions: QuestionItem[] = [];
-        const rawArray = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.questionSets?.[0]?.questions || []);
-        
-        rawArray.forEach((item: any, idx: number) => {
-          const num = item.num || idx + 1;
-          const question = item.question || item.stem || item.text || '';
+        const rawArray = Array.isArray(parsed)
+          ? parsed
+          : parsed.questions || parsed.questionSets?.[0]?.questions || [];
+
+        const questions: QuestionItem[] = rawArray.map((item: any, idx: number) => {
+          const num = Number(item.num || idx + 1);
+          const question = String(item.question || item.stem || item.text || '').trim();
           let opts: QuestionOptions = { a: '', b: '', c: '', d: '' };
           if (Array.isArray(item.options)) {
-            opts = { a: item.options[0] || '', b: item.options[1] || '', c: item.options[2] || '', d: item.options[3] || '' };
+            opts = {
+              a: String(item.options[0] || ''),
+              b: String(item.options[1] || ''),
+              c: String(item.options[2] || ''),
+              d: String(item.options[3] || ''),
+              e: item.options[4] ? String(item.options[4]) : undefined,
+            };
           } else if (item.options && typeof item.options === 'object') {
             opts = {
-              a: item.options.a || item.options.A || '',
-              b: item.options.b || item.options.B || '',
-              c: item.options.c || item.options.C || '',
-              d: item.options.d || item.options.D || ''
+              a: String(item.options.a || item.options.A || ''),
+              b: String(item.options.b || item.options.B || ''),
+              c: String(item.options.c || item.options.C || ''),
+              d: String(item.options.d || item.options.D || ''),
+              e: item.options.e || item.options.E ? String(item.options.e || item.options.E) : undefined,
             };
           }
-          const rawAns = item.correctAnswer || item.answer || item.ans || item.correctOption;
-          const ans = typeof rawAns === 'string' && /^[A-D]$/i.test(rawAns.trim()) ? rawAns.trim().toUpperCase() as CorrectOption : undefined;
-          const exp = item.explanation || item.detailedExplanation || item.solution || item.rationale;
-          questions.push({
-            id: `q-${num}`,
+          const rawAns = item.correctAnswer ?? item.answer ?? item.ans ?? item.correctOption;
+          const ans = AnswerKeyMatcher.normalizeKey(typeof rawAns === 'string' ? rawAns : '') || null;
+          const exp = item.explanation || item.detailedExplanation || item.solution || item.rationale || null;
+
+          const qItem: QuestionItem = {
+            id: item.id || `q-${num}-${idx}`,
             num,
             question,
             options: opts,
             correctAnswer: ans,
-            explanation: exp
-          });
+            explanation: exp ? String(exp) : null,
+            diagramLabel: item.diagramLabel || null,
+            diagramUrl: item.diagramUrl || null,
+            formula: item.formula || null,
+            isNeutralized: Boolean(item.isNeutralized),
+            isVerified: Boolean(item.isVerified),
+            questionType: item.questionType || this.classifyQuestionType(question, opts, ans),
+          };
+          return qItem;
         });
 
         if (questions.length > 0) {
+          const meta = parsed.metadata || {};
           return {
             paper: {
-              metadata: parsed.metadata || {
-                id: 'paper-json',
-                title: parsed.title || 'Imported Question Set',
-                subject: parsed.subject || 'General Studies',
-                topic: parsed.topic || '',
-                setNumber: parsed.setNumber || '01',
-                createdAt: Date.now()
+              metadata: {
+                id: meta.id || `paper-json-${Date.now()}`,
+                title: meta.title || parsed.title || 'Imported Question Set',
+                subject: meta.subject || parsed.subject || 'General Studies',
+                topic: meta.topic || parsed.topic || '',
+                setNumber: ExamNumberGenerator.normalizeSetCode(meta.setNumber || parsed.setNumber),
+                targetExam: meta.targetExam || parsed.targetExam || 'All India Competitive Exam',
+                rollNumber: meta.rollNumber,
+                bookletNumber: meta.bookletNumber,
+                durationMinutes: meta.durationMinutes,
+                positiveMarks: meta.positiveMarks,
+                negativeMarks: meta.negativeMarks,
+                msqScoringPolicy: meta.msqScoringPolicy,
+                folderId: meta.folderId || 'default',
+                createdAt: meta.createdAt || Date.now(),
               },
-              questions
+              questions,
             },
             rawCount: questions.length,
-            hasAnswerKeys: questions.some(q => q.correctAnswer),
-            hasExplanations: questions.some(q => q.explanation),
-            warnings: []
+            hasAnswerKeys: questions.some((q) => Boolean(q.correctAnswer)),
+            hasExplanations: questions.some((q) => Boolean(q.explanation)),
+            detectedMsqCount: questions.filter((q) => AnswerKeyMatcher.isMultiSelect(q)).length,
+            detectedOptionECount: questions.filter((q) => Boolean(q.options.e?.trim())).length,
+            warnings: [],
           };
         }
-      } catch (e) {
-        // Fall back to standard text parser
+      } catch {
+        // fall through to text parser
       }
     }
 
-    const metadata = this.extractMetadata(rawText);
-    const { questionText, answerText, explanationText } = this.splitSections(rawText);
+    const normalizedText = normalizeNumerals(rawText);
+    const metadata = this.extractMetadata(normalizedText);
+    const { questionText, answerText, explanationText } = this.splitSections(normalizedText);
 
     const questions = this.parseQuestions(questionText, warnings);
     const answersMap = this.parseAnswerKeys(answerText);
     const { explanations: explanationsMap, derivedAnswers } = this.parseExplanations(explanationText);
 
-    // Merge answers and explanations into question objects
     let answersCount = 0;
     let explanationsCount = 0;
 
     questions.forEach((q) => {
-      // 1. Apply explicit answer key if found
       if (answersMap.has(q.num)) {
         q.correctAnswer = answersMap.get(q.num)!;
         answersCount++;
       } else if (derivedAnswers.has(q.num)) {
-        // 2. Fall back to answer derived from Detailed Explanation
         q.correctAnswer = derivedAnswers.get(q.num)!;
         answersCount++;
-      } else if (!q.correctAnswer) {
-        // 3. Look inside the question stem itself for inline answer tags (e.g. "Ans: B" or "Answer: (C)")
-        const inlineAnsMatch = q.question.match(/\b(?:Ans(?:wer)?|Correct\s*(?:Option|Answer))\b\s*[:\-]?\s*[\(\[]?([A-D])[\)\]]?/i);
+      } else if (q.correctAnswer) {
+        answersCount++;
+      } else {
+        const inlineAnsMatch = q.question.match(
+          /\b(?:Ans(?:wer)?|Correct\s*(?:Option|Answer))\b\s*[:\-]?\s*[([]?([A-Ea-e](?:\s*[,&/]\s*[A-Ea-e])*)[)\]]?/i
+        );
         if (inlineAnsMatch) {
-          q.correctAnswer = inlineAnsMatch[1].toUpperCase() as CorrectOption;
-          answersCount++;
-          // Clean the inline answer out of the question stem
-          q.question = q.question.replace(/\b(?:Ans(?:wer)?|Correct\s*(?:Option|Answer))\b\s*[:\-]?\s*[\(\[]?[A-D][\)\]]?/ig, '').trim();
+          const norm = AnswerKeyMatcher.normalizeKey(inlineAnsMatch[1]);
+          if (norm) {
+            q.correctAnswer = norm;
+            answersCount++;
+            q.question = q.question
+              .replace(/\b(?:Ans(?:wer)?|Correct\s*(?:Option|Answer))\b\s*[:\-]?\s*[([]?[A-Ea-e](?:\s*[,&/]\s*[A-Ea-e])*[)\]]?/gi, '')
+              .trim();
+          }
         }
       }
 
-      // Apply explanation if found
       if (explanationsMap.has(q.num)) {
         q.explanation = explanationsMap.get(q.num)!;
         explanationsCount++;
+      }
+
+      // Re-classify MSQ once keys are bound
+      if (AnswerKeyMatcher.isMultiSelect(q)) {
+        q.questionType = 'multiple-select';
       }
     });
 
@@ -145,44 +194,39 @@ export class McqParser {
     return {
       paper: {
         metadata,
-        questions
+        questions,
       },
       rawCount: questions.length,
       hasAnswerKeys: answersCount > 0,
       hasExplanations: explanationsCount > 0,
-      warnings
+      detectedMsqCount: questions.filter((q) => AnswerKeyMatcher.isMultiSelect(q)).length,
+      detectedOptionECount: questions.filter((q) => Boolean(q.options.e?.trim())).length,
+      warnings,
     };
   }
 
-  /**
-   * Filters prompt generation templates, system instructions, and LLM chat artifacts.
-   */
+  public static formatMultiLineExplanation(raw: string): string {
+    if (!raw) return '';
+    return raw
+      .replace(/\s+(?=Option\s*\([A-E]\)|Core Concept|Key Idea|Memory Anchor|Distractor Analysis|Step\s+\d+:)/gi, '\n')
+      .trim();
+  }
+
   public static isPromptOrInstruction(line: string): boolean {
     const l = line.trim();
     if (!l) return false;
-
-    // AI chat prefixes
-    if (/^(?:Act as|You are a|Generate|Create\s+\[|Create\s+\d+|Please provide|Here (?:is|are)|Below (?:is|are)|Sure|Certainly|Hope this helps|I have created|In this test|This test contains)/i.test(l)) {
+    if (/^(?:Act as|You are a|Generate|Create\s+\[|Create\s+\d+|Please provide|Here (?:is|are)|Below (?:is|are)|Sure|Certainly|Hope this helps|I have created)/i.test(l)) {
       return true;
     }
-    // Instruction label headers
     if (/^(?:System\s*Prompt|User\s*Prompt|Prompt|Instructions?|Guidelines?|Rules?|Format(?:\s*Requirements)?)\s*:/i.test(l)) {
       return true;
     }
-    // Syllabus prompt parameters
     if (/^(?:Language|Examination\s*Name|MCQ\s*Count|Syllabus\s*Specification|Topic\s*Name)\s*:/i.test(l)) {
       return true;
     }
-    // Template placeholder brackets
-    if (/^\[.*?(?:mcq|topic|language|examination|syllabus|insert).*?\]$/i.test(l)) {
-      return true;
-    }
-    return false;
+    return /^\[.*?(?:mcq|topic|language|examination|syllabus|insert).*?\]$/i.test(l);
   }
 
-  /**
-   * Cleans markdown formatting characters (bold, italics, headers) for clean parsing.
-   */
   public static stripMarkdown(text: string): string {
     return text
       .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -192,9 +236,6 @@ export class McqParser {
       .trim();
   }
 
-  /**
-   * Extracts exam title, subject, series code, and topics from the header lines.
-   */
   private static extractMetadata(rawText: string): PaperMetadata {
     const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
     let title = '';
@@ -202,46 +243,39 @@ export class McqParser {
     let topic = '';
     let setNumber = '';
     let targetExam = '';
+    let rollNumber = '';
+    let bookletNumber = '';
 
     const scanLimit = Math.min(35, lines.length);
     for (let i = 0; i < scanLimit; i++) {
       const line = lines[i];
       if (this.isPromptOrInstruction(line)) continue;
-
       const clean = this.stripMarkdown(line);
 
       const titleMatch = clean.match(/\b(?:title|paper\s*title|exam\s*name)\s*:\s*(.+)/i);
-      if (titleMatch && !title) {
-        title = titleMatch[1].trim();
-        continue;
-      }
+      if (titleMatch && !title) { title = titleMatch[1].trim(); continue; }
 
       const subjMatch = clean.match(/\bsubject\s*:\s*(.+)/i);
-      if (subjMatch && !subject) {
-        subject = subjMatch[1].trim();
-        continue;
-      }
+      if (subjMatch && !subject) { subject = subjMatch[1].trim(); continue; }
 
       const topicMatch = clean.match(/\b(?:topic|विषय|unit|chapter)\s*:\s*(.+)/i);
-      if (topicMatch && !topic) {
-        topic = topicMatch[1].trim();
-        continue;
-      }
+      if (topicMatch && !topic) { topic = topicMatch[1].trim(); continue; }
 
       const examMatch = clean.match(/\b(?:exam|examination|target\s*exam)\s*:\s*(.+)/i);
-      if (examMatch && !targetExam) {
-        targetExam = examMatch[1].trim();
-        continue;
-      }
+      if (examMatch && !targetExam) { targetExam = examMatch[1].trim(); continue; }
+
+      const rollMatch = clean.match(/\broll(?:\s*no\.?|\s*number)?\s*[:\-]\s*([0-9]+)/i);
+      if (rollMatch && !rollNumber) { rollNumber = rollMatch[1].trim(); continue; }
+
+      const bookletMatch = clean.match(/\bbooklet(?:\s*no\.?|\s*number)?\s*[:\-]\s*([0-9]+)/i);
+      if (bookletMatch && !bookletNumber) { bookletNumber = bookletMatch[1].trim(); continue; }
 
       const setMatch = clean.match(/\b(?:set(?:\s*no\.?|\s*code)?|series)\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
       if (setMatch && !setNumber) {
-        const found = setMatch[1].trim();
-        setNumber = found.toUpperCase().startsWith('SET') ? found.toUpperCase() : `Set ${found.toUpperCase()}`;
+        setNumber = ExamNumberGenerator.normalizeSetCode(setMatch[1].trim());
         continue;
       }
 
-      // If top header has Markdown H1 or H2:
       if (!title && line.startsWith('#')) {
         const candidate = line.replace(/^#+\s*/, '').trim();
         if (!/(?:questions?|answer|explanation|objective|mcq|instructions?)/i.test(candidate) && candidate.length <= 90) {
@@ -251,19 +285,24 @@ export class McqParser {
     }
 
     return {
-      id: 'paper-' + Date.now().toString(36),
+      id: `paper-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
       title: title || 'Examination Question Paper',
       subject: subject || 'General Studies & Science',
       topic: topic || 'Comprehensive Test',
-      setNumber: setNumber || 'Set A',
+      setNumber: setNumber || '01',
       targetExam: targetExam || 'Competitive Examination',
-      createdAt: Date.now()
+      rollNumber: rollNumber ? ExamNumberGenerator.normalizeRollNumber(rollNumber) : '0000000001',
+      bookletNumber: bookletNumber ? ExamNumberGenerator.normalizeBookletNumber(bookletNumber) : '0000001',
+      durationMinutes: 60,
+      positiveMarks: 2.0,
+      negativeMarks: 0.66,
+      unattendedMarks: 0.0,
+      msqScoringPolicy: 'ALL_OR_NOTHING',
+      folderId: 'default',
+      createdAt: Date.now(),
     };
   }
 
-  /**
-   * Splits input into (1) Questions, (2) Answer Key, and (3) Detailed Explanations.
-   */
   private static splitSections(rawText: string): { questionText: string; answerText: string; explanationText: string } {
     const lines = rawText.split('\n');
     let answerStart: number | null = null;
@@ -278,7 +317,6 @@ export class McqParser {
         if (explanationStart === null) explanationStart = i;
         continue;
       }
-
       if (explanationStart === null && this.EXPLANATION_HEADING_REGEX.test(cleanLine)) {
         explanationStart = i;
       } else if (answerStart === null && this.ANSWER_HEADING_REGEX.test(cleanLine)) {
@@ -286,9 +324,9 @@ export class McqParser {
       }
     }
 
-    // Fallback: If no explicit headers exist, scan for a trailing table or key sequence e.g., "1. (A)"
     if (answerStart === null && explanationStart === null) {
-      const trailingPattern = /^\s*(?:(?:\*\*|__)?\s*)?(?:Q(?:uestion)?\.?\s*)?1\s*(?:[\.\:\)\-]|(?=\s*[\(\[]?[ABCD][\)\]]?))\s*[\(\[]?[ABCD][\)\]]?/i;
+      const trailingPattern =
+        /^\s*(?:(?:\*\*|__)?\s*)?(?:Q(?:uestion)?\.?\s*)?1\s*(?:[.:)\-]|(?=\s*[([]?[A-E][)\]]?))\s*[([]?[A-E][)\]]?/i;
       for (let i = 5; i < lines.length; i++) {
         if (trailingPattern.test(lines[i].trim())) {
           answerStart = i - 1;
@@ -302,515 +340,319 @@ export class McqParser {
     const firstSectionBoundary = validStarts.length > 0 ? Math.min(...validStarts) : lines.length;
 
     const questionText = lines.slice(0, firstSectionBoundary).join('\n');
-
     let answerText = '';
     if (answerStart !== null) {
-      const end = (explanationStart !== null && explanationStart > answerStart) ? explanationStart : lines.length;
+      const end = explanationStart !== null && explanationStart > answerStart ? explanationStart : lines.length;
       answerText = lines.slice(answerStart + 1, end).join('\n');
     }
-
-    let explanationText = '';
-    if (explanationStart !== null) {
-      explanationText = lines.slice(explanationStart + 1).join('\n');
-    }
+    const explanationText = explanationStart !== null ? lines.slice(explanationStart + 1).join('\n') : '';
 
     return { questionText, answerText, explanationText };
   }
 
-  /**
-   * Parses questions and extracts 4 options (A, B, C, D) supporting all question types.
-   */
   private static parseQuestions(questionText: string, warnings: string[]): QuestionItem[] {
     const lines = questionText.split('\n');
     const questionChunks: { startLine: number; num: number; initialText: string }[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(this.QUESTION_START_REGEX);
-
       if (!match) continue;
-
       const num = parseInt(match[1], 10);
       const text = match[2]?.trim() || '';
+      if (Number.isNaN(num) || this.isPromptOrInstruction(text)) continue;
 
-      if (isNaN(num) || this.isPromptOrInstruction(text)) continue;
-
-      // A numbered line inside an existing question can be a statement,
-      // sub-item, sequence step, or table content rather than a new question.
       if (questionChunks.length > 0) {
         const previousChunk = questionChunks[questionChunks.length - 1];
         const previousLines = lines.slice(previousChunk.startLine, i);
-
-        const previousText = previousLines.join('\n');
-
-        // Check whether the previous block already contains all four options.
         const optionLetters = new Set<string>();
-
         for (const previousLine of previousLines) {
           const optionMatch = previousLine.match(this.OPTION_REGEX);
-          if (optionMatch) {
-            optionLetters.add(optionMatch[1].toLowerCase());
-          }
+          if (optionMatch) optionLetters.add(optionMatch[1].toLowerCase());
         }
-
-        const hasFourOptions = ['a', 'b', 'c', 'd'].every(letter =>
-          optionLetters.has(letter)
-        );
-
-        // If the previous question does not yet have four options,
-        // treat this numbered line as part of the current question.
-        if (!hasFourOptions) {
-          continue;
-        }
+        const hasFourOptions = ['a', 'b', 'c', 'd'].every((l) => optionLetters.has(l));
+        if (!hasFourOptions) continue;
       }
 
-      questionChunks.push({
-        startLine: i,
-        num,
-        initialText: text
-      });
+      questionChunks.push({ startLine: i, num, initialText: text });
     }
-    const results: QuestionItem[] = [];
 
+    const results: QuestionItem[] = [];
     for (let index = 0; index < questionChunks.length; index++) {
       const current = questionChunks[index];
-      const nextStart = (index + 1 < questionChunks.length) ? questionChunks[index + 1].startLine : lines.length;
+      const nextStart = index + 1 < questionChunks.length ? questionChunks[index + 1].startLine : lines.length;
       const blockLines = lines.slice(current.startLine, nextStart);
 
-      const { stem: rawStem, options, inlineAnswer } = this.extractStemAndOptions(current.initialText, blockLines);
+      const { stem: rawStem, options, inlineAnswer, formula, diagramLabel } = this.extractStemAndOptions(
+        current.initialText,
+        blockLines
+      );
 
-      // Check if all options are provided
       if (!options.a || !options.b || !options.c || !options.d) {
         warnings.push(`Question #${current.num} may be missing one or more options.`);
       }
 
-      const qType = this.classifyQuestionType(rawStem, options);
-      const stem = this.cleanStemHeader(rawStem, qType);
+      const qType = this.classifyQuestionType(rawStem, options, inlineAnswer);
+      const stem = this.cleanStemHeader(rawStem);
 
       results.push({
-        id: `q-${current.num}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `q-${current.num}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         num: current.num,
         question: stem,
         options,
         correctAnswer: inlineAnswer,
-        explanation: '',
-        questionType: qType
+        explanation: null,
+        questionType: qType,
+        formula: formula || null,
+        diagramLabel: diagramLabel || null,
       });
     }
 
     return results;
   }
 
-  private static cleanStemHeader(stem: string, _qType: QuestionType): string {
-    let clean = stem;
-    const headingPatterns = [
-      /^\s*(?:#{1,6}\s*)?Assertion[–\- ]Reason\s*[:\.\-]?\s*\n+/i,
-      /^\s*(?:#{1,6}\s*)?अभिकथन[–\- ]कारण\s*[:\.\-]?\s*\n+/i,
-      /^\s*(?:#{1,6}\s*)?Match\s+the\s+Following\s*[:\.\-]?\s*\n+/i,
-      /^\s*(?:#{1,6}\s*)?Multiple\s+Choice\s+Questions?\s*[:\.\-]?\s*\n+/i,
-      /^\s*(?:#{1,6}\s*)?Objective\s+Type\s+Questions?\s*[:\.\-]?\s*\n+/i,
-      /^\s*(?:#{1,6}\s*)?Integrated\s+Multi-Concept\s+Question\s*[:\.\-]?\s*\n+/i
-    ];
-    for (const pattern of headingPatterns) {
-      if (pattern.test(clean)) {
-        clean = clean.replace(pattern, '').trim();
-      }
-    }
-    return clean;
+  private static cleanStemHeader(stem: string): string {
+    return stem
+      .replace(/^\s*(?:#{1,6}\s*)?Assertion[–\- ]Reason\s*[:.\-]?\s*\n+/i, '')
+      .replace(/^\s*(?:#{1,6}\s*)?अभिकथन[–\- ]कारण\s*[:.\-]?\s*\n+/i, '')
+      .replace(/^\s*(?:#{1,6}\s*)?Match\s+the\s+Following\s*[:.\-]?\s*\n+/i, '')
+      .replace(/^\s*(?:#{1,6}\s*)?Multiple\s+Choice\s+Questions?\s*[:.\-]?\s*\n+/i, '')
+      .replace(/^\s*(?:#{1,6}\s*)?Integrated\s+Multi-Concept\s+Question\s*[:.\-]?\s*\n+/i, '')
+      .trim();
   }
 
-  /**
-   * Robustly separates Question Stem from the final 4 Options.
-   * Handles:
-   * - Match the Following with matching tables / lists in stem
-   * - Assertion–Reason where 'Assertion (A)' is part of the stem
-   * - Multiple numbered statements (1, 2, 3, 4) in the stem
-   * - Horizontal options: (a) opt1 (b) opt2 / (c) opt3 (d) opt4
-   * - Inline answers at the bottom of questions
-   */
   private static extractStemAndOptions(
     initialText: string,
     blockLines: string[]
-  ): { stem: string; options: QuestionOptions; inlineAnswer: CorrectOption | null } {
-    // Gather all lines in the block
+  ): {
+    stem: string;
+    options: QuestionOptions;
+    inlineAnswer: string | null;
+    formula?: string;
+    diagramLabel?: string;
+  } {
     const allLines: string[] = [];
-    if (initialText && initialText.trim().length > 0) {
-      allLines.push(initialText);
-    }
-    for (let j = 1; j < blockLines.length; j++) {
-      allLines.push(blockLines[j]);
-    }
+    if (initialText && initialText.trim()) allLines.push(initialText);
+    for (let j = 1; j < blockLines.length; j++) allLines.push(blockLines[j]);
 
-    let inlineAnswer: CorrectOption | null = null;
+    let inlineAnswer: string | null = null;
+    let formula: string | undefined;
+    let diagramLabel: string | undefined;
     const options: QuestionOptions = { a: '', b: '', c: '', d: '' };
 
-    // 1. Check for trailing inline answer tag at the bottom (e.g. "**Correct. (a) ...**" or "Ans: B")
     const cleanLines: string[] = [];
     for (let i = 0; i < allLines.length; i++) {
       const line = allLines[i].trim();
-      const inlineMatch = line.match(/(?:\*\*)?(?:Correct\s*(?:Option|Answer)?|Ans(?:wer)?)\s*[:\.]?\s*[\(\[]?([A-D])[\)\]]?/i);
-      if (inlineMatch && i >= allLines.length - 2) {
-        inlineAnswer = inlineMatch[1].toUpperCase() as CorrectOption;
-        // Don't include this line in stem or options
-      } else {
-        cleanLines.push(allLines[i]);
+
+      const formulaMatch = line.match(/^\[?\s*Formula\s*:\s*(.+?)\]?$/i);
+      if (formulaMatch) {
+        formula = formulaMatch[1].trim();
+        continue;
       }
+
+      const diagramMatch = line.match(/^\[?\s*(?:Diagram|Figure)\s*(?:Reference)?\s*:\s*(.+?)\]?$/i);
+      if (diagramMatch) {
+        diagramLabel = diagramMatch[1].trim();
+        continue;
+      }
+
+      const inlineMatch = line.match(
+        /^(?:\*\*)?(?:Correct\s*(?:Option|Answer|Keys?)?|Ans(?:wer)?)\s*[:.]?\s*[([]?([A-Ea-e](?:\s*[,&/]\s*[A-Ea-e])*)[)\]]?(?:\*\*)?$/i
+      );
+      if (inlineMatch && i >= allLines.length - 3) {
+        const norm = AnswerKeyMatcher.normalizeKey(inlineMatch[1]);
+        if (norm) inlineAnswer = norm;
+        continue;
+      }
+      cleanLines.push(allLines[i]);
     }
 
-    // 2. Try to find horizontal options in the last lines (e.g. (a) ... (b) ... on one line, (c) ... (d) ... on next)
+    // Horizontal options (4 or 2+2)
     for (let k = cleanLines.length - 1; k >= 0; k--) {
       const line = cleanLines[k].trim();
       if (!line) continue;
-
-      const inlineGrid = this.extractHorizontalOptions(line);
-      if (inlineGrid) {
-        // If line has 4 options:
-        if (inlineGrid.a && inlineGrid.b && inlineGrid.c && inlineGrid.d) {
-          options.a = inlineGrid.a;
-          options.b = inlineGrid.b;
-          options.c = inlineGrid.c;
-          options.d = inlineGrid.d;
-          const stem = cleanLines.slice(0, k).join('\n').trim();
-          return { stem, options, inlineAnswer };
+      const grid = this.extractHorizontalOptions(line);
+      if (grid) {
+        if (grid.a && grid.b && grid.c && grid.d) {
+          options.a = grid.a;
+          options.b = grid.b;
+          options.c = grid.c;
+          options.d = grid.d;
+          if (grid.e) options.e = grid.e;
+          return { stem: cleanLines.slice(0, k).join('\n').trim(), options, inlineAnswer, formula, diagramLabel };
         }
-        // If line has c and d, check if previous non-empty line has a and b
-        if (inlineGrid.c && inlineGrid.d && !inlineGrid.a && !inlineGrid.b) {
+        if (grid.c && grid.d && !grid.a && !grid.b) {
           let prevIdx = k - 1;
           while (prevIdx >= 0 && !cleanLines[prevIdx].trim()) prevIdx--;
           if (prevIdx >= 0) {
             const prevGrid = this.extractHorizontalOptions(cleanLines[prevIdx]);
-            if (prevGrid && prevGrid.a && prevGrid.b) {
+            if (prevGrid?.a && prevGrid.b) {
               options.a = prevGrid.a;
               options.b = prevGrid.b;
-              options.c = inlineGrid.c;
-              options.d = inlineGrid.d;
-              const stem = cleanLines.slice(0, prevIdx).join('\n').trim();
-              return { stem, options, inlineAnswer };
+              options.c = grid.c;
+              options.d = grid.d;
+              return { stem: cleanLines.slice(0, prevIdx).join('\n').trim(), options, inlineAnswer, formula, diagramLabel };
             }
           }
         }
       }
     }
 
-    // 3. Scan backwards from the bottom to find the LAST set of vertical options: (d), (c), (b), (a)
-    let dIdx = -1, cIdx = -1, bIdx = -1, aIdx = -1;
-
+    // Reverse vertical scan for optional (e), (d), (c), (b), (a)
+    let eIdx = -1, dIdx = -1, cIdx = -1, bIdx = -1, aIdx = -1;
     for (let i = cleanLines.length - 1; i >= 0; i--) {
       const line = cleanLines[i].trim();
       if (!line) continue;
-
-      // Skip lines that are Assertion, Statement, or Markdown headers
-      if (/^\s*(?:Assertion|अभिकथन|Statement)\s*[\(\[]?[A-D][\)\]]?/i.test(line)) {
-        continue;
-      }
-
-      const match = line.match(this.OPTION_REGEX);
-      if (match) {
-        const letter = match[1].toLowerCase();
-        if (letter === 'd' && dIdx === -1) {
-          dIdx = i;
-        } else if (letter === 'c' && dIdx !== -1 && cIdx === -1 && i < dIdx) {
-          cIdx = i;
-        } else if (letter === 'b' && cIdx !== -1 && bIdx === -1 && i < cIdx) {
-          bIdx = i;
-        } else if (letter === 'a' && bIdx !== -1 && aIdx === -1 && i < bIdx) {
+      if (/^\s*(?:Assertion|अभिकथन|Statement)\s*[([]?[A-E][)\]]?/i.test(line)) continue;
+      const m = line.match(this.OPTION_REGEX);
+      if (m) {
+        const letter = m[1].toLowerCase();
+        if (letter === 'e' && eIdx === -1 && dIdx === -1) eIdx = i;
+        else if (letter === 'd' && dIdx === -1) dIdx = i;
+        else if (letter === 'c' && dIdx !== -1 && cIdx === -1 && i < dIdx) cIdx = i;
+        else if (letter === 'b' && cIdx !== -1 && bIdx === -1 && i < cIdx) bIdx = i;
+        else if (letter === 'a' && bIdx !== -1 && aIdx === -1 && i < bIdx) {
           aIdx = i;
-          break; // Found full set in reverse!
+          break;
         }
       }
     }
 
     if (aIdx !== -1 && bIdx !== -1 && cIdx !== -1 && dIdx !== -1) {
-      // Collect option texts including multi-line continuations
-      const aLines = cleanLines.slice(aIdx, bIdx);
-      const bLines = cleanLines.slice(bIdx, cIdx);
-      const cLines = cleanLines.slice(cIdx, dIdx);
-      const dLines = cleanLines.slice(dIdx);
-
-      options.a = this.cleanOptionText(aLines, 'a');
-      options.b = this.cleanOptionText(bLines, 'b');
-      options.c = this.cleanOptionText(cLines, 'c');
-      options.d = this.cleanOptionText(dLines, 'd');
-
-      const stem = cleanLines.slice(0, aIdx).join('\n').trim();
-      return { stem, options, inlineAnswer };
+      const dEnd = eIdx !== -1 && eIdx > dIdx ? eIdx : cleanLines.length;
+      options.a = this.cleanOptionText(cleanLines.slice(aIdx, bIdx), 'a');
+      options.b = this.cleanOptionText(cleanLines.slice(bIdx, cIdx), 'b');
+      options.c = this.cleanOptionText(cleanLines.slice(cIdx, dIdx), 'c');
+      options.d = this.cleanOptionText(cleanLines.slice(dIdx, dEnd), 'd');
+      if (eIdx !== -1 && eIdx > dIdx) {
+        options.e = this.cleanOptionText(cleanLines.slice(eIdx), 'e');
+      }
+      return { stem: cleanLines.slice(0, aIdx).join('\n').trim(), options, inlineAnswer, formula, diagramLabel };
     }
 
-    // 4. Fallback: Standard top-down option parsing
-    let currentKey: 'a' | 'b' | 'c' | 'd' | null = null;
+    // Top-down fallback
+    let currentKey: 'a' | 'b' | 'c' | 'd' | 'e' | null = null;
     const stemLines: string[] = [];
-
     for (let i = 0; i < cleanLines.length; i++) {
       const line = cleanLines[i].trim();
       if (!line) continue;
-
-      if (/^\s*(?:Assertion|अभिकथन|Statement)\s*[\(\[]?[A-D][\)\]]?/i.test(line)) {
+      if (/^\s*(?:Assertion|अभिकथन|Statement)\s*[([]?[A-E][)\]]?/i.test(line)) {
         stemLines.push(cleanLines[i]);
         continue;
       }
-
-      const optMatch = line.match(this.OPTION_REGEX);
-      if (optMatch) {
-        const letter = optMatch[1].toLowerCase() as 'a' | 'b' | 'c' | 'd';
+      const m = line.match(this.OPTION_REGEX);
+      if (m) {
+        const letter = m[1].toLowerCase() as 'a' | 'b' | 'c' | 'd' | 'e';
         currentKey = letter;
-        options[letter] = optMatch[2].trim();
+        options[letter] = m[2].trim();
         continue;
       }
-
       if (currentKey) {
-        options[currentKey] = (options[currentKey] + ' ' + line).trim();
+        options[currentKey] = `${options[currentKey] || ''} ${line}`.trim();
       } else {
         stemLines.push(cleanLines[i]);
       }
     }
 
-    return {
-      stem: stemLines.join('\n').trim(),
-      options,
-      inlineAnswer
-    };
+    return { stem: stemLines.join('\n').trim(), options, inlineAnswer, formula, diagramLabel };
   }
 
   private static cleanOptionText(lines: string[], letter: string): string {
     if (lines.length === 0) return '';
-    const firstLine = lines[0].replace(new RegExp(`^\\s*(?:(?:\\*\\*|__)?\\s*)?[\\(\\[]?${letter}[\\)\\]\\.\\:]\\s*`, 'i'), '');
-    const remaining = lines.slice(1).map(l => l.trim()).filter(Boolean);
-    // Preserve line breaks for multi-line options so they don't collapse into a one-liner
-    return [firstLine.trim(), ...remaining].join('\n').trim();
+    const first = lines[0].replace(new RegExp(`^\\s*(?:(?:\\*\\*|__)?\\s*)?[(\\[]?${letter}[)\\].:]\\s*`, 'i'), '');
+    const rest = lines.slice(1).map((l) => l.trim()).filter(Boolean);
+    return [first.trim(), ...rest].join('\n').trim();
   }
 
-  /**
-   * Non-backtracking linear extraction of horizontally packed options:
-   * (a) opt1 (b) opt2 (c) opt3 (d) opt4
-   * or line 1: (a) opt1 (b) opt2
-   * and line 2: (c) opt3 (d) opt4
-   */
-  private static extractHorizontalOptions(line: string): { a?: string; b?: string; c?: string; d?: string } | null {
+  private static extractHorizontalOptions(
+    line: string
+  ): { a?: string; b?: string; c?: string; d?: string; e?: string } | null {
     if (!line) return null;
-
-    // Full 4-option single line: (a) ... (b) ... (c) ... (d) ...
-    const match4 = line.match(/^\s*[\(\[]?[Aa][\)\]\.\:]\s*(.*?)\s+[\(\[]?[Bb][\)\]\.\:]\s*(.*?)\s+[\(\[]?[Cc][\)\]\.\:]\s*(.*?)\s+[\(\[]?[Dd][\)\]\.\:]\s*(.*?)\s*$/);
+    const match5 = line.match(
+      /^\s*[([]?[Aa][)\].:]\s*(.*?)\s+[([]?[Bb][)\].:]\s*(.*?)\s+[([]?[Cc][)\].:]\s*(.*?)\s+[([]?[Dd][)\].:]\s*(.*?)\s+[([]?[Ee][)\].:]\s*(.*?)\s*$/
+    );
+    if (match5) {
+      return { a: match5[1].trim(), b: match5[2].trim(), c: match5[3].trim(), d: match5[4].trim(), e: match5[5].trim() };
+    }
+    const match4 = line.match(
+      /^\s*[([]?[Aa][)\].:]\s*(.*?)\s+[([]?[Bb][)\].:]\s*(.*?)\s+[([]?[Cc][)\].:]\s*(.*?)\s+[([]?[Dd][)\].:]\s*(.*?)\s*$/
+    );
     if (match4) {
       return { a: match4[1].trim(), b: match4[2].trim(), c: match4[3].trim(), d: match4[4].trim() };
     }
-
-    // 2-option line: (a) ... (b) ...
-    const matchAB = line.match(/^\s*[\(\[]?[Aa][\)\]\.\:]\s*(.*?)\s+[\(\[]?[Bb][\)\]\.\:]\s*(.*?)\s*$/);
-    if (matchAB) {
-      return { a: matchAB[1].trim(), b: matchAB[2].trim() };
-    }
-
-    // 2-option line: (c) ... (d) ...
-    const matchCD = line.match(/^\s*[\(\[]?[Cc][\)\]\.\:]\s*(.*?)\s+[\(\[]?[Dd][\)\]\.\:]\s*(.*?)\s*$/);
-    if (matchCD) {
-      return { c: matchCD[1].trim(), d: matchCD[2].trim() };
-    }
-
+    const matchAB = line.match(/^\s*[([]?[Aa][)\].:]\s*(.*?)\s+[([]?[Bb][)\].:]\s*(.*?)\s*$/);
+    if (matchAB) return { a: matchAB[1].trim(), b: matchAB[2].trim() };
+    const matchCD = line.match(/^\s*[([]?[Cc][)\].:]\s*(.*?)\s+[([]?[Dd][)\].:]\s*(.*?)\s*$/);
+    if (matchCD) return { c: matchCD[1].trim(), d: matchCD[2].trim() };
     return null;
   }
 
-  /**
-   * Classifies question into one of the 30 standardized examination question types.
-   */
-  public static classifyQuestionType(questionStem: string, options: QuestionOptions): QuestionType {
-    const stem = questionStem.toLowerCase();
-    const opts = `${options.a} ${options.b} ${options.c} ${options.d}`.toLowerCase();
+  public static classifyQuestionType(
+    questionStem: string,
+    options: QuestionOptions,
+    answerKey?: string | null
+  ): QuestionType {
+    const stem = (questionStem || '').toLowerCase();
+    const opts = `${options.a} ${options.b} ${options.c} ${options.d} ${options.e || ''}`.toLowerCase();
 
-    // 1. Assertion-Reason
-    if (
-      (stem.includes('assertion') && (stem.includes('reason') || stem.includes('(r)'))) || 
-      (stem.includes('अभिकथन') && (stem.includes('कारण') || stem.includes('(r)'))) ||
-      opts.includes('both a and r') ||
-      opts.includes('both assertion') ||
-      opts.includes('correct explanation of a') ||
-      opts.includes('r correctly explains') ||
-      opts.includes('r is not the correct explanation') ||
-      opts.includes('a is true, but r is false') ||
-      opts.includes('a is false, but r is true') ||
-      opts.includes('assertion (a) is true') ||
-      opts.includes('assertion is true') ||
-      opts.includes('reason (r) is true')
-    ) {
-      return 'Assertion–Reason';
+    if (AnswerKeyMatcher.parseSelectedLetters(answerKey).length >= 2) {
+      return 'multiple-select';
     }
-
-    // 2. Match the Following
-    if (stem.includes('match the following') || stem.includes('match column') || 
-        stem.includes('list-i') || stem.includes('list i') || stem.includes('column i') ||
-        /(?:[a-d][\-–—:][1-4].*){2,}/i.test(opts)) {
-      return 'Match the Following';
+    if (/multiple[-\s]*select|\bmsq\b|more\s+than\s+one\s+(?:option|correct)|select\s+all/i.test(stem)) {
+      return 'multiple-select';
     }
-
-    // 3. Chronological Order
-    if (stem.includes('chronological') || stem.includes('chronology') || stem.includes('order of occurrence')) {
-      return 'Chronological Order';
+    if ((stem.includes('assertion') && stem.includes('reason')) || opts.includes('both a and r')) {
+      return 'assertion-reason';
     }
-
-    // 4. Ascending/Descending Order
-    if (stem.includes('ascending') || stem.includes('descending') || stem.includes('increasing order') || stem.includes('decreasing order')) {
-      return 'Ascending/Descending Order';
+    if (stem.includes('match the following') || stem.includes('list-i') || stem.includes('column i')) {
+      return 'match-the-following';
     }
-
-    // 5. Sequence/Process
-    if (stem.includes('sequence') || stem.includes('pathway') || stem.includes('stages') || stem.includes('steps of') || stem.includes('arrange') ||
-        opts.includes('→') || opts.includes('->')) {
-      return 'Sequence/Process';
+    if (stem.includes('chronological')) {
+      return 'chronological';
     }
-
-    // 6. Case-Based
-    if (stem.includes('case-based') || stem.includes('case study') || stem.includes('scenario') || stem.includes('passage') || stem.includes('study the following')) {
-      return 'Case-Based';
+    if (stem.includes('pair') || stem.includes('correctly matched')) {
+      return 'pair-based';
     }
-
-    // 7. Numerical/Calculation
-    if (stem.includes('calculate') || stem.includes('numerical') || stem.includes('hardy–weinberg') || stem.includes('hardy-weinberg') ||
-        stem.includes('frequency of') || stem.includes('velocity') || stem.includes('capacitance') || /\d+\s*[%×\^]/.test(stem)) {
-      return 'Numerical/Calculation';
-    }
-
-    // 8. Data Interpretation
-    if (stem.includes('data interpretation') || stem.includes('graph') || stem.includes('chart') || stem.includes('table above')) {
-      return 'Data Interpretation';
-    }
-
-    // 9. Map/Geography-Based
-    if (stem.includes('tributary') || stem.includes('river') || stem.includes('strait') || stem.includes('plateau') || stem.includes('pass') || stem.includes('latitude') || stem.includes('longitude') || stem.includes('border')) {
-      return 'Map/Geography-Based';
-    }
-
-    // 10. Image/Diagram-Based
-    if (stem.includes('diagram') || stem.includes('figure') || stem.includes('image') || stem.includes('labeled as')) {
-      return 'Image/Diagram-Based';
-    }
-
-    // 11. Pair of Statements
-    if ((stem.includes('statement i') && stem.includes('statement ii')) || (stem.includes('statement 1') && stem.includes('statement 2'))) {
-      return 'Pair of Statements';
-    }
-
-    // 12. Multiple Statements + Combination
-    if (stem.includes('statements given above') || stem.includes('which of the above') || stem.includes('which combination') ||
-        /(?:1\s+and\s+2|only\s+1|1,\s*2\s+and\s+4|1,\s*2\s+and\s+3)/i.test(opts)) {
-      return 'Multiple Statements + Combination';
-    }
-
-    // 13. Incorrect / Not Correct
-    if (stem.includes('not correct') || stem.includes('incorrect') || stem.includes('not true') || stem.includes('गलत') || stem.includes('असत्य')) {
-      return 'Incorrect / Not Correct';
-    }
-
-    // 14. Correctly Matched / Pair-Based
-    if (stem.includes('correctly matched') || stem.includes('correct pair')) {
-      return 'Correctly Matched';
-    }
-
-    if (stem.includes('pair') || stem.includes('pairs')) {
-      return 'Pair-Based';
-    }
-
-    // 15. Cause–Effect
-    if (stem.includes('cause') && (stem.includes('effect') || stem.includes('consequence') || stem.includes('result in'))) {
-      return 'Cause–Effect';
-    }
-
-    // 16. Odd-One-Out
-    if (stem.includes('odd one out') || stem.includes('does not belong') || stem.includes('odd entity')) {
-      return 'Odd-One-Out';
-    }
-
-    // 17. Legal/Constitutional Application
-    if (stem.includes('constitution') || stem.includes('article') || stem.includes('amendment') || stem.includes('supreme court') || stem.includes('statute')) {
-      return 'Legal/Constitutional Application';
-    }
-
-    // 18. Policy/Institution-Based
-    if (stem.includes('ministry') || stem.includes('commission') || stem.includes('statutory body') || stem.includes('headquarters') || stem.includes('mandate')) {
-      return 'Policy/Institution-Based';
-    }
-
-    // 19. Term–Definition
-    if (stem.includes('defined as') || stem.includes('refers to') || stem.includes('known as') || stem.includes('term')) {
-      return 'Term–Definition';
-    }
-
-    // 20. Example-Based
-    if (stem.includes('example of') || stem.includes('illustrates') || stem.includes('exemplified')) {
-      return 'Example-Based';
-    }
-
-    // 21. Classification
-    if (stem.includes('classify') || stem.includes('classification') || stem.includes('belongs to the family') || stem.includes('phylum') || stem.includes('category')) {
-      return 'Classification';
-    }
-
-    // 22. Negative-Logic Question
-    if (stem.includes('how many of the above are incorrect') || stem.includes('which of the following is false')) {
-      return 'Negative-Logic Question';
-    }
-
-    // 23. Quantitative Comparison
-    if (stem.includes('greater than') || stem.includes('less than') || stem.includes('compare the')) {
-      return 'Quantitative Comparison';
-    }
-
-    // 24. Statement-Based
     if (stem.includes('statement') || stem.includes('consider the following')) {
-      return 'Statement-Based';
+      return 'statement';
     }
-
-    // 25. Conceptual/Application
-    if (stem.includes('principle') || stem.includes('phenomenon') || stem.includes('applied') || stem.includes('application')) {
-      return 'Conceptual/Application';
+    if (stem.includes('calculate') || stem.includes('\\frac') || /\d+\s*[%×^]/.test(stem)) {
+      return 'numerical';
     }
-
-    return 'Direct Fact';
+    return 'conceptual';
   }
 
-  /**
-   * Parses Markdown tables, column lists, and keyValue maps for Answer Keys.
-   * Supports: "1. **(b)**", "**1. (b)**", "1. (B)", "1: B", "| 1 | B |"
-   */
-  private static parseAnswerKeys(text: string): Map<number, CorrectOption> {
-    const map = new Map<number, CorrectOption>();
+  public static parseAnswerKeys(text: string): Map<number, string> {
+    const map = new Map<number, string>();
     if (!text) return map;
 
-    // Pattern 1: Standalone pairs: "1. **(b)**", "**1. (a)**", "1. (B)", "1: B", "1. B"
-    const singleAnswerRegex = /(?:(?:\*\*|__)?\s*(?:Q(?:uestion)?\.?\s*)?(\d{1,4})\s*(?:\*\*|__)?\s*(?:[\.\:\)\-]|\s*\|\s*)\s*(?:\*\*|__)?\s*[\(\[]?([A-Da-d])[\)\]]?(?:\*\*|__)?)/gi;
+    const singleAnswerRegex =
+      /(?:(?:\*\*|__)?\s*(?:Q(?:uestion)?\.?\s*)?(\d{1,4})\s*(?:\*\*|__)?\s*(?:[.:)\-]|\s*\|\s*)\s*(?:\*\*|__)?\s*[([]?([A-Ea-e](?:\s*[,&/]\s*[A-Ea-e])*)[)\]]?(?:\*\*|__)?)/gi;
     let match: RegExpExecArray | null;
-
     while ((match = singleAnswerRegex.exec(text)) !== null) {
       const qNum = parseInt(match[1], 10);
-      const ans = match[2].toUpperCase() as CorrectOption;
-      if (!isNaN(qNum) && !map.has(qNum)) {
-        map.set(qNum, ans);
+      const norm = AnswerKeyMatcher.normalizeKey(match[2]);
+      if (!Number.isNaN(qNum) && norm && !map.has(qNum)) {
+        map.set(qNum, norm);
       }
     }
 
-    // Pattern 2: Markdown table rows e.g. "| 1 | A | 6 | C |"
-    const lines = text.split('\n');
-    for (const line of lines) {
-      if (line.includes('|')) {
-        const cells = line.split('|').map(c => c.replace(/\*\*|__/g, '').trim()).filter(Boolean);
-        for (let k = 0; k < cells.length - 1; k++) {
-          const numCandidate = parseInt(cells[k], 10);
-          const ansCandidate = cells[k + 1].toUpperCase();
-          if (!isNaN(numCandidate) && /^[ABCD]$/.test(ansCandidate) && !map.has(numCandidate)) {
-            map.set(numCandidate, ansCandidate as CorrectOption);
-          }
+    for (const line of text.split('\n')) {
+      if (!line.includes('|')) continue;
+      const cells = line.split('|').map((c) => c.replace(/\*\*|__/g, '').trim()).filter(Boolean);
+      for (let k = 0; k < cells.length - 1; k++) {
+        const num = parseInt(cells[k], 10);
+        const norm = AnswerKeyMatcher.normalizeKey(cells[k + 1]);
+        if (!Number.isNaN(num) && norm && /^[A-E](,[A-E])*$/.test(norm) && !map.has(num)) {
+          map.set(num, norm);
         }
       }
     }
-
     return map;
   }
 
-  /**
-   * Parses Detailed Explanations associated with question numbers.
-   * Also extracts correct answers derived from explanations like:
-   * "(b) ... — Correct.", "(b) ... — **Correct.**", "Correct. (a)"
-   */
-  private static parseExplanations(text: string): { explanations: Map<number, string>; derivedAnswers: Map<number, CorrectOption> } {
+  public static parseExplanations(text: string): { explanations: Map<number, string>; derivedAnswers: Map<number, string> } {
     const explanations = new Map<number, string>();
-    const derivedAnswers = new Map<number, CorrectOption>();
+    const derivedAnswers = new Map<number, string>();
     if (!text) return { explanations, derivedAnswers };
 
     const lines = text.split('\n');
@@ -821,35 +663,29 @@ export class McqParser {
       if (currentNum !== null && currentExp.length > 0) {
         const fullText = currentExp.join('\n').trim();
         explanations.set(currentNum, fullText);
-
-        // Derive correct answer if present in explanation text:
-        // E.g. "(b) ... — **Correct.**" or "(b) ... — Correct." or "Correct. (a)" or "Correct Answer: (B)"
-        const matchAns = fullText.match(/(?:Correct\s*(?:Answer|Option)?\s*[:\.]?\s*[\(\[]?([A-D])[\)\]]?)|(?:[\(\[]?([A-D])[\)\]]?\s*[^—\n]*[—\-]\s*(?:\*\*)?\s*Correct\b)/i);
+        const matchAns = fullText.match(
+          /(?:Correct\s*(?:Answers?|Options?)?\s*[:.]?\s*[([]?([A-Ea-e](?:\s*[,&/]\s*[A-Ea-e])*)[)\]]?)|(?:[([]?([A-Ea-e])[)\]]?\s*[^—\n]*[—\-]\s*(?:\*\*)?\s*Correct\b)/i
+        );
         if (matchAns) {
-          const letter = (matchAns[1] || matchAns[2]).toUpperCase() as CorrectOption;
-          derivedAnswers.set(currentNum, letter);
+          const norm = AnswerKeyMatcher.normalizeKey(matchAns[1] || matchAns[2]);
+          if (norm) derivedAnswers.set(currentNum, norm);
         }
       }
       currentExp = [];
     };
 
-    // Heading matches: "### 1. ...", "50. Chromosomes after meiosis I", "1. Assertion–Reason", "99. PCR primers"
-    const expStartRegex = /^\s*(?:#{1,6}\s*)?(?:(?:\*\*|__)?\s*)?(?:Q(?:uestion)?\.?\s*)?(\d{1,4})\s*[\.\:\)\-]\s*(.*)$/i;
-
+    const expStartRegex = /^\s*(?:#{1,6}\s*)?(?:(?:\*\*|__)?\s*)?(?:Q(?:uestion)?\.?\s*)?(\d{1,4})\s*[.:)\-]\s*(.*)$/i;
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) {
         if (currentNum !== null) currentExp.push('');
         continue;
       }
-
       const match = trimmed.match(expStartRegex);
       if (match) {
         flush();
         currentNum = parseInt(match[1], 10);
-        if (match[2]) {
-          currentExp.push(match[2].trim());
-        }
+        if (match[2]) currentExp.push(match[2].trim());
       } else if (currentNum !== null) {
         currentExp.push(trimmed);
       }
@@ -861,13 +697,21 @@ export class McqParser {
 
   private static createDefaultMetadata(): PaperMetadata {
     return {
-      id: 'paper-' + Date.now().toString(36),
+      id: `paper-${Date.now().toString(36)}`,
       title: 'Examination Paper',
       subject: 'General Knowledge',
       topic: 'Standard Assessment',
-      setNumber: 'Set A',
+      setNumber: '01',
       targetExam: 'All India Test',
-      createdAt: Date.now()
+      rollNumber: '0000000001',
+      bookletNumber: '0000001',
+      durationMinutes: 60,
+      positiveMarks: 2.0,
+      negativeMarks: 0.66,
+      unattendedMarks: 0.0,
+      msqScoringPolicy: 'ALL_OR_NOTHING',
+      folderId: 'default',
+      createdAt: Date.now(),
     };
   }
 }
