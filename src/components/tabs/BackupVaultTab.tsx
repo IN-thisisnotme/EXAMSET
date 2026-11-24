@@ -160,10 +160,10 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
   };
 
   const handleSaveLocalCheckpoint = () => {
-    const { manifest, rawJson } = buildVaultArchive(workspaceState, 'Browser Local Vault');
+    const { document, rawJson } = buildVaultArchive(workspaceState, 'Browser Local Vault');
     const label =
       customSnapshotLabel.trim() ||
-      `Checkpoint (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Notes, ${manifest.counts.vocabWordsCount} Words)`;
+      `Checkpoint (${document.manifest.counts.papersCount} Sets, ${document.manifest.counts.notesCount} Notes, ${document.manifest.counts.vocabWordsCount} Words)`;
     onCreateSnapshot(label, 'manual', rawJson);
     setCustomSnapshotLabel('');
     onNotify('Saved verified snapshot to Browser Local Vault');

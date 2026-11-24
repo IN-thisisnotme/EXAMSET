@@ -20,3 +20,6 @@ debug.keystore
 public/
 *.ap_
 *.aab
+node_modules/
+dist/
+*.local

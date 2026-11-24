@@ -103,11 +103,18 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
       return;
     }
 
-    const parsedItems = BatchExamImporter.parseFilesToItems(
-      [{ name: 'pasted_import.json', size: rawText.length, content: rawText }],
-      currentPaper.metadata.folderId || 'default'
-    );
-    const validPapers = parsedItems.map((i) => i.paper).filter((p): p is QuestionPaper => p !== null);
+    const folderId = currentPaper.metadata.folderId || 'default';
+    const parsedItems = BatchExamImporter.validateRawContent(rawText, 'pasted_import.json', rawText.length);
+    const validPapers = parsedItems
+      .map((item) => item.paper)
+      .filter((p): p is QuestionPaper => p !== null)
+      .map((p) => ({
+        ...p,
+        metadata: {
+          ...p.metadata,
+          folderId: p.metadata.folderId || folderId,
+        },
+      }));
 
     if (validPapers.length === 0) {
       const firstErr = parsedItems[0]?.issues.find((x) => x.severity === 'ERROR')?.message;

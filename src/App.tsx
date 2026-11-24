@@ -617,13 +617,13 @@ const ExamSetWorkspace: React.FC = () => {
 
     const runSilentAutoGuard = async () => {
       try {
-        const { manifest, rawJson } = buildVaultArchive(workspaceBackupState, 'Auto-Backup Guard');
+        const { document, rawJson } = buildVaultArchive(workspaceBackupState, 'Auto-Backup Guard');
         const snap: VaultSnapshotRecord = {
           id: `snap-auto-${Date.now()}`,
-          label: `Auto Backup (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Notes)`,
+          label: `Auto Backup (${document.manifest.counts.papersCount} Sets, ${document.manifest.counts.notesCount} Notes)`,
           kind: 'pre_restore',
           createdAt: Date.now(),
-          manifest,
+          manifest: document.manifest,
           rawJson,
         };
         const next = ExamStore.addVaultSnapshot(snap);
@@ -662,13 +662,13 @@ const ExamSetWorkspace: React.FC = () => {
   }, [autoBackupSchedule, lastAutoBackupAt, workspaceBackupState]);
 
   const handleCreateSnapshot = (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => {
-    const { manifest } = buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault');
+    const { document } = buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault');
     const snap: VaultSnapshotRecord = {
       id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       label,
       kind,
       createdAt: Date.now(),
-      manifest,
+      manifest: document.manifest,
       rawJson,
     };
     const next = ExamStore.addVaultSnapshot(snap);

@@ -247,7 +247,7 @@ export const BatchExamImporter = {
         targetExam: 'Competitive Exam',
         createdAt: now,
       },
-      questions: parseRes.questions,
+      questions: parseRes.paper.questions,
     };
     return [validatePaper(paper, fileName, byteSize, trimmed)];
   },

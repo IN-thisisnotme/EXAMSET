@@ -72,6 +72,7 @@ export interface ExamColorPalette {
   tealLight: string;
   blueLight: string;
   green: string;
+  greenDark: string;
   greenLight: string;
   amber: string;
   amberLight: string;
@@ -149,6 +150,7 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#EAF6F6',
     blueLight: '#F3F7FA',
     green: '#247A55',
+    greenDark: '#166534',
     greenLight: '#EEF8F2',
     amber: '#D97706',
     amberLight: '#FFF8E8',
@@ -186,6 +188,7 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#FEF3C7',
     blueLight: '#F6F1E9',
     green: '#15803D',
+    greenDark: '#14532D',
     greenLight: '#ECFDF5',
     amber: '#D97706',
     amberLight: '#FEF3C7',
@@ -223,6 +226,7 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#DCFCE7',
     blueLight: '#EDF4EF',
     green: '#15803D',
+    greenDark: '#14532D',
     greenLight: '#DCFCE7',
     amber: '#D97706',
     amberLight: '#FEF3C7',
@@ -260,6 +264,7 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#EEF2FF',
     blueLight: '#F0F2FB',
     green: '#15803D',
+    greenDark: '#14532D',
     greenLight: '#DCFCE7',
     amber: '#D97706',
     amberLight: '#FEF3C7',
@@ -297,6 +302,7 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#EFF6FF',
     blueLight: '#F3F4F6',
     green: '#15803D',
+    greenDark: '#14532D',
     greenLight: '#DCFCE7',
     amber: '#D97706',
     amberLight: '#FEF3C7',
@@ -337,6 +343,7 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#162B3F',
     blueLight: '#132235',
     green: '#34D399',
+    greenDark: '#6EE7B7',
     greenLight: '#132F23',
     amber: '#FBBF24',
     amberLight: '#38230D',
@@ -374,6 +381,7 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#332309',
     blueLight: '#2A221A',
     green: '#4ADE80',
+    greenDark: '#6EE7B7',
     greenLight: '#122D1B',
     amber: '#FBBF24',
     amberLight: '#38230D',
@@ -411,6 +419,7 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#10301E',
     blueLight: '#11251A',
     green: '#4ADE80',
+    greenDark: '#6EE7B7',
     greenLight: '#122D1B',
     amber: '#FBBF24',
     amberLight: '#38230D',
@@ -448,6 +457,7 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#1C1E42',
     blueLight: '#161936',
     green: '#34D399',
+    greenDark: '#6EE7B7',
     greenLight: '#132F23',
     amber: '#FBBF24',
     amberLight: '#38230D',
@@ -485,6 +495,7 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     tealLight: '#0F2536',
     blueLight: '#141414',
     green: '#34D399',
+    greenDark: '#6EE7B7',
     greenLight: '#0E291F',
     amber: '#FBBF24',
     amberLight: '#331F0B',

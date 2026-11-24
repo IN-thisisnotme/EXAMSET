@@ -114,7 +114,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
   const handleCompileWeakAreas = (paper: QuestionPaper) => {
     const paperAttempts = attempts.filter((a) => a.paperId === paper.metadata.id);
     const latest = paperAttempts[0];
-    const submittedAnswers = latest?.answers || {};
+    const submittedAnswers = latest?.submittedAnswers || {};
     const compiled = StudyNoteParser.compileWeakAreasFromPaper(paper, submittedAnswers);
     const now = Date.now();
     const newNote: StudyNoteRecord = {
