@@ -115,4 +115,38 @@ class CloudAuthStoreTest {
         assertEquals("legacy_refresh", loaded?.refreshToken)
         assertEquals("legacy@example.com", loaded?.email)
     }
+
+    @Test
+    fun cloudAuthStore_consumePendingOAuthFlow_enforcesFifteenMinuteTtl() {
+        val store = CloudAuthStore(context)
+        val baseTime = 1_800_000_000_000L
+
+        // Valid within 15-minute TTL (10 minutes elapsed)
+        val validFlow = PendingOAuthFlowState(
+            provider = CloudProviderType.ONEDRIVE,
+            state = "state_valid",
+            codeVerifier = "verifier_valid",
+            clientId = "client_1",
+            createdAtMillis = baseTime
+        )
+        store.savePendingOAuthFlow(validFlow)
+        val consumedValid = store.consumePendingOAuthFlow(nowMillis = baseTime + 10L * 60L * 1000L)
+        assertNotNull(consumedValid)
+        assertEquals("state_valid", consumedValid?.state)
+        assertNull("Pending OAuth state must be single-use", store.consumePendingOAuthFlow(nowMillis = baseTime))
+
+        // Expired after 16 minutes
+        store.savePendingOAuthFlow(validFlow.copy(state = "state_expired", createdAtMillis = baseTime))
+        val consumedExpired = store.consumePendingOAuthFlow(nowMillis = baseTime + 16L * 60L * 1000L)
+        assertNull("Expired pending OAuth state must be rejected", consumedExpired)
+
+        // Future clock skew > 15 minutes rejected
+        store.savePendingOAuthFlow(validFlow.copy(state = "state_future", createdAtMillis = baseTime + 16L * 60L * 1000L))
+        val consumedFuture = store.consumePendingOAuthFlow(nowMillis = baseTime)
+        assertNull("Excessive future-skewed pending OAuth state must be rejected", consumedFuture)
+
+        // Zero timestamp rejected
+        store.savePendingOAuthFlow(validFlow.copy(state = "state_zero", createdAtMillis = 0L))
+        assertNull(store.consumePendingOAuthFlow(nowMillis = baseTime))
+    }
 }

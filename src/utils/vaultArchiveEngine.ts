@@ -312,17 +312,36 @@ export function inspectVaultArchiveText(rawText: string, sourceLabel: string): R
     }
 
     const expectedChecksums = doc.manifest.entryChecksumsSha256 || {};
-    const sectionEntries = Object.entries(doc.sections);
+    const sectionsObj = doc.sections as unknown as Record<string, unknown>;
+    const requiredSections = [
+      'papers',
+      'folders',
+      'attempts',
+      'countdowns',
+      'studyNotes',
+      'vocabulary',
+      'presetsAndDictation',
+      'plannerAndAnalytics',
+      'brainAndPreferences',
+    ] as const;
+    const requiredSet = new Set<string>(requiredSections);
     let verifiedCount = 0;
     const mismatches: string[] = [];
 
-    for (const [sectionKey, sectionValue] of sectionEntries) {
-      const expected = expectedChecksums[sectionKey];
+    // [DEPRECATED 2026-11-24] Reason: Iterating only Object.entries(doc.sections) silently skipped missing required sections and treated empty checksums identically to missing ones. Restore if: Partial section-only archives are explicitly supported.
+    // for (const [sectionKey, sectionValue] of Object.entries(doc.sections)) { ... }
+    for (const sectionKey of requiredSections) {
+      if (!Object.prototype.hasOwnProperty.call(sectionsObj, sectionKey) || sectionsObj[sectionKey] === undefined) {
+        mismatches.push(`${sectionKey} (missing section)`);
+        continue;
+      }
+      const expectedRaw = expectedChecksums[sectionKey];
+      const expected = typeof expectedRaw === 'string' ? expectedRaw.trim() : '';
       if (!expected) {
         mismatches.push(`${sectionKey} (missing checksum)`);
         continue;
       }
-      const actual = sha256HexSync(JSON.stringify(sectionValue));
+      const actual = sha256HexSync(JSON.stringify(sectionsObj[sectionKey]));
       if (actual.toLowerCase() !== expected.toLowerCase()) {
         mismatches.push(`${sectionKey} (hash mismatch)`);
       } else {
@@ -330,7 +349,23 @@ export function inspectVaultArchiveText(rawText: string, sourceLabel: string): R
       }
     }
 
-    const allVerified = mismatches.length === 0 && verifiedCount === sectionEntries.length;
+    for (const extraKey of Object.keys(sectionsObj)) {
+      if (requiredSet.has(extraKey)) continue;
+      const expectedRaw = expectedChecksums[extraKey];
+      const expected = typeof expectedRaw === 'string' ? expectedRaw.trim() : '';
+      if (!expected) {
+        mismatches.push(`${extraKey} (missing checksum)`);
+        continue;
+      }
+      const actual = sha256HexSync(JSON.stringify(sectionsObj[extraKey]));
+      if (actual.toLowerCase() !== expected.toLowerCase()) {
+        mismatches.push(`${extraKey} (hash mismatch)`);
+      } else {
+        verifiedCount++;
+      }
+    }
+
+    const allVerified = mismatches.length === 0 && verifiedCount >= requiredSections.length;
     const checksumDetails = allVerified
       ? `SHA-256 verified across all ${verifiedCount} archive sections.`
       : `Verification warning on: ${mismatches.join(', ')}.`;

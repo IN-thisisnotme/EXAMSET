@@ -3581,7 +3581,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             paperTitle = paper.metadata.title,
             paperId = paper.id,
             totalQuestions = result.totalQuestions,
-            score = result.totalScore.toDouble(),
+            score = result.exactScore,
             correctCount = result.correctCount,
             incorrectCount = result.incorrectCount + result.multipleMarkedCount,
             unattemptedCount = result.unattemptedCount,
@@ -5423,8 +5423,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun deletePreviewTempFileIfInExportCache(preview: com.example.model.RestorePreview?) {
+        val temp = preview?.tempFile ?: return
+        val exportDirPath = runCatching { VaultArchiveEngine.getExportCacheDir(getApplication()).canonicalPath }.getOrNull()
+        val tempParentPath = runCatching { temp.parentFile?.canonicalPath }.getOrNull()
+        if (exportDirPath != null && tempParentPath == exportDirPath) {
+            runCatching { temp.delete() }
+        }
+    }
+
     fun dismissRestorePreview() {
+        val prev = _restorePreview.value
         _restorePreview.value = null
+        deletePreviewTempFileIfInExportCache(prev)
     }
 
     fun confirmRestore(mode: RestoreMode, mergeAppSettings: Boolean = true) {
@@ -5500,6 +5511,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _brainLabStats.value = appPreferences.getBrainLabStats()
                     _brainLabSettings.value = appPreferences.getBrainLabSettings()
                     _restorePreview.value = null
+                    deletePreviewTempFileIfInExportCache(preview)
                     _backupOpState.value = BackupOperationState.Success(
                         "Restored ${VaultArchiveEngine.formatCountsSummary(restored)}!"
                     )
@@ -6455,7 +6467,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val incorrectAll = result.incorrectCount + result.multipleMarkedCount
         val penaltyIncorrect = Math.round(incorrectAll * neg * 100.0) / 100.0
         val penaltyUnattended = Math.round(result.unattemptedCount * unk * 100.0) / 100.0
-        val omrScore = Math.round(((result.correctCount * pos) - penaltyIncorrect - penaltyUnattended) * 100.0) / 100.0
+        val omrScore = if (result.questionMarks.isNotEmpty()) {
+            result.exactScore
+        } else {
+            Math.round(((result.correctCount * pos) - penaltyIncorrect - penaltyUnattended) * 100.0) / 100.0
+        }
         val stats = Companion.TestStats(
             total = result.totalQuestions,
             correct = result.correctCount,
@@ -6474,8 +6490,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val incorrectSet = result.questionResults.values
             .filter { q ->
-                val officialAns = paper.questions.getOrNull(q.questionNum - 1)?.correctAnswer
-                q.isMultipleMarked || (q.selectedOption != null && !AnswerKeyMatcher.areKeysEquivalent(officialAns, q.selectedOption.toString()))
+                val officialQuestion = paper.questions.getOrNull(q.questionNum - 1)
+                val isNeutralized = officialQuestion?.isNeutralized == true
+                !isNeutralized && (
+                    q.isMultipleMarked ||
+                        (q.selectedOption != null && !AnswerKeyMatcher.areKeysEquivalent(officialQuestion?.correctAnswer, q.selectedOption.toString()))
+                    )
             }
             .map { it.questionNum }
             .toSet()

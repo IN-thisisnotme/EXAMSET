@@ -37,6 +37,7 @@ import {
   type TrustedTimeStatus,
   type VaultSnapshotRecord,
 } from '../../types/phase5';
+import { ExamStore } from '../../data/examStore';
 import { CloudSyncEngine } from '../../utils/cloudSyncEngine';
 import {
   buildVaultArchive,
@@ -51,8 +52,8 @@ interface BackupVaultTabProps {
   autoBackupSchedule: AutoBackupSchedule;
   lastAutoBackupAt: number;
   onChangeAutoBackupSchedule: (schedule: AutoBackupSchedule) => void;
-  onCreateSnapshot: (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => void;
-  onDeleteSnapshot: (snapshotId: string) => void;
+  onCreateSnapshot: (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => void | Promise<void>;
+  onDeleteSnapshot: (snapshotId: string) => void | Promise<void>;
   onExecuteRestore: (preview: RestorePreview, mode: RestoreMode) => void;
   onNotify: (msg: string) => void;
 }
@@ -190,6 +191,30 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     };
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleRestoreSnapshot = async (snap: VaultSnapshotRecord) => {
+    setInspectError(null);
+    try {
+      const rawJson = await ExamStore.resolveSnapshotRawJson(snap);
+      handleInspectRaw(rawJson, snap.label);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to load snapshot payload.';
+      setInspectError(msg);
+      onNotify(msg);
+    }
+  };
+
+  const handleDownloadSnapshot = async (snap: VaultSnapshotRecord) => {
+    try {
+      const rawJson = await ExamStore.resolveSnapshotRawJson(snap);
+      triggerDownload(
+        `ExamSet_Snapshot_${new Date(snap.createdAt).toISOString().slice(0, 10)}.examset.json`,
+        rawJson
+      );
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Unable to download snapshot payload.');
+    }
   };
 
   const confirmRestore = () => {
@@ -1140,14 +1165,15 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       </div>
                       <div className="text-[0.6875rem] mt-1" style={{ color: colors.muted }}>
                         {new Date(snap.createdAt).toLocaleString()} • {snap.manifest.counts.papersCount} Sets •{' '}
-                        {snap.manifest.counts.notesCount} Notes • {snap.manifest.counts.vocabWordsCount} Words
+                        {snap.manifest.counts.notesCount} Notes • {snap.manifest.counts.vocabWordsCount} Words •{' '}
+                        {formatBytes(snap.sizeBytes ?? snap.rawJson.length)}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleInspectRaw(snap.rawJson, snap.label)}
+                        onClick={() => void handleRestoreSnapshot(snap)}
                         className="min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold"
                         style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                       >
@@ -1155,12 +1181,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          triggerDownload(
-                            `ExamSet_Snapshot_${new Date(snap.createdAt).toISOString().slice(0, 10)}.examset.json`,
-                            snap.rawJson
-                          );
-                        }}
+                        onClick={() => void handleDownloadSnapshot(snap)}
                         className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg border"
                         style={{
                           backgroundColor: colors.surface,
@@ -1173,7 +1194,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDeleteSnapshot(snap.id)}
+                        onClick={() => void onDeleteSnapshot(snap.id)}
                         className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg"
                         style={{ color: colors.red }}
                         aria-label="Delete snapshot"

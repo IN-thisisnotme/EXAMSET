@@ -90,6 +90,25 @@ object VaultArchiveEngine {
         return File(context.cacheDir, EXPORT_CACHE_DIR).apply { if (!exists()) mkdirs() }
     }
 
+    fun pruneExportCacheDir(
+        context: Context,
+        maxAgeMs: Long = 60L * 60L * 1000L,
+        excludeFile: File? = null
+    ) {
+        val dir = File(context.cacheDir, EXPORT_CACHE_DIR)
+        if (!dir.exists()) return
+        val cutoff = System.currentTimeMillis() - maxAgeMs
+        val excludeCanonical = excludeFile?.let { runCatching { it.canonicalPath }.getOrNull() }
+        dir.listFiles()?.forEach { f ->
+            if (!f.isFile) return@forEach
+            val path = runCatching { f.canonicalPath }.getOrNull()
+            if (excludeCanonical != null && path == excludeCanonical) return@forEach
+            if (f.lastModified() < cutoff) {
+                runCatching { f.delete() }
+            }
+        }
+    }
+
     fun getShareableVaultUri(context: Context, file: File): Uri {
         return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
@@ -258,6 +277,7 @@ object VaultArchiveEngine {
     }
 
     fun inspectVaultUri(context: Context, uri: Uri): RestorePreview {
+        pruneExportCacheDir(context)
         val tempFile = File(getExportCacheDir(context), "inspect_${System.currentTimeMillis()}.tmp")
         context.contentResolver.openInputStream(uri)?.use { input ->
             BufferedOutputStream(FileOutputStream(tempFile)).use { out ->
@@ -297,11 +317,30 @@ object VaultArchiveEngine {
             val manifestJson = readZipEntryTextBounded(zip, manifestEntry)
             val manifest = parseManifest(JSONObject(manifestJson))
 
+            val requiredCoreEntries = buildList {
+                add(ENTRY_FOLDERS)
+                add(ENTRY_PAPERS)
+                add(ENTRY_NOTES)
+                add(ENTRY_ATTEMPTS)
+                add(ENTRY_ANALYTICS)
+                add(ENTRY_PREFERENCES)
+                if (manifest.schemaVersion >= 5 || zip.getEntry(ENTRY_VOCABULARY) != null) {
+                    add(ENTRY_VOCABULARY)
+                }
+            }
+
             var mismatchCount = 0
             val checkedEntries = mutableListOf<String>()
+            for (coreEntry in requiredCoreEntries) {
+                val entry = zip.getEntry(coreEntry)
+                val expected = manifest.entryChecksumsSha256[coreEntry]
+                if (entry == null || expected.isNullOrBlank()) {
+                    mismatchCount++
+                }
+            }
             for ((entryName, expectedHash) in manifest.entryChecksumsSha256) {
                 val entry = zip.getEntry(entryName)
-                if (entry == null) {
+                if (entry == null || expectedHash.isBlank()) {
                     mismatchCount++
                     continue
                 }
@@ -313,11 +352,11 @@ object VaultArchiveEngine {
                 }
             }
 
-            val verified = mismatchCount == 0 && checkedEntries.isNotEmpty()
+            val verified = mismatchCount == 0 && checkedEntries.size >= requiredCoreEntries.size
             val details = if (verified) {
                 "Verified ${checkedEntries.size} checksummed entries (SHA-256 OK)"
             } else {
-                "Warning: $mismatchCount archive entry checksum mismatch(es) detected!"
+                "Warning: missing required archive entries or $mismatchCount checksum mismatch(es) detected!"
             }
 
             // Backfill counts for legacy v3/v4 vaults or partial manifests
@@ -576,7 +615,8 @@ object VaultArchiveEngine {
                 }
 
                 for (n in notes) {
-                    val remappedLinkedPaper = n.linkedPaperId?.let { paperIdMap[it] ?: it }
+                    // [DEPRECATED 2026-11-24] Reason: Falling back to raw incoming linkedPaperId (paperIdMap[it] ?: it) mislinks notes to unrelated local papers sharing an auto-increment Room ID. Restore if: External paper ID stability is introduced across devices.
+                    val remappedLinkedPaper = n.linkedPaperId?.let { paperIdMap[it] }
                     val cleanUid = n.syncUid.ifBlank { UUID.randomUUID().toString() }
                     val existingNote = if (mode == RestoreMode.SMART_MERGE) {
                         noteDao.getStudyNoteBySyncUid(cleanUid)

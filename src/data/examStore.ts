@@ -88,6 +88,84 @@ function safeWriteJson(key: string, val: unknown): void {
   }
 }
 
+const SNAPSHOT_BLOB_DB = 'examset_vault_blobs_v1';
+const SNAPSHOT_BLOB_STORE = 'snapshot_blobs';
+
+function openSnapshotBlobDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
+    const req = indexedDB.open(SNAPSHOT_BLOB_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(SNAPSHOT_BLOB_STORE)) {
+        db.createObjectStore(SNAPSHOT_BLOB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error('Failed to open snapshot blob store'));
+  });
+}
+
+async function putSnapshotBlobInIdb(id: string, rawJson: string): Promise<void> {
+  const db = await openSnapshotBlobDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_BLOB_STORE, 'readwrite');
+      tx.objectStore(SNAPSHOT_BLOB_STORE).put(rawJson, id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Failed to write snapshot blob'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function getSnapshotBlobFromIdb(id: string): Promise<string | null> {
+  const db = await openSnapshotBlobDb();
+  try {
+    return await new Promise<string | null>((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_BLOB_STORE, 'readonly');
+      const req = tx.objectStore(SNAPSHOT_BLOB_STORE).get(id);
+      req.onsuccess = () => resolve(typeof req.result === 'string' ? req.result : null);
+      req.onerror = () => reject(req.error || new Error('Failed to read snapshot blob'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function deleteSnapshotBlobsInIdb(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await openSnapshotBlobDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(SNAPSHOT_BLOB_STORE, 'readwrite');
+      const store = tx.objectStore(SNAPSHOT_BLOB_STORE);
+      ids.forEach((id) => store.delete(id));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Failed to delete snapshot blobs'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function pruneVaultSnapshotList(snapshots: VaultSnapshotRecord[]): {
+  kept: VaultSnapshotRecord[];
+  evictedIds: string[];
+} {
+  const sorted = [...snapshots].sort((a, b) => b.createdAt - a.createdAt);
+  const manuals = sorted.filter((s) => s.kind === 'manual').slice(0, 10);
+  const autoRestores = sorted.filter((s) => s.kind === 'pre_restore').slice(0, 5);
+  const kept = [...manuals, ...autoRestores].sort((a, b) => b.createdAt - a.createdAt);
+  const keptIds = new Set(kept.map((s) => s.id));
+  const evictedIds = sorted.filter((s) => !keptIds.has(s.id)).map((s) => s.id);
+  return { kept, evictedIds };
+}
+
 export function normalizePaperMetadata(paper: QuestionPaper): QuestionPaper {
   const now = Date.now();
   return {
@@ -461,12 +539,70 @@ export const ExamStore = {
 
   addVaultSnapshot(snap: VaultSnapshotRecord): VaultSnapshotRecord[] {
     const existing = this.loadVaultSnapshots();
-    const combined = [snap, ...existing];
-    // Preserve manual checkpoints and cap rolling pre_restore safety snapshots to 5
-    const manuals = combined.filter((s) => s.kind === 'manual').slice(0, 10);
-    const autoRestores = combined.filter((s) => s.kind === 'pre_restore').slice(0, 5);
-    const next = [...manuals, ...autoRestores].sort((a, b) => b.createdAt - a.createdAt);
+    const { kept } = pruneVaultSnapshotList([snap, ...existing]);
+    this.saveVaultSnapshots(kept);
+    return kept;
+  },
+
+  async addVaultSnapshotWithBlob(snap: VaultSnapshotRecord): Promise<VaultSnapshotRecord[]> {
+    const sizeBytes = snap.sizeBytes ?? snap.rawJson.length;
+    let storedSnap: VaultSnapshotRecord = {
+      ...snap,
+      sizeBytes,
+    };
+
+    if (snap.rawJson) {
+      try {
+        await putSnapshotBlobInIdb(snap.id, snap.rawJson);
+        storedSnap = {
+          ...snap,
+          rawJson: '',
+          blobStorage: 'idb',
+          sizeBytes,
+        };
+      } catch {
+        storedSnap = {
+          ...snap,
+          blobStorage: 'inline',
+          sizeBytes,
+        };
+      }
+    }
+
+    const existing = this.loadVaultSnapshots();
+    const { kept, evictedIds } = pruneVaultSnapshotList([storedSnap, ...existing]);
+    this.saveVaultSnapshots(kept);
+    if (evictedIds.length > 0) {
+      try {
+        await deleteSnapshotBlobsInIdb(evictedIds);
+      } catch {
+        // Best-effort cleanup of evicted IndexedDB blobs
+      }
+    }
+    return kept;
+  },
+
+  async resolveSnapshotRawJson(snap: VaultSnapshotRecord): Promise<string> {
+    if (snap.rawJson && snap.rawJson.trim().length > 0) {
+      return snap.rawJson;
+    }
+    try {
+      const fromIdb = await getSnapshotBlobFromIdb(snap.id);
+      if (fromIdb) return fromIdb;
+    } catch {
+      // Fall through to missing error below
+    }
+    throw new Error('Snapshot payload is unavailable in local browser storage.');
+  },
+
+  async deleteVaultSnapshotWithBlob(snapshotId: string): Promise<VaultSnapshotRecord[]> {
+    const next = this.loadVaultSnapshots().filter((s) => s.id !== snapshotId);
     this.saveVaultSnapshots(next);
+    try {
+      await deleteSnapshotBlobsInIdb([snapshotId]);
+    } catch {
+      // Ignore IDB cleanup failures if IDB is unavailable
+    }
     return next;
   },
 

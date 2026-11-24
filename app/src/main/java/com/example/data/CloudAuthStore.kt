@@ -36,7 +36,8 @@ data class PendingOAuthFlowState(
     val provider: CloudProviderType,
     val state: String,
     val codeVerifier: String,
-    val clientId: String
+    val clientId: String,
+    val createdAtMillis: Long = TrustedTimeManager.getTrustedTimeMillis()
 )
 
 class CloudAuthStore(context: Context) {
@@ -188,21 +189,32 @@ class CloudAuthStore(context: Context) {
             put("state", flow.state)
             put("codeVerifier", flow.codeVerifier)
             put("clientId", flow.clientId)
+            put("createdAtMillis", flow.createdAtMillis)
         }.toString()
         prefs.edit().putString(KEY_PENDING_OAUTH, json).apply()
     }
 
-    fun consumePendingOAuthFlow(): PendingOAuthFlowState? {
+    fun consumePendingOAuthFlow(
+        nowMillis: Long = TrustedTimeManager.getTrustedTimeMillis()
+    ): PendingOAuthFlowState? {
         val raw = prefs.getString(KEY_PENDING_OAUTH, null) ?: return null
         prefs.edit().remove(KEY_PENDING_OAUTH).apply()
         return try {
             val obj = JSONObject(raw)
             val provider = CloudProviderType.entries.firstOrNull { it.code == obj.optString("provider") } ?: return null
+            val createdAt = obj.optLong("createdAtMillis", 0L)
+            if (createdAt <= 0L ||
+                nowMillis - createdAt > PENDING_OAUTH_TTL_MS ||
+                createdAt - nowMillis > PENDING_OAUTH_TTL_MS
+            ) {
+                return null
+            }
             PendingOAuthFlowState(
                 provider = provider,
                 state = obj.optString("state", ""),
                 codeVerifier = obj.optString("codeVerifier", ""),
-                clientId = obj.optString("clientId", "")
+                clientId = obj.optString("clientId", ""),
+                createdAtMillis = createdAt
             )
         } catch (_: Exception) {
             null
@@ -309,5 +321,6 @@ class CloudAuthStore(context: Context) {
         private const val KEY_LINKED_FILE_NAME = "linked_cloud_file_name"
         private const val KEY_LINKED_FILE_SYNCED_AT = "linked_cloud_file_synced_at"
         private const val KEY_LINKED_FILE_ERROR = "linked_cloud_file_error"
+        private const val PENDING_OAUTH_TTL_MS = 15L * 60L * 1000L
     }
 }

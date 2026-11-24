@@ -73,7 +73,10 @@ object OmrVisionProcessor {
         val perspectiveDetected: Boolean,
         val headerResult: OmrHeaderScanResult? = null,
         val detectedCorners: Quadrilateral? = null,
-        val cornersLocked: Boolean = true
+        val cornersLocked: Boolean = true,
+        val exactScore: Double = totalScore.toDouble(),
+        val maxExactScore: Double = maxPossibleScore.toDouble(),
+        val questionMarks: Map<Int, Double> = emptyMap()
     )
 
     /**
@@ -276,16 +279,28 @@ object OmrVisionProcessor {
         width: Int,
         height: Int
     ): PointF? {
+        if (bitmap.width <= 0 || bitmap.height <= 0) return null
+        val safeStartX = startX.coerceIn(0, bitmap.width - 1)
+        val safeStartY = startY.coerceIn(0, bitmap.height - 1)
         val endX = (startX + width).coerceAtMost(bitmap.width)
         val endY = (startY + height).coerceAtMost(bitmap.height)
+        val regionW = endX - safeStartX
+        val regionH = endY - safeStartY
+        if (regionW <= 0 || regionH <= 0) return null
+
+        val pixels = IntArray(regionW * regionH)
+        bitmap.getPixels(pixels, 0, regionW, safeStartX, safeStartY, regionW, regionH)
 
         var totalWeight = 0.0
         var sumX = 0.0
         var sumY = 0.0
 
-        for (y in startY until endY step 2) {
-            for (x in startX until endX step 2) {
-                val pixel = bitmap.getPixel(x, y)
+        for (py in 0 until regionH step 2) {
+            val y = safeStartY + py
+            val rowOffset = py * regionW
+            for (px in 0 until regionW step 2) {
+                val x = safeStartX + px
+                val pixel = pixels[rowOffset + px]
                 val r = Color.red(pixel)
                 val g = Color.green(pixel)
                 val b = Color.blue(pixel)
@@ -349,12 +364,17 @@ object OmrVisionProcessor {
         val bubblesByQuestion = canonicalBubbles.groupBy { it.questionNum }
 
         val questionResults = mutableMapOf<Int, QuestionScanResult>()
+        val questionMarks = mutableMapOf<Int, Double>()
         var attemptedCount = 0
         var correctCount = 0
         var incorrectCount = 0
         var multipleMarkedCount = 0
         var unattemptedCount = 0
-        var totalScore = 0
+        var exactScoreSum = 0.0
+
+        val pos = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 4.0
+        val neg = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 1.0
+        val unk = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
 
         // Adaptive background baseline estimator: sample reference white paper areas
         val baselineDarkness = estimatePaperBaseline(bitmap, detectedCorners)
@@ -401,26 +421,34 @@ object OmrVisionProcessor {
                 else -> Pair(null, false)
             }
 
-            // Scoring against QuestionPaper
+            // Scoring against QuestionPaper using paper metadata marks and AnswerKeyMatcher
             val officialQuestion = paper.questions.getOrNull(qNum - 1)
-            val officialCorrectOption = officialQuestion?.correctAnswer?.uppercase()?.firstOrNull()
+            val isNeutralized = officialQuestion?.isNeutralized == true
 
+            val qMarks: Double
             if (isMultiple) {
                 multipleMarkedCount++
-                totalScore -= 1 // NEET -1 penalty for faulty multiple mark
+                qMarks = -neg
             } else if (selectedOption != null) {
                 attemptedCount++
-                if (officialCorrectOption != null && selectedOption == officialCorrectOption) {
+                val isMatch = isNeutralized || (
+                    officialQuestion?.correctAnswer != null &&
+                        AnswerKeyMatcher.areKeysEquivalent(officialQuestion.correctAnswer, selectedOption.toString())
+                    )
+                if (isMatch) {
                     correctCount++
-                    totalScore += 4 // NEET standard +4 for correct
+                    qMarks = pos
                 } else {
                     incorrectCount++
-                    totalScore -= 1 // NEET standard -1 for incorrect
+                    qMarks = -neg
                 }
             } else {
                 unattemptedCount++
-                // 0 marks for skipped
+                qMarks = if (isNeutralized) pos else -unk
             }
+
+            exactScoreSum += qMarks
+            questionMarks[qNum] = roundTwoDecimals(qMarks)
 
             questionResults[qNum] = QuestionScanResult(
                 questionNum = qNum,
@@ -429,6 +457,9 @@ object OmrVisionProcessor {
                 bubbleResults = questionOptResults
             )
         }
+
+        val exactScore = roundTwoDecimals(exactScoreSum)
+        val maxExactScore = roundTwoDecimals(totalQuestions * pos)
 
         // Decode Left Identification Panel Header (Roll No., Booklet No., Booklet Code)
         val expectedSets = ExamNumberGenerator.resolveBookletSets(paper.metadata.setNumber)
@@ -446,13 +477,16 @@ object OmrVisionProcessor {
             incorrectCount = incorrectCount,
             multipleMarkedCount = multipleMarkedCount,
             unattemptedCount = unattemptedCount,
-            totalScore = totalScore,
-            maxPossibleScore = totalQuestions * 4,
+            totalScore = exactScore.roundToInt(),
+            maxPossibleScore = maxExactScore.roundToInt(),
             questionResults = questionResults,
             perspectiveDetected = canonicalToSourceH != null,
             headerResult = headerResult,
             detectedCorners = detectedCorners,
-            cornersLocked = canonicalToSourceH != null
+            cornersLocked = canonicalToSourceH != null,
+            exactScore = exactScore,
+            maxExactScore = maxExactScore,
+            questionMarks = questionMarks
         )
     }
 
@@ -591,6 +625,7 @@ object OmrVisionProcessor {
         centerY: Float,
         radiusPx: Float
     ): Float {
+        if (bitmap.width <= 0 || bitmap.height <= 0) return 0.0f
         val cx = centerX.roundToInt()
         val cy = centerY.roundToInt()
         val r = radiusPx.roundToInt().coerceAtLeast(1)
@@ -599,21 +634,28 @@ object OmrVisionProcessor {
         val maxX = (cx + r).coerceIn(0, bitmap.width - 1)
         val minY = (cy - r).coerceIn(0, bitmap.height - 1)
         val maxY = (cy + r).coerceIn(0, bitmap.height - 1)
+        val regionW = maxX - minX + 1
+        val regionH = maxY - minY + 1
+        if (regionW <= 0 || regionH <= 0) return 0.0f
+
+        val pixels = IntArray(regionW * regionH)
+        bitmap.getPixels(pixels, 0, regionW, minX, minY, regionW, regionH)
 
         var sampleCount = 0
         var darknessSum = 0.0
-
         val rSq = radiusPx * radiusPx
 
-        for (y in minY..maxY) {
+        for (py in 0 until regionH) {
+            val y = minY + py
             val dy = y - centerY
-            for (x in minX..maxX) {
+            val dySq = dy * dy
+            val rowOffset = py * regionW
+            for (px in 0 until regionW) {
+                val x = minX + px
                 val dx = x - centerX
-                if (dx * dx + dy * dy <= rSq) {
-                    val pixel = bitmap.getPixel(x, y)
+                if (dx * dx + dySq <= rSq) {
+                    val pixel = pixels[rowOffset + px]
                     val red = Color.red(pixel)
-                    val green = Color.green(pixel)
-                    val blue = Color.blue(pixel)
 
                     // Drop-out magenta ink calculation:
                     // NEET magenta template ink has RGB ~(190, 24, 93) with high Red (R ~ 190).
@@ -631,6 +673,8 @@ object OmrVisionProcessor {
 
         return if (sampleCount > 0) (darknessSum / sampleCount).toFloat() else 0.0f
     }
+
+    private fun roundTwoDecimals(value: Double): Double = (value * 100.0).roundToInt() / 100.0
 
     /**
      * Estimates background baseline paper darkness from center gutter regions.

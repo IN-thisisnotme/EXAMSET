@@ -238,5 +238,56 @@ class OmrVisionProcessorTest {
         val allCards = PsychometricEngine.formatAllStudentReportCards(report, paper)
         assertTrue("Contains all cards", allCards.contains(report.candidates.last().rollNumber))
     }
+
+    @Test
+    fun testProcessOmrCustomMarkingAndNeutralizedQuestions() {
+        val questions = listOf(
+            McqQuestion(1, "Q1", QuestionOptions("A", "B", "C", "D"), "b", "Normalized key", isNeutralized = false),
+            McqQuestion(2, "Q2", QuestionOptions("A", "B", "C", "D"), "C", "Dropped", isNeutralized = true),
+            McqQuestion(3, "Q3", QuestionOptions("A", "B", "C", "D"), "A", "Explanation", isNeutralized = false)
+        )
+        val paper = QuestionPaper(
+            metadata = PaperMetadata(
+                title = "Custom Scheme Paper",
+                subject = "Polity",
+                positiveMarks = 2.0,
+                negativeMarks = 0.66,
+                unattendedMarks = 0.1
+            ),
+            questions = questions
+        )
+
+        val width = 420
+        val height = 594
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+
+        val anchorPaint = Paint().apply { color = Color.BLACK }
+        canvas.drawRect(5f, 5f, 20f, 20f, anchorPaint)
+        canvas.drawRect(width - 20f, 5f, width - 5f, 20f, anchorPaint)
+        canvas.drawRect(5f, height - 20f, 20f, height - 5f, anchorPaint)
+        canvas.drawRect(width - 20f, height - 20f, width - 5f, height - 5f, anchorPaint)
+
+        val corners = OmrVisionProcessor.Quadrilateral(
+            topLeft = OmrVisionProcessor.PointF(12.5f, 12.5f),
+            topRight = OmrVisionProcessor.PointF(width - 12.5f, 12.5f),
+            bottomLeft = OmrVisionProcessor.PointF(12.5f, height - 12.5f),
+            bottomRight = OmrVisionProcessor.PointF(width - 12.5f, height - 12.5f)
+        )
+
+        // All 3 questions left unattempted on the blank sheet:
+        // Q1 unattempted => -0.1, Q2 neutralized => +2.0, Q3 unattempted => -0.1 -> exactScore = 1.80, maxExactScore = 6.0
+        val output = OmrVisionProcessor.processOmr(bitmap, paper, corners)
+
+        assertEquals(3, output.totalQuestions)
+        assertEquals(6.0, output.maxExactScore, 1e-4)
+        assertEquals(1.8, output.exactScore, 1e-4)
+        assertEquals(2, output.totalScore)
+        assertEquals(6, output.maxPossibleScore)
+        assertEquals(-0.1, output.questionMarks[1] ?: 0.0, 1e-4)
+        assertEquals(2.0, output.questionMarks[2] ?: 0.0, 1e-4)
+        assertEquals(-0.1, output.questionMarks[3] ?: 0.0, 1e-4)
+    }
 }
 

@@ -14,6 +14,8 @@ import com.example.data.PendingOAuthFlowState
 import com.example.model.CloudProviderType
 import com.example.model.RemoteCloudBackupFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
@@ -49,6 +51,11 @@ object CloudBackupClients {
     private const val ONEDRIVE_SIMPLE_UPLOAD_LIMIT_BYTES = 4L * 1024L * 1024L
     // Microsoft Graph requires upload chunk sizes to be multiples of 320 KiB
     private const val ONEDRIVE_CHUNK_SIZE_BYTES = 320 * 1024 * 10 // 3.2 MiB
+
+    private val tokenRefreshMutexes = mapOf(
+        CloudProviderType.GOOGLE_DRIVE to Mutex(),
+        CloudProviderType.ONEDRIVE to Mutex()
+    )
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -217,61 +224,72 @@ object CloudBackupClients {
     suspend fun ensureValidAccessToken(
         provider: CloudProviderType,
         authStore: CloudAuthStore,
-        forceRefresh: Boolean = false
+        forceRefresh: Boolean = false,
+        failedAccessToken: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
-        val current = authStore.getTokenBundle(provider)
+        val fastCurrent = authStore.getTokenBundle(provider)
             ?: return@withContext Result.failure(IllegalStateException("${provider.displayName} is not connected."))
-        if (!forceRefresh && current.isAccessTokenValid()) {
-            return@withContext Result.success(current.accessToken)
-        }
-        val clientId = authStore.getClientId(provider)
-        if (current.refreshToken.isBlank() || clientId.isBlank()) {
-            val msg = "${provider.displayName} session expired. Please reconnect your account."
-            authStore.setLastError(provider, msg)
-            return@withContext Result.failure(IllegalStateException(msg))
+        if (!forceRefresh && fastCurrent.isAccessTokenValid()) {
+            return@withContext Result.success(fastCurrent.accessToken)
         }
 
-        val tokenEndpoint = when (provider) {
-            CloudProviderType.GOOGLE_DRIVE -> "https://oauth2.googleapis.com/token"
-            CloudProviderType.ONEDRIVE -> "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-        }
+        val mutex = tokenRefreshMutexes.getValue(provider)
+        mutex.withLock {
+            val current = authStore.getTokenBundle(provider)
+                ?: return@withLock Result.failure(IllegalStateException("${provider.displayName} is not connected."))
+            // Another coroutine may have already refreshed while waiting on the lock
+            if (current.isAccessTokenValid() && (!forceRefresh || (failedAccessToken != null && current.accessToken != failedAccessToken))) {
+                return@withLock Result.success(current.accessToken)
+            }
+            val clientId = authStore.getClientId(provider)
+            if (current.refreshToken.isBlank() || clientId.isBlank()) {
+                val msg = "${provider.displayName} session expired. Please reconnect your account."
+                authStore.setLastError(provider, msg)
+                return@withLock Result.failure(IllegalStateException(msg))
+            }
 
-        val form = FormBody.Builder()
-            .add("client_id", clientId)
-            .add("grant_type", "refresh_token")
-            .add("refresh_token", current.refreshToken)
-            .build()
+            val tokenEndpoint = when (provider) {
+                CloudProviderType.GOOGLE_DRIVE -> "https://oauth2.googleapis.com/token"
+                CloudProviderType.ONEDRIVE -> "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+            }
 
-        val req = Request.Builder().url(tokenEndpoint).post(form).build()
-        runCatching {
-            httpClient.newCall(req).execute().use { resp ->
-                val bodyStr = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) {
-                    val msg = extractOAuthError(bodyStr, "Token refresh failed (HTTP ${resp.code}). Please reconnect.")
-                    authStore.setLastError(provider, msg)
-                    throw IllegalStateException(msg)
+            val form = FormBody.Builder()
+                .add("client_id", clientId)
+                .add("grant_type", "refresh_token")
+                .add("refresh_token", current.refreshToken)
+                .build()
+
+            val req = Request.Builder().url(tokenEndpoint).post(form).build()
+            runCatching {
+                httpClient.newCall(req).execute().use { resp ->
+                    val bodyStr = resp.body?.string().orEmpty()
+                    if (!resp.isSuccessful) {
+                        val msg = extractOAuthError(bodyStr, "Token refresh failed (HTTP ${resp.code}). Please reconnect.")
+                        authStore.setLastError(provider, msg)
+                        throw IllegalStateException(msg)
+                    }
+                    val obj = JSONObject(bodyStr)
+                    val newAccess = obj.optString("access_token", "")
+                    val newRefresh = obj.optString("refresh_token", "").ifBlank { current.refreshToken }
+                    val expiresIn = obj.optLong("expires_in", 3600L)
+                    if (newAccess.isBlank()) {
+                        throw IllegalStateException("Empty refreshed access token.")
+                    }
+                    val updated = current.copy(
+                        accessToken = newAccess,
+                        refreshToken = newRefresh,
+                        expiresAtMillis = TrustedTimeManager.getTrustedTimeMillis() + (expiresIn * 1000L)
+                    )
+                    try {
+                        authStore.saveTokenBundle(provider, updated)
+                    } catch (secErr: Exception) {
+                        val msg = secErr.localizedMessage ?: "Failed to securely store refreshed OAuth credentials."
+                        authStore.setLastError(provider, msg)
+                        throw IllegalStateException(msg, secErr)
+                    }
+                    authStore.setLastError(provider, null)
+                    newAccess
                 }
-                val obj = JSONObject(bodyStr)
-                val newAccess = obj.optString("access_token", "")
-                val newRefresh = obj.optString("refresh_token", "").ifBlank { current.refreshToken }
-                val expiresIn = obj.optLong("expires_in", 3600L)
-                if (newAccess.isBlank()) {
-                    throw IllegalStateException("Empty refreshed access token.")
-                }
-                val updated = current.copy(
-                    accessToken = newAccess,
-                    refreshToken = newRefresh,
-                    expiresAtMillis = TrustedTimeManager.getTrustedTimeMillis() + (expiresIn * 1000L)
-                )
-                try {
-                    authStore.saveTokenBundle(provider, updated)
-                } catch (secErr: Exception) {
-                    val msg = secErr.localizedMessage ?: "Failed to securely store refreshed OAuth credentials."
-                    authStore.setLastError(provider, msg)
-                    throw IllegalStateException(msg, secErr)
-                }
-                authStore.setLastError(provider, null)
-                newAccess
             }
         }
     }
@@ -288,8 +306,12 @@ object CloudBackupClients {
             Result.success(block(initialToken))
         } catch (httpErr: CloudHttpStatusException) {
             if (httpErr.statusCode == 401) {
-                val refreshedToken = ensureValidAccessToken(provider, authStore, forceRefresh = true)
-                    .getOrElse { return Result.failure(it) }
+                val refreshedToken = ensureValidAccessToken(
+                    provider = provider,
+                    authStore = authStore,
+                    forceRefresh = true,
+                    failedAccessToken = initialToken
+                ).getOrElse { return Result.failure(it) }
                 runCatching { block(refreshedToken) }
             } else {
                 Result.failure(httpErr)
@@ -353,7 +375,11 @@ object CloudBackupClients {
             )
         }
         executeWithTokenRetry(remoteFile.provider, authStore) { token ->
-            val dest = File(VaultArchiveEngine.getExportCacheDir(context), remoteFile.name)
+            VaultArchiveEngine.pruneExportCacheDir(context)
+            val safeFileName = File(remoteFile.name).name
+                .replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                .ifBlank { "remote_backup.examset.zip" }
+            val dest = File(VaultArchiveEngine.getExportCacheDir(context), safeFileName)
             val url = when (remoteFile.provider) {
                 CloudProviderType.GOOGLE_DRIVE ->
                     "https://www.googleapis.com/drive/v3/files/${Uri.encode(remoteFile.remoteId)}?alt=media"

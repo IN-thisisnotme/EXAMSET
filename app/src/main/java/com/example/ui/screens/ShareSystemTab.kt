@@ -84,23 +84,39 @@ fun ShareSystemTab(
     var copiedManifest by remember { mutableStateOf(false) }
 
     var pendingExportData by remember { mutableStateOf<String?>(null) }
-    var pendingExportMimeType by remember { mutableStateOf("application/json") }
 
-    // Storage Access Framework launcher to save single/small files directly to device File Manager
-    val createDocLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument(pendingExportMimeType)
-    ) { uri: Uri? ->
-        if (uri != null && pendingExportData != null) {
-            try {
-                context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.bufferedWriter(Charsets.UTF_8).write(pendingExportData!!)
-                }
-                Toast.makeText(context, "Saved file successfully to device!", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to write file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+    fun writePendingExportToUri(uri: Uri?) {
+        val data = pendingExportData
+        pendingExportData = null
+        if (uri == null || data == null) return
+        try {
+            val stream = context.contentResolver.openOutputStream(uri, "wt")
+                ?: context.contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("Unable to open output stream.")
+            stream.use { out ->
+                val writer = out.bufferedWriter(Charsets.UTF_8)
+                writer.write(data)
+                writer.flush()
             }
+            Toast.makeText(context, "Saved file successfully to device!", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to write file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
+
+    // [DEPRECATED 2026-11-24] Reason: Passing mutable state to ActivityResultContracts.CreateDocument(pendingExportMimeType) raced with Compose recomposition before launch() and omitted writer.flush(). Restore if: dynamic arbitrary MIME types become necessary via custom ActivityResultContract.
+    // Storage Access Framework launchers pre-registered per MIME type to avoid recomposition race conditions
+    val createJsonDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? -> writePendingExportToUri(uri) }
+
+    val createCsvDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? -> writePendingExportToUri(uri) }
+
+    val createTxtDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? -> writePendingExportToUri(uri) }
 
     // Memory-safe streaming SAF launchers for bulk library JSON & TXT export
     val exportAllJsonLauncher = rememberLauncherForActivityResult(
@@ -138,8 +154,11 @@ fun ShareSystemTab(
 
     fun triggerExportToFile(data: String, defaultName: String, mime: String) {
         pendingExportData = data
-        pendingExportMimeType = mime
-        createDocLauncher.launch(defaultName)
+        when (mime.lowercase()) {
+            "application/json" -> createJsonDocLauncher.launch(defaultName)
+            "text/csv" -> createCsvDocLauncher.launch(defaultName)
+            else -> createTxtDocLauncher.launch(defaultName)
+        }
     }
 
     fun triggerShare(data: String, title: String) {

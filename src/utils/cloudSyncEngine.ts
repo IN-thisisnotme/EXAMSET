@@ -20,6 +20,8 @@ const IDB_NAME = 'examset_disk_sync_v1';
 const IDB_STORE = 'file_handles';
 const IDB_HANDLE_KEY = 'linked_sync_handle';
 const BACKUP_FOLDER_NAME = 'ExamSet Backups';
+const PENDING_OAUTH_TTL_MS = 15 * 60 * 1000;
+const refreshInFlight = new Map<CloudProviderType, Promise<string>>();
 
 interface StoredTokenBundle {
   accessToken: string;
@@ -178,12 +180,14 @@ function base64UrlEncode(bytes: Uint8Array): string {
 }
 
 function generateRandomToken(byteLen = 24): string {
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
     const arr = new Uint8Array(byteLen);
     crypto.getRandomValues(arr);
     return base64UrlEncode(arr);
   }
-  return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  // [DEPRECATED 2026-11-24] Reason: Math.random() fallback is not cryptographically secure for OAuth state, PKCE verifiers, or multipart boundaries. Restore if: Non-WebCrypto legacy environment explicitly provides an injected CSPRNG shim.
+  // return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  throw new Error('Secure Web Crypto random generator is required for OAuth.');
 }
 
 async function computeS256Challenge(verifier: string): Promise<string> {
@@ -667,6 +671,7 @@ export const CloudSyncEngine = {
   },
 
   disconnectCloud(provider: CloudProviderType): CloudAccountStatus {
+    refreshInFlight.delete(provider);
     clearTokenBundle(provider);
     writeMeta(provider, {
       accountEmail: '',
@@ -706,6 +711,8 @@ export const CloudSyncEngine = {
 
     // Redirect fallback path in same window: consume pending transaction and clean URL
     const rawPending = safeSessionGet(STORAGE_KEYS.OAUTH_PENDING) || safeLocalGet(STORAGE_KEYS.OAUTH_PENDING);
+    safeSessionRemove(STORAGE_KEYS.OAUTH_PENDING);
+    safeLocalRemove(STORAGE_KEYS.OAUTH_PENDING);
     if (!rawPending) return null;
 
     let pending: PendingOAuthTx;
@@ -715,8 +722,25 @@ export const CloudSyncEngine = {
       return null;
     }
 
-    safeSessionRemove(STORAGE_KEYS.OAUTH_PENDING);
-    safeLocalRemove(STORAGE_KEYS.OAUTH_PENDING);
+    const now = Date.now();
+    if (
+      !pending ||
+      typeof pending.createdAt !== 'number' ||
+      !Number.isFinite(pending.createdAt) ||
+      now - pending.createdAt > PENDING_OAUTH_TTL_MS ||
+      pending.createdAt - now > PENDING_OAUTH_TTL_MS
+    ) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      const expiredMsg = 'Authorization session expired. Please reconnect and try again.';
+      if (pending?.provider) {
+        writeMeta(pending.provider, { lastError: expiredMsg });
+      }
+      return {
+        provider: pending?.provider || 'GOOGLE_DRIVE',
+        ok: false,
+        message: expiredMsg,
+      };
+    }
 
     try {
       await this.completeOAuthFromCallbackUrl(pending, window.location.href);
@@ -786,8 +810,13 @@ export const CloudSyncEngine = {
       redirectUri,
       createdAt: Date.now(),
     };
-    safeSessionSet(STORAGE_KEYS.OAUTH_PENDING, JSON.stringify(tx));
-    safeLocalSet(STORAGE_KEYS.OAUTH_PENDING, JSON.stringify(tx));
+    const serializedTx = JSON.stringify(tx);
+    safeSessionSet(STORAGE_KEYS.OAUTH_PENDING, serializedTx);
+    if (!safeSessionGet(STORAGE_KEYS.OAUTH_PENDING)) {
+      safeLocalSet(STORAGE_KEYS.OAUTH_PENDING, serializedTx);
+    } else {
+      safeLocalRemove(STORAGE_KEYS.OAUTH_PENDING);
+    }
 
     const popup = window.open(
       authUrl,
@@ -937,36 +966,60 @@ export const CloudSyncEngine = {
       return bundle.accessToken;
     }
 
-    // Attempt OneDrive refresh if refreshToken present
+    // Attempt OneDrive refresh if refreshToken present, deduplicating concurrent callers
     if (provider === 'ONEDRIVE' && bundle.refreshToken) {
-      const clientId = this.getClientId('ONEDRIVE');
-      const meta = readMeta('ONEDRIVE');
-      const body = new URLSearchParams({
-        client_id: clientId,
-        grant_type: 'refresh_token',
-        refresh_token: bundle.refreshToken,
-        scope: 'Files.ReadWrite.AppFolder offline_access User.Read',
-      });
-      const resp = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      });
-      const json = (await resp.json()) as {
-        access_token?: string;
-        refresh_token?: string;
-        expires_in?: number;
-        error_description?: string;
-      };
-      if (resp.ok && json.access_token) {
-        const updated: StoredTokenBundle = {
-          accessToken: json.access_token,
-          refreshToken: json.refresh_token || bundle.refreshToken,
-          expiresAt: Date.now() + Number(json.expires_in || 3600) * 1000,
-        };
-        writeTokenBundle('ONEDRIVE', updated, meta.tokenStoragePreference);
-        return updated.accessToken;
+      const existing = refreshInFlight.get(provider);
+      if (existing) {
+        return existing;
       }
+
+      const refreshPromise = (async (): Promise<string> => {
+        try {
+          const latestBundle = readTokenBundle('ONEDRIVE');
+          if (latestBundle && (latestBundle.expiresAt === 0 || Date.now() < latestBundle.expiresAt - 60000)) {
+            return latestBundle.accessToken;
+          }
+          const activeBundle = latestBundle || bundle;
+          const clientId = this.getClientId('ONEDRIVE');
+          const meta = readMeta('ONEDRIVE');
+          const body = new URLSearchParams({
+            client_id: clientId,
+            grant_type: 'refresh_token',
+            refresh_token: activeBundle.refreshToken,
+            scope: 'Files.ReadWrite.AppFolder offline_access User.Read',
+          });
+          const resp = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+          });
+          const json = (await resp.json()) as {
+            access_token?: string;
+            refresh_token?: string;
+            expires_in?: number;
+            error_description?: string;
+          };
+          if (resp.ok && json.access_token) {
+            const updated: StoredTokenBundle = {
+              accessToken: json.access_token,
+              refreshToken: json.refresh_token || activeBundle.refreshToken,
+              expiresAt: Date.now() + Number(json.expires_in || 3600) * 1000,
+            };
+            writeTokenBundle('ONEDRIVE', updated, meta.tokenStoragePreference);
+            return updated.accessToken;
+          }
+
+          clearTokenBundle(provider);
+          const errMsg = 'Session expired. Click Reconnect to authorize access again.';
+          writeMeta(provider, { lastError: errMsg });
+          throw new Error(errMsg);
+        } finally {
+          refreshInFlight.delete(provider);
+        }
+      })();
+
+      refreshInFlight.set(provider, refreshPromise);
+      return refreshPromise;
     }
 
     clearTokenBundle(provider);
@@ -1012,7 +1065,7 @@ export const CloudSyncEngine = {
 
       if (provider === 'GOOGLE_DRIVE') {
         const folderId = await this.ensureGoogleDriveFolder(token);
-        const boundary = `examset_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const boundary = `examset_${generateRandomToken(12)}`;
         const metadataJson = JSON.stringify({
           name: fileName,
           parents: [folderId],

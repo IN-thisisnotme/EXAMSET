@@ -58,9 +58,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.example.data.AttemptEntity
 import com.example.data.PaperEntity
 import com.example.data.toQuestionPaper
+import com.example.util.AnswerKeyMatcher
 import com.example.util.CameraCaptureHelper
 import com.example.util.ExamJsonHelper
 import com.example.util.ExamNumberGenerator
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -710,10 +713,14 @@ private fun ScannedResultReviewView(
     val context = LocalContext.current
     val colors = ExamTheme.colors
     val totalQuestions = result.totalQuestions
-    val score = result.totalScore
+    val score = result.exactScore
+    val maxScore = result.maxExactScore
     val correct = result.correctCount
     val incorrect = result.incorrectCount
     val unanswered = result.unattemptedCount
+    val posMarks = if (paper.metadata.positiveMarks > 0.0) paper.metadata.positiveMarks else 4.0
+    val negMarks = if (paper.metadata.negativeMarks >= 0.0) paper.metadata.negativeMarks else 1.0
+    val unkMarks = if (paper.metadata.unattendedMarks >= 0.0) paper.metadata.unattendedMarks else 0.0
 
     var editableRollNumber by remember { mutableStateOf(result.headerResult?.rollNumber ?: "") }
     var editableBookletNumber by remember { mutableStateOf(result.headerResult?.bookletNumber ?: "") }
@@ -766,19 +773,19 @@ private fun ScannedResultReviewView(
                         )
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                text = score.toString(),
+                                text = formatOmrMarks(score),
                                 fontSize = 30.sp,
                                 fontWeight = FontWeight.Black,
                                 color = when {
-                                    score > 0 -> colors.teal
-                                    score < 0 -> colors.red
+                                    score > 0.0 -> colors.teal
+                                    score < 0.0 -> colors.red
                                     else -> colors.inkBold
                                 },
                                 fontFamily = FontFamily.Monospace
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "/ ${result.maxPossibleScore} marks",
+                                text = "/ ${formatOmrMarks(maxScore)} marks",
                                 fontSize = 14.sp,
                                 color = colors.muted,
                                 modifier = Modifier.padding(bottom = 4.dp)
@@ -1153,10 +1160,13 @@ private fun ScannedResultReviewView(
         val allQuestionsList = result.questionResults.values.toList().sortedBy { it.questionNum }
         val filteredList = allQuestionsList.filter { item ->
             val officialQuestion = paper.questions.getOrNull(item.questionNum - 1)
-            val officialAnswer = officialQuestion?.correctAnswer?.uppercase()?.firstOrNull()?.toString() ?: ""
+            val isNeutralized = officialQuestion?.isNeutralized == true
+            val officialAnswerRaw = officialQuestion?.correctAnswer.orEmpty()
             val markedChar = item.selectedOption?.toString()
-            val isCorrect = !item.isMultipleMarked && markedChar != null && markedChar.equals(officialAnswer, ignoreCase = true)
-            val isIncorrect = !item.isMultipleMarked && markedChar != null && !markedChar.equals(officialAnswer, ignoreCase = true)
+            val isCorrect = !item.isMultipleMarked && markedChar != null &&
+                (isNeutralized || AnswerKeyMatcher.areKeysEquivalent(officialAnswerRaw, markedChar))
+            val isIncorrect = !item.isMultipleMarked && markedChar != null &&
+                !isNeutralized && !AnswerKeyMatcher.areKeysEquivalent(officialAnswerRaw, markedChar)
             val isUnanswered = !item.isMultipleMarked && markedChar == null
 
             when (auditFilter) {
@@ -1175,11 +1185,25 @@ private fun ScannedResultReviewView(
         ) {
             items(filteredList) { item ->
                 val officialQuestion = paper.questions.getOrNull(item.questionNum - 1)
-                val officialAnswer = officialQuestion?.correctAnswer?.uppercase()?.firstOrNull()?.toString() ?: ""
+                val isNeutralized = officialQuestion?.isNeutralized == true
+                val officialAnswerRaw = officialQuestion?.correctAnswer.orEmpty()
+                val displayKey = if (isNeutralized) {
+                    "Dropped"
+                } else {
+                    AnswerKeyMatcher.formatKeyForDisplay(officialAnswerRaw).ifBlank { "—" }
+                }
                 val markedChar = item.selectedOption?.toString()
 
-                val isCorrect = !item.isMultipleMarked && markedChar != null && markedChar.equals(officialAnswer, ignoreCase = true)
-                val isIncorrect = !item.isMultipleMarked && markedChar != null && !markedChar.equals(officialAnswer, ignoreCase = true)
+                val isCorrect = !item.isMultipleMarked && markedChar != null &&
+                    (isNeutralized || AnswerKeyMatcher.areKeysEquivalent(officialAnswerRaw, markedChar))
+                val isIncorrect = !item.isMultipleMarked && markedChar != null &&
+                    !isNeutralized && !AnswerKeyMatcher.areKeysEquivalent(officialAnswerRaw, markedChar)
+
+                val itemMarks = result.questionMarks[item.questionNum] ?: when {
+                    isCorrect || (isNeutralized && !item.isMultipleMarked) -> posMarks
+                    isIncorrect || item.isMultipleMarked -> -negMarks
+                    else -> -unkMarks
+                }
 
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -1219,16 +1243,20 @@ private fun ScannedResultReviewView(
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Key: ${officialAnswer.ifBlank { "—" }}",
+                                text = "Key: $displayKey",
                                 fontSize = 11.5.sp,
                                 color = colors.muted
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             val (badgeBg, badgeFg, label) = when {
-                                isCorrect -> Triple(colors.greenLight, colors.green, "+4")
-                                isIncorrect -> Triple(colors.redLight, colors.red, "-1")
-                                item.isMultipleMarked -> Triple(colors.amberLight, colors.amber, "-1")
-                                else -> Triple(colors.surfaceVariant, colors.muted, "0")
+                                isCorrect || (isNeutralized && !item.isMultipleMarked) ->
+                                    Triple(colors.greenLight, colors.green, formatSignedOmrMarks(itemMarks))
+                                isIncorrect ->
+                                    Triple(colors.redLight, colors.red, formatSignedOmrMarks(itemMarks))
+                                item.isMultipleMarked ->
+                                    Triple(colors.amberLight, colors.amber, formatSignedOmrMarks(itemMarks))
+                                else ->
+                                    Triple(colors.surfaceVariant, colors.muted, formatSignedOmrMarks(itemMarks))
                             }
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -1298,7 +1326,7 @@ private fun ScannedResultReviewView(
                         paperTitle = paper.metadata.title,
                         paperId = paper.id,
                         totalQuestions = result.totalQuestions,
-                        score = result.totalScore.toDouble(),
+                        score = result.exactScore,
                         correctCount = result.correctCount,
                         incorrectCount = result.incorrectCount + result.multipleMarkedCount,
                         unattemptedCount = result.unattemptedCount,
@@ -1394,5 +1422,25 @@ private fun BreakdownStatChip(
                 color = color.copy(alpha = 0.9f)
             )
         }
+    }
+}
+
+private fun formatOmrMarks(value: Double): String {
+    val rounded = (value * 100.0).roundToInt() / 100.0
+    return if (abs(rounded - rounded.roundToInt()) < 1e-6) {
+        rounded.roundToInt().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.2f", rounded)
+            .trimEnd('0')
+            .trimEnd('.')
+    }
+}
+
+private fun formatSignedOmrMarks(value: Double): String {
+    val rounded = (value * 100.0).roundToInt() / 100.0
+    return when {
+        abs(rounded) < 1e-6 -> "0"
+        rounded > 0.0 -> "+${formatOmrMarks(rounded)}"
+        else -> formatOmrMarks(rounded)
     }
 }

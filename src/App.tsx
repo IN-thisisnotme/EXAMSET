@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   Bell,
@@ -42,6 +42,7 @@ import {
 } from './types/phase4';
 import {
   type AutoBackupSchedule,
+  type BackupManifest,
   type BrainLabSettings,
   type BrainLabStats,
   type DailyStudyAnalytics,
@@ -612,12 +613,30 @@ const ExamSetWorkspace: React.FC = () => {
     showToast(`Auto-backup schedule set to ${labelMap[schedule]}`);
   };
 
-  useEffect(() => {
-    if (autoBackupSchedule === 'OFF') return;
+  const lastAutoBackupAtRef = useRef(lastAutoBackupAt);
+  lastAutoBackupAtRef.current = lastAutoBackupAt;
 
-    const runSilentAutoGuard = async () => {
+  const workspaceBackupStateRef = useRef(workspaceBackupState);
+  workspaceBackupStateRef.current = workspaceBackupState;
+
+  const workspaceBackupSignature = useMemo(
+    () => JSON.stringify(workspaceBackupState),
+    [workspaceBackupState]
+  );
+  const lastBackedUpSignatureRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (autoBackupSchedule === 'OFF') {
+      lastBackedUpSignatureRef.current = workspaceBackupSignature;
+      return;
+    }
+
+    const runSilentAutoGuard = async (signatureAtRun: string) => {
       try {
-        const { document, rawJson } = buildVaultArchive(workspaceBackupState, 'Auto-Backup Guard');
+        const { document, rawJson } = buildVaultArchive(
+          workspaceBackupStateRef.current,
+          'Auto-Backup Guard'
+        );
         const snap: VaultSnapshotRecord = {
           id: `snap-auto-${Date.now()}`,
           label: `Auto Backup (${document.manifest.counts.papersCount} Sets, ${document.manifest.counts.notesCount} Notes)`,
@@ -625,11 +644,14 @@ const ExamSetWorkspace: React.FC = () => {
           createdAt: Date.now(),
           manifest: document.manifest,
           rawJson,
+          sizeBytes: rawJson.length,
         };
-        const next = ExamStore.addVaultSnapshot(snap);
+        const next = await ExamStore.addVaultSnapshotWithBlob(snap);
         setVaultSnapshots(next);
 
         const now = Date.now();
+        lastAutoBackupAtRef.current = now;
+        lastBackedUpSignatureRef.current = signatureAtRun;
         setLastAutoBackupAt(now);
         ExamStore.saveLastAutoBackupAt(now);
 
@@ -643,10 +665,17 @@ const ExamSetWorkspace: React.FC = () => {
     };
 
     if (autoBackupSchedule === 'ON_CHANGE') {
-      const elapsed = Date.now() - lastAutoBackupAt;
+      if (lastBackedUpSignatureRef.current === null) {
+        lastBackedUpSignatureRef.current = workspaceBackupSignature;
+        return;
+      }
+      if (lastBackedUpSignatureRef.current === workspaceBackupSignature) {
+        return;
+      }
+      const elapsed = Date.now() - lastAutoBackupAtRef.current;
       const delayMs = elapsed >= 60_000 ? 15_000 : Math.max(15_000, 60_000 - elapsed);
       const t = setTimeout(() => {
-        void runSilentAutoGuard();
+        void runSilentAutoGuard(workspaceBackupSignature);
       }, delayMs);
       return () => clearTimeout(t);
     }
@@ -655,37 +684,47 @@ const ExamSetWorkspace: React.FC = () => {
       autoBackupSchedule === 'EVERY_6H' ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     const checkTimer = setInterval(() => {
       if (Date.now() - ExamStore.loadLastAutoBackupAt() >= cadenceMs) {
-        void runSilentAutoGuard();
+        void runSilentAutoGuard(workspaceBackupSignature);
       }
     }, 60_000);
     return () => clearInterval(checkTimer);
-  }, [autoBackupSchedule, lastAutoBackupAt, workspaceBackupState]);
+  }, [autoBackupSchedule, workspaceBackupSignature]);
 
-  const handleCreateSnapshot = (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => {
-    const { document } = buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault');
+  const handleCreateSnapshot = async (
+    label: string,
+    kind: 'manual' | 'pre_restore',
+    rawJson: string
+  ) => {
+    let manifest: BackupManifest;
+    try {
+      const parsed = JSON.parse(rawJson) as { manifest?: BackupManifest };
+      manifest = parsed.manifest || buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault').document.manifest;
+    } catch {
+      manifest = buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault').document.manifest;
+    }
     const snap: VaultSnapshotRecord = {
       id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       label,
       kind,
       createdAt: Date.now(),
-      manifest: document.manifest,
+      manifest,
       rawJson,
+      sizeBytes: rawJson.length,
     };
-    const next = ExamStore.addVaultSnapshot(snap);
+    const next = await ExamStore.addVaultSnapshotWithBlob(snap);
     setVaultSnapshots(next);
   };
 
-  const handleDeleteSnapshot = (snapshotId: string) => {
-    const next = vaultSnapshots.filter((s) => s.id !== snapshotId);
+  const handleDeleteSnapshot = async (snapshotId: string) => {
+    const next = await ExamStore.deleteVaultSnapshotWithBlob(snapshotId);
     setVaultSnapshots(next);
-    ExamStore.saveVaultSnapshots(next);
     showToast('Deleted local vault snapshot');
   };
 
   const handleExecuteRestore = (preview: RestorePreview, mode: RestoreMode) => {
     if (mode === 'FULL_REPLACE') {
       const preArchive = buildVaultArchive(workspaceBackupState, 'Pre-Replace Safety Guard');
-      handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
+      void handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
     }
 
     const merged = applyVaultRestoreToState(

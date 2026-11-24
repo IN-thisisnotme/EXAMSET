@@ -34,6 +34,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -41,7 +42,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -762,5 +765,144 @@ class VaultArchiveEngineTest {
         assertEquals("Newer Economy Local", finalPresets["pack_p_b"]?.name)
         assertEquals("pack_p_a", appPrefs.getActivePromptPresetId(PromptPresetMode.QUESTION_SET))
         assertEquals("German", appPrefs.getVocabularyPromptDraft()?.language)
+    }
+
+    @Test
+    fun `inspectLocalFile marks checksumVerified false when required core entry or checksum is omitted`() = runBlocking {
+        val archiveFile = File(tempDir, "valid_base.examset.zip")
+        VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+
+        val strippedFile = File(tempDir, "stripped_checksum.examset.zip")
+        ZipFile(archiveFile).use { src ->
+            ZipOutputStream(strippedFile.outputStream()).use { zos ->
+                src.entries().asSequence().forEach { entry ->
+                    if (entry.name == "manifest.json") {
+                        val rawManifest = src.getInputStream(entry).bufferedReader().readText()
+                        val obj = org.json.JSONObject(rawManifest)
+                        obj.getJSONObject("entryChecksumsSha256").remove("papers.ndjson")
+                        zos.putNextEntry(ZipEntry(entry.name))
+                        zos.write(obj.toString(2).toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+                    } else {
+                        zos.putNextEntry(ZipEntry(entry.name))
+                        zos.write(src.getInputStream(entry).readBytes())
+                        zos.closeEntry()
+                    }
+                }
+            }
+        }
+
+        val preview = VaultArchiveEngine.inspectLocalFile(strippedFile)
+        assertFalse(
+            "Archive missing checksum for required core entry papers.ndjson must fail verification",
+            preview.checksumVerified
+        )
+        assertTrue(preview.checksumDetails.contains("papers.ndjson"))
+    }
+
+    @Test
+    fun `smartMerge clears linkedPaperId when linked paper is absent instead of colliding with local paper id`() = runBlocking {
+        // Seed device B with Paper id = 1 and Note linked to paperId = 1
+        val paperB = PaperEntity(
+            id = 1L,
+            title = "Device B Paper",
+            subject = "Economics",
+            questionCount = 1,
+            answerKeyCount = 1,
+            explanationCount = 0,
+            rawText = "1. GDP stands for?\n(A) Gross Domestic Product\n(B) Other\nAnswer: A"
+        )
+        db.paperDao().insertPaper(paperB)
+        db.studyNoteDao().insertStudyNote(
+            StudyNoteEntity(
+                syncUid = "note_linked_orphan",
+                title = "Note Originally Linked to Device B Paper 1",
+                subject = "Economics",
+                rawContent = "Inflation targets",
+                linkedPaperId = 1L
+            )
+        )
+
+        val deviceBZip = File(tempDir, "device_b.examset.zip")
+        VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, deviceBZip)
+
+        // Reset DB cleanly on Device A with an unrelated paper at id = 1, and modify zip to omit papers.ndjson records
+        db.paperDao().deleteAllAttempts()
+        db.paperDao().deleteAllPapers()
+        db.studyNoteDao().deleteAllStudyNotes()
+        val unrelatedLocalPaperId = db.paperDao().insertPaper(
+            PaperEntity(
+                title = "Unrelated Local Paper on Device A",
+                subject = "Biology",
+                questionCount = 1,
+                answerKeyCount = 1,
+                explanationCount = 0,
+                rawText = "1. Cell powerhouse?\n(A) Mitochondria\n(B) Nucleus\nAnswer: A"
+            )
+        )
+
+        // Build archive with 0 papers but note still carrying stale linkedPaperId = unrelatedLocalPaperId
+        val emptyPapersZip = File(tempDir, "note_unmapped_link.examset.zip")
+        ZipFile(deviceBZip).use { src ->
+            ZipOutputStream(emptyPapersZip.outputStream()).use { zos ->
+                src.entries().asSequence().forEach { entry ->
+                    zos.putNextEntry(ZipEntry(entry.name))
+                    if (entry.name == "papers.ndjson") {
+                        // empty papers list -> paperIdMap will not map id 1
+                    } else if (entry.name == "notes.ndjson") {
+                        val line = src.getInputStream(entry).bufferedReader().readText()
+                            .replace("\"linkedPaperId\":1", "\"linkedPaperId\":$unrelatedLocalPaperId")
+                        zos.write(line.toByteArray(Charsets.UTF_8))
+                    } else {
+                        zos.write(src.getInputStream(entry).readBytes())
+                    }
+                    zos.closeEntry()
+                }
+            }
+        }
+
+        val preview = VaultArchiveEngine.inspectLocalFile(emptyPapersZip)
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE
+        )
+
+        val restoredNote = db.studyNoteDao().getStudyNoteBySyncUid("note_linked_orphan")
+        assertNotNull(restoredNote)
+        assertNull(
+            "Unmapped linkedPaperId must become null rather than attaching to an unrelated local paper",
+            restoredNote?.linkedPaperId
+        )
+    }
+
+    @Test
+    fun `pruneExportCacheDir removes expired files while keeping excluded and fresh files`() {
+        val exportDir = File(context.cacheDir, "vault_export_cache").apply { mkdirs() }
+        val staleFile = File(exportDir, "inspect_old.tmp").apply {
+            writeText("stale")
+            setLastModified(System.currentTimeMillis() - 120_000L)
+        }
+        val excludedFile = File(exportDir, "inspect_excluded.tmp").apply {
+            writeText("keep-excluded")
+            setLastModified(System.currentTimeMillis() - 120_000L)
+        }
+        val freshFile = File(exportDir, "inspect_fresh.tmp").apply {
+            writeText("fresh")
+            setLastModified(System.currentTimeMillis())
+        }
+
+        VaultArchiveEngine.pruneExportCacheDir(
+            context = context,
+            maxAgeMs = 60_000L,
+            excludeFile = excludedFile
+        )
+
+        assertFalse("Expired cache file should be pruned", staleFile.exists())
+        assertTrue("Excluded file must be preserved", excludedFile.exists())
+        assertTrue("Fresh cache file must be preserved", freshFile.exists())
     }
 }

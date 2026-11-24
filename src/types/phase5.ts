@@ -401,6 +401,8 @@ export interface VaultSnapshotRecord {
   createdAt: number;
   manifest: BackupManifest;
   rawJson: string;
+  blobStorage?: 'idb' | 'inline';
+  sizeBytes?: number;
 }
 
 export interface RestorePreview {
