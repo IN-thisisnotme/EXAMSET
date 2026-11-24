@@ -22,7 +22,7 @@ object ExamTheme {
 @Composable
 fun ExamSetTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    colorSchemePreset: ColorSchemePreset = ColorSchemePreset.NORDIC_SLATE,
+    colorSchemePreset: ColorSchemePreset = ColorSchemePreset.MINIMAL,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
