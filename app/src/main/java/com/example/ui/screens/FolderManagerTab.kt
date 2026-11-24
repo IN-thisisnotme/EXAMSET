@@ -119,6 +119,7 @@ import com.example.model.PaperCategory
 import com.example.ui.LibraryIndexState
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
+import com.example.ui.theme.parseHexColorSafe
 import com.example.util.ExamNumberGenerator
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -906,7 +907,7 @@ fun FolderManagerTab(
                                     }
 
                                     // Emblem Badge Box
-                                    val folderColor = currentFolder?.let { parseHexColor(it.color) } ?: colors.teal
+                                    val folderColor = currentFolder?.let { parseHexColorSafe(it.color) } ?: colors.teal
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
                                         color = folderColor.copy(alpha = 0.12f),
@@ -1102,7 +1103,7 @@ fun FolderManagerTab(
                                                     Box(
                                                         modifier = Modifier
                                                             .size(14.dp)
-                                                            .background(parseHexColor(currentFolder?.color ?: "#0284C7"), CircleShape)
+                                                            .background(parseHexColorSafe(currentFolder?.color ?: "#0284C7"), CircleShape)
                                                     )
                                                 },
                                                 onClick = {
@@ -1525,7 +1526,7 @@ fun FolderManagerTab(
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         colorOptions.forEach { hex ->
-                            val col = parseHexColor(hex)
+                            val col = parseHexColorSafe(hex)
                             Surface(
                                 modifier = Modifier
                                     .size(28.dp)
@@ -1732,7 +1733,7 @@ fun FolderManagerTab(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         colorOptions.take(5).forEach { hex ->
-                            val col = parseHexColor(hex)
+                            val col = parseHexColorSafe(hex)
                             val isSelected = recolorFolderHex.equals(hex, ignoreCase = true)
                             Surface(
                                 modifier = Modifier
@@ -1756,7 +1757,7 @@ fun FolderManagerTab(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         colorOptions.drop(5).forEach { hex ->
-                            val col = parseHexColor(hex)
+                            val col = parseHexColorSafe(hex)
                             val isSelected = recolorFolderHex.equals(hex, ignoreCase = true)
                             Surface(
                                 modifier = Modifier
@@ -2257,7 +2258,7 @@ private fun FolderSidebarTreePane(
 
                 items(visibleNodes, key = { "sidebar_${it.folder.id}" }) { node ->
                     val isSelected = activeFolderId == node.folder.id
-                    val nodeColor = parseHexColor(node.folder.color)
+                    val nodeColor = parseHexColorSafe(node.folder.color)
                     val totalSets = libraryIndex.folderTotalCounts[node.folder.id] ?: 0
                     val indent = (node.depth.coerceAtMost(4) * 14).dp
                     Surface(
@@ -2644,7 +2645,7 @@ private fun ReparentFolderDialog(
                         item(key = node.folder.id) {
                             val isSelected = selectedParentId == node.folder.id
                             val isCurrentParent = folderToReparent.parentId == node.folder.id
-                            val nodeColor = parseHexColor(node.folder.color)
+                            val nodeColor = parseHexColorSafe(node.folder.color)
 
                             Surface(
                                 modifier = Modifier
@@ -2983,7 +2984,7 @@ private fun FolderQuickJumpDialog(
                     filteredNodes.forEach { node ->
                         item(key = node.folder.id) {
                             val isSelected = currentFolderId == node.folder.id
-                            val nodeColor = parseHexColor(node.folder.color)
+                            val nodeColor = parseHexColorSafe(node.folder.color)
                             val directSets = remember(node.folder.id, papers) {
                                 papers.count { it.folderId == node.folder.id }
                             }
@@ -3095,7 +3096,7 @@ private fun FolderTreeItem(
     onAddSub: () -> Unit
 ) {
     val colors = ExamTheme.colors
-    val col = parseHexColor(folder.color)
+    val col = parseHexColorSafe(folder.color)
     val indent = (depth * 18).dp
 
     Surface(
@@ -3533,20 +3534,6 @@ private fun FolderMetricCard(
             Spacer(modifier = Modifier.height(2.dp))
             Text(text = title, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, color = colors.inkMuted)
         }
-    }
-}
-
-private fun parseHexColor(hex: String): Color {
-    return try {
-        val clean = hex.removePrefix("#")
-        val colorInt = clean.toLong(16)
-        if (clean.length == 6) {
-            Color(colorInt or 0x00000000FF000000)
-        } else {
-            Color(colorInt)
-        }
-    } catch (e: Exception) {
-        Color(0xFF0284C7)
     }
 }
 

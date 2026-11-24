@@ -450,7 +450,7 @@ class DictationTtsController(
             if (support >= TextToSpeech.LANG_AVAILABLE) {
                 engine.language = locale
             } else {
-                val base = Locale(locale.language)
+                val base = Locale.forLanguageTag(locale.language)
                 engine.language = if (engine.isLanguageAvailable(base) >= TextToSpeech.LANG_AVAILABLE) {
                     base
                 } else {

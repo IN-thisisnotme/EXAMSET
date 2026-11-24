@@ -419,7 +419,7 @@ fun AuthenticOmrSheetView(
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text("Answer Sheet No.", fontSize = 5.5.sp, fontWeight = FontWeight.Bold, color = OMR_MAGENTA)
-                                    val serialNo = String.format("%08d", (paper.id.hashCode().let { if (it < 0) -it else it } % 90000000) + 10000000)
+                                    val serialNo = String.format(java.util.Locale.US, "%08d", (paper.id.hashCode().let { if (it < 0) -it else it } % 90000000) + 10000000)
                                     Text(
                                         text = serialNo,
                                         fontSize = 9.sp,
@@ -515,7 +515,7 @@ fun AuthenticOmrSheetView(
                                     // Rows in this column (show up to displayEndQ, max 50)
                                     for (q in startQ..displayEndQ) {
                                         val isShaded = ((q - 1) / 5) % 2 == 1
-                                        val qPadded = String.format("%03d", q)
+                                        val qPadded = String.format(java.util.Locale.US, "%03d", q)
 
                                         Row(
                                             modifier = Modifier

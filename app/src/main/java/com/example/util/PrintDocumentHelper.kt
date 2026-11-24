@@ -4064,7 +4064,7 @@ object PrintDocumentHelper {
                         <div class="bracket b-br"></div>
                         <div class="sheet-no-label">Answer Sheet No.</div>
                         <div style="font-size: 6.2pt; font-family: monospace; font-weight: 800; color: #be185d; letter-spacing: 1px;">
-                            ${String.format("%08d", (paper.id.hashCode().let { if (it < 0) -it else it } % 90000000) + 10000000)}
+                            ${String.format(Locale.US, "%08d", (paper.id.hashCode().let { if (it < 0) -it else it } % 90000000) + 10000000)}
                         </div>
                     </div>
 
@@ -4105,7 +4105,7 @@ object PrintDocumentHelper {
                                     val blockIndex = (q - 1) / 5
                                     val isShaded = (blockIndex % 2) == 1
                                     val shadedClass = if (isShaded) "omr-row-shaded" else ""
-                                    val qPadded = String.format("%03d", q)
+                                    val qPadded = String.format(Locale.US, "%03d", q)
                                     append("""
                                         <div class="omr-row $shadedClass">
                                             <span class="omr-qnum">$qPadded</span>

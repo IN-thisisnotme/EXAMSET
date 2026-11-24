@@ -118,7 +118,7 @@ class VocabularyTtsSpeaker(context: Context) {
             if (langSupport >= TextToSpeech.LANG_AVAILABLE) {
                 engine.language = locale
             } else {
-                val baseLang = Locale(locale.language)
+                val baseLang = Locale.forLanguageTag(locale.language)
                 if (engine.isLanguageAvailable(baseLang) >= TextToSpeech.LANG_AVAILABLE) {
                     engine.language = baseLang
                 } else {
@@ -162,28 +162,28 @@ class VocabularyTtsSpeaker(context: Context) {
             return when {
                 norm.startsWith("english") || norm == "en" -> when (preferredEnglishVariant.trim().uppercase(Locale.ROOT)) {
                     "UK", "GB", "BRITISH" -> Locale.UK
-                    "IN", "INDIAN" -> Locale("en", "IN")
+                    "IN", "INDIAN" -> Locale.forLanguageTag("en-IN")
                     else -> Locale.US
                 }
-                norm.contains("hindi") || norm == "hi" -> Locale("hi", "IN")
+                norm.contains("hindi") || norm == "hi" -> Locale.forLanguageTag("hi-IN")
                 norm.contains("japanese") || norm == "ja" -> Locale.JAPANESE
-                norm.contains("spanish") || norm == "es" -> Locale("es", "ES")
+                norm.contains("spanish") || norm == "es" -> Locale.forLanguageTag("es-ES")
                 norm.contains("french") || norm == "fr" -> Locale.FRENCH
                 norm.contains("german") || norm == "de" -> Locale.GERMAN
                 norm.contains("korean") || norm == "ko" -> Locale.KOREAN
                 norm.contains("chinese") || norm.contains("mandarin") || norm == "zh" -> Locale.SIMPLIFIED_CHINESE
-                norm.contains("arabic") || norm == "ar" -> Locale("ar")
-                norm.contains("portuguese") || norm == "pt" -> Locale("pt", "BR")
-                norm.contains("russian") || norm == "ru" -> Locale("ru", "RU")
+                norm.contains("arabic") || norm == "ar" -> Locale.forLanguageTag("ar")
+                norm.contains("portuguese") || norm == "pt" -> Locale.forLanguageTag("pt-BR")
+                norm.contains("russian") || norm == "ru" -> Locale.forLanguageTag("ru-RU")
                 norm.contains("italian") || norm == "it" -> Locale.ITALIAN
-                norm.contains("sanskrit") || norm == "sa" -> Locale("sa", "IN")
-                norm.contains("marathi") || norm == "mr" -> Locale("mr", "IN")
-                norm.contains("tamil") || norm == "ta" -> Locale("ta", "IN")
-                norm.contains("telugu") || norm == "te" -> Locale("te", "IN")
-                norm.contains("bengali") || norm == "bn" -> Locale("bn", "IN")
-                norm.contains("gujarati") || norm == "gu" -> Locale("gu", "IN")
-                norm.contains("punjabi") || norm == "pa" -> Locale("pa", "IN")
-                norm.contains("urdu") || norm == "ur" -> Locale("ur", "IN")
+                norm.contains("sanskrit") || norm == "sa" -> Locale.forLanguageTag("sa-IN")
+                norm.contains("marathi") || norm == "mr" -> Locale.forLanguageTag("mr-IN")
+                norm.contains("tamil") || norm == "ta" -> Locale.forLanguageTag("ta-IN")
+                norm.contains("telugu") || norm == "te" -> Locale.forLanguageTag("te-IN")
+                norm.contains("bengali") || norm == "bn" -> Locale.forLanguageTag("bn-IN")
+                norm.contains("gujarati") || norm == "gu" -> Locale.forLanguageTag("gu-IN")
+                norm.contains("punjabi") || norm == "pa" -> Locale.forLanguageTag("pa-IN")
+                norm.contains("urdu") || norm == "ur" -> Locale.forLanguageTag("ur-IN")
                 else -> Locale.ENGLISH
             }
         }

@@ -421,5 +421,5 @@ fun MentalQuantBlitzView(
 private fun formatMs(ms: Long): String {
     if (ms <= 0L) return "--"
     val secs = ms / 1000.0
-    return String.format("%.2fs", secs)
+    return String.format(java.util.Locale.US, "%.2fs", secs)
 }

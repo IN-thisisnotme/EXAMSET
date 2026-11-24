@@ -600,9 +600,9 @@ object BatchExamImporter {
         if (bytes <= 0) return "0 B"
         if (bytes < 1024) return "$bytes B"
         val kb = bytes / 1024.0
-        if (kb < 1024) return String.format("%.1f KB", kb)
+        if (kb < 1024) return String.format(java.util.Locale.US, "%.1f KB", kb)
         val mb = kb / 1024.0
-        return String.format("%.1f MB", mb)
+        return String.format(java.util.Locale.US, "%.1f MB", mb)
     }
 
     private fun queryFileName(context: Context, uri: Uri): String? {

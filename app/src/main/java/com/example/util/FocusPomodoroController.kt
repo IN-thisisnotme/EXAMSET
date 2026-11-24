@@ -76,11 +76,7 @@ class AndroidDndSystemAdapter(private val context: Context) : DndSystemAdapter {
 
     override fun isPolicyAccessGranted(): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                nm?.isNotificationPolicyAccessGranted == true
-            } else {
-                false
-            }
+            nm?.isNotificationPolicyAccessGranted == true
         } catch (_: Exception) {
             false
         }
@@ -88,19 +84,15 @@ class AndroidDndSystemAdapter(private val context: Context) : DndSystemAdapter {
 
     override fun getCurrentInterruptionFilter(): Int {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                nm?.currentInterruptionFilter ?: NotificationManager.INTERRUPTION_FILTER_ALL
-            } else {
-                1
-            }
+            nm?.currentInterruptionFilter ?: NotificationManager.INTERRUPTION_FILTER_ALL
         } catch (_: Exception) {
-            1
+            NotificationManager.INTERRUPTION_FILTER_ALL
         }
     }
 
     override fun setInterruptionFilter(filter: Int): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isPolicyAccessGranted()) {
+            if (isPolicyAccessGranted()) {
                 nm?.setInterruptionFilter(filter)
                 true
             } else {
@@ -115,15 +107,11 @@ class AndroidDndSystemAdapter(private val context: Context) : DndSystemAdapter {
 
     override fun openPolicyAccessSettings(): Boolean {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
-                true
-            } else {
-                false
+            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            context.startActivity(intent)
+            true
         } catch (_: Exception) {
             false
         }

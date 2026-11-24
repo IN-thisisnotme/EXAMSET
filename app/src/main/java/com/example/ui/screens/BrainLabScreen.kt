@@ -192,7 +192,7 @@ fun BrainLabScreen(
                                     modifier = Modifier.padding(end = 4.dp)
                                 ) {
                                     Text(
-                                        text = if (budgetDone) "Break Done" else String.format("%d:%02d", m, s),
+                                        text = if (budgetDone) "Break Done" else String.format(java.util.Locale.US, "%d:%02d", m, s),
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (budgetDone) colors.amber else colors.teal,
@@ -476,7 +476,7 @@ private fun BrainLabHubContent(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (breakBudgetActive) {
-                                    "${budgetRemainingSeconds / 60}:${String.format("%02d", budgetRemainingSeconds % 60)}"
+                                    "${budgetRemainingSeconds / 60}:${String.format(java.util.Locale.US, "%02d", budgetRemainingSeconds % 60)}"
                                 } else {
                                     "Start ${settings.preferredBudgetMinutes}m"
                                 },

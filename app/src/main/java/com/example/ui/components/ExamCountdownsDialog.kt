@@ -59,10 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.ExamCountdownTarget
 import com.example.model.StudyDateUtils
 import com.example.ui.theme.ExamTheme
-
-private fun parseCountdownAccent(hex: String, fallback: Color): Color {
-    return runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(fallback)
-}
+import com.example.ui.theme.parseHexColorSafe
 
 @Composable
 fun PinnedExamCountdownsStrip(
@@ -93,7 +90,7 @@ fun PinnedExamCountdownsStrip(
             val accent = when {
                 days in 0L..7L -> colors.red
                 days in 8L..21L -> colors.amber
-                else -> parseCountdownAccent(target.colorHex, colors.teal)
+                else -> parseHexColorSafe(target.colorHex, colors.teal)
             }
             Surface(
                 onClick = onManageCountdowns,

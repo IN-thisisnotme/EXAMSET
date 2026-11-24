@@ -118,7 +118,7 @@ object BrainLabQuantScanEngine {
             prompt = "Closest percentage equivalent of  ${target.num} / ${target.den} ?",
             options = options,
             correctIndex = correctIdx,
-            explanation = "1/${target.den} ≈ ${String.format("%.2f", 100.0 / target.den)}%, so ${target.num}/${target.den} ≈ ${target.pctText}."
+            explanation = "1/${target.den} ≈ ${String.format(java.util.Locale.US, "%.2f", 100.0 / target.den)}%, so ${target.num}/${target.den} ≈ ${target.pctText}."
         )
     }
 
@@ -134,7 +134,7 @@ object BrainLabQuantScanEngine {
             return if (rounded % 1.0 == 0.0) {
                 "$prefix${rounded.toInt()}%"
             } else {
-                "$prefix${String.format("%.2f", rounded)}%"
+                "$prefix${String.format(java.util.Locale.US, "%.2f", rounded)}%"
             }
         }
 
@@ -213,7 +213,7 @@ object BrainLabQuantScanEngine {
             prompt = "Closest integer to  $pct% of $base ?",
             options = options,
             correctIndex = options.indexOf(correctStr),
-            explanation = "$pct% of $base = ${String.format("%.2f", exact)}, closest to $rounded."
+            explanation = "$pct% of $base = ${String.format(java.util.Locale.US, "%.2f", exact)}, closest to $rounded."
         )
     }
 }

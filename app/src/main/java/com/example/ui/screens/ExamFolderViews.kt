@@ -93,6 +93,7 @@ import com.example.model.FolderItem
 import com.example.model.PaperCategory
 import com.example.ui.LibraryIndexState
 import com.example.ui.theme.ExamTheme
+import com.example.ui.theme.parseHexColorSafe
 import com.example.util.ExamNumberGenerator
 import com.example.util.PaperLanguageDetector
 import java.util.Locale
@@ -356,14 +357,6 @@ fun QuickFeatureStripRow(
                 }
             }
         }
-    }
-}
-
-internal fun parseHexColorSafe(hex: String): Color {
-    return try {
-        Color(android.graphics.Color.parseColor(hex))
-    } catch (_: Exception) {
-        Color(0xFF0284C7)
     }
 }
 

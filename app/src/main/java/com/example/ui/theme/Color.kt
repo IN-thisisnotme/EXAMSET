@@ -11,6 +11,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.core.graphics.toColorInt
 import com.example.data.ColorSchemePreset
 
 // ---------------------------------------------------------------------------
@@ -1277,3 +1278,7 @@ fun resolveMaterialColorScheme(
 }
 
 val LocalExamColors = staticCompositionLocalOf { LightExamColorPalette }
+
+fun parseHexColorSafe(hex: String, fallback: Color = Color(0xFF0284C7)): Color {
+    return runCatching { Color(hex.trim().toColorInt()) }.getOrDefault(fallback)
+}
