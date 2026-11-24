@@ -656,29 +656,35 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
           onClick={() => setShowBulkModal(false)}
         >
           <div
-            className="w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden"
+            className="w-full max-w-xl max-h-[90dvh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
             style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${colors.border}` }}>
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4" style={{ color: colors.teal }} />
-                <h4 className="text-sm font-bold" style={{ color: colors.inkBold }}>
+            <div className="px-4 sm:px-5 py-3.5 sm:py-4 flex items-center justify-between gap-2 shrink-0" style={{ borderBottom: `1px solid ${colors.border}` }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Layers className="w-4 h-4 shrink-0" style={{ color: colors.teal }} />
+                <h4 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
                   Bulk Merge Answer Keys & Explanations
                 </h4>
               </div>
-              <button type="button" onClick={() => setShowBulkModal(false)} style={{ color: colors.muted }}>
+              <button
+                type="button"
+                aria-label="Close modal"
+                onClick={() => setShowBulkModal(false)}
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg"
+                style={{ color: colors.muted }}
+              >
                 ✕
               </button>
             </div>
-            <div className="p-5 space-y-3 text-xs">
+            <div className="p-4 sm:p-5 space-y-3 text-xs overflow-y-auto flex-1">
               <p style={{ color: colors.muted }}>
                 Paste Answer Keys (e.g. <code>1. A</code>, <code>2: B, D</code>) and/or Detailed Explanations (<code>1. Reasoning...</code>) to batch-update questions cleanly.
               </p>
               <textarea
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
-                rows={8}
+                rows={7}
                 placeholder={'1. A\n2. B, C\n\nDetailed Explanation\n1. Step-by-step explanation...'}
                 className="w-full p-3 rounded-xl font-mono text-xs focus:outline-none"
                 style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
@@ -690,16 +696,16 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
               )}
             </div>
             <div
-              className="px-5 py-3 flex justify-end gap-2"
+              className="px-4 sm:px-5 py-3 flex justify-end gap-2 shrink-0"
               style={{ borderTop: `1px solid ${colors.border}`, backgroundColor: colors.surfaceVariant }}
             >
-              <button type="button" onClick={() => setShowBulkModal(false)} className="px-3 py-2 text-xs font-semibold" style={{ color: colors.muted }}>
+              <button type="button" onClick={() => setShowBulkModal(false)} className="px-3 py-2 min-h-[44px] text-xs font-semibold" style={{ color: colors.muted }}>
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleApplyBulkMerge}
-                className="px-4 py-2 rounded-lg text-xs font-bold text-white"
+                className="px-4 py-2 min-h-[44px] rounded-lg text-xs font-bold text-white"
                 style={{ backgroundColor: colors.teal }}
               >
                 Merge into Active Paper

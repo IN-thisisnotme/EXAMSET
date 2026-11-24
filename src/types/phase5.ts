@@ -447,3 +447,85 @@ export interface AppGuideEntry {
   actionLabel: string;
   destination: GuideDestination;
 }
+
+// --- Cloud Drive, OneDrive & Computer Disk Sync Types ---
+
+export type CloudProviderType = 'GOOGLE_DRIVE' | 'ONEDRIVE';
+
+export type AutoBackupSchedule = 'OFF' | 'ON_CHANGE' | 'EVERY_6H' | 'DAILY';
+
+export interface AutoBackupScheduleOption {
+  id: AutoBackupSchedule;
+  label: string;
+  intervalMs: number;
+  description: string;
+}
+
+export const AUTO_BACKUP_SCHEDULE_OPTIONS: AutoBackupScheduleOption[] = [
+  {
+    id: 'OFF',
+    label: 'Manual Only',
+    intervalMs: 0,
+    description: 'Create snapshots and sync manually when desired',
+  },
+  {
+    id: 'ON_CHANGE',
+    label: 'On Workspace Change',
+    intervalMs: 60 * 1000,
+    description: 'Debounced local checkpoint & live disk sync after edits (max once per min)',
+  },
+  {
+    id: 'EVERY_6H',
+    label: 'Every 6 Hours',
+    intervalMs: 6 * 60 * 60 * 1000,
+    description: 'Rolling checkpoint & connected sync every 6 hours while open',
+  },
+  {
+    id: 'DAILY',
+    label: 'Daily Backup',
+    intervalMs: 24 * 60 * 60 * 1000,
+    description: 'Daily scheduled snapshot & linked cloud/disk sync',
+  },
+];
+
+export type TokenStoragePreference = 'SESSION' | 'LOCAL';
+
+export interface LinkedDiskFileStatus {
+  isLinked: boolean;
+  displayName: string;
+  syncMode: 'CHROMIUM_FSA' | 'DOWNLOAD_FALLBACK';
+  permissionState: 'granted' | 'prompt' | 'unavailable';
+  lastSyncedAt: number;
+  lastError: string | null;
+}
+
+export interface CloudAccountStatus {
+  provider: CloudProviderType;
+  displayName: string;
+  hasClientIdConfigured: boolean;
+  clientId: string;
+  isConnected: boolean;
+  accountEmail: string;
+  expiresAt: number;
+  lastSyncedAt: number;
+  lastError: string | null;
+  tokenStoragePreference: TokenStoragePreference;
+}
+
+export interface RemoteCloudBackupFile {
+  provider: CloudProviderType;
+  remoteId: string;
+  name: string;
+  sizeBytes: number;
+  modifiedAt: number;
+}
+
+export interface TrustedTimeStatus {
+  isSynced: boolean;
+  isOnline: boolean;
+  checkedAt: number;
+  serverTimeMs: number | null;
+  skewSeconds: number;
+  sourceLabel: string;
+}
+

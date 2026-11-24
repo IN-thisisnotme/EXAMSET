@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
-  AppFontScaleMode,
-  ColorSchemePreset,
-  ExamColorPalette,
+  type AppFontScaleMode,
+  type ColorSchemePreset,
+  type ExamColorPalette,
   FONT_SCALE_OPTIONS,
   resolvePalette,
-  ThemeMode,
+  type ThemeMode,
 } from './colors';
 
 interface ThemeContextValue {
@@ -16,9 +16,18 @@ interface ThemeContextValue {
   fontScaleMode: AppFontScaleMode;
   setFontScaleMode: (mode: AppFontScaleMode) => void;
   fontScale: number;
+  browserBaselinePx: number;
+  effectiveRootPx: number;
   isDark: boolean;
   colors: ExamColorPalette;
+  /**
+   * Scales consistently via root-relative rem units so Tailwind typography classes
+   * and custom component font sizes stay in sync across browser, OS, and app scale modes
+   * without double-multiplying.
+   */
   scalePx: (basePx: number) => string;
+  /** Numeric pixel equivalent under current active root font size. */
+  rawScaledPx: (basePx: number) => number;
 }
 
 const THEME_MODE_KEY = 'examset_theme_mode_v2';
@@ -26,6 +35,24 @@ const COLOR_PRESET_KEY = 'examset_color_preset_v2';
 const FONT_SCALE_KEY = 'examset_font_scale_v2';
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+function measureBrowserDefaultFontPx(): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return 16;
+  try {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'font-size: medium; position: absolute; visibility: hidden; pointer-events: none;';
+    document.body?.appendChild(probe);
+    const computed = window.getComputedStyle(probe).fontSize;
+    document.body?.removeChild(probe);
+    const parsed = parseFloat(computed);
+    if (Number.isFinite(parsed) && parsed >= 10 && parsed <= 36) {
+      return Math.round(parsed * 100) / 100;
+    }
+  } catch {
+    // ignore DOM probe error
+  }
+  return 16;
+}
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
@@ -73,12 +100,30 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return false;
   });
 
+  const [browserBaselinePx, setBrowserBaselinePx] = useState<number>(() =>
+    measureBrowserDefaultFontPx()
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const listener = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
     mql.addEventListener('change', listener);
     return () => mql.removeEventListener('change', listener);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const updateBaseline = () => {
+      setBrowserBaselinePx(measureBrowserDefaultFontPx());
+    };
+    updateBaseline();
+    window.addEventListener('resize', updateBaseline);
+    window.addEventListener('focus', updateBaseline);
+    return () => {
+      window.removeEventListener('resize', updateBaseline);
+      window.removeEventListener('focus', updateBaseline);
+    };
   }, []);
 
   const setThemeMode = (mode: ThemeMode) => {
@@ -111,9 +156,18 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isDark = themeMode === 'DARK' || (themeMode === 'SYSTEM' && systemPrefersDark);
   const colors = useMemo(() => resolvePalette(preset, isDark), [preset, isDark]);
   const fontScale = useMemo(() => {
+    if (fontScaleMode === 'FOLLOW_SYSTEM') {
+      const clamped = Math.min(1.5, Math.max(0.8, browserBaselinePx / 16));
+      return Math.round(clamped * 100) / 100;
+    }
     const opt = FONT_SCALE_OPTIONS.find((o) => o.mode === fontScaleMode);
     return opt?.multiplier ?? 1.0;
-  }, [fontScaleMode]);
+  }, [fontScaleMode, browserBaselinePx]);
+
+  const effectiveRootPx = useMemo(
+    () => Math.round(16 * fontScale * 100) / 100,
+    [fontScale]
+  );
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -127,8 +181,23 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.style.setProperty('--es-muted', colors.muted);
     root.style.setProperty('--es-teal', colors.teal);
     root.style.setProperty('--es-banner', colors.navyBanner);
+    root.style.setProperty('--es-font-scale', String(fontScale));
     root.style.colorScheme = isDark ? 'dark' : 'light';
-  }, [colors, isDark]);
+
+    // Coordinate root rem font sizing cleanly across System, Browser, and Fixed App presets
+    if (fontScaleMode === 'FOLLOW_SYSTEM') {
+      // Keep user's browser/OS root preference intact, safely clamped via percentage
+      const safeRatio = Math.min(1.5, Math.max(0.8, browserBaselinePx / 16));
+      if (Math.abs(safeRatio - browserBaselinePx / 16) > 0.01) {
+        root.style.fontSize = `${(16 * safeRatio).toFixed(2)}px`;
+      } else {
+        root.style.fontSize = '';
+      }
+    } else {
+      root.style.fontSize = `${(16 * fontScale).toFixed(2)}px`;
+    }
+    root.setAttribute('data-font-scale', fontScaleMode);
+  }, [colors, isDark, fontScale, fontScaleMode, browserBaselinePx]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({
@@ -139,11 +208,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       fontScaleMode,
       setFontScaleMode,
       fontScale,
+      browserBaselinePx,
+      effectiveRootPx,
       isDark,
       colors,
-      scalePx: (basePx: number) => `${(basePx * fontScale).toFixed(2)}px`,
+      scalePx: (basePx: number) => `${(basePx / 16).toFixed(4)}rem`,
+      rawScaledPx: (basePx: number) => Math.round(basePx * fontScale * 100) / 100,
     }),
-    [themeMode, preset, fontScaleMode, fontScale, isDark, colors]
+    [themeMode, preset, fontScaleMode, fontScale, browserBaselinePx, effectiveRootPx, isDark, colors]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -152,7 +224,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 export function useTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
   if (!ctx) {
-    // Graceful fallback if ever rendered outside ThemeProvider
     const colors = resolvePalette('NORDIC_SLATE', false);
     return {
       themeMode: 'LIGHT',
@@ -162,9 +233,12 @@ export function useTheme(): ThemeContextValue {
       fontScaleMode: 'STANDARD_FIXED',
       setFontScaleMode: () => {},
       fontScale: 1.0,
+      browserBaselinePx: 16,
+      effectiveRootPx: 16,
       isDark: false,
       colors,
-      scalePx: (px) => `${px}px`,
+      scalePx: (px) => `${(px / 16).toFixed(4)}rem`,
+      rawScaledPx: (px) => px,
     };
   }
   return ctx;

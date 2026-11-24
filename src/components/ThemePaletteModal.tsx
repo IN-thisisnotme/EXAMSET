@@ -21,12 +21,12 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
       style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full max-w-md max-h-[90dvh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
         style={{
           backgroundColor: colors.surface,
           border: `1px solid ${colors.border}`,
@@ -35,28 +35,29 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="px-5 py-4 flex items-center justify-between"
+          className="px-4 sm:px-5 py-3.5 flex items-center justify-between flex-shrink-0"
           style={{ borderBottom: `1px solid ${colors.border}` }}
         >
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: colors.tealLight, color: colors.teal }}
             >
               <Palette className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
-                Appearance & Theme Palette
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
+                Appearance &amp; Theme Palette
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
-                Curated palettes tuned for long study & print clarity
+              <p className="text-[11px] truncate" style={{ color: colors.muted }}>
+                Curated palettes tuned for long study &amp; print clarity
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg transition"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition flex-shrink-0"
             style={{ color: colors.muted }}
             aria-label="Close theme selector"
           >
@@ -64,7 +65,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="p-4 sm:p-5 space-y-5 overflow-y-auto flex-1">
           {/* Brightness Mode */}
           <div className="space-y-2">
             <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
@@ -78,7 +79,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
                     key={m.id}
                     type="button"
                     onClick={() => setThemeMode(m.id)}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 min-h-[44px] rounded-xl text-xs font-bold transition"
                     style={{
                       backgroundColor: active ? colors.teal : colors.surfaceVariant,
                       color: active ? '#FFFFFF' : colors.ink,
@@ -106,14 +107,14 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
                     key={item.id}
                     type="button"
                     onClick={() => setPreset(item.id)}
-                    className="w-full flex items-center justify-between p-3 rounded-xl text-left transition"
+                    className="w-full flex items-center justify-between gap-2 p-3 min-h-[44px] rounded-xl text-left transition"
                     style={{
                       backgroundColor: selected ? colors.tealLight : colors.surfaceVariant,
                       border: `1.5px solid ${selected ? colors.teal : colors.border}`,
                     }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="flex -space-x-1.5">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex -space-x-1.5 shrink-0">
                         {item.swatches.map((hex, i) => (
                           <span
                             key={i}
@@ -122,11 +123,11 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
                           />
                         ))}
                       </div>
-                      <div>
-                        <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                           {item.name}
                         </div>
-                        <div className="text-[11px]" style={{ color: colors.muted }}>
+                        <div className="text-[11px] leading-snug" style={{ color: colors.muted }}>
                           {item.subtitle}
                         </div>
                       </div>
@@ -153,7 +154,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-bold text-white"
+            className="px-4 py-2 min-h-[44px] rounded-lg text-xs font-bold text-white"
             style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
           >
             Done

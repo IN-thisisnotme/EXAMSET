@@ -232,10 +232,10 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
             <Play className="w-5 h-5" style={{ color: colors.green }} />
             <div>
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
-                Launch Test Portal
+                Student Test Portal
               </div>
               <div className="text-[11px]" style={{ color: colors.muted }}>
-                TCS CBT simulation, pacing analytics & CTT psychometrics
+                TCS CBT simulation, pacing analytics &amp; CTT psychometrics
               </div>
             </div>
           </button>
@@ -251,10 +251,10 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
             <Printer className="w-5 h-5" style={{ color: colors.amber }} />
             <div>
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
-                Print & A4 OMR Studio
+                Print &amp; OMR Studio
               </div>
               <div className="text-[11px]" style={{ color: colors.muted }}>
-                Generate printable A4 booklets, 1-page OMR & CBT HTML
+                Generate printable A4 booklets, 1-page OMR &amp; CBT HTML
               </div>
             </div>
           </button>

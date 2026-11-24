@@ -22,11 +22,36 @@ export interface FontScaleOption {
 }
 
 export const FONT_SCALE_OPTIONS: FontScaleOption[] = [
-  { mode: 'COMPACT', label: 'Compact (88%)', multiplier: 0.88, description: 'High information density for large banks' },
-  { mode: 'STANDARD_FIXED', label: 'Standard (100%)', multiplier: 1.0, description: 'Balanced editorial legibility' },
-  { mode: 'LARGE', label: 'Large (115%)', multiplier: 1.15, description: 'Comfortable reading for long exams' },
-  { mode: 'EXTRA_LARGE', label: 'Extra Large (125%)', multiplier: 1.25, description: 'Maximum clarity for low-strain study' },
-  { mode: 'FOLLOW_SYSTEM', label: 'System Default', multiplier: 1.0, description: 'Respects browser root font sizing' },
+  {
+    mode: 'COMPACT',
+    label: 'Compact (88% Fixed)',
+    multiplier: 0.88,
+    description: 'High information density; fits more questions & options per viewport',
+  },
+  {
+    mode: 'STANDARD_FIXED',
+    label: 'Standard (100% Fixed)',
+    multiplier: 1.0,
+    description: '16px app baseline; shields exam tables & formulas from OS overrides',
+  },
+  {
+    mode: 'LARGE',
+    label: 'Large (115% Fixed)',
+    multiplier: 1.15,
+    description: 'Comfortable long-session reading with balanced card wrapping',
+  },
+  {
+    mode: 'EXTRA_LARGE',
+    label: 'Extra Large (125% Fixed)',
+    multiplier: 1.25,
+    description: 'High-visibility scaling across cards, options, and navigation',
+  },
+  {
+    mode: 'FOLLOW_SYSTEM',
+    label: 'Follow Device & Browser (Dynamic)',
+    multiplier: 1.0,
+    description: 'Adapts directly to OS display scaling and browser root font preferences',
+  },
 ];
 
 export interface ExamColorPalette {

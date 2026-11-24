@@ -7,6 +7,8 @@ import {
   Brain,
   CalendarCheck,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   FileText,
   Folder,
@@ -14,6 +16,7 @@ import {
   HelpCircle,
   Menu,
   Mic,
+  MoreHorizontal,
   Palette,
   Printer,
   Share2,
@@ -38,6 +41,7 @@ import {
   VocabularyDeck,
 } from './types/phase4';
 import {
+  type AutoBackupSchedule,
   type BrainLabSettings,
   type BrainLabStats,
   type DailyStudyAnalytics,
@@ -53,6 +57,7 @@ import { ThemeProvider, useTheme } from './theme/ThemeProvider';
 import { DEFAULT_ROOT_FOLDER, ExamStore, normalizePaperMetadata } from './data/examStore';
 import { STARTER_STUDY_NOTES, STARTER_VOCAB_DECKS } from './data/phase4Seeds';
 import { applyVaultRestoreToState, buildVaultArchive, type WorkspaceBackupState } from './utils/vaultArchiveEngine';
+import { CloudSyncEngine } from './utils/cloudSyncEngine';
 import { ThemePaletteModal } from './components/ThemePaletteModal';
 import { FontScaleModal } from './components/FontScaleModal';
 import { InputModal } from './components/InputModal';
@@ -288,6 +293,13 @@ const ExamSetWorkspace: React.FC = () => {
   const [vaultSnapshots, setVaultSnapshots] = useState<VaultSnapshotRecord[]>(() =>
     ExamStore.loadVaultSnapshots()
   );
+  const [autoBackupSchedule, setAutoBackupSchedule] = useState<AutoBackupSchedule>(() =>
+    ExamStore.loadAutoBackupSchedule()
+  );
+  const [lastAutoBackupAt, setLastAutoBackupAt] = useState<number>(() =>
+    ExamStore.loadLastAutoBackupAt()
+  );
+  const [railExpanded, setRailExpanded] = useState<boolean>(true);
   const [dismissedTips, setDismissedTips] = useState<string[]>(() => ExamStore.loadDismissedTips());
   const [showAppGuideModal, setShowAppGuideModal] = useState<boolean>(false);
 
@@ -306,6 +318,15 @@ const ExamSetWorkspace: React.FC = () => {
   useEffect(() => {
     ExamStore.setActivePaper(currentPaper);
   }, [currentPaper]);
+
+  useEffect(() => {
+    void CloudSyncEngine.handleOAuthCallbackIfPresent().then((res) => {
+      if (res) {
+        showToast(res.message);
+        setActiveTab('backup_vault');
+      }
+    });
+  }, []);
 
   const handleSavePaper = (paper: QuestionPaper, silent: boolean = false) => {
     const normalized = normalizePaperMetadata(paper);
@@ -579,6 +600,67 @@ const ExamSetWorkspace: React.FC = () => {
     ]
   );
 
+  const handleChangeAutoBackupSchedule = (schedule: AutoBackupSchedule) => {
+    setAutoBackupSchedule(schedule);
+    ExamStore.saveAutoBackupSchedule(schedule);
+    const labelMap: Record<AutoBackupSchedule, string> = {
+      OFF: 'Manual Only',
+      ON_CHANGE: 'On Workspace Change',
+      EVERY_6H: 'Every 6 Hours',
+      DAILY: 'Daily Backup',
+    };
+    showToast(`Auto-backup schedule set to ${labelMap[schedule]}`);
+  };
+
+  useEffect(() => {
+    if (autoBackupSchedule === 'OFF') return;
+
+    const runSilentAutoGuard = async () => {
+      try {
+        const { manifest, rawJson } = buildVaultArchive(workspaceBackupState, 'Auto-Backup Guard');
+        const snap: VaultSnapshotRecord = {
+          id: `snap-auto-${Date.now()}`,
+          label: `Auto Backup (${manifest.counts.papersCount} Sets, ${manifest.counts.notesCount} Notes)`,
+          kind: 'pre_restore',
+          createdAt: Date.now(),
+          manifest,
+          rawJson,
+        };
+        const next = ExamStore.addVaultSnapshot(snap);
+        setVaultSnapshots(next);
+
+        const now = Date.now();
+        setLastAutoBackupAt(now);
+        ExamStore.saveLastAutoBackupAt(now);
+
+        const disk = await CloudSyncEngine.getLinkedDiskStatus();
+        if (disk.isLinked && disk.permissionState === 'granted') {
+          await CloudSyncEngine.syncToLinkedDiskFile(rawJson);
+        }
+      } catch {
+        // Silent guard must not disrupt active study or exam session
+      }
+    };
+
+    if (autoBackupSchedule === 'ON_CHANGE') {
+      const elapsed = Date.now() - lastAutoBackupAt;
+      const delayMs = elapsed >= 60_000 ? 15_000 : Math.max(15_000, 60_000 - elapsed);
+      const t = setTimeout(() => {
+        void runSilentAutoGuard();
+      }, delayMs);
+      return () => clearTimeout(t);
+    }
+
+    const cadenceMs =
+      autoBackupSchedule === 'EVERY_6H' ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const checkTimer = setInterval(() => {
+      if (Date.now() - ExamStore.loadLastAutoBackupAt() >= cadenceMs) {
+        void runSilentAutoGuard();
+      }
+    }, 60_000);
+    return () => clearInterval(checkTimer);
+  }, [autoBackupSchedule, lastAutoBackupAt, workspaceBackupState]);
+
   const handleCreateSnapshot = (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => {
     const { manifest } = buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault');
     const snap: VaultSnapshotRecord = {
@@ -782,45 +864,52 @@ const ExamSetWorkspace: React.FC = () => {
   const navItems: {
     id: ActiveTab;
     label: string;
+    shortLabel: string;
     icon: React.ReactNode;
     badge?: string;
     group: 'exam' | 'study' | 'focus';
   }[] = useMemo(
     () => [
-      { id: 'creator', label: 'Question Creator', icon: <FileText className="w-4 h-4" />, group: 'exam' },
-      { id: 'master', label: 'Master View', icon: <Eye className="w-4 h-4" />, badge: `${currentPaper.questions.length}`, group: 'exam' },
-      { id: 'print', label: 'Print & OMR', icon: <Printer className="w-4 h-4" />, group: 'exam' },
-      { id: 'student_portal', label: 'Student Portal', icon: <CheckCircle2 className="w-4 h-4" />, group: 'exam' },
-      { id: 'folders', label: 'Folders', icon: <Folder className="w-4 h-4" />, badge: `${papers.length}`, group: 'exam' },
-      { id: 'knowledge_studio', label: 'Knowledge Studio', icon: <BookMarked className="w-4 h-4" />, badge: `${studyNotes.length}`, group: 'study' },
-      { id: 'dictation', label: 'Dictation Lab', icon: <Mic className="w-4 h-4" />, group: 'study' },
-      { id: 'vocabulary_hub', label: 'Vocabulary Hub', icon: <Globe className="w-4 h-4" />, badge: `${totalVocabWords}`, group: 'study' },
-      { id: 'prompt_generator', label: 'Prompt Studio', icon: <Sparkles className="w-4 h-4" />, group: 'study' },
-      { id: 'study_planner', label: 'Study Planner', icon: <CalendarCheck className="w-4 h-4" />, badge: openTodoCount > 0 ? `${openTodoCount}` : undefined, group: 'focus' },
-      { id: 'brain_lab', label: 'Brain & Calm', icon: <Brain className="w-4 h-4" />, group: 'focus' },
-      { id: 'backup_vault', label: 'Backup Vault', icon: <Archive className="w-4 h-4" />, badge: vaultSnapshots.length > 0 ? `${vaultSnapshots.length}` : undefined, group: 'focus' },
-      { id: 'share', label: 'Share & Export', icon: <Share2 className="w-4 h-4" />, group: 'focus' },
+      { id: 'creator', label: 'Exam Workbench', shortLabel: 'Workbench', icon: <FileText className="w-4 h-4 flex-shrink-0" />, group: 'exam' },
+      { id: 'master', label: 'Master View', shortLabel: 'Master', icon: <Eye className="w-4 h-4 flex-shrink-0" />, badge: `${currentPaper.questions.length}`, group: 'exam' },
+      { id: 'print', label: 'Print & OMR Studio', shortLabel: 'Print/OMR', icon: <Printer className="w-4 h-4 flex-shrink-0" />, group: 'exam' },
+      { id: 'student_portal', label: 'Student Test Portal', shortLabel: 'Test', icon: <CheckCircle2 className="w-4 h-4 flex-shrink-0" />, group: 'exam' },
+      { id: 'folders', label: 'Library & Folders', shortLabel: 'Library', icon: <Folder className="w-4 h-4 flex-shrink-0" />, badge: `${papers.length}`, group: 'exam' },
+      { id: 'knowledge_studio', label: 'Knowledge Studio', shortLabel: 'Knowledge', icon: <BookMarked className="w-4 h-4 flex-shrink-0" />, badge: `${studyNotes.length}`, group: 'study' },
+      { id: 'dictation', label: 'Dictation Lab', shortLabel: 'Dictation', icon: <Mic className="w-4 h-4 flex-shrink-0" />, group: 'study' },
+      { id: 'vocabulary_hub', label: 'Vocabulary Hub', shortLabel: 'Vocab', icon: <Globe className="w-4 h-4 flex-shrink-0" />, badge: `${totalVocabWords}`, group: 'study' },
+      { id: 'prompt_generator', label: 'AI Prompt Studio', shortLabel: 'Prompts', icon: <Sparkles className="w-4 h-4 flex-shrink-0" />, group: 'study' },
+      { id: 'study_planner', label: 'Study Planner', shortLabel: 'Planner', icon: <CalendarCheck className="w-4 h-4 flex-shrink-0" />, badge: openTodoCount > 0 ? `${openTodoCount}` : undefined, group: 'focus' },
+      { id: 'brain_lab', label: 'Brain & Calm Lab', shortLabel: 'Brain Lab', icon: <Brain className="w-4 h-4 flex-shrink-0" />, group: 'focus' },
+      { id: 'backup_vault', label: 'Backup Vault', shortLabel: 'Vault', icon: <Archive className="w-4 h-4 flex-shrink-0" />, badge: vaultSnapshots.length > 0 ? `${vaultSnapshots.length}` : undefined, group: 'focus' },
+      { id: 'share', label: 'Share & Export', shortLabel: 'Share', icon: <Share2 className="w-4 h-4 flex-shrink-0" />, group: 'focus' },
     ],
     [currentPaper.questions.length, papers.length, studyNotes.length, totalVocabWords, openTodoCount, vaultSnapshots.length]
   );
 
+  const navGroupLabels: Record<'exam' | 'study' | 'focus', string> = {
+    exam: 'Assessment',
+    study: 'Study & Languages',
+    focus: 'Focus & Backup',
+  };
+
   return (
     <div
-      className="min-h-screen flex flex-col font-sans transition-colors duration-200"
+      className="min-h-[100dvh] flex flex-col font-sans transition-colors duration-200 overflow-x-hidden"
       style={{ backgroundColor: colors.bg, color: colors.ink }}
     >
-      {/* Toast Notification */}
+      {/* Toast Notification (Positioned above Mobile Bottom Nav) */}
       {notification && (
         <div
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-2xl border"
+          className="fixed bottom-20 md:bottom-5 right-3 sm:right-5 left-3 sm:left-auto z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-2xl border max-w-md"
           style={{
             backgroundColor: colors.navyBanner,
             color: colors.navyBannerText,
             borderColor: colors.teal,
           }}
         >
-          <Bell className="w-4 h-4 text-emerald-300" />
-          <span className="text-sm font-semibold">{notification}</span>
+          <Bell className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+          <span className="text-sm font-semibold truncate">{notification}</span>
         </div>
       )}
 
@@ -832,23 +921,33 @@ const ExamSetWorkspace: React.FC = () => {
           borderColor: colors.border,
         }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 gap-3">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6">
+          <div className="flex items-center justify-between min-h-[3.5rem] py-1.5 gap-2 sm:gap-3">
             {/* Brand + Active Set Summary */}
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => setRailExpanded((v) => !v)}
+                className="hidden lg:flex min-w-[40px] min-h-[40px] items-center justify-center rounded-xl border transition flex-shrink-0"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                title={railExpanded ? 'Collapse Sidebar Rail' : 'Expand Sidebar Rail'}
+                aria-label="Toggle workspace navigation rail"
+              >
+                {railExpanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center font-black shadow-sm flex-shrink-0"
                 style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
               >
                 <BookOpen className="w-5 h-5" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-black tracking-tight" style={{ color: colors.inkBold }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h1 className="text-base sm:text-lg font-black tracking-tight flex-shrink-0" style={{ color: colors.inkBold }}>
                     ExamSet
                   </h1>
                   <span
-                    className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full font-bold border"
+                    className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full font-bold border truncate"
                     style={{
                       backgroundColor: colors.tealLight,
                       color: colors.tealDark,
@@ -858,7 +957,7 @@ const ExamSetWorkspace: React.FC = () => {
                     Set {currentPaper.metadata.setNumber || '01'} • A4 OMR • SM-2
                   </span>
                 </div>
-                <p className="text-[11px] font-medium truncate max-w-[180px] sm:max-w-sm" style={{ color: colors.muted }}>
+                <p className="text-[11px] font-medium truncate" style={{ color: colors.muted }}>
                   {currentPaper.metadata.title} ({currentPaper.questions.length} Qs)
                 </p>
               </div>
@@ -867,48 +966,53 @@ const ExamSetWorkspace: React.FC = () => {
             {/* Theme / Typography / App Guide Controls + Mobile Toggle */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <button
+                type="button"
                 onClick={() => setShowAppGuideModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
+                className="min-h-[40px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
                 style={{ backgroundColor: colors.tealLight, borderColor: colors.border, color: colors.tealDark }}
                 title="App Guide & Feature Finder"
               >
-                <HelpCircle className="w-4 h-4" style={{ color: colors.teal }} />
+                <HelpCircle className="w-4 h-4 flex-shrink-0" style={{ color: colors.teal }} />
                 <span className="hidden sm:inline">Guide</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setShowThemeModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
+                className="min-h-[40px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 title="Color Scheme & Light/Dark Mode"
               >
-                <Palette className="w-4 h-4" style={{ color: colors.teal }} />
+                <Palette className="w-4 h-4 flex-shrink-0" style={{ color: colors.teal }} />
                 <span className="hidden md:inline">{isDark ? 'Dark' : 'Light'}</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setShowFontModal(true)}
-                className="p-2 rounded-lg border transition"
+                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg border transition"
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
-                title="Typography Scale"
+                title="Typography & System Scaling"
+                aria-label="Typography & System Scaling"
               >
                 <Type className="w-4 h-4" style={{ color: colors.teal }} />
               </button>
 
               <button
+                type="button"
                 onClick={() => setMobileMenuOpen((o) => !o)}
-                className="md:hidden p-2 rounded-lg border"
+                className="lg:hidden min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg border"
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
-                aria-label="Toggle Navigation"
+                aria-label="Toggle Full Navigation"
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
             </div>
           </div>
 
-          {/* Desktop & Tablet Clean Scrollable Navigation Strip */}
+          {/* Tablet Portrait (md only) Horizontal Scrollable Navigation Strip */}
           <nav
-            className="hidden md:flex items-center gap-1 pb-2 pt-1 overflow-x-auto border-t"
+            className="hidden md:flex lg:hidden items-center gap-1 pb-2 pt-1 overflow-x-auto border-t"
             style={{ borderColor: colors.borderLight }}
           >
             {navItems.map((item, idx) => {
@@ -923,8 +1027,9 @@ const ExamSetWorkspace: React.FC = () => {
                     />
                   )}
                   <button
+                    type="button"
                     onClick={() => setActiveTab(item.id)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition flex-shrink-0"
+                    className="min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition flex-shrink-0"
                     style={
                       isActive
                         ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
@@ -932,7 +1037,7 @@ const ExamSetWorkspace: React.FC = () => {
                     }
                   >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span>{item.shortLabel}</span>
                     {item.badge && (
                       <span
                         className="ml-0.5 text-[10px] px-1.5 py-0.2 rounded-full font-bold"
@@ -952,48 +1057,128 @@ const ExamSetWorkspace: React.FC = () => {
           </nav>
         </div>
 
-        {/* Mobile Drawer Menu */}
+        {/* Mobile / Compact Full Workspace Drawer Menu */}
         {mobileMenuOpen && (
           <div
-            className="md:hidden border-t px-3 py-3 space-y-1 shadow-lg max-h-[75vh] overflow-y-auto"
+            className="lg:hidden border-t px-3 py-3 space-y-2 shadow-xl max-h-[70dvh] overflow-y-auto"
             style={{ backgroundColor: colors.surface, borderColor: colors.border }}
           >
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-bold"
-                  style={
-                    isActive
-                      ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
-                      : { color: colors.ink, backgroundColor: colors.surfaceVariant }
-                  }
+            {(['exam', 'study', 'focus'] as const).map((grp) => (
+              <div key={grp} className="space-y-1">
+                <div
+                  className="px-2 pt-1 text-[10px] font-black uppercase tracking-wider"
+                  style={{ color: colors.muted }}
                 >
-                  <div className="flex items-center gap-2.5">
-                    {item.icon}
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-black/15">{item.badge}</span>
-                  )}
-                </button>
-              );
-            })}
+                  {navGroupLabels[grp]}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {navItems
+                    .filter((item) => item.group === grp)
+                    .map((item) => {
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            setMobileMenuOpen(false);
+                          }}
+                          className="w-full min-h-[44px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition"
+                          style={
+                            isActive
+                              ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
+                              : { color: colors.ink, backgroundColor: colors.surfaceVariant }
+                          }
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {item.icon}
+                            <span className="truncate">{item.label}</span>
+                          </div>
+                          {item.badge && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-black/15 flex-shrink-0">
+                              {item.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        <section
-          className="rounded-2xl shadow-sm border p-4 sm:p-6 min-h-[620px]"
+      {/* Main Responsive Shell: Desktop/Landscape Navigation Rail + Adaptive Workspace */}
+      <div className="flex-1 max-w-[1600px] w-full mx-auto flex gap-4 lg:gap-5 px-2.5 sm:px-5 lg:px-6 pt-3 sm:pt-5 pb-24 md:pb-6">
+        {/* Desktop & Landscape Tablet Left Navigation Rail */}
+        <aside
+          className={`hidden lg:flex flex-col flex-shrink-0 rounded-2xl border p-2.5 self-start sticky top-[4.5rem] max-h-[calc(100dvh-5.5rem)] overflow-y-auto transition-all duration-200 ${
+            railExpanded ? 'w-60' : 'w-[72px]'
+          }`}
           style={{ backgroundColor: colors.surface, borderColor: colors.border }}
         >
+          <div className="space-y-3">
+            {(['exam', 'study', 'focus'] as const).map((grp) => (
+              <div key={grp} className="space-y-1">
+                {railExpanded && (
+                  <div
+                    className="px-2.5 pt-1 text-[10px] font-black uppercase tracking-wider"
+                    style={{ color: colors.muted }}
+                  >
+                    {navGroupLabels[grp]}
+                  </div>
+                )}
+                {navItems
+                  .filter((item) => item.group === grp)
+                  .map((item) => {
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveTab(item.id)}
+                        title={item.label}
+                        className={`w-full min-h-[42px] flex items-center rounded-xl text-xs font-bold transition ${
+                          railExpanded ? 'justify-between px-3 py-2 gap-2' : 'justify-center px-2 py-2 relative'
+                        }`}
+                        style={
+                          isActive
+                            ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
+                            : { color: colors.inkMuted, backgroundColor: 'transparent' }
+                        }
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {item.icon}
+                          {railExpanded && <span className="truncate">{item.label}</span>}
+                        </div>
+                        {railExpanded && item.badge && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
+                            style={
+                              isActive
+                                ? { backgroundColor: 'rgba(255,255,255,0.22)', color: colors.primaryButtonText }
+                                : { backgroundColor: colors.surfaceVariant, color: colors.ink }
+                            }
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* Primary Workspace Card */}
+        <main className="flex-1 min-w-0">
+          <section
+            className="rounded-2xl shadow-sm border p-3 sm:p-5 lg:p-6 min-h-[calc(100dvh-10rem)]"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
           {activeTab === 'creator' && (
             <CreatorTab
               currentPaper={currentPaper}
@@ -1175,6 +1360,9 @@ const ExamSetWorkspace: React.FC = () => {
             <BackupVaultTab
               workspaceState={workspaceBackupState}
               snapshots={vaultSnapshots}
+              autoBackupSchedule={autoBackupSchedule}
+              lastAutoBackupAt={lastAutoBackupAt}
+              onChangeAutoBackupSchedule={handleChangeAutoBackupSchedule}
               onCreateSnapshot={handleCreateSnapshot}
               onDeleteSnapshot={handleDeleteSnapshot}
               onExecuteRestore={handleExecuteRestore}
@@ -1194,15 +1382,66 @@ const ExamSetWorkspace: React.FC = () => {
               onOpenBatchImport={() => setShowBatchImportModal(true)}
             />
           )}
-        </section>
-      </main>
+          </section>
+        </main>
+      </div>
 
-      {/* Footer */}
+      {/* Mobile Bottom Quick-Navigation Bar */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t grid grid-cols-5 backdrop-blur-md"
+        style={{
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
+        aria-label="Mobile quick navigation"
+      >
+        {[
+          { id: 'folders' as const, label: 'Library', icon: <Folder className="w-4 h-4" /> },
+          { id: 'master' as const, label: 'Master', icon: <Eye className="w-4 h-4" /> },
+          { id: 'student_portal' as const, label: 'Test', icon: <CheckCircle2 className="w-4 h-4" /> },
+          { id: 'knowledge_studio' as const, label: 'Study', icon: <BookMarked className="w-4 h-4" /> },
+        ].map((item) => {
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setActiveTab(item.id);
+                setMobileMenuOpen(false);
+              }}
+              className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold"
+              style={{
+                color: active ? colors.teal : colors.muted,
+                backgroundColor: active ? colors.tealLight : 'transparent',
+              }}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen((o) => !o)}
+          className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold"
+          style={{
+            color: mobileMenuOpen ? colors.teal : colors.muted,
+            backgroundColor: mobileMenuOpen ? colors.tealLight : 'transparent',
+          }}
+        >
+          <MoreHorizontal className="w-4 h-4" />
+          <span>More</span>
+        </button>
+      </nav>
+
+      {/* Footer (hidden on small phones to save space above bottom nav) */}
       <footer
-        className="border-t py-3 text-center text-xs"
+        className="hidden md:block border-t py-3 px-4 text-center text-xs"
         style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.muted }}
       >
-        ExamSet Suite • A4 OMR • SM-2 &amp; Dictation • Vocabulary Hub • Study Planner &amp; Focus • Brain Lab • Backup Vault
+        ExamSet Suite • A4 OMR • SM-2 &amp; Dictation • Vocabulary Hub • Study Planner &amp; Focus • Brain Lab • Cloud &amp; Disk Backup Vault
       </footer>
 
       {/* Global Dialogs & Workflow Modals */}

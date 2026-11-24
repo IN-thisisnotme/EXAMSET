@@ -547,7 +547,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
           No Questions Available for Assessment
         </h3>
         <p className="text-xs mt-1 max-w-sm mx-auto" style={{ color: colors.muted }}>
-          Parse or import questions in Question Creator or Folders & Library first to launch the Test Portal.
+          Parse or import questions in Exam Workbench or Library &amp; Folders first to launch the Test Portal.
         </p>
       </div>
     );
@@ -1473,7 +1473,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-1.5 max-h-[340px] overflow-y-auto pr-1">
+      <div className="grid grid-cols-5 gap-1.5 max-h-[50dvh] lg:max-h-[380px] overflow-y-auto pr-1">
         {activeQuestions.map((q, idx) => {
           const st = paletteStates[idx];
           const isCur = idx === currentIndex;
@@ -1551,11 +1551,11 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
       {/* Active Top Control Bar */}
       <div
-        className="px-4 py-3 rounded-xl shadow flex flex-wrap items-center justify-between gap-3"
+        className="px-3 sm:px-4 py-3 rounded-xl shadow flex flex-wrap items-center justify-between gap-2.5 sm:gap-3"
         style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
       >
-        <div className="min-w-0">
-          <h3 className="font-bold text-sm truncate max-w-xs sm:max-w-md">{currentPaper.metadata.title}</h3>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-bold text-sm truncate">{currentPaper.metadata.title}</h3>
           <p className="text-[11px] opacity-80">
             {interfaceMode === 'TCS_ION_CBT' ? `Q.${currentQuestion?.num} (${currentIndex + 1}/${activeQuestions.length})` : `${activeQuestions.length} Questions`} •{' '}
             Answered {answeredCount}/{activeQuestions.length}
@@ -1638,9 +1638,9 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
       {/* Mode A: TCS iON CBT Single Question View */}
       {interfaceMode === 'TCS_ION_CBT' && currentQuestion && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
           <div
-            className="lg:col-span-8 rounded-2xl border p-5 sm:p-6 flex flex-col justify-between min-h-[480px] space-y-5"
+            className="lg:col-span-8 min-w-0 rounded-2xl border p-4 sm:p-6 flex flex-col justify-between min-h-[280px] lg:min-h-[460px] space-y-4 sm:space-y-5"
             style={{ backgroundColor: colors.surface, borderColor: colors.border }}
           >
             <div className="space-y-4">

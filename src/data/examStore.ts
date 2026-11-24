@@ -19,6 +19,7 @@ import {
   DEFAULT_BRAIN_LAB_SETTINGS,
   DEFAULT_POMODORO_CONFIG,
   EMPTY_BRAIN_LAB_STATS,
+  type AutoBackupSchedule,
   type BrainLabSettings,
   type BrainLabStats,
   type DailyStudyAnalytics,
@@ -55,6 +56,8 @@ const KEYS = {
   BRAIN_LAB_STATS: 'examset_brain_lab_stats_v1',
   VAULT_SNAPSHOTS: 'examset_vault_snapshots_v1',
   DISMISSED_TIPS: 'examset_dismissed_tips_v1',
+  AUTO_BACKUP_SCHEDULE: 'examset_auto_backup_schedule_v1',
+  LAST_AUTO_BACKUP_AT: 'examset_last_auto_backup_at_v1',
 };
 
 const LEGACY_SAMPLE_FOLDER_IDS = new Set(['f-science', 'f-upsc', 'f-ssc']);
@@ -473,5 +476,25 @@ export const ExamStore = {
 
   saveDismissedTips(tips: string[]): void {
     safeWriteJson(KEYS.DISMISSED_TIPS, tips);
+  },
+
+  loadAutoBackupSchedule(): AutoBackupSchedule {
+    const val = safeReadJson<string>(KEYS.AUTO_BACKUP_SCHEDULE, 'OFF');
+    if (val === 'ON_CHANGE' || val === 'EVERY_6H' || val === 'DAILY' || val === 'OFF') {
+      return val;
+    }
+    return 'OFF';
+  },
+
+  saveAutoBackupSchedule(schedule: AutoBackupSchedule): void {
+    safeWriteJson(KEYS.AUTO_BACKUP_SCHEDULE, schedule);
+  },
+
+  loadLastAutoBackupAt(): number {
+    return safeReadJson<number>(KEYS.LAST_AUTO_BACKUP_AT, 0);
+  },
+
+  saveLastAutoBackupAt(ts: number): void {
+    safeWriteJson(KEYS.LAST_AUTO_BACKUP_AT, ts);
   },
 };

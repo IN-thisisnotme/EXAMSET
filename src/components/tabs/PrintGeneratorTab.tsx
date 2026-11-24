@@ -170,8 +170,8 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
       >
         <div>
           <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
-            <Printer className="w-5 h-5" style={{ color: colors.teal }} />
-            A4 Print, Single-Sheet OMR &amp; Standalone CBT Exporter
+            <Printer className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
+            Print &amp; OMR Studio • A4 Booklet &amp; CBT Exporter
           </h3>
           <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
             Generates ISO A4 question booklets, drop-out magenta OMR sheets (4 or 5 options, up to 200 items), and offline HTML CBT apps.
@@ -501,9 +501,9 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
         </div>
 
         {/* Right Live Preview Frame */}
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-8 min-w-0">
           <div
-            className="rounded-xl p-4 border flex flex-col items-center justify-center min-h-[680px]"
+            className="rounded-xl p-2.5 sm:p-4 border flex flex-col items-center justify-center min-h-[380px]"
             style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
           >
             <div className="w-full max-w-[790px] bg-white rounded-lg shadow-md overflow-hidden border" style={{ borderColor: colors.border }}>
@@ -511,11 +511,11 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
                 ref={iframeRef}
                 srcDoc={generatedHtml}
                 title="A4 Print & OMR Preview"
-                className="w-full h-[740px] border-0 bg-white"
+                className="w-full h-[60dvh] min-h-[380px] max-h-[780px] border-0 bg-white"
               />
             </div>
-            <div className="text-xs mt-2" style={{ color: colors.muted }}>
-              Live ISO A4 Portrait Render • Select Print / Save PDF to output crisp vector sheets
+            <div className="text-xs mt-2 text-center" style={{ color: colors.muted }}>
+              Live ISO A4 Portrait Render • Select Print / Save PDF for crisp vector sheets
             </div>
           </div>
         </div>

@@ -42,7 +42,7 @@ const APP_GUIDE_CATALOG: AppGuideEntry[] = [
     details:
       'Supports single-line, multi-line, Hindi/Devanagari options, LaTeX math ($...$), Assertion-Reason blocks, and automatic duplicate detection.',
     keywords: ['import', 'aiken', 'json', 'markdown', 'table', 'paste', 'questions', 'latex'],
-    actionLabel: 'Open Creator',
+    actionLabel: 'Open Exam Workbench',
     destination: 'CREATOR',
   },
   {
@@ -182,20 +182,20 @@ const APP_GUIDE_CATALOG: AppGuideEntry[] = [
     details:
       'Supports Question Sets, Knowledge Collections, SM-2 Flashcards, and Bilingual Vocabulary JSON prompts with one-click jumps to import.',
     keywords: ['ai', 'prompt', 'generator', 'preset', 'template', 'json'],
-    actionLabel: 'Open Prompt Studio',
+    actionLabel: 'Open AI Prompt Studio',
     destination: 'AI_PROMPT_STUDIO',
   },
   {
     id: 'backup_vault',
-    title: 'Backup Vault & SHA-256 Checkpoints',
+    title: 'Backup Vault, Cloud Drive & Disk Sync',
     category: 'BACKUP_TOOLS',
     summary:
-      'Export SHA-256 verified JSON vault archives containing every paper, attempt, note, deck, task, stat, and theme.',
+      'Sync via Google Drive, Microsoft OneDrive, or a live computer disk / synced cloud folder, with SHA-256 verified JSON vault recovery.',
     quickTip:
-      'Use Smart Merge when combining devices, or Clean Replace (which auto-saves a rolling safety checkpoint first).',
+      'Link a disk file in a synced Drive/OneDrive folder for zero-OAuth 1-click sync, or connect OAuth2 Client IDs under Backup Vault.',
     details:
-      'Verifies section-level SHA-256 integrity hashes before restoring and supports legacy Question Paper JSON bundles too.',
-    keywords: ['backup', 'vault', 'restore', 'sha256', 'export', 'merge', 'snapshot'],
+      'Verifies section-level SHA-256 integrity hashes before restoring, supports Auto-Backup cadences, and merges cleanly via Smart Merge or Clean Replace.',
+    keywords: ['backup', 'vault', 'restore', 'sha256', 'export', 'merge', 'snapshot', 'google drive', 'onedrive', 'sync', 'disk'],
     actionLabel: 'Open Backup Vault',
     destination: 'BACKUP_VAULT',
   },

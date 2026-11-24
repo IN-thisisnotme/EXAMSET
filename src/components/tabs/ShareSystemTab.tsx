@@ -195,12 +195,12 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
               Workspace Link &amp; Machine Grading QR
             </h4>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <input
                 type="text"
                 readOnly
                 value={window.location.href}
-                className="w-full text-xs font-mono border rounded-lg px-3 py-2 focus:outline-none"
+                className="min-w-0 flex-1 text-xs font-mono border rounded-lg px-3 py-2 focus:outline-none"
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
               />
               <button
@@ -309,8 +309,8 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
         </div>
 
         {/* Right Column: JSON Payload Inspector */}
-        <div className="lg:col-span-6">
-          <div className="bg-slate-900 rounded-xl p-5 shadow-lg border border-slate-800 flex flex-col h-full min-h-[500px]">
+        <div className="lg:col-span-6 min-w-0">
+          <div className="bg-slate-900 rounded-xl p-4 sm:p-5 shadow-lg border border-slate-800 flex flex-col h-full min-h-[300px] lg:min-h-[500px]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 text-xs text-slate-400">
               <div className="flex items-center gap-2 font-mono text-slate-200">
                 <FileJson className="w-4 h-4 text-emerald-400" />

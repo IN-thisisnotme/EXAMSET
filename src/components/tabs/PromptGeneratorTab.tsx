@@ -1386,7 +1386,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                 <>
                   Paste the AI output into{' '}
                   <button onClick={() => onNavigateToCreator?.()} className="underline font-bold" style={{ color: colors.tealDark }}>
-                    Question Creator
+                    Exam Workbench
                   </button>{' '}
                   or the Paper Importer.
                 </>
@@ -1418,8 +1418,8 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
         </div>
 
         {/* Right Output Box */}
-        <div className="lg:col-span-7">
-          <div className="bg-slate-900 rounded-xl p-5 shadow-lg border border-slate-800 flex flex-col h-full min-h-[500px]">
+        <div className="lg:col-span-7 min-w-0">
+          <div className="bg-slate-900 rounded-xl p-4 sm:p-5 shadow-lg border border-slate-800 flex flex-col h-full min-h-[300px] lg:min-h-[500px]">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3 text-xs text-slate-400">
               <span className="font-mono text-slate-200 flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
