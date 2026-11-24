@@ -178,9 +178,50 @@ fun ExamCountdownsDialog(
     var dateInput by remember { mutableStateOf(StudyDateUtils.addDaysToDateString(nowMillis, 30)) }
     var isPinnedInput by remember { mutableStateOf(true) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var pendingDeleteTarget by remember { mutableStateOf<ExamCountdownTarget?>(null) }
 
     val sortedCountdowns = remember(countdowns, nowMillis) {
         countdowns.sortedBy { it.daysRemaining(nowMillis) ?: Long.MAX_VALUE }
+    }
+
+    pendingDeleteTarget?.let { targetToDelete ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteTarget = null },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Delete Exam Countdown?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Remove \"${targetToDelete.title}\" (${StudyDateUtils.formatHumanDate(targetToDelete.targetDateStr)}) from your countdown targets?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete(targetToDelete.id)
+                        if (editingId == targetToDelete.id) {
+                            editingId = null
+                            titleInput = ""
+                            subjectInput = ""
+                        }
+                        pendingDeleteTarget = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { pendingDeleteTarget = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
+                }
+            }
+        )
     }
 
     if (showDatePicker) {
@@ -220,8 +261,8 @@ fun ExamCountdownsDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Exam-Day Countdowns", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = colors.inkBold)
-                IconButton(onClick = onDismiss) {
+                Text("Exam-Day Countdowns", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = colors.inkBold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.Close, contentDescription = "Close Countdowns", tint = colors.muted)
                 }
             }
@@ -322,7 +363,9 @@ fun ExamCountdownsDialog(
                                     StudyDateUtils.parseDateToStartOfDayMillis(dateInput) != null,
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                                modifier = Modifier.testTag("save_countdown_button")
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("save_countdown_button")
                             ) {
                                 Text(if (editingId == null) "Add" else "Update", fontWeight = FontWeight.Bold)
                             }
@@ -372,13 +415,13 @@ fun ExamCountdownsDialog(
                                     }
                                     IconButton(
                                         onClick = { onTogglePin(target.id) },
-                                        modifier = Modifier.size(36.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.PushPin,
                                             contentDescription = "Pin Countdown",
                                             tint = if (target.isPinned) colors.teal else colors.muted,
-                                            modifier = Modifier.size(17.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                     IconButton(
@@ -389,24 +432,24 @@ fun ExamCountdownsDialog(
                                             subjectInput = target.subject
                                             isPinnedInput = target.isPinned
                                         },
-                                        modifier = Modifier.size(36.dp)
+                                        modifier = Modifier.size(48.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
                                             contentDescription = "Edit Countdown",
                                             tint = colors.inkBold,
-                                            modifier = Modifier.size(17.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                     IconButton(
-                                        onClick = { onDelete(target.id) },
-                                        modifier = Modifier.size(36.dp)
+                                        onClick = { pendingDeleteTarget = target },
+                                        modifier = Modifier.size(48.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
                                             contentDescription = "Delete Countdown",
                                             tint = colors.red,
-                                            modifier = Modifier.size(17.dp)
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
@@ -417,7 +460,7 @@ fun ExamCountdownsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text("Done", fontWeight = FontWeight.Bold, color = colors.teal)
             }
         },

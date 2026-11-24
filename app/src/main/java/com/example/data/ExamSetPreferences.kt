@@ -56,13 +56,15 @@ class ExamSetPreferences(context: Context) {
                     obj.getString("parentId").ifBlank { null }
                 } else null
 
+                val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                 list.add(
                     FolderItem(
                         id = id,
                         name = name,
                         color = obj.optString("color", "#0284C7"),
                         parentId = parentId,
-                        createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                        createdAt = createdAt,
+                        updatedAt = obj.optLong("updatedAt", createdAt)
                     )
                 )
             }
@@ -86,6 +88,7 @@ class ExamSetPreferences(context: Context) {
                     put("parentId", f.parentId)
                 }
                 put("createdAt", f.createdAt)
+                put("updatedAt", f.updatedAt)
             }
             arr.put(obj)
         }
@@ -466,6 +469,45 @@ class ExamSetPreferences(context: Context) {
         }
     }
 
+    fun getAllActivePromptPresetIds(): Map<com.example.model.PromptPresetMode, String> {
+        return buildMap {
+            com.example.model.PromptPresetMode.entries.forEach { mode ->
+                val savedId = getActivePromptPresetId(mode)
+                if (!savedId.isNullOrBlank()) {
+                    put(mode, savedId)
+                }
+            }
+        }
+    }
+
+    fun getActivePromptPresetIdsRawJson(): String {
+        val obj = JSONObject()
+        getAllActivePromptPresetIds().forEach { (mode, id) ->
+            obj.put(mode.code, id)
+        }
+        return obj.toString()
+    }
+
+    fun saveActivePromptPresetIdsFromJson(rawJson: String?, overwriteAll: Boolean): Int {
+        if (rawJson.isNullOrBlank()) {
+            if (overwriteAll) {
+                com.example.model.PromptPresetMode.entries.forEach { setActivePromptPresetId(it, null) }
+            }
+            return 0
+        }
+        val obj = runCatching { JSONObject(rawJson) }.getOrNull() ?: return 0
+        var applied = 0
+        com.example.model.PromptPresetMode.entries.forEach { mode ->
+            val incomingId = obj.optString(mode.code, "").trim().ifBlank { null }
+            val currentId = getActivePromptPresetId(mode)
+            if (overwriteAll || (currentId.isNullOrBlank() && !incomingId.isNullOrBlank())) {
+                setActivePromptPresetId(mode, incomingId)
+                if (!incomingId.isNullOrBlank()) applied++
+            }
+        }
+        return applied
+    }
+
     fun isVocabularyReminderEnabled(): Boolean {
         return prefs.getBoolean(KEY_VOCAB_DAILY_REMINDER_ENABLED, false)
     }
@@ -635,17 +677,25 @@ class ExamSetPreferences(context: Context) {
     fun dismissFormatTip(tipId: String) {
         val current = getDismissedFormatTips().toMutableSet()
         if (current.add(tipId)) {
-            val arr = JSONArray().apply { current.forEach { put(it) } }
-            prefs.edit().putString(KEY_DISMISSED_FORMAT_TIPS, arr.toString()).apply()
+            saveDismissedFormatTips(current)
         }
     }
 
-    private fun getDismissedFormatTips(): Set<String> {
+    fun getDismissedFormatTips(): Set<String> {
         val raw = prefs.getString(KEY_DISMISSED_FORMAT_TIPS, null) ?: return emptySet()
         return runCatching {
             val arr = JSONArray(raw)
             (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }.toSet()
         }.getOrDefault(emptySet())
+    }
+
+    fun saveDismissedFormatTips(tips: Set<String>) {
+        val arr = JSONArray().apply { tips.filter { it.isNotBlank() }.forEach { put(it) } }
+        prefs.edit().putString(KEY_DISMISSED_FORMAT_TIPS, arr.toString()).apply()
+    }
+
+    fun getDismissedFormatTipsRawJson(): String {
+        return prefs.getString(KEY_DISMISSED_FORMAT_TIPS, "[]") ?: "[]"
     }
 
     fun getBrainLabStats(): com.example.model.BrainLabStats {

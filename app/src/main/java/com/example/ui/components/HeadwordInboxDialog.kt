@@ -109,6 +109,8 @@ fun HeadwordInboxDialog(
     var showPasteImportDialog by remember { mutableStateOf(false) }
     var showPasteEnrichedDialog by remember { mutableStateOf(false) }
     var showConfirmClearDialog by remember { mutableStateOf(false) }
+    var pendingSkipForeverItem by remember { mutableStateOf<HeadwordQueueItem?>(null) }
+    var pendingRemoveItem by remember { mutableStateOf<HeadwordQueueItem?>(null) }
 
     val distinctLanguages = remember(inboxItems) {
         listOf("All") + inboxItems.map { it.language.trim() }.filter { it.isNotBlank() }.distinct().sorted()
@@ -608,8 +610,8 @@ fun HeadwordInboxDialog(
                             items(filteredItems, key = { it.id }) { item ->
                                 HeadwordQueueItemCard(
                                     item = item,
-                                    onDismissWord = { viewModel.dismissHeadword(item.id) },
-                                    onRemoveFromQueue = { viewModel.removeHeadwordFromInbox(item.id) }
+                                    onDismissWord = { pendingSkipForeverItem = item },
+                                    onRemoveFromQueue = { pendingRemoveItem = item }
                                 )
                             }
                         }
@@ -771,6 +773,82 @@ fun HeadwordInboxDialog(
             dismissButton = {
                 OutlinedButton(
                     onClick = { showConfirmClearDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
+                }
+            }
+        )
+    }
+
+    pendingSkipForeverItem?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingSkipForeverItem = null },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Skip \"${item.word}\" Forever?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This removes \"${item.word}\" from your Headword Inbox and adds it to your permanent ignore list so future AI headword imports and Word of the Day won't suggest it again."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.dismissHeadword(item.id)
+                        pendingSkipForeverItem = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.red,
+                        contentColor = colors.primaryButtonText
+                    ),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Skip Forever", fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { pendingSkipForeverItem = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
+                }
+            }
+        )
+    }
+
+    pendingRemoveItem?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoveItem = null },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Remove \"${item.word}\" from Inbox?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Remove this headword from the pending queue? It can still be re-imported or captured again later."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.removeHeadwordFromInbox(item.id)
+                        pendingRemoveItem = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.red,
+                        contentColor = colors.primaryButtonText
+                    ),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Remove", fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { pendingRemoveItem = null },
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text("Cancel", color = colors.inkBold)

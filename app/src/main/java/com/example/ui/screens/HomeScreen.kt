@@ -641,7 +641,8 @@ fun HomeScreen(
         }
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWideLandscape = maxWidth >= 600.dp && maxWidth > maxHeight
+        val isRailLayout = maxWidth >= 600.dp
+        val isCompactHeightLandscape = maxWidth >= 600.dp && maxHeight < 500.dp
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = colors.background,
@@ -669,8 +670,8 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .statusBarsPadding()
-                                    .heightIn(min = if (isWideLandscape) 48.dp else 56.dp)
-                                    .padding(horizontal = 4.dp, vertical = if (isWideLandscape) 2.dp else 4.dp),
+                                    .heightIn(min = if (isCompactHeightLandscape) 48.dp else 56.dp)
+                                    .padding(horizontal = 4.dp, vertical = if (isCompactHeightLandscape) 2.dp else 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 IconButton(
@@ -689,7 +690,7 @@ fun HomeScreen(
                                     IconButton(
                                         onClick = { showConfirmExitDialog = true },
                                         modifier = Modifier
-                                            .size(44.dp)
+                                            .size(48.dp)
                                             .testTag("exit_paper_button")
                                     ) {
                                         Icon(
@@ -746,7 +747,7 @@ fun HomeScreen(
                                 IconButton(
                                     onClick = { showSavedDialog = true },
                                     modifier = Modifier
-                                        .size(44.dp)
+                                        .size(48.dp)
                                         .testTag("topbar_search_papers_button")
                                 ) {
                                     Icon(
@@ -775,7 +776,7 @@ fun HomeScreen(
                                         IconButton(
                                             onClick = { showTopBarOverflowMenu = true },
                                             modifier = Modifier
-                                                .size(44.dp)
+                                                .size(48.dp)
                                                 .testTag("topbar_overflow_menu_button")
                                         ) {
                                             Icon(
@@ -853,7 +854,7 @@ fun HomeScreen(
                 }
             },
             bottomBar = {
-                if (!isFullScreenTestActive && !isWideLandscape) {
+                if (!isFullScreenTestActive && !isRailLayout) {
                     NavigationBar(
                         containerColor = colors.surface,
                         contentColor = colors.inkBold,
@@ -1209,7 +1210,7 @@ fun HomeScreen(
             }
             }
             }
-            if (!isFullScreenTestActive && isWideLandscape) {
+            if (!isFullScreenTestActive && isRailLayout) {
                 Row(
                     modifier = Modifier
                         .fillMaxSize()

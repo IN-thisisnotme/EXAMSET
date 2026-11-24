@@ -136,7 +136,7 @@ fun SuggestedNextTestCard(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 0.8.sp,
-                    color = Color(0xFF5EEAD4)
+                    color = colors.navyBannerText.copy(alpha = 0.85f)
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
@@ -152,7 +152,7 @@ fun SuggestedNextTestCard(
                     text = "${paper.questionCount} Qs • $durationMins Mins • ${paper.effectiveCategory().label}",
                     fontSize = 11.sp,
                     color = colors.navyBannerText.copy(alpha = 0.8f),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -173,7 +173,8 @@ fun SuggestedNextTestCard(
                 Text(
                     text = if (isInProgress) "Resume" else "Start",
                     fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
             }
         }
@@ -301,12 +302,12 @@ fun QuickFeatureStripRow(
     val colors = ExamTheme.colors
     val itemsSpec: List<Triple<QuickFeatureAction, ImageVector, Pair<Color, Int?>>> = listOf(
         Triple(QuickFeatureAction.STUDY_NOTES, Icons.AutoMirrored.Filled.MenuBook, colors.teal to notesCount),
-        Triple(QuickFeatureAction.VOCABULARY, Icons.Default.Translate, Color(0xFF0EA5E9) to vocabWordCount),
-        Triple(QuickFeatureAction.MOCK_TESTS, Icons.Default.Quiz, Color(0xFF2563EB) to mockCount),
+        Triple(QuickFeatureAction.VOCABULARY, Icons.Default.Translate, colors.tealDark to vocabWordCount),
+        Triple(QuickFeatureAction.MOCK_TESTS, Icons.Default.Quiz, colors.primaryButtonBg to mockCount),
         Triple(QuickFeatureAction.PYQS, Icons.Default.History, colors.amber to pyqCount),
         Triple(QuickFeatureAction.ATTEMPTED, Icons.Default.CheckCircle, colors.green to attemptedCount),
         Triple(QuickFeatureAction.WEAK_AREAS, Icons.Default.TrendingDown, colors.red to weakCount),
-        Triple(QuickFeatureAction.PRINTABLE_PDFS, Icons.Default.PictureAsPdf, Color(0xFF7C3AED) to null)
+        Triple(QuickFeatureAction.PRINTABLE_PDFS, Icons.Default.PictureAsPdf, colors.inkBold to null)
     )
 
     LazyRow(
@@ -320,14 +321,14 @@ fun QuickFeatureStripRow(
                 onClick = { onActionClick(action) },
                 shape = RoundedCornerShape(12.dp),
                 color = colors.surface,
-                border = BorderStroke(0.7.dp, colors.border),
+                border = BorderStroke(0.8.dp, colors.border),
                 modifier = Modifier
-                    .widthIn(min = 86.dp, max = 114.dp)
-                    .heightIn(min = 78.dp)
+                    .widthIn(min = 92.dp, max = 148.dp)
+                    .heightIn(min = 82.dp)
                     .testTag("quick_feature_${action.name.lowercase()}")
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -340,15 +341,15 @@ fun QuickFeatureStripRow(
                             Icon(imageVector = icon, contentDescription = action.label, tint = tint, modifier = Modifier.size(18.dp))
                         }
                     }
-                    Spacer(modifier = Modifier.height(5.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = if (count != null && count > 0) "${action.label} ($count)" else action.label,
-                        fontSize = 10.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = colors.inkBold,
                         maxLines = 2,
                         softWrap = true,
-                        lineHeight = 13.sp,
+                        lineHeight = 13.5.sp,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
                     )
@@ -459,7 +460,7 @@ fun RootExamFolderCard(
                 Box {
                     IconButton(
                         onClick = { showMenu = true },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
@@ -504,8 +505,8 @@ fun RootExamFolderCard(
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Delete Folder", color = Color(0xFFDC2626)) },
-                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp)) },
+                            text = { Text("Delete Folder", color = colors.red) },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = colors.red, modifier = Modifier.size(16.dp)) },
                             onClick = {
                                 showMenu = false
                                 onDelete()
@@ -525,8 +526,8 @@ fun RootExamFolderCard(
             ) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF2563EB),
-                    contentColor = Color.White
+                    color = colors.primaryButtonBg,
+                    contentColor = colors.primaryButtonText
                 ) {
                     Text(
                         text = "$totalAvailableSets Total Tests",
@@ -539,14 +540,14 @@ fun RootExamFolderCard(
                 if (completedSets > 0) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF16A34A).copy(alpha = 0.15f),
-                        border = BorderStroke(0.7.dp, Color(0xFF16A34A))
+                        color = colors.badgeSuccessBg,
+                        border = BorderStroke(0.7.dp, colors.green.copy(alpha = 0.5f))
                     ) {
                         Text(
                             text = "$completedSets Completed",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF15803D),
+                            color = colors.badgeSuccessText,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
@@ -581,13 +582,15 @@ fun RootExamFolderCard(
                     text = "Completion Progress",
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Medium,
-                    color = colors.inkMuted
+                    color = colors.inkMuted,
+                    modifier = Modifier.weight(1f)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "$completedSets / $totalAvailableSets",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (completedSets > 0 && completedSets == totalAvailableSets) Color(0xFF16A34A) else colors.inkBold
+                    color = if (completedSets > 0 && completedSets == totalAvailableSets) colors.green else colors.inkBold
                 )
             }
 
@@ -607,7 +610,7 @@ fun RootExamFolderCard(
                             .fillMaxWidth(fraction = progress.coerceIn(0f, 1f))
                             .fillMaxHeight()
                             .background(
-                                if (progress >= 1f) Color(0xFF16A34A) else Color(0xFF2563EB),
+                                if (progress >= 1f && totalAvailableSets > 0) colors.green else colors.teal,
                                 RoundedCornerShape(4.dp)
                             )
                     )
@@ -622,6 +625,7 @@ fun RootExamFolderCard(
  * e.g. "37 Subject Test                >"
  *      "8 Full Test       2 Completed  >"
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SubfolderCompactRow(
     subfolder: FolderItem,
@@ -630,18 +634,20 @@ fun SubfolderCompactRow(
     onClick: () -> Unit
 ) {
     val colors = ExamTheme.colors
+    val subColor = parseHexColorSafe(subfolder.color)
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         color = colors.surface,
-        border = BorderStroke(0.7.dp, colors.border.copy(alpha = 0.6f)),
+        border = BorderStroke(0.8.dp, colors.border.copy(alpha = 0.7f)),
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .clickable { onClick() }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -649,16 +655,16 @@ fun SubfolderCompactRow(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = "$totalSets ",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.inkBold
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(subColor, CircleShape)
                 )
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = subfolder.name,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
+                    text = "$totalSets  ${subfolder.name}",
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = colors.inkBold,
                     maxLines = 2,
                     softWrap = true,
@@ -667,21 +673,23 @@ fun SubfolderCompactRow(
                 )
             }
 
+            Spacer(modifier = Modifier.width(8.dp))
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (completedSets > 0) {
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFF10B981).copy(alpha = 0.12f)
+                        shape = RoundedCornerShape(6.dp),
+                        color = colors.badgeSuccessBg
                     ) {
                         Text(
                             text = "$completedSets Completed",
-                            fontSize = 11.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            color = colors.badgeSuccessText,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
                     }
                 }
@@ -740,7 +748,7 @@ fun PaperExamCard(
         ),
         border = BorderStroke(
             if (isSelected) 1.8.dp else if (isActive) 1.5.dp else 0.8.dp,
-            if (isSelected) colors.teal else if (isActive) Color(0xFF2563EB) else colors.border
+            if (isSelected) colors.teal else if (isActive) colors.teal else colors.border
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -768,7 +776,7 @@ fun PaperExamCard(
                                 checkedColor = colors.teal,
                                 uncheckedColor = colors.inkMuted
                             ),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
 
@@ -790,10 +798,10 @@ fun PaperExamCard(
                     // Category Pill (Tap to reclassify Mock / PYQ / Sectional)
                     Box {
                         val (catBg, catFg, catText) = when (effectiveCategory) {
-                            PaperCategory.PYQ -> Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "PYQ")
-                            PaperCategory.SECTIONAL -> Triple(Color(0xFFEDE9FE), Color(0xFF6D28D9), "SECTIONAL")
+                            PaperCategory.PYQ -> Triple(colors.badgeWarningBg, colors.badgeWarningText, "PYQ")
+                            PaperCategory.SECTIONAL -> Triple(colors.badgeSuccessBg, colors.badgeSuccessText, "SECTIONAL")
                             PaperCategory.STUDY_NOTES -> Triple(colors.tealLight, colors.tealDark, "NOTES")
-                            else -> Triple(Color(0xFFDBEAFE), Color(0xFF1D4ED8), "MOCK")
+                            else -> Triple(colors.infoBadgeBg, colors.infoBadgeText, "MOCK")
                         }
                         Surface(
                             shape = RoundedCornerShape(4.dp),
@@ -831,14 +839,14 @@ fun PaperExamCard(
                     if (paper.subject.isNotBlank()) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(0.5.dp, Color(0xFFBFDBFE))
+                            color = colors.infoBadgeBg,
+                            border = BorderStroke(0.5.dp, colors.teal.copy(alpha = 0.25f))
                         ) {
                             Text(
                                 text = paper.subject.substringAfterLast(">").trim(),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2563EB),
+                                color = colors.infoBadgeText,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -850,68 +858,67 @@ fun PaperExamCard(
                     if (isCompleted) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFDCFCE7),
-                            border = BorderStroke(0.6.dp, Color(0xFF16A34A))
+                            color = colors.badgeSuccessBg,
+                            border = BorderStroke(0.6.dp, colors.green.copy(alpha = 0.6f))
                         ) {
                             val scoreStr = attemptScore?.let { String.format(Locale.US, "%.2f", it) }
                             Text(
                                 text = if (scoreStr != null) "✓ Completed ($scoreStr pts)" else "✓ Completed",
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF15803D),
+                                color = colors.badgeSuccessText,
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     } else if (isInProgress) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFFFEF3C7),
-                            border = BorderStroke(0.6.dp, Color(0xFFD97706))
+                            color = colors.badgeWarningBg,
+                            border = BorderStroke(0.6.dp, colors.amber.copy(alpha = 0.6f))
                         ) {
                             Text(
                                 text = "⏳ In Progress",
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFB45309),
+                                color = colors.badgeWarningText,
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     }
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    if (!isSelectionMode) {
+                if (!isSelectionMode) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         IconButton(
                             onClick = onExport,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 Icons.Default.Share,
                                 contentDescription = "Share Paper",
                                 tint = colors.teal,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         IconButton(
                             onClick = { showDeleteConfirm = true },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = "Delete Paper",
-                                tint = Color(0xFFEF4444).copy(alpha = 0.85f),
-                                modifier = Modifier.size(15.dp)
+                                tint = colors.red,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Row 2: Title
             Text(
@@ -925,11 +932,11 @@ fun PaperExamCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Row 3: Exam Specifications (Questions • Marks • Duration)
-            Row(
+            // Row 3: Exam Specifications (FlowRow prevents overlap at large font scales)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = "${paper.questionCount} Questions",
@@ -976,30 +983,38 @@ fun PaperExamCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val primaryBtnContainer = when {
+                    isCompleted -> colors.green
+                    isInProgress -> colors.amber
+                    else -> colors.primaryButtonBg
+                }
+                val primaryBtnContent = if (isCompleted || isInProgress) Color.White else colors.primaryButtonText
                 Button(
                     onClick = onTakeTest,
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isCompleted) Color(0xFF16A34A) else if (isInProgress) Color(0xFFD97706) else Color(0xFF2563EB),
-                        contentColor = Color.White
+                        containerColor = primaryBtnContainer,
+                        contentColor = primaryBtnContent
                     ),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f).heightIn(min = 38.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = when {
                             isCompleted -> "Review Analysis"
                             isInProgress -> "Resume Test"
                             else -> "Start Test"
                         },
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        textAlign = TextAlign.Center
                     )
                 }
 
@@ -1008,25 +1023,26 @@ fun PaperExamCard(
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(0.8.dp, colors.border),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                    modifier = Modifier.heightIn(min = 38.dp)
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text(
-                        text = "Master View",
+                        text = "Master",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        maxLines = 1
                     )
                 }
 
                 IconButton(
                     onClick = onAssignFolder,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.DriveFileMove,
                         contentDescription = "Move to Folder",
                         tint = colors.inkMuted,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -1036,21 +1052,29 @@ fun PaperExamCard(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Question Set", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
-            text = { Text("Are you sure you want to permanently delete \"${paper.title}\"? All questions and past attempts will be removed.", fontSize = 12.5.sp) },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Delete Question Set?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = { Text("Are you sure you want to permanently delete \"${paper.title}\"? All questions and past attempts will be removed.", fontSize = 13.sp) },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         showDeleteConfirm = false
                         onDelete()
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text("Delete", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                    Text("Delete", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel")
+                OutlinedButton(
+                    onClick = { showDeleteConfirm = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
                 }
             }
         )
@@ -1060,6 +1084,7 @@ fun PaperExamCard(
 /**
  * Batch selection toolbar displayed when multiple test sets are selected.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BatchSelectionToolbar(
     selectedCount: Int,
@@ -1073,32 +1098,36 @@ fun BatchSelectionToolbar(
     var showBatchCategoryMenu by remember { mutableStateOf(false) }
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = colors.teal.copy(alpha = 0.12f),
+        color = colors.tealLight,
         border = BorderStroke(1.dp, colors.teal),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = if (selectedCount == 0) "Tap sets to select" else "$selectedCount selected",
-                    fontSize = 12.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.tealDark
+                    color = colors.tealDark,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
                 TextButton(
                     onClick = onSelectAll,
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text(
                         text = if (selectedCount == totalCount && totalCount > 0) "Deselect All" else "Select All",
-                        fontSize = 11.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.tealDark
                     )
@@ -1106,22 +1135,22 @@ fun BatchSelectionToolbar(
             }
 
             if (selectedCount > 0) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Box {
                         OutlinedButton(
                             onClick = { showBatchCategoryMenu = true },
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
                             border = BorderStroke(1.dp, colors.teal),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            modifier = Modifier.heightIn(min = 36.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Icon(Icons.Default.Label, contentDescription = "Set Category", modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Type", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Icon(Icons.Default.Label, contentDescription = "Set Category", modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Type", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                         DropdownMenu(expanded = showBatchCategoryMenu, onDismissRequest = { showBatchCategoryMenu = false }) {
                             listOf(
@@ -1144,30 +1173,30 @@ fun BatchSelectionToolbar(
 
                     OutlinedButton(
                         onClick = onExportClick,
-                        shape = RoundedCornerShape(6.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.teal),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.tealDark),
                         border = BorderStroke(1.dp, colors.teal),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.heightIn(min = 36.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Export ($selectedCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text("Export ($selectedCount)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
 
                     Button(
                         onClick = onMoveClick,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.teal,
                             contentColor = Color.White
                         ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.heightIn(min = 36.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.White)
+                        Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Move", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text("Move", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
             }
@@ -1210,7 +1239,8 @@ fun LazyListScope.renderRootExaminationLibrary(
     onBatchCategory: (PaperCategory) -> Unit,
     onBatchExport: () -> Unit,
     onBatchMove: () -> Unit,
-    onSelectAll: () -> Unit
+    onSelectAll: () -> Unit,
+    columnsCount: Int = 1
 ) {
     // 1. Compact Suggested Next Test Spotlight Card (zero ads/promos)
     if (searchQuery.isBlank() && libraryIndex.suggestedNextPaper != null) {
@@ -1241,7 +1271,7 @@ fun LazyListScope.renderRootExaminationLibrary(
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { onSearchQueryChange("") }) {
+                    IconButton(onClick = { onSearchQueryChange("") }, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Clear search",
@@ -1259,7 +1289,9 @@ fun LazyListScope.renderRootExaminationLibrary(
                 focusedContainerColor = colors.surface,
                 unfocusedContainerColor = colors.surface
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
         )
     }
 
@@ -1292,7 +1324,7 @@ fun LazyListScope.renderRootExaminationLibrary(
         }
     }
 
-    // Root Folders: Horizontal Snapping Exam Series Carousel + Optional Expanded View All
+    // Root Folders: Horizontal Snapping Exam Series Carousel + Optional Expanded View All / 2-Column Grid
     val matchingRootFolders = rootFolders.filter { rf ->
         searchQuery.isBlank() || rf.name.contains(searchQuery, ignoreCase = true)
     }
@@ -1317,12 +1349,14 @@ fun LazyListScope.renderRootExaminationLibrary(
                     text = "Exam Series (${sortedRoots.size})",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.inkBold
+                    color = colors.inkBold,
+                    modifier = Modifier.weight(1f)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
                         onClick = onToggleShowAllFolders,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Text(
                             text = if (showAllFoldersExpanded) "Carousel" else "View All",
@@ -1332,20 +1366,22 @@ fun LazyListScope.renderRootExaminationLibrary(
                         )
                     }
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = colors.surfaceVariant,
                         border = BorderStroke(0.6.dp, colors.border),
-                        modifier = Modifier.clickable { onSortOrderToggle() }
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .clickable { onSortOrderToggle() }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SortByAlpha,
                                 contentDescription = "Sort folders",
                                 tint = colors.inkMuted,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -1360,7 +1396,7 @@ fun LazyListScope.renderRootExaminationLibrary(
             }
         }
 
-        if (!showAllFoldersExpanded && searchQuery.isBlank()) {
+        if (!showAllFoldersExpanded && searchQuery.isBlank() && columnsCount <= 1) {
             item(key = "root_horizontal_carousel") {
                 val carouselState = rememberLazyListState()
                 val snapFling = rememberSnapFlingBehavior(lazyListState = carouselState)
@@ -1379,6 +1415,62 @@ fun LazyListScope.renderRootExaminationLibrary(
                             notesCount = libraryIndex.folderNotesCounts[folder.id] ?: 0,
                             onClick = { onOpenFolder(folder.id) }
                         )
+                    }
+                }
+            }
+        } else if (columnsCount > 1 && (showAllFoldersExpanded || searchQuery.isNotBlank() || columnsCount >= 2)) {
+            val useGrid = showAllFoldersExpanded || searchQuery.isNotBlank()
+            if (!useGrid) {
+                item(key = "root_horizontal_carousel") {
+                    val carouselState = rememberLazyListState()
+                    val snapFling = rememberSnapFlingBehavior(lazyListState = carouselState)
+                    LazyRow(
+                        state = carouselState,
+                        flingBehavior = snapFling,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(sortedRoots, key = { "hroot_${it.id}" }) { folder ->
+                            RootExamSeriesHorizontalCard(
+                                folder = folder,
+                                totalSets = libraryIndex.folderTotalCounts[folder.id] ?: 0,
+                                completedSets = libraryIndex.folderCompletedCounts[folder.id] ?: 0,
+                                notesCount = libraryIndex.folderNotesCounts[folder.id] ?: 0,
+                                onClick = { onOpenFolder(folder.id) }
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(sortedRoots.chunked(columnsCount), key = { row -> "root_row_" + row.joinToString("_") { it.id } }) { rowFolders ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowFolders.forEach { folder ->
+                            val totalSets = libraryIndex.folderTotalCounts[folder.id] ?: 0
+                            val completedSets = libraryIndex.folderCompletedCounts[folder.id] ?: 0
+                            val monthCount = libraryIndex.folderMonthlyCounts[folder.id] ?: 0
+                            val folderLangs = libraryIndex.folderLanguages[folder.id].orEmpty()
+                            Box(modifier = Modifier.weight(1f)) {
+                                RootExamFolderCard(
+                                    folder = folder,
+                                    totalAvailableSets = totalSets,
+                                    completedSets = completedSets,
+                                    monthAttemptedCount = monthCount,
+                                    availableLanguages = folderLangs,
+                                    onClick = { onOpenFolder(folder.id) },
+                                    onRename = { onRenameFolder(folder) },
+                                    onDuplicate = { onDuplicateFolder(folder) },
+                                    onRecolor = { onRecolorFolder(folder) },
+                                    onDelete = { onDeleteFolder(folder) }
+                                )
+                            }
+                        }
+                        repeat(columnsCount - rowFolders.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
@@ -1427,28 +1519,65 @@ fun LazyListScope.renderRootExaminationLibrary(
             )
         }
 
-        items(listedPapers, key = { "unassigned_${it.id}" }) { paper ->
-            val isCompleted = paper.id in libraryIndex.completedPaperIds
-            val isInProgress = paper.id in libraryIndex.inProgressPaperIds
-            val lastScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score
+        if (columnsCount > 1) {
+            items(listedPapers.chunked(columnsCount), key = { row -> "unassigned_row_" + row.joinToString("_") { it.id.toString() } }) { rowPapers ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowPapers.forEach { paper ->
+                        val isCompleted = paper.id in libraryIndex.completedPaperIds
+                        val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                        val lastScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score
+                        Box(modifier = Modifier.weight(1f)) {
+                            PaperExamCard(
+                                paper = paper,
+                                isActive = paper.id == currentPaperEntityId,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = paper.id in selectedPaperIds,
+                                onToggleSelect = { onToggleSelect(paper.id) },
+                                isCompleted = isCompleted,
+                                isInProgress = isInProgress,
+                                attemptScore = lastScore,
+                                detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
+                                onOpenMaster = { onOpenMaster(paper) },
+                                onTakeTest = { onTakeTest(paper) },
+                                onAssignFolder = { onAssignFolder(paper) },
+                                onChangeCategory = { cat -> onChangeCategory(paper, cat) },
+                                onExport = { onExportPaper(paper) },
+                                onDelete = { onDeletePaper(paper) }
+                            )
+                        }
+                    }
+                    repeat(columnsCount - rowPapers.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        } else {
+            items(listedPapers, key = { "unassigned_${it.id}" }) { paper ->
+                val isCompleted = paper.id in libraryIndex.completedPaperIds
+                val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                val lastScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score
 
-            PaperExamCard(
-                paper = paper,
-                isActive = paper.id == currentPaperEntityId,
-                isSelectionMode = isSelectionMode,
-                isSelected = paper.id in selectedPaperIds,
-                onToggleSelect = { onToggleSelect(paper.id) },
-                isCompleted = isCompleted,
-                isInProgress = isInProgress,
-                attemptScore = lastScore,
-                detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
-                onOpenMaster = { onOpenMaster(paper) },
-                onTakeTest = { onTakeTest(paper) },
-                onAssignFolder = { onAssignFolder(paper) },
-                onChangeCategory = { cat -> onChangeCategory(paper, cat) },
-                onExport = { onExportPaper(paper) },
-                onDelete = { onDeletePaper(paper) }
-            )
+                PaperExamCard(
+                    paper = paper,
+                    isActive = paper.id == currentPaperEntityId,
+                    isSelectionMode = isSelectionMode,
+                    isSelected = paper.id in selectedPaperIds,
+                    onToggleSelect = { onToggleSelect(paper.id) },
+                    isCompleted = isCompleted,
+                    isInProgress = isInProgress,
+                    attemptScore = lastScore,
+                    detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
+                    onOpenMaster = { onOpenMaster(paper) },
+                    onTakeTest = { onTakeTest(paper) },
+                    onAssignFolder = { onAssignFolder(paper) },
+                    onChangeCategory = { cat -> onChangeCategory(paper, cat) },
+                    onExport = { onExportPaper(paper) },
+                    onDelete = { onDeletePaper(paper) }
+                )
+            }
         }
     }
 
@@ -1481,7 +1610,8 @@ fun LazyListScope.renderRootExaminationLibrary(
                         text = if (searchQuery.isNotBlank()) "No matching examinations found" else "No Examination Folders Yet",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -1497,7 +1627,8 @@ fun LazyListScope.renderRootExaminationLibrary(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
-                        )
+                        ),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -1537,7 +1668,9 @@ fun LazyListScope.renderFolderDetailContents(
     onBatchExport: () -> Unit,
     onBatchMove: () -> Unit,
     onSelectAll: () -> Unit,
-    hideEmptyState: Boolean = false
+    hideEmptyState: Boolean = false,
+    columnsCount: Int = 1,
+    showQuickJumpButton: Boolean = true
 ) {
     // Modern Breadcrumb Navigation Bar
     item(key = "folder_breadcrumbs") {
@@ -1564,10 +1697,12 @@ fun LazyListScope.renderFolderDetailContents(
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = Color.Transparent,
-                        modifier = Modifier.clickable { onNavigateToFolder("all") }
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .clickable { onNavigateToFolder("all") }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -1598,10 +1733,12 @@ fun LazyListScope.renderFolderDetailContents(
                             shape = RoundedCornerShape(6.dp),
                             color = if (isLast) crumbColor.copy(alpha = 0.15f) else Color.Transparent,
                             border = if (isLast) BorderStroke(0.8.dp, crumbColor) else null,
-                            modifier = Modifier.clickable { onNavigateToFolder(crumb.id) }
+                            modifier = Modifier
+                                .heightIn(min = 40.dp)
+                                .clickable { onNavigateToFolder(crumb.id) }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -1621,29 +1758,33 @@ fun LazyListScope.renderFolderDetailContents(
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (showQuickJumpDialog) colors.teal.copy(alpha = 0.18f) else colors.surface,
-                    border = BorderStroke(0.7.dp, if (showQuickJumpDialog) colors.teal else colors.border),
-                    modifier = Modifier.clickable { onShowQuickJump() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                if (showQuickJumpButton) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (showQuickJumpDialog) colors.teal.copy(alpha = 0.18f) else colors.surface,
+                        border = BorderStroke(0.7.dp, if (showQuickJumpDialog) colors.teal else colors.border),
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .clickable { onShowQuickJump() }
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Layers,
-                            contentDescription = "Quick Jump Folder Tree",
-                            tint = colors.teal,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Tree",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.teal
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "Quick Jump Folder Tree",
+                                tint = colors.teal,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Tree",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.teal
+                            )
+                        }
                     }
                 }
             }
@@ -1675,44 +1816,106 @@ fun LazyListScope.renderFolderDetailContents(
         }
     }
 
-    // 1. Immediate Subfolders (Compact List Rows with O(1) counts)
+    // 1. Immediate Subfolders (Compact List Rows / Grid with O(1) counts)
     if (visibleSubfolders.isNotEmpty()) {
-        items(visibleSubfolders, key = { "sub_${it.id}" }) { sub ->
-            val subTotalCount = libraryIndex.folderTotalCounts[sub.id] ?: 0
-            val subCompletedCount = libraryIndex.folderCompletedCounts[sub.id] ?: 0
-            SubfolderCompactRow(
-                subfolder = sub,
-                totalSets = subTotalCount,
-                completedSets = subCompletedCount,
-                onClick = { onNavigateToFolder(sub.id) }
-            )
+        if (columnsCount > 1) {
+            items(visibleSubfolders.chunked(columnsCount), key = { row -> "sub_row_" + row.joinToString("_") { it.id } }) { rowSubs ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    rowSubs.forEach { sub ->
+                        val subTotalCount = libraryIndex.folderTotalCounts[sub.id] ?: 0
+                        val subCompletedCount = libraryIndex.folderCompletedCounts[sub.id] ?: 0
+                        Box(modifier = Modifier.weight(1f)) {
+                            SubfolderCompactRow(
+                                subfolder = sub,
+                                totalSets = subTotalCount,
+                                completedSets = subCompletedCount,
+                                onClick = { onNavigateToFolder(sub.id) }
+                            )
+                        }
+                    }
+                    repeat(columnsCount - rowSubs.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        } else {
+            items(visibleSubfolders, key = { "sub_${it.id}" }) { sub ->
+                val subTotalCount = libraryIndex.folderTotalCounts[sub.id] ?: 0
+                val subCompletedCount = libraryIndex.folderCompletedCounts[sub.id] ?: 0
+                SubfolderCompactRow(
+                    subfolder = sub,
+                    totalSets = subTotalCount,
+                    completedSets = subCompletedCount,
+                    onClick = { onNavigateToFolder(sub.id) }
+                )
+            }
         }
     }
 
     // 2. Direct Test Sets Contained in This Folder
     if (sortedFilteredPapers.isNotEmpty()) {
-        items(sortedFilteredPapers, key = { "paper_${it.id}" }) { paper ->
-            val isCompleted = paper.id in libraryIndex.completedPaperIds
-            val isInProgress = paper.id in libraryIndex.inProgressPaperIds
-            val lastScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score
+        if (columnsCount > 1) {
+            items(sortedFilteredPapers.chunked(columnsCount), key = { row -> "paper_row_" + row.joinToString("_") { it.id.toString() } }) { rowPapers ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowPapers.forEach { paper ->
+                        val isCompleted = paper.id in libraryIndex.completedPaperIds
+                        val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                        val lastScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score
+                        Box(modifier = Modifier.weight(1f)) {
+                            PaperExamCard(
+                                paper = paper,
+                                isActive = paper.id == currentPaperEntityId,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = paper.id in selectedPaperIds,
+                                onToggleSelect = { onToggleSelect(paper.id) },
+                                isCompleted = isCompleted,
+                                isInProgress = isInProgress,
+                                attemptScore = lastScore,
+                                detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
+                                onOpenMaster = { onOpenMaster(paper) },
+                                onTakeTest = { onTakeTest(paper) },
+                                onAssignFolder = { onAssignFolder(paper) },
+                                onChangeCategory = { cat -> onChangeCategory(paper, cat) },
+                                onExport = { onExportPaper(paper) },
+                                onDelete = { onDeletePaper(paper) }
+                            )
+                        }
+                    }
+                    repeat(columnsCount - rowPapers.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        } else {
+            items(sortedFilteredPapers, key = { "paper_${it.id}" }) { paper ->
+                val isCompleted = paper.id in libraryIndex.completedPaperIds
+                val isInProgress = paper.id in libraryIndex.inProgressPaperIds
+                val lastScore = libraryIndex.latestSubmittedAttemptByPaperId[paper.id]?.score
 
-            PaperExamCard(
-                paper = paper,
-                isActive = paper.id == currentPaperEntityId,
-                isSelectionMode = isSelectionMode,
-                isSelected = paper.id in selectedPaperIds,
-                onToggleSelect = { onToggleSelect(paper.id) },
-                isCompleted = isCompleted,
-                isInProgress = isInProgress,
-                attemptScore = lastScore,
-                detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
-                onOpenMaster = { onOpenMaster(paper) },
-                onTakeTest = { onTakeTest(paper) },
-                onAssignFolder = { onAssignFolder(paper) },
-                onChangeCategory = { cat -> onChangeCategory(paper, cat) },
-                onExport = { onExportPaper(paper) },
-                onDelete = { onDeletePaper(paper) }
-            )
+                PaperExamCard(
+                    paper = paper,
+                    isActive = paper.id == currentPaperEntityId,
+                    isSelectionMode = isSelectionMode,
+                    isSelected = paper.id in selectedPaperIds,
+                    onToggleSelect = { onToggleSelect(paper.id) },
+                    isCompleted = isCompleted,
+                    isInProgress = isInProgress,
+                    attemptScore = lastScore,
+                    detectedLanguages = libraryIndex.paperLanguagesById[paper.id],
+                    onOpenMaster = { onOpenMaster(paper) },
+                    onTakeTest = { onTakeTest(paper) },
+                    onAssignFolder = { onAssignFolder(paper) },
+                    onChangeCategory = { cat -> onChangeCategory(paper, cat) },
+                    onExport = { onExportPaper(paper) },
+                    onDelete = { onDeletePaper(paper) }
+                )
+            }
         }
     }
 
@@ -1746,7 +1949,8 @@ fun LazyListScope.renderFolderDetailContents(
                         text = "This folder has no tests or sub-folders yet",
                         fontSize = 14.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.inkBold
+                        color = colors.inkBold,
+                        textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -1765,7 +1969,8 @@ fun LazyListScope.renderFolderDetailContents(
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colors.surfaceVariant,
                                 contentColor = colors.inkBold
-                            )
+                            ),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -1777,7 +1982,8 @@ fun LazyListScope.renderFolderDetailContents(
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colors.primaryButtonBg,
                                 contentColor = colors.primaryButtonText
-                            )
+                            ),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))

@@ -1279,7 +1279,7 @@ private fun StudyTodoCard(
                         border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.6f)),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .heightIn(min = 38.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("todo_focus_${item.id}")
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, tint = colors.teal, modifier = Modifier.size(15.dp))
@@ -1288,9 +1288,43 @@ private fun StudyTodoCard(
                     }
                 }
 
+                var showDeleteConfirm by remember { mutableStateOf(false) }
+                if (showDeleteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirm = false },
+                        containerColor = colors.surface,
+                        titleContentColor = colors.inkBold,
+                        textContentColor = colors.ink,
+                        title = { Text("Delete Study Task?", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text("Remove \"${item.title}\" from your Study Planner?")
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showDeleteConfirm = false
+                                    onDelete()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                                modifier = Modifier.heightIn(min = 48.dp)
+                            ) {
+                                Text("Delete", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showDeleteConfirm = false },
+                                modifier = Modifier.heightIn(min = 48.dp)
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+
                 IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(40.dp)
+                    onClick = { showDeleteConfirm = true },
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,

@@ -20,6 +20,9 @@ import com.example.model.BackupCounts
 import com.example.model.BackupManifest
 import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
+import com.example.model.PromptPreset
+import com.example.model.PromptPresetMode
+import com.example.model.PromptPresetsImportSummary
 import com.example.model.RestoreMode
 import com.example.model.RestorePreview
 import com.example.model.SrsRating
@@ -121,6 +124,16 @@ object VaultArchiveEngine {
         val vocabDecks = appPrefs.getVocabularyDecks()
         val vocabWordsCount = vocabDecks.sumOf { it.entries.size }
         val promptPresets = appPrefs.getPromptPresets()
+        val countdowns = appPrefs.getExamCountdowns()
+        val todos = appPrefs.getStudyTodos()
+        val draftsCount = listOfNotNull(
+            appPrefs.getQuestionPromptDraft(),
+            appPrefs.getKnowledgePromptDraft(),
+            appPrefs.getFlashcardPromptDraft(),
+            appPrefs.getVocabularyPromptDraft()
+        ).size
+        val hasBrainLabData = appPrefs.getBrainLabStatsRawJson().isNotBlank() ||
+            appPrefs.getBrainLabSettingsRawJson().isNotBlank()
         val noteUidById = notes.associate { it.id to it.syncUid }
 
         val checksums = linkedMapOf<String, String>()
@@ -133,7 +146,12 @@ object VaultArchiveEngine {
             analyticsDaysCount = analytics.size,
             vocabDecksCount = vocabDecks.size,
             vocabWordsCount = vocabWordsCount,
-            promptPresetsCount = promptPresets.size
+            promptPresetsCount = promptPresets.size,
+            countdownsCount = countdowns.size,
+            todosCount = todos.size,
+            draftsCount = draftsCount,
+            hasBrainLabData = hasBrainLabData,
+            hasAppSettings = true
         )
 
         ZipOutputStream(BufferedOutputStream(FileOutputStream(destinationFile))).use { zos ->
@@ -183,7 +201,7 @@ object VaultArchiveEngine {
 
             // 8. Manifest (always written last with entry checksums)
             val manifest = BackupManifest(
-                schemaVersion = 4,
+                schemaVersion = 5,
                 appVersion = "1.0",
                 createdAt = createdAt,
                 deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
@@ -302,44 +320,74 @@ object VaultArchiveEngine {
                 "Warning: $mismatchCount archive entry checksum mismatch(es) detected!"
             }
 
-            // Backfill vocabulary & preset counts when inspecting legacy v3 vaults without those fields in manifest
-            val enrichedCounts = if (manifest.counts.vocabDecksCount == 0 && manifest.counts.promptPresetsCount == 0) {
-                val vocabEntry = zip.getEntry(ENTRY_VOCABULARY)
-                val prefsEntry = zip.getEntry(ENTRY_PREFERENCES)
-                var detectedDecks = manifest.counts.vocabDecksCount
-                var detectedWords = manifest.counts.vocabWordsCount
-                var detectedPresets = manifest.counts.promptPresetsCount
-                if (vocabEntry != null) {
-                    runCatching {
-                        val vObj = JSONObject(readZipEntryTextBounded(zip, vocabEntry))
-                        val decks = VocabularyDeck.deserializeList(vObj.optString("vocabularyDecksJson", ""))
+            // Backfill counts for legacy v3/v4 vaults or partial manifests
+            val vocabEntry = zip.getEntry(ENTRY_VOCABULARY)
+            val prefsEntry = zip.getEntry(ENTRY_PREFERENCES)
+            var detectedDecks = manifest.counts.vocabDecksCount
+            var detectedWords = manifest.counts.vocabWordsCount
+            var detectedPresets = manifest.counts.promptPresetsCount
+            var detectedCountdowns = manifest.counts.countdownsCount
+            var detectedTodos = manifest.counts.todosCount
+            var detectedDrafts = manifest.counts.draftsCount
+            var detectedBrainLab = manifest.counts.hasBrainLabData
+            var detectedAppSettings = manifest.counts.hasAppSettings
+
+            if (vocabEntry != null && detectedDecks == 0) {
+                runCatching {
+                    val vObj = JSONObject(readZipEntryTextBounded(zip, vocabEntry))
+                    val decks = VocabularyDeck.deserializeList(vObj.optString("vocabularyDecksJson", ""))
+                    detectedDecks = decks.size
+                    detectedWords = decks.sumOf { it.entries.size }
+                }
+            }
+            if (prefsEntry != null) {
+                runCatching {
+                    val pObj = JSONObject(readZipEntryTextBounded(zip, prefsEntry))
+                    detectedAppSettings = true
+                    if (detectedDecks == 0) {
+                        val decks = VocabularyDeck.deserializeList(pObj.optString("vocabularyDecksJson", ""))
                         detectedDecks = decks.size
                         detectedWords = decks.sumOf { it.entries.size }
                     }
-                }
-                if (prefsEntry != null) {
-                    runCatching {
-                        val pObj = JSONObject(readZipEntryTextBounded(zip, prefsEntry))
-                        if (detectedDecks == 0) {
-                            val decks = VocabularyDeck.deserializeList(pObj.optString("vocabularyDecksJson", ""))
-                            detectedDecks = decks.size
-                            detectedWords = decks.sumOf { it.entries.size }
-                        }
-                        if (detectedPresets == 0) {
-                            detectedPresets = com.example.model.PromptPreset.deserializeList(
-                                pObj.optString("promptPresetsJson", "")
-                            ).size
-                        }
+                    if (detectedPresets == 0) {
+                        detectedPresets = PromptPreset.deserializeList(
+                            pObj.optString("promptPresetsJson", "")
+                        ).size
+                    }
+                    if (detectedCountdowns == 0) {
+                        detectedCountdowns = com.example.model.ExamCountdownTarget.deserializeList(
+                            pObj.optString("examCountdownsJson", "")
+                        ).size
+                    }
+                    if (detectedTodos == 0) {
+                        detectedTodos = com.example.model.StudyTodoItem.deserializeList(
+                            pObj.optString("studyTodosJson", "")
+                        ).size
+                    }
+                    if (detectedDrafts == 0) {
+                        detectedDrafts = listOf(
+                            "questionPromptDraft",
+                            "knowledgePromptDraft",
+                            "flashcardPromptDraft",
+                            "vocabularyPromptDraft"
+                        ).count { pObj.optString(it, "").isNotBlank() }
+                    }
+                    if (!detectedBrainLab) {
+                        detectedBrainLab = pObj.optString("brainLabStatsJson", "").isNotBlank() ||
+                            pObj.optString("brainLabSettingsJson", "").isNotBlank()
                     }
                 }
-                manifest.counts.copy(
-                    vocabDecksCount = detectedDecks,
-                    vocabWordsCount = detectedWords,
-                    promptPresetsCount = detectedPresets
-                )
-            } else {
-                manifest.counts
             }
+            val enrichedCounts = manifest.counts.copy(
+                vocabDecksCount = detectedDecks,
+                vocabWordsCount = detectedWords,
+                promptPresetsCount = detectedPresets,
+                countdownsCount = detectedCountdowns,
+                todosCount = detectedTodos,
+                draftsCount = detectedDrafts,
+                hasBrainLabData = detectedBrainLab,
+                hasAppSettings = detectedAppSettings
+            )
 
             return RestorePreview(
                 sourceLabel = sourceLabel,
@@ -358,7 +406,8 @@ object VaultArchiveEngine {
         appPrefs: ExamSetPreferences,
         themePrefs: ThemePreferences,
         preview: RestorePreview,
-        mode: RestoreMode
+        mode: RestoreMode,
+        mergeAppSettings: Boolean = true
     ): BackupCounts {
         if (preview.isLegacyJson) {
             val rawJson = preview.legacyJsonContent ?: preview.tempFile?.readText(Charsets.UTF_8)
@@ -477,13 +526,14 @@ object VaultArchiveEngine {
             val paperDao = db.paperDao()
             val noteDao = db.studyNoteDao()
 
-            // Restore folders first
+            // Restore folders first (newest-wins updatedAt merge on Smart Merge)
             val mergedFolders = if (mode == RestoreMode.FULL_REPLACE) {
                 folders
             } else {
                 val current = appPrefs.getCustomFolders().associateBy { it.id }.toMutableMap()
                 folders.forEach { incoming ->
-                    if (!current.containsKey(incoming.id)) {
+                    val existing = current[incoming.id]
+                    if (existing == null || incoming.updatedAt > existing.updatedAt) {
                         current[incoming.id] = incoming
                     }
                 }
@@ -584,17 +634,20 @@ object VaultArchiveEngine {
                     appPrefs = appPrefs,
                     themePrefs = themePrefs,
                     overwriteAll = overwriteAll,
+                    mergeAppSettings = mergeAppSettings,
                     restoredNoteIdByUid = restoredNoteIdByUid,
                     paperIdMap = paperIdMap,
                     skipVocabularyIfDedicatedEntry = vocabObj != null
                 )
             }
             if (vocabObj != null) {
-                applyVocabularyArchiveJson(vocabObj, appPrefs, overwriteAll)
+                applyVocabularyArchiveJson(vocabObj, appPrefs, overwriteAll, mergeAppSettings)
             }
 
             val currentDecks = appPrefs.getVocabularyDecks()
             val currentPresets = appPrefs.getPromptPresets()
+            val currentCountdowns = appPrefs.getExamCountdowns()
+            val currentTodos = appPrefs.getStudyTodos()
             return BackupCounts(
                 papersCount = papers.size,
                 notesCount = notes.size,
@@ -603,7 +656,12 @@ object VaultArchiveEngine {
                 analyticsDaysCount = analytics.size,
                 vocabDecksCount = preview.manifest.counts.vocabDecksCount.takeIf { it > 0 } ?: currentDecks.size,
                 vocabWordsCount = preview.manifest.counts.vocabWordsCount.takeIf { it > 0 } ?: currentDecks.sumOf { it.entries.size },
-                promptPresetsCount = preview.manifest.counts.promptPresetsCount.takeIf { it > 0 } ?: currentPresets.size
+                promptPresetsCount = preview.manifest.counts.promptPresetsCount.takeIf { it > 0 } ?: currentPresets.size,
+                countdownsCount = preview.manifest.counts.countdownsCount.takeIf { it > 0 } ?: currentCountdowns.size,
+                todosCount = preview.manifest.counts.todosCount.takeIf { it > 0 } ?: currentTodos.size,
+                draftsCount = preview.manifest.counts.draftsCount,
+                hasBrainLabData = preview.manifest.counts.hasBrainLabData,
+                hasAppSettings = preview.manifest.counts.hasAppSettings || prefsObj != null
             )
         }
     }
@@ -739,6 +797,11 @@ object VaultArchiveEngine {
                 put("vocabDecksCount", m.counts.vocabDecksCount)
                 put("vocabWordsCount", m.counts.vocabWordsCount)
                 put("promptPresetsCount", m.counts.promptPresetsCount)
+                put("countdownsCount", m.counts.countdownsCount)
+                put("todosCount", m.counts.todosCount)
+                put("draftsCount", m.counts.draftsCount)
+                put("hasBrainLabData", m.counts.hasBrainLabData)
+                put("hasAppSettings", m.counts.hasAppSettings)
             })
             val cs = JSONObject()
             m.entryChecksumsSha256.forEach { (k, v) -> cs.put(k, v) }
@@ -765,7 +828,12 @@ object VaultArchiveEngine {
                 analyticsDaysCount = c.optInt("analyticsDaysCount", 0),
                 vocabDecksCount = c.optInt("vocabDecksCount", 0),
                 vocabWordsCount = c.optInt("vocabWordsCount", 0),
-                promptPresetsCount = c.optInt("promptPresetsCount", 0)
+                promptPresetsCount = c.optInt("promptPresetsCount", 0),
+                countdownsCount = c.optInt("countdownsCount", 0),
+                todosCount = c.optInt("todosCount", 0),
+                draftsCount = c.optInt("draftsCount", 0),
+                hasBrainLabData = c.optBoolean("hasBrainLabData", false),
+                hasAppSettings = c.optBoolean("hasAppSettings", false)
             ),
             entryChecksumsSha256 = checksums
         )
@@ -780,6 +848,7 @@ object VaultArchiveEngine {
                 put("color", f.color)
                 if (f.parentId != null) put("parentId", f.parentId) else put("parentId", JSONObject.NULL)
                 put("createdAt", f.createdAt)
+                put("updatedAt", f.updatedAt)
             })
         }
         return arr.toString()
@@ -790,13 +859,15 @@ object VaultArchiveEngine {
         return buildList {
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
+                val createdAt = o.optLong("createdAt", System.currentTimeMillis())
                 add(
                     FolderItem(
                         id = o.optString("id"),
                         name = o.optString("name"),
                         color = o.optString("color", "#0284C7"),
                         parentId = if (o.has("parentId") && !o.isNull("parentId")) o.optString("parentId").ifBlank { null } else null,
-                        createdAt = o.optLong("createdAt", System.currentTimeMillis())
+                        createdAt = createdAt,
+                        updatedAt = o.optLong("updatedAt", createdAt)
                     )
                 )
             }
@@ -970,13 +1041,14 @@ object VaultArchiveEngine {
         decks: List<VocabularyDeck>
     ): String {
         return JSONObject().apply {
-            put("schemaVersion", 1)
+            put("schemaVersion", 2)
             put("vocabDecksCount", decks.size)
             put("vocabWordsCount", decks.sumOf { it.entries.size })
             put("vocabularyDecksJson", VocabularyDeck.serializeList(decks))
             put("vocabularySrsJson", appPrefs.getVocabularySrsRawJson())
             put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
             put("languageWordOfTheDayStatesJson", appPrefs.getLanguageWordOfTheDayStatesJson() ?: "{}")
+            appPrefs.getWordOfTheDayCacheJson()?.let { put("wordOfTheDayCacheJson", it) }
             put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
             put("headwordInboxJson", appPrefs.getHeadwordInboxRawJson())
             put("dismissedWordKeysJson", appPrefs.getDismissedWordKeysRawJson())
@@ -986,9 +1058,10 @@ object VaultArchiveEngine {
     private fun applyVocabularyArchiveJson(
         obj: JSONObject,
         appPrefs: ExamSetPreferences,
-        overwriteAll: Boolean
+        overwriteAll: Boolean,
+        mergeAppSettings: Boolean = true
     ) {
-        applyVocabularyFields(obj, appPrefs, overwriteAll)
+        applyVocabularyFields(obj, appPrefs, overwriteAll, mergeAppSettings)
     }
 
     private fun serializePreferencesJson(
@@ -1023,10 +1096,14 @@ object VaultArchiveEngine {
         return JSONObject().apply {
             put("dailyGoalMinutes", appPrefs.getDailyGoalMinutes())
             put("fontScaleMode", appPrefs.getFontScaleMode().name)
+            put("fontSizeScale", appPrefs.getFontSizeScale().toDouble())
             put("shuffleOptions", appPrefs.getShuffleOptions())
+            put("lastActiveFolderId", appPrefs.getLastActiveFolderId())
             put("themeMode", themePrefs.getThemeMode().name)
             put("colorSchemePreset", themePrefs.getColorSchemePreset().name)
             put("promptPresetsJson", appPrefs.getPromptPresetsRawJson())
+            put("activePromptPresetIdsJson", appPrefs.getActivePromptPresetIdsRawJson())
+            put("dismissedFormatTipsJson", appPrefs.getDismissedFormatTipsRawJson())
             appPrefs.getQuestionPromptDraft()?.let { put("questionPromptDraft", it.toJson().toString()) }
             appPrefs.getKnowledgePromptDraft()?.let { put("knowledgePromptDraft", it.toJson().toString()) }
             appPrefs.getFlashcardPromptDraft()?.let { put("flashcardPromptDraft", it.toJson().toString()) }
@@ -1037,6 +1114,7 @@ object VaultArchiveEngine {
             put("vocabularySrsJson", appPrefs.getVocabularySrsRawJson())
             put("preferredEnglishVariant", appPrefs.getPreferredEnglishVariant())
             put("languageWordOfTheDayStatesJson", appPrefs.getLanguageWordOfTheDayStatesJson() ?: "{}")
+            appPrefs.getWordOfTheDayCacheJson()?.let { put("wordOfTheDayCacheJson", it) }
             put("vocabReminderEnabled", appPrefs.isVocabularyReminderEnabled())
             put("headwordInboxJson", appPrefs.getHeadwordInboxRawJson())
             put("dismissedWordKeysJson", appPrefs.getDismissedWordKeysRawJson())
@@ -1058,224 +1136,432 @@ object VaultArchiveEngine {
         appPrefs: ExamSetPreferences,
         themePrefs: ThemePreferences,
         overwriteAll: Boolean,
+        mergeAppSettings: Boolean = true,
         restoredNoteIdByUid: Map<String, Long> = emptyMap(),
         paperIdMap: Map<Long, Long> = emptyMap(),
         skipVocabularyIfDedicatedEntry: Boolean = false
     ) {
-        if (overwriteAll || appPrefs.getDailyGoalMinutes() == 30) {
+        val syncSettings = overwriteAll || mergeAppSettings
+
+        if (syncSettings && obj.has("dailyGoalMinutes")) {
             appPrefs.setDailyGoalMinutes(obj.optInt("dailyGoalMinutes", 30))
         }
-        if (overwriteAll) {
-            appPrefs.setFontScaleMode(AppFontScaleMode.fromString(obj.optString("fontScaleMode")))
-            appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
-            themePrefs.setThemeMode(ThemeMode.fromString(obj.optString("themeMode")))
-            themePrefs.setColorSchemePreset(ColorSchemePreset.fromString(obj.optString("colorSchemePreset")))
-                obj.optString("questionPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
-                    runCatching {
-                        appPrefs.saveQuestionPromptDraft(com.example.model.QuestionPromptConfig.fromJson(JSONObject(raw)))
-                    }
-                }
-                obj.optString("knowledgePromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
-                    runCatching {
-                        appPrefs.saveKnowledgePromptDraft(com.example.model.KnowledgePromptConfig.fromJson(JSONObject(raw)))
-                    }
-                }
-                obj.optString("flashcardPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
-                    runCatching {
-                        appPrefs.saveFlashcardPromptDraft(com.example.model.FlashcardPromptConfig.fromJson(JSONObject(raw)))
-                    }
-                }
-                obj.optString("vocabularyPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
-                    runCatching {
-                        appPrefs.saveVocabularyPromptDraft(com.example.model.VocabularyPromptConfig.fromJson(JSONObject(raw)))
-                    }
+        if (syncSettings) {
+            obj.optString("fontScaleMode", "").takeIf { it.isNotBlank() }?.let {
+                appPrefs.setFontScaleMode(AppFontScaleMode.fromString(it))
+            }
+            if (obj.has("fontSizeScale")) {
+                val scale = obj.optDouble("fontSizeScale", -1.0)
+                if (scale in 0.85..1.6) {
+                    appPrefs.setFontSizeScale(scale.toFloat())
                 }
             }
-            val incomingPresetsRaw = obj.optString("promptPresetsJson", "")
-            if (incomingPresetsRaw.isNotBlank()) {
-                val incomingPresets = com.example.model.PromptPreset.deserializeList(incomingPresetsRaw)
-                if (overwriteAll) {
-                    appPrefs.savePromptPresets(incomingPresets)
-                } else if (incomingPresets.isNotEmpty()) {
-                    val existing = appPrefs.getPromptPresets().associateBy { it.id }.toMutableMap()
-                    incomingPresets.forEach { preset ->
-                        if (!existing.containsKey(preset.id)) {
-                            existing[preset.id] = preset
-                        }
-                    }
-                    appPrefs.savePromptPresets(existing.values.toList())
-                }
+            if (obj.has("shuffleOptions")) {
+                appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))
             }
-
-            // Restore Knowledge Set Flashcard SM-2 SRS mapped by syncUid -> local Room noteId
-            if (overwriteAll) {
-                appPrefs.getAllFlashcardSrsMaps().keys.forEach { oldNoteId ->
-                    appPrefs.clearFlashcardSrsMap(oldNoteId)
-                }
+            obj.optString("themeMode", "").takeIf { it.isNotBlank() }?.let {
+                themePrefs.setThemeMode(ThemeMode.fromString(it))
             }
-            val srsByUidObj = obj.optJSONObject("flashcardSrsByNoteUid")
-            if (srsByUidObj != null && restoredNoteIdByUid.isNotEmpty()) {
-                val keys = srsByUidObj.keys()
-                while (keys.hasNext()) {
-                    val uid = keys.next()
-                    val targetNoteId = restoredNoteIdByUid[uid] ?: continue
-                    val arr = srsByUidObj.optJSONArray(uid) ?: continue
-                    val incomingMap = mutableMapOf<Int, FlashcardSrsState>()
-                    for (i in 0 until arr.length()) {
-                        val stObj = arr.optJSONObject(i) ?: continue
-                        val idx = stObj.optInt("blockIndex", -1)
-                        if (idx < 0) continue
-                        val ratingName = stObj.optString("lastRating", "")
-                        val rating = runCatching {
-                            if (ratingName.isNotBlank()) SrsRating.valueOf(ratingName) else null
-                        }.getOrNull()
-                        incomingMap[idx] = FlashcardSrsState(
-                            blockIndex = idx,
-                            repetitions = stObj.optInt("repetitions", 0),
-                            easeFactor = stObj.optDouble("easeFactor", 2.5).toFloat().coerceIn(1.3f, 3.0f),
-                            intervalDays = stObj.optInt("intervalDays", 0),
-                            dueAtMillis = stObj.optLong("dueAtMillis", 0L),
-                            lastReviewedAtMillis = stObj.optLong("lastReviewedAtMillis", 0L),
-                            lapses = stObj.optInt("lapses", 0),
-                            lastRating = rating,
-                            reviewCount = stObj.optInt("reviewCount", 0),
-                            correctCount = stObj.optInt("correctCount", 0)
-                        )
-                    }
-                    if (incomingMap.isNotEmpty()) {
-                        if (overwriteAll) {
-                            appPrefs.saveFlashcardSrsMap(targetNoteId, incomingMap)
-                        } else {
-                            val existingMap = appPrefs.getFlashcardSrsMap(targetNoteId).toMutableMap()
-                            incomingMap.forEach { (idx, incomingSt) ->
-                                val curSt = existingMap[idx]
-                                if (curSt == null || isIncomingSrsNewer(curSt, incomingSt)) {
-                                    existingMap[idx] = incomingSt
-                                }
-                            }
-                            appPrefs.saveFlashcardSrsMap(targetNoteId, existingMap)
-                        }
-                    }
-                }
+            obj.optString("colorSchemePreset", "").takeIf { it.isNotBlank() }?.let {
+                themePrefs.setColorSchemePreset(ColorSchemePreset.fromString(it))
             }
-
-            if (!skipVocabularyIfDedicatedEntry) {
-                applyVocabularyFields(obj, appPrefs, overwriteAll)
-            }
-
-            // Restore Exam Countdowns & Study Planner To-Dos
-            val incomingCountdownsRaw = obj.optString("examCountdownsJson", "")
-            if (incomingCountdownsRaw.isNotBlank()) {
-                val incomingCountdowns = com.example.model.ExamCountdownTarget.deserializeList(incomingCountdownsRaw)
-                if (overwriteAll) {
-                    appPrefs.saveExamCountdowns(incomingCountdowns)
-                } else if (incomingCountdowns.isNotEmpty()) {
-                    val merged = appPrefs.getExamCountdowns().associateBy { it.id }.toMutableMap()
-                    incomingCountdowns.forEach { target ->
-                        if (!merged.containsKey(target.id)) {
-                            merged[target.id] = target
-                        }
-                    }
-                    appPrefs.saveExamCountdowns(merged.values.sortedBy { it.targetDateStr })
-                }
-            }
-
-            val incomingTodosRaw = obj.optString("studyTodosJson", "")
-            if (incomingTodosRaw.isNotBlank()) {
-                val incomingTodos = com.example.model.StudyTodoItem.deserializeList(incomingTodosRaw)
-                if (overwriteAll) {
-                    appPrefs.saveStudyTodos(incomingTodos)
-                } else if (incomingTodos.isNotEmpty()) {
-                    val merged = appPrefs.getStudyTodos().associateBy { it.id }.toMutableMap()
-                    incomingTodos.forEach { todo ->
-                        val existing = merged[todo.id]
-                        if (existing == null || (todo.isCompleted && !existing.isCompleted) || todo.completedPomodoros > existing.completedPomodoros) {
-                            merged[todo.id] = todo
-                        }
-                    }
-                    appPrefs.saveStudyTodos(merged.values.sortedByDescending { it.createdAt })
-                }
-            }
-
-            if (overwriteAll) {
-                obj.optString("pomodoroPreset", "").takeIf { it.isNotBlank() }?.let {
-                    appPrefs.setPomodoroPresetName(com.example.model.PomodoroPreset.fromString(it).name)
-                }
-                if (obj.has("pomodoroCustomFocusMinutes")) {
-                    appPrefs.setPomodoroCustomFocusMinutes(obj.optInt("pomodoroCustomFocusMinutes", 30))
-                }
-                if (obj.has("pomodoroCustomBreakMinutes")) {
-                    appPrefs.setPomodoroCustomBreakMinutes(obj.optInt("pomodoroCustomBreakMinutes", 5))
-                }
-                obj.optString("preferredDndMode", "").takeIf { it.isNotBlank() }?.let {
-                    appPrefs.setPreferredDndMode(com.example.model.PomodoroDndMode.fromString(it))
-                }
-                obj.optString("defaultMsqScoringPolicy", "").takeIf { it.isNotBlank() }?.let {
-                    appPrefs.setDefaultMsqScoringPolicy(com.example.model.MsqScoringPolicy.fromCode(it))
-                }
-            }
-
-            val incomingMsqPoliciesRaw = obj.optString("paperMsqPoliciesJson", "")
-            if (incomingMsqPoliciesRaw.isNotBlank()) {
+            obj.optString("questionPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
                 runCatching {
-                    val policyObj = JSONObject(incomingMsqPoliciesRaw)
-                    val targetMap = if (overwriteAll) {
-                        mutableMapOf()
-                    } else {
-                        appPrefs.getAllPaperMsqPolicies().toMutableMap()
-                    }
-                    policyObj.keys().forEach { oldKey ->
-                        val oldPaperId = oldKey.toLongOrNull() ?: return@forEach
-                        val newPaperId = paperIdMap[oldPaperId] ?: oldPaperId
-                        if (newPaperId > 0L) {
-                            val policy = com.example.model.MsqScoringPolicy.fromCode(policyObj.optString(oldKey))
-                            if (overwriteAll || !targetMap.containsKey(newPaperId)) {
-                                targetMap[newPaperId] = policy
-                            }
-                        }
-                    }
-                    appPrefs.savePaperMsqPolicies(targetMap)
+                    appPrefs.saveQuestionPromptDraft(com.example.model.QuestionPromptConfig.fromJson(JSONObject(raw)))
                 }
             }
-
-            val incomingBrainStatsRaw = obj.optString("brainLabStatsJson", "")
-            if (incomingBrainStatsRaw.isNotBlank()) {
+            obj.optString("knowledgePromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
                 runCatching {
-                    val incomingStats = com.example.model.BrainLabStats.fromJson(JSONObject(incomingBrainStatsRaw))
-                    if (overwriteAll) {
-                        appPrefs.saveBrainLabStats(incomingStats)
-                    } else {
-                        val merged = com.example.model.BrainLabStats.mergeForRestore(
-                            existing = appPrefs.getBrainLabStats(),
-                            incoming = incomingStats
-                        )
-                        appPrefs.saveBrainLabStats(merged)
+                    appPrefs.saveKnowledgePromptDraft(com.example.model.KnowledgePromptConfig.fromJson(JSONObject(raw)))
+                }
+            }
+            obj.optString("flashcardPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
+                runCatching {
+                    appPrefs.saveFlashcardPromptDraft(com.example.model.FlashcardPromptConfig.fromJson(JSONObject(raw)))
+                }
+            }
+            obj.optString("vocabularyPromptDraft", "").takeIf { it.isNotBlank() }?.let { raw ->
+                runCatching {
+                    appPrefs.saveVocabularyPromptDraft(com.example.model.VocabularyPromptConfig.fromJson(JSONObject(raw)))
+                }
+            }
+        }
+
+        val incomingPresetsRaw = obj.optString("promptPresetsJson", "")
+        if (incomingPresetsRaw.isNotBlank()) {
+            val incomingPresets = PromptPreset.deserializeList(incomingPresetsRaw)
+            if (overwriteAll) {
+                appPrefs.savePromptPresets(incomingPresets)
+            } else if (incomingPresets.isNotEmpty()) {
+                val existing = appPrefs.getPromptPresets().associateBy { it.id }.toMutableMap()
+                incomingPresets.forEach { preset ->
+                    val current = existing[preset.id]
+                    if (current == null || preset.updatedAt > current.updatedAt) {
+                        existing[preset.id] = preset
                     }
                 }
+                appPrefs.savePromptPresets(existing.values.toList())
+            }
+        }
+
+        // Restore active prompt preset selections per mode, validated against restored preset IDs
+        val validPresetIdsByMode = appPrefs.getPromptPresets().groupBy { it.mode }.mapValues { (_, list) ->
+            list.map { it.id }.toSet()
+        }
+        val activeIdsRaw = obj.optString("activePromptPresetIdsJson", "")
+        if (syncSettings && activeIdsRaw.isNotBlank()) {
+            appPrefs.saveActivePromptPresetIdsFromJson(activeIdsRaw, overwriteAll = overwriteAll || mergeAppSettings)
+        } else if (overwriteAll) {
+            PromptPresetMode.entries.forEach { appPrefs.setActivePromptPresetId(it, null) }
+        }
+        PromptPresetMode.entries.forEach { mode ->
+            val currentId = appPrefs.getActivePromptPresetId(mode)
+            if (!currentId.isNullOrBlank() && currentId !in validPresetIdsByMode[mode].orEmpty()) {
+                appPrefs.setActivePromptPresetId(mode, null)
+            }
+        }
+
+        // Restore dismissed format tips (replace in Clean Replace, union in Smart Merge)
+        val dismissedTipsRaw = obj.optString("dismissedFormatTipsJson", "")
+        if (dismissedTipsRaw.isNotBlank()) {
+            val incomingTips = runCatching {
+                val arr = JSONArray(dismissedTipsRaw)
+                (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }.toSet()
+            }.getOrDefault(emptySet())
+            if (overwriteAll) {
+                appPrefs.saveDismissedFormatTips(incomingTips)
+            } else if (syncSettings && incomingTips.isNotEmpty()) {
+                appPrefs.saveDismissedFormatTips(appPrefs.getDismissedFormatTips() + incomingTips)
+            }
+        } else if (overwriteAll) {
+            appPrefs.saveDismissedFormatTips(emptySet())
+        }
+
+        // Restore last active folder if valid
+        if (syncSettings) {
+            val incomingFolderId = obj.optString("lastActiveFolderId", "").trim()
+            if (incomingFolderId == "all" || appPrefs.getCustomFolders().any { it.id == incomingFolderId }) {
+                appPrefs.setLastActiveFolderId(incomingFolderId)
             } else if (overwriteAll) {
-                appPrefs.saveBrainLabStats(com.example.model.BrainLabStats())
+                appPrefs.setLastActiveFolderId("all")
             }
+        }
 
-            val incomingBrainSettingsRaw = obj.optString("brainLabSettingsJson", "")
-            if (overwriteAll && incomingBrainSettingsRaw.isNotBlank()) {
-                runCatching {
-                    appPrefs.saveBrainLabSettings(com.example.model.BrainLabSettings.fromJson(JSONObject(incomingBrainSettingsRaw)))
+        // Restore Knowledge Set Flashcard SM-2 SRS mapped by syncUid -> local Room noteId
+        if (overwriteAll) {
+            appPrefs.getAllFlashcardSrsMaps().keys.forEach { oldNoteId ->
+                appPrefs.clearFlashcardSrsMap(oldNoteId)
+            }
+        }
+        val srsByUidObj = obj.optJSONObject("flashcardSrsByNoteUid")
+        if (srsByUidObj != null && restoredNoteIdByUid.isNotEmpty()) {
+            val keys = srsByUidObj.keys()
+            while (keys.hasNext()) {
+                val uid = keys.next()
+                val targetNoteId = restoredNoteIdByUid[uid] ?: continue
+                val arr = srsByUidObj.optJSONArray(uid) ?: continue
+                val incomingMap = mutableMapOf<Int, FlashcardSrsState>()
+                for (i in 0 until arr.length()) {
+                    val stObj = arr.optJSONObject(i) ?: continue
+                    val idx = stObj.optInt("blockIndex", -1)
+                    if (idx < 0) continue
+                    val ratingName = stObj.optString("lastRating", "")
+                    val rating = runCatching {
+                        if (ratingName.isNotBlank()) SrsRating.valueOf(ratingName) else null
+                    }.getOrNull()
+                    incomingMap[idx] = FlashcardSrsState(
+                        blockIndex = idx,
+                        repetitions = stObj.optInt("repetitions", 0),
+                        easeFactor = stObj.optDouble("easeFactor", 2.5).toFloat().coerceIn(1.3f, 3.0f),
+                        intervalDays = stObj.optInt("intervalDays", 0),
+                        dueAtMillis = stObj.optLong("dueAtMillis", 0L),
+                        lastReviewedAtMillis = stObj.optLong("lastReviewedAtMillis", 0L),
+                        lapses = stObj.optInt("lapses", 0),
+                        lastRating = rating,
+                        reviewCount = stObj.optInt("reviewCount", 0),
+                        correctCount = stObj.optInt("correctCount", 0)
+                    )
+                }
+                if (incomingMap.isNotEmpty()) {
+                    if (overwriteAll) {
+                        appPrefs.saveFlashcardSrsMap(targetNoteId, incomingMap)
+                    } else {
+                        val existingMap = appPrefs.getFlashcardSrsMap(targetNoteId).toMutableMap()
+                        incomingMap.forEach { (idx, incomingSt) ->
+                            val curSt = existingMap[idx]
+                            if (curSt == null || isIncomingSrsNewer(curSt, incomingSt)) {
+                                existingMap[idx] = incomingSt
+                            }
+                        }
+                        appPrefs.saveFlashcardSrsMap(targetNoteId, existingMap)
+                    }
                 }
             }
+        }
+
+        if (!skipVocabularyIfDedicatedEntry) {
+            applyVocabularyFields(obj, appPrefs, overwriteAll, mergeAppSettings)
+        }
+
+        // Restore Exam Countdowns & Study Planner To-Dos (newest-wins updatedAt merge)
+        val incomingCountdownsRaw = obj.optString("examCountdownsJson", "")
+        if (incomingCountdownsRaw.isNotBlank()) {
+            val incomingCountdowns = com.example.model.ExamCountdownTarget.deserializeList(incomingCountdownsRaw)
+            if (overwriteAll) {
+                appPrefs.saveExamCountdowns(incomingCountdowns)
+            } else if (incomingCountdowns.isNotEmpty()) {
+                val merged = appPrefs.getExamCountdowns().associateBy { it.id }.toMutableMap()
+                incomingCountdowns.forEach { target ->
+                    val existing = merged[target.id]
+                    if (existing == null || target.updatedAt > existing.updatedAt) {
+                        merged[target.id] = target
+                    }
+                }
+                appPrefs.saveExamCountdowns(merged.values.sortedBy { it.targetDateStr })
+            }
+        }
+
+        val incomingTodosRaw = obj.optString("studyTodosJson", "")
+        if (incomingTodosRaw.isNotBlank()) {
+            val incomingTodos = com.example.model.StudyTodoItem.deserializeList(incomingTodosRaw)
+            if (overwriteAll) {
+                appPrefs.saveStudyTodos(incomingTodos)
+            } else if (incomingTodos.isNotEmpty()) {
+                val merged = appPrefs.getStudyTodos().associateBy { it.id }.toMutableMap()
+                incomingTodos.forEach { todo ->
+                    val existing = merged[todo.id]
+                    if (existing == null ||
+                        todo.updatedAt > existing.updatedAt ||
+                        (todo.isCompleted && !existing.isCompleted) ||
+                        todo.completedPomodoros > existing.completedPomodoros
+                    ) {
+                        merged[todo.id] = todo
+                    }
+                }
+                appPrefs.saveStudyTodos(merged.values.sortedByDescending { it.createdAt })
+            }
+        }
+
+        if (syncSettings) {
+            obj.optString("pomodoroPreset", "").takeIf { it.isNotBlank() }?.let {
+                appPrefs.setPomodoroPresetName(com.example.model.PomodoroPreset.fromString(it).name)
+            }
+            if (obj.has("pomodoroCustomFocusMinutes")) {
+                appPrefs.setPomodoroCustomFocusMinutes(obj.optInt("pomodoroCustomFocusMinutes", 30))
+            }
+            if (obj.has("pomodoroCustomBreakMinutes")) {
+                appPrefs.setPomodoroCustomBreakMinutes(obj.optInt("pomodoroCustomBreakMinutes", 5))
+            }
+            obj.optString("preferredDndMode", "").takeIf { it.isNotBlank() }?.let {
+                appPrefs.setPreferredDndMode(com.example.model.PomodoroDndMode.fromString(it))
+            }
+            obj.optString("defaultMsqScoringPolicy", "").takeIf { it.isNotBlank() }?.let {
+                appPrefs.setDefaultMsqScoringPolicy(com.example.model.MsqScoringPolicy.fromCode(it))
+            }
+        }
+
+        val incomingMsqPoliciesRaw = obj.optString("paperMsqPoliciesJson", "")
+        if (incomingMsqPoliciesRaw.isNotBlank()) {
+            runCatching {
+                val policyObj = JSONObject(incomingMsqPoliciesRaw)
+                val targetMap = if (overwriteAll) {
+                    mutableMapOf()
+                } else {
+                    appPrefs.getAllPaperMsqPolicies().toMutableMap()
+                }
+                policyObj.keys().forEach { oldKey ->
+                    val oldPaperId = oldKey.toLongOrNull() ?: return@forEach
+                    val newPaperId = paperIdMap[oldPaperId] ?: oldPaperId
+                    if (newPaperId > 0L) {
+                        val policy = com.example.model.MsqScoringPolicy.fromCode(policyObj.optString(oldKey))
+                        if (overwriteAll || !targetMap.containsKey(newPaperId)) {
+                            targetMap[newPaperId] = policy
+                        }
+                    }
+                }
+                appPrefs.savePaperMsqPolicies(targetMap)
+            }
+        }
+
+        val incomingBrainStatsRaw = obj.optString("brainLabStatsJson", "")
+        if (incomingBrainStatsRaw.isNotBlank()) {
+            runCatching {
+                val incomingStats = com.example.model.BrainLabStats.fromJson(JSONObject(incomingBrainStatsRaw))
+                if (overwriteAll) {
+                    appPrefs.saveBrainLabStats(incomingStats)
+                } else {
+                    val merged = com.example.model.BrainLabStats.mergeForRestore(
+                        existing = appPrefs.getBrainLabStats(),
+                        incoming = incomingStats
+                    )
+                    appPrefs.saveBrainLabStats(merged)
+                }
+            }
+        } else if (overwriteAll) {
+            appPrefs.saveBrainLabStats(com.example.model.BrainLabStats())
+        }
+
+        val incomingBrainSettingsRaw = obj.optString("brainLabSettingsJson", "")
+        if (syncSettings && incomingBrainSettingsRaw.isNotBlank()) {
+            runCatching {
+                appPrefs.saveBrainLabSettings(com.example.model.BrainLabSettings.fromJson(JSONObject(incomingBrainSettingsRaw)))
+            }
+        }
+    }
+
+    /**
+     * Exports all Prompt Presets, active preset selections per mode, and all 4 AI prompt builder drafts
+     * as a standalone shareable `.json` pack.
+     */
+    fun exportPromptPresetsPackJson(appPrefs: ExamSetPreferences): String {
+        val presets = appPrefs.getPromptPresets()
+        val draftsObj = JSONObject().apply {
+            appPrefs.getQuestionPromptDraft()?.let { put("questionPromptDraft", it.toJson()) }
+            appPrefs.getKnowledgePromptDraft()?.let { put("knowledgePromptDraft", it.toJson()) }
+            appPrefs.getFlashcardPromptDraft()?.let { put("flashcardPromptDraft", it.toJson()) }
+            appPrefs.getVocabularyPromptDraft()?.let { put("vocabularyPromptDraft", it.toJson()) }
+        }
+        return JSONObject().apply {
+            put("packType", "examset_prompt_presets_pack")
+            put("schemaVersion", 1)
+            put("exportedAt", System.currentTimeMillis())
+            put("presetsCount", presets.size)
+            put("presets", JSONArray(PromptPreset.serializeList(presets)))
+            put("activePresetIds", JSONObject(appPrefs.getActivePromptPresetIdsRawJson()))
+            put("drafts", draftsObj)
+        }.toString(2)
+    }
+
+    /**
+     * Imports a standalone Prompt Presets Pack `.json` (supports envelope format or raw PromptPreset JSONArray)
+     * using timestamp-aware Smart Merge (`updatedAt` newest-wins), restoring active selections & drafts.
+     */
+    fun importPromptPresetsPackJson(
+        rawJson: String,
+        appPrefs: ExamSetPreferences,
+        overwriteAll: Boolean = false
+    ): PromptPresetsImportSummary {
+        val trimmed = rawJson.trim()
+        if (trimmed.isBlank()) {
+            throw IllegalArgumentException("Selected preset pack file is empty.")
+        }
+
+        val incomingPresets: List<PromptPreset>
+        var activeIdsJson: String? = null
+        var draftsObj: JSONObject? = null
+
+        if (trimmed.startsWith("[")) {
+            incomingPresets = PromptPreset.deserializeList(trimmed)
+        } else {
+            val root = JSONObject(trimmed)
+            val presetsArr = root.optJSONArray("presets")
+            incomingPresets = if (presetsArr != null) {
+                PromptPreset.deserializeList(presetsArr.toString())
+            } else {
+                PromptPreset.deserializeList(root.optString("promptPresetsJson", ""))
+            }
+            activeIdsJson = root.optJSONObject("activePresetIds")?.toString()
+                ?: root.optString("activePromptPresetIdsJson", "").takeIf { it.isNotBlank() }
+            draftsObj = root.optJSONObject("drafts")
+        }
+
+        if (incomingPresets.isEmpty() && draftsObj == null) {
+            throw IllegalArgumentException("No valid Prompt Presets or drafts found in selected file.")
+        }
+
+        var added = 0
+        var updated = 0
+        if (overwriteAll) {
+            appPrefs.savePromptPresets(incomingPresets)
+            added = incomingPresets.size
+        } else {
+            val current = appPrefs.getPromptPresets().associateBy { it.id }.toMutableMap()
+            incomingPresets.forEach { preset ->
+                val existing = current[preset.id]
+                if (existing == null) {
+                    current[preset.id] = preset
+                    added++
+                } else if (preset.updatedAt > existing.updatedAt) {
+                    current[preset.id] = preset
+                    updated++
+                }
+            }
+            appPrefs.savePromptPresets(current.values.toList())
+        }
+
+        val activeRestored = if (!activeIdsJson.isNullOrBlank()) {
+            val count = appPrefs.saveActivePromptPresetIdsFromJson(activeIdsJson, overwriteAll = overwriteAll)
+            val validByMode = appPrefs.getPromptPresets().groupBy { it.mode }.mapValues { (_, list) ->
+                list.map { it.id }.toSet()
+            }
+            PromptPresetMode.entries.forEach { mode ->
+                val id = appPrefs.getActivePromptPresetId(mode)
+                if (!id.isNullOrBlank() && id !in validByMode[mode].orEmpty()) {
+                    appPrefs.setActivePromptPresetId(mode, null)
+                }
+            }
+            count
+        } else 0
+
+        var draftsRestored = 0
+        if (draftsObj != null) {
+            draftsObj.optJSONObject("questionPromptDraft")?.let { obj ->
+                if (overwriteAll || appPrefs.getQuestionPromptDraft() == null) {
+                    runCatching {
+                        appPrefs.saveQuestionPromptDraft(com.example.model.QuestionPromptConfig.fromJson(obj))
+                        draftsRestored++
+                    }
+                }
+            }
+            draftsObj.optJSONObject("knowledgePromptDraft")?.let { obj ->
+                if (overwriteAll || appPrefs.getKnowledgePromptDraft() == null) {
+                    runCatching {
+                        appPrefs.saveKnowledgePromptDraft(com.example.model.KnowledgePromptConfig.fromJson(obj))
+                        draftsRestored++
+                    }
+                }
+            }
+            draftsObj.optJSONObject("flashcardPromptDraft")?.let { obj ->
+                if (overwriteAll || appPrefs.getFlashcardPromptDraft() == null) {
+                    runCatching {
+                        appPrefs.saveFlashcardPromptDraft(com.example.model.FlashcardPromptConfig.fromJson(obj))
+                        draftsRestored++
+                    }
+                }
+            }
+            draftsObj.optJSONObject("vocabularyPromptDraft")?.let { obj ->
+                if (overwriteAll || appPrefs.getVocabularyPromptDraft() == null) {
+                    runCatching {
+                        appPrefs.saveVocabularyPromptDraft(com.example.model.VocabularyPromptConfig.fromJson(obj))
+                        draftsRestored++
+                    }
+                }
+            }
+        }
+
+        return PromptPresetsImportSummary(
+            totalPresetsInPack = incomingPresets.size,
+            addedCount = added,
+            updatedCount = updated,
+            activeSelectionsRestored = activeRestored,
+            draftsRestored = draftsRestored
+        )
     }
 
     private fun applyVocabularyFields(
         obj: JSONObject,
         appPrefs: ExamSetPreferences,
-        overwriteAll: Boolean
+        overwriteAll: Boolean,
+        mergeAppSettings: Boolean = true
     ) {
-        if (overwriteAll || appPrefs.getPreferredEnglishVariant().isBlank()) {
+        val syncSettings = overwriteAll || mergeAppSettings
+        if (syncSettings || appPrefs.getPreferredEnglishVariant().isBlank()) {
             val incomingVariant = obj.optString("preferredEnglishVariant", "")
             if (incomingVariant.isNotBlank()) {
                 appPrefs.setPreferredEnglishVariant(incomingVariant)
             }
         }
-        if (overwriteAll && obj.has("vocabReminderEnabled")) {
+        if (syncSettings && obj.has("vocabReminderEnabled")) {
             appPrefs.setVocabularyReminderEnabled(obj.optBoolean("vocabReminderEnabled", false))
         }
 
@@ -1333,6 +1619,13 @@ object VaultArchiveEngine {
                 )
                 appPrefs.saveLanguageWordOfTheDayStatesJson(mergedWotd)
             }
+        }
+
+        val incomingWotdCacheRaw = obj.optString("wordOfTheDayCacheJson", "")
+        if (incomingWotdCacheRaw.isNotBlank() &&
+            (overwriteAll || (syncSettings && appPrefs.getWordOfTheDayCacheJson().isNullOrBlank()))
+        ) {
+            appPrefs.saveWordOfTheDayCacheJson(incomingWotdCacheRaw)
         }
 
         val incomingInboxRaw = obj.optString("headwordInboxJson", "")

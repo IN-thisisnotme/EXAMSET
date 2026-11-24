@@ -122,6 +122,7 @@ fun PromptGeneratorTab(
     val dismissedWordKeys by viewModel.dismissedWordKeys.collectAsState()
 
     var copied by remember { mutableStateOf(false) }
+    var showConfirmResetDialog by remember { mutableStateOf(false) }
     val presetDialogState = rememberPromptPresetDialogState()
 
     // Collapsible advanced settings per mode (defaults expanded; auto-compacts when a preset is selected)
@@ -200,6 +201,17 @@ fun PromptGeneratorTab(
         }
     }
 
+    val hasNonDefaultPromptInput = when (activeMode) {
+        PromptBuilderMode.QUESTION_SET ->
+            qConfig != QuestionPromptConfig() || qState.topic.isNotBlank() || activePreset != null
+        PromptBuilderMode.KNOWLEDGE_SET ->
+            kConfig != KnowledgePromptConfig() || knowledgeState.topic.isNotBlank() || activePreset != null
+        PromptBuilderMode.FLASHCARD_SET ->
+            fConfig != FlashcardPromptConfig() || flashcardState.topic.isNotBlank() || activePreset != null
+        PromptBuilderMode.VOCABULARY ->
+            vConfig != VocabularyPromptConfig() || vocabState.topic.isNotBlank() || activePreset != null
+    }
+
     val clearCurrentMode: () -> Unit = {
         when (activeMode) {
             PromptBuilderMode.QUESTION_SET -> {
@@ -224,6 +236,49 @@ fun PromptGeneratorTab(
             }
         }
         copied = false
+    }
+
+    val requestResetCurrentMode: () -> Unit = {
+        if (hasNonDefaultPromptInput) {
+            showConfirmResetDialog = true
+        } else {
+            clearCurrentMode()
+        }
+    }
+
+    if (showConfirmResetDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showConfirmResetDialog = false },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Reset ${activeMode.title} Prompt Form?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This clears your topic, custom prompt parameters, and active preset selection back to defaults. You can still restore them via Undo Clear in the preset bar."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmResetDialog = false
+                        clearCurrentMode()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = androidx.compose.ui.graphics.Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Reset Form", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showConfirmResetDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
+                }
+            }
+        )
     }
 
     val undoClearCurrentMode: () -> Unit = {
@@ -820,7 +875,7 @@ fun PromptGeneratorTab(
                             OutlinedButton(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    clearCurrentMode()
+                                    requestResetCurrentMode()
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
@@ -882,7 +937,7 @@ fun PromptGeneratorTab(
                             OutlinedButton(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    clearCurrentMode()
+                                    requestResetCurrentMode()
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),

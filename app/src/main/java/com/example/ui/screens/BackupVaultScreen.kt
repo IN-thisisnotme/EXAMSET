@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
@@ -45,12 +46,16 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -112,6 +117,8 @@ fun BackupVaultCenterSection(
     val allAttempts by viewModel.allAttempts.collectAsState()
     val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
     val promptPresets by viewModel.promptPresets.collectAsState()
+    val examCountdowns by viewModel.examCountdowns.collectAsState()
+    val studyTodos by viewModel.studyTodos.collectAsState()
     val totalVocabWords = remember(vocabularyDecks) { vocabularyDecks.sumOf { it.entries.size } }
     val backupSnapshots by viewModel.backupSnapshots.collectAsState()
     val backupOpState by viewModel.backupOpState.collectAsState()
@@ -124,6 +131,9 @@ fun BackupVaultCenterSection(
     val autoBackupSchedule by viewModel.autoBackupSchedule.collectAsState()
 
     var clientIdConfigProvider by remember { mutableStateOf<CloudProviderType?>(null) }
+    var showUnlinkCloudFileConfirm by remember { mutableStateOf(false) }
+    var pendingDisconnectProvider by remember { mutableStateOf<CloudProviderType?>(null) }
+    var pendingDeleteSnapshot by remember { mutableStateOf<BackupSnapshotEntity?>(null) }
 
     val exportVaultLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
@@ -149,11 +159,27 @@ fun BackupVaultCenterSection(
         }
     }
 
+    val exportPresetsPackLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportPromptPresetsPackToUri(uri)
+        }
+    }
+
+    val importPresetsPackLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importPromptPresetsPackFromUri(uri)
+        }
+    }
+
     restorePreview?.let { preview ->
         RestorePreviewDialog(
             preview = preview,
             onDismiss = { viewModel.dismissRestorePreview() },
-            onConfirmRestore = { mode -> viewModel.confirmRestore(mode) }
+            onConfirmRestore = { mode, mergeSettings -> viewModel.confirmRestore(mode, mergeSettings) }
         )
     }
 
@@ -166,6 +192,111 @@ fun BackupVaultCenterSection(
                 clientIdConfigProvider = null
             },
             onDismiss = { clientIdConfigProvider = null }
+        )
+    }
+
+    if (showUnlinkCloudFileConfirm) {
+        AlertDialog(
+            onDismissRequest = { showUnlinkCloudFileConfirm = false },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Unlink Quick Cloud File?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "ExamSet will stop syncing to \"${linkedCloudFileStatus.displayName.ifBlank { "this cloud file" }}\". Your existing backup file in Drive / OneDrive / Files will remain untouched."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.unlinkCloudFile()
+                        showUnlinkCloudFileConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Unlink", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showUnlinkCloudFileConfirm = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    pendingDisconnectProvider?.let { provider ->
+        AlertDialog(
+            onDismissRequest = { pendingDisconnectProvider = null },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Disconnect ${provider.displayName}?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "This removes your local OAuth sign-in token for ${provider.displayName}. Backups already uploaded to the cloud will not be deleted."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.disconnectCloud(provider)
+                        pendingDisconnectProvider = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Disconnect", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingDisconnectProvider = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    pendingDeleteSnapshot?.let { snap ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteSnapshot = null },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Delete Local Snapshot?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Permanently delete \"${snap.fileName}\" (${formatBytes(snap.sizeBytes)}) from this device? Cloud copies are unaffected."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteLocalBackupSnapshot(snap)
+                        pendingDeleteSnapshot = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingDeleteSnapshot = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 
@@ -216,28 +347,37 @@ fun BackupVaultCenterSection(
                 }
 
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Horizontally Scrollable Library Coverage Summary (includes Question Sets, Knowledge, Vocabulary, Folders, Attempts, Presets)
+                    // Horizontally Scrollable Library Coverage Summary (includes Question Sets, Knowledge, Vocab, Folders, Attempts, Presets, Planner, Settings)
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         item {
-                            VaultStatPill(label = "${savedPapers.size} Question Sets", color = Color(0xFF2563EB))
+                            VaultStatPill(label = "${savedPapers.size} Question Sets", color = colors.teal)
                         }
                         item {
-                            VaultStatPill(label = "${studyNotes.size} Knowledge Sets", color = colors.teal)
+                            VaultStatPill(label = "${studyNotes.size} Knowledge Sets", color = colors.tealDark)
                         }
                         item {
-                            VaultStatPill(label = "${vocabularyDecks.size} Vocab ($totalVocabWords Words)", color = Color(0xFF0284C7))
+                            VaultStatPill(label = "${vocabularyDecks.size} Vocab ($totalVocabWords Words)", color = colors.teal)
                         }
                         item {
-                            VaultStatPill(label = "${folders.size} Folders", color = Color(0xFF7C3AED))
+                            VaultStatPill(label = "${folders.size} Folders", color = colors.inkBold)
                         }
                         item {
                             VaultStatPill(label = "${allAttempts.size} Attempts", color = colors.green)
                         }
                         item {
-                            VaultStatPill(label = "${promptPresets.size} Presets", color = Color(0xFFD97706))
+                            VaultStatPill(label = "${promptPresets.size} Presets + Drafts", color = colors.amber)
+                        }
+                        item {
+                            VaultStatPill(
+                                label = "${examCountdowns.size} Countdowns • ${studyTodos.size} Tasks",
+                                color = colors.tealDark
+                            )
+                        }
+                        item {
+                            VaultStatPill(label = "Theme & Preferences", color = colors.inkMuted)
                         }
                     }
 
@@ -309,6 +449,31 @@ fun BackupVaultCenterSection(
                         }
                     }
 
+                    // 1-Tap Sync Everything across Local Snapshot + every connected Cloud Target
+                    Button(
+                        onClick = { viewModel.syncAllConnectedTargets() },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryButtonBg,
+                            contentColor = colors.primaryButtonText
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("sync_all_targets_button")
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Sync Everything Now (Library, Presets, Planner & Settings)",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
                     // Primary Vault Actions (Single-Line Horizontally Scrollable Strip)
                     Row(
                         modifier = Modifier
@@ -334,7 +499,7 @@ fun BackupVaultCenterSection(
                         Button(
                             onClick = { exportVaultLauncher.launch(VaultArchiveEngine.defaultVaultFileName()) },
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB), contentColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.tealDark, contentColor = Color.White),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .heightIn(min = 48.dp)
@@ -368,7 +533,7 @@ fun BackupVaultCenterSection(
                                 .heightIn(min = 48.dp)
                                 .testTag("restore_vault_picker_button")
                         ) {
-                            Icon(Icons.Default.Restore, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Restore, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Restore Vault / JSON", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
@@ -446,7 +611,7 @@ fun BackupVaultCenterSection(
                     onLinkFile = { linkCloudFileLauncher.launch("ExamSet_Live_Sync.examset.zip") },
                     onSyncNow = { viewModel.syncLinkedCloudFileNow() },
                     onRestore = { viewModel.restoreFromLinkedCloudFile() },
-                    onUnlink = { viewModel.unlinkCloudFile() }
+                    onUnlink = { showUnlinkCloudFileConfirm = true }
                 )
 
                 HorizontalDivider(color = colors.border.copy(alpha = 0.45f))
@@ -470,7 +635,7 @@ fun BackupVaultCenterSection(
                     onConnect = { viewModel.startCloudOAuth(context, CloudProviderType.GOOGLE_DRIVE) },
                     onSyncNow = { viewModel.syncVaultToCloud(CloudProviderType.GOOGLE_DRIVE) },
                     onBrowseBackups = { viewModel.loadRemoteBackups(CloudProviderType.GOOGLE_DRIVE) },
-                    onDisconnect = { viewModel.disconnectCloud(CloudProviderType.GOOGLE_DRIVE) }
+                    onDisconnect = { pendingDisconnectProvider = CloudProviderType.GOOGLE_DRIVE }
                 )
 
                 CloudProviderSyncCard(
@@ -479,7 +644,7 @@ fun BackupVaultCenterSection(
                     onConnect = { viewModel.startCloudOAuth(context, CloudProviderType.ONEDRIVE) },
                     onSyncNow = { viewModel.syncVaultToCloud(CloudProviderType.ONEDRIVE) },
                     onBrowseBackups = { viewModel.loadRemoteBackups(CloudProviderType.ONEDRIVE) },
-                    onDisconnect = { viewModel.disconnectCloud(CloudProviderType.ONEDRIVE) }
+                    onDisconnect = { pendingDisconnectProvider = CloudProviderType.ONEDRIVE }
                 )
 
                 if (remoteCloudBackups.isNotEmpty()) {
@@ -554,8 +719,67 @@ fun BackupVaultCenterSection(
                         SnapshotHistoryRow(
                             snapshot = snap,
                             onRestore = { viewModel.inspectLocalBackupSnapshot(snap) },
-                            onDelete = { viewModel.deleteLocalBackupSnapshot(snap) }
+                            onDelete = { pendingDeleteSnapshot = snap }
                         )
+                    }
+                }
+            }
+        }
+
+        // 4. Standalone AI Prompt Presets & Drafts Pack (.json)
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
+            border = BorderStroke(0.8.dp, colors.border)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Tune, contentDescription = null, tint = colors.amber, modifier = Modifier.size(18.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "AI PROMPT PRESETS & DRAFTS PACK (.JSON)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkMuted,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "${promptPresets.size} saved presets + active selections & drafts across all 4 modes. Included in full vaults or shareable separately.",
+                            fontSize = 11.5.sp,
+                            color = colors.inkMuted
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = { exportPresetsPackLauncher.launch("ExamSet_Prompt_Presets.json") },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("export_presets_pack_button")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = colors.teal, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export Presets Pack", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                    }
+
+                    OutlinedButton(
+                        onClick = { importPresetsPackLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("import_presets_pack_button")
+                    ) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null, tint = colors.amber, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Import Presets Pack", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -954,10 +1178,11 @@ private fun SnapshotHistoryRow(
 fun RestorePreviewDialog(
     preview: RestorePreview,
     onDismiss: () -> Unit,
-    onConfirmRestore: (RestoreMode) -> Unit
+    onConfirmRestore: (RestoreMode, Boolean) -> Unit
 ) {
     val colors = ExamTheme.colors
     var selectedMode by remember { mutableStateOf(RestoreMode.SMART_MERGE) }
+    var mergeAppSettings by remember { mutableStateOf(true) }
     val counts = preview.manifest.counts
 
     AlertDialog(
@@ -996,8 +1221,19 @@ fun RestorePreviewDialog(
                         Text("• ${counts.papersCount} Question Sets", fontSize = 12.sp, color = colors.inkBold)
                         Text("• ${counts.notesCount} Knowledge Sets (+ Flashcard SRS)", fontSize = 12.sp, color = colors.inkBold)
                         Text("• ${counts.vocabDecksCount} Vocabulary Sets (${counts.vocabWordsCount} Words + SRS & WOTD)", fontSize = 12.sp, color = colors.inkBold)
-                        Text("• ${counts.foldersCount} Folders • ${counts.promptPresetsCount} AI Presets", fontSize = 12.sp, color = colors.inkBold)
+                        Text("• ${counts.foldersCount} Folders • ${counts.promptPresetsCount} AI Presets • ${counts.draftsCount} Drafts", fontSize = 12.sp, color = colors.inkBold)
+                        Text("• ${counts.countdownsCount} Countdowns • ${counts.todosCount} Tasks", fontSize = 12.sp, color = colors.inkBold)
                         Text("• ${counts.attemptsCount} Test Attempts • ${counts.analyticsDaysCount} Study Days", fontSize = 12.sp, color = colors.inkBold)
+                        if (counts.hasBrainLabData || counts.hasAppSettings) {
+                            Text(
+                                text = "• " + listOfNotNull(
+                                    "Theme & App Preferences".takeIf { counts.hasAppSettings },
+                                    "Brain Lab Stats & Settings".takeIf { counts.hasBrainLabData }
+                                ).joinToString(" + "),
+                                fontSize = 12.sp,
+                                color = colors.inkBold
+                            )
+                        }
                     }
                 }
 
@@ -1028,14 +1264,55 @@ fun RestorePreviewDialog(
                         }
                     }
                 }
+
+                if (selectedMode == RestoreMode.SMART_MERGE && counts.hasAppSettings) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = colors.surfaceVariant.copy(alpha = 0.6f),
+                        border = BorderStroke(0.8.dp, colors.border),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { mergeAppSettings = !mergeAppSettings }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = mergeAppSettings,
+                                onCheckedChange = { mergeAppSettings = it },
+                                colors = CheckboxDefaults.colors(checkedColor = colors.teal)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Sync Theme, Typography, Prompt Drafts & Preferences",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.inkBold
+                                )
+                                Text(
+                                    text = "Disable to keep this device's local theme & font scale while merging library data.",
+                                    fontSize = 10.5.sp,
+                                    color = colors.inkMuted,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onConfirmRestore(selectedMode) },
+                onClick = {
+                    val effectiveSettings = if (selectedMode == RestoreMode.FULL_REPLACE) true else mergeAppSettings
+                    onConfirmRestore(selectedMode, effectiveSettings)
+                },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (preview.checksumVerified) colors.teal else colors.red
-                )
+                ),
+                modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text(
                     if (preview.checksumVerified) "Restore Now" else "Restore Unverified Archive",
@@ -1044,7 +1321,7 @@ fun RestorePreviewDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
         }
     )
 }

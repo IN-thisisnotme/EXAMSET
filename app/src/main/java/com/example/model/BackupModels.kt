@@ -38,11 +38,24 @@ data class BackupCounts(
     val analyticsDaysCount: Int = 0,
     val vocabDecksCount: Int = 0,
     val vocabWordsCount: Int = 0,
-    val promptPresetsCount: Int = 0
+    val promptPresetsCount: Int = 0,
+    val countdownsCount: Int = 0,
+    val todosCount: Int = 0,
+    val draftsCount: Int = 0,
+    val hasBrainLabData: Boolean = false,
+    val hasAppSettings: Boolean = false
+)
+
+data class PromptPresetsImportSummary(
+    val totalPresetsInPack: Int = 0,
+    val addedCount: Int = 0,
+    val updatedCount: Int = 0,
+    val activeSelectionsRestored: Int = 0,
+    val draftsRestored: Int = 0
 )
 
 data class BackupManifest(
-    val schemaVersion: Int = 4,
+    val schemaVersion: Int = 5,
     val appVersion: String = "1.0",
     val createdAt: Long = System.currentTimeMillis(),
     val deviceName: String = "",

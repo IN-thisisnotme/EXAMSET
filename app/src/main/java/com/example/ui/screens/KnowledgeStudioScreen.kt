@@ -74,6 +74,7 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -260,6 +261,7 @@ fun KnowledgeStudioEditorScreen(
     var showKnowledgePromptAdvanced by remember(draft) { mutableStateOf(true) }
     var localActivePresetId by remember(draft, activeKnowledgePresetId) { mutableStateOf(activeKnowledgePresetId) }
     var clearedPromptUndo by remember(draft) { mutableStateOf<Triple<KnowledgePromptConfig, String, String?>?>(null) }
+    var showConfirmResetPromptDialog by remember(draft) { mutableStateOf(false) }
     val knowledgePresetDialogState = rememberPromptPresetDialogState()
     var showMetadataPanel by remember(draft) { mutableStateOf(false) }
     var isPreviewMode by remember(draft) {
@@ -305,6 +307,61 @@ fun KnowledgeStudioEditorScreen(
         focusedContainerColor = colors.surfaceVariant.copy(alpha = 0.25f),
         unfocusedContainerColor = colors.surfaceVariant.copy(alpha = 0.15f)
     )
+
+    val performResetKnowledgePrompt: () -> Unit = {
+        clearedPromptUndo = Triple(promptState.toConfig(), promptState.topic, localActivePresetId)
+        promptState.reset()
+        localActivePresetId = null
+        onClearKnowledgePreset()
+        showKnowledgePromptAdvanced = true
+        promptCopied = false
+    }
+
+    val requestResetKnowledgePrompt: () -> Unit = {
+        val isDirty = promptState.toConfig().normalized() != KnowledgePromptConfig().normalized() ||
+            promptState.topic.isNotBlank() ||
+            localActivePresetId != null
+        if (isDirty) {
+            showConfirmResetPromptDialog = true
+        } else {
+            performResetKnowledgePrompt()
+        }
+    }
+
+    if (showConfirmResetPromptDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmResetPromptDialog = false },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Reset Knowledge Prompt Form?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Reset your current topic, subject, format rules, and active preset selection back to defaults? Saved presets stay untouched, and you can Undo right after clearing."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmResetPromptDialog = false
+                        performResetKnowledgePrompt()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Reset Form", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showConfirmResetPromptDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
+                }
+            }
+        )
+    }
 
     BackHandler {
         if (activeEditorTab == 1) {
@@ -1108,16 +1165,12 @@ fun KnowledgeStudioEditorScreen(
                                     OutlinedButton(
                                         onClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            clearedPromptUndo = Triple(promptState.toConfig(), promptState.topic, localActivePresetId)
-                                            promptState.reset()
-                                            localActivePresetId = null
-                                            onClearKnowledgePreset()
-                                            showKnowledgePromptAdvanced = true
-                                            promptCopied = false
+                                            requestResetKnowledgePrompt()
                                         },
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                        border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.4f))
+                                        border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.4f)),
+                                        modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = "Reset prompt", tint = colors.teal, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -1180,12 +1233,7 @@ fun KnowledgeStudioEditorScreen(
                                     Toast.makeText(context, "Preset deleted", Toast.LENGTH_SHORT).show()
                                 },
                                 onClearForm = {
-                                    clearedPromptUndo = Triple(currentCfg, promptState.topic, localActivePresetId)
-                                    promptState.reset()
-                                    localActivePresetId = null
-                                    onClearKnowledgePreset()
-                                    showKnowledgePromptAdvanced = true
-                                    promptCopied = false
+                                    requestResetKnowledgePrompt()
                                 },
                                 onUndoClear = {
                                     clearedPromptUndo?.let { (cfg, prevTopic, prevId) ->

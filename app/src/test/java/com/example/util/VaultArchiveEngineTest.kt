@@ -9,14 +9,22 @@ import com.example.data.DailyStudyAnalyticsEntity
 import com.example.data.ExamSetPreferences
 import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
+import com.example.data.AppFontScaleMode
+import com.example.data.ColorSchemePreset
 import com.example.data.ThemeMode
 import com.example.data.ThemePreferences
+import com.example.model.ExamCountdownTarget
+import com.example.model.FlashcardPromptConfig
 import com.example.model.FlashcardSrsState
 import com.example.model.FolderItem
+import com.example.model.KnowledgePromptConfig
 import com.example.model.PromptPreset
 import com.example.model.PromptPresetMode
+import com.example.model.QuestionPromptConfig
 import com.example.model.RestoreMode
 import com.example.model.SrsRating
+import com.example.model.StudyTodoItem
+import com.example.model.TodoPriority
 import com.example.model.VocabularyDeck
 import com.example.model.VocabularyEntry
 import com.example.model.VocabularyLevel
@@ -513,5 +521,246 @@ class VaultArchiveEngineTest {
         assertEquals(100, roundTripped.last().questions.size)
         assertEquals("D", roundTripped.last().questions.last().correctAnswer)
         assertTrue(roundTripped.last().questions.last().explanation!!.contains("constitutional articles"))
+    }
+
+    @Test
+    fun `syncEverything schema v5 round-trips active presets dismissed tips fontScale wotdCache and validated folder`() = runBlocking {
+        val folder = FolderItem(id = "fld_history", name = "History", color = "#0284C7", updatedAt = 5_000L)
+        appPrefs.saveCustomFolders(listOf(folder))
+        appPrefs.setLastActiveFolderId(folder.id)
+
+        val qPreset = PromptPreset(
+            id = "preset_q_1",
+            name = "Prelims GS",
+            mode = PromptPresetMode.QUESTION_SET,
+            updatedAt = 2_000L,
+            questionConfig = QuestionPromptConfig(subject = "Modern History", questionCount = 25)
+        )
+        val kPreset = PromptPreset(
+            id = "preset_k_1",
+            name = "Revision Notes",
+            mode = PromptPresetMode.KNOWLEDGE_SET,
+            updatedAt = 2_500L,
+            knowledgeConfig = KnowledgePromptConfig(subject = "Constitutional Amendments")
+        )
+        appPrefs.savePromptPresets(listOf(qPreset, kPreset))
+        appPrefs.setActivePromptPresetId(PromptPresetMode.QUESTION_SET, qPreset.id)
+        appPrefs.setActivePromptPresetId(PromptPresetMode.KNOWLEDGE_SET, kPreset.id)
+        appPrefs.saveQuestionPromptDraft(QuestionPromptConfig(subject = "Draft Q Subject", questionCount = 15))
+        appPrefs.saveFlashcardPromptDraft(FlashcardPromptConfig(subject = "Draft FC Subject", cardCount = 20))
+        appPrefs.saveDismissedFormatTips(setOf("tip_one_liner", "tip_q_json"))
+        appPrefs.saveWordOfTheDayCacheJson("{\"word\":\"Perspicacious\",\"date\":\"2026-11-24\"}")
+        appPrefs.setFontScaleMode(AppFontScaleMode.FOLLOW_SYSTEM)
+        appPrefs.setFontSizeScale(1.25f)
+        themePrefs.setThemeMode(ThemeMode.DARK)
+        themePrefs.setColorSchemePreset(ColorSchemePreset.EYE_COMFORT)
+
+        val archiveFile = File(tempDir, "sync_everything_v5.examset.zip")
+        val manifest = VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+        assertEquals(5, manifest.schemaVersion)
+        assertTrue(manifest.counts.hasAppSettings)
+        assertTrue(manifest.counts.draftsCount >= 2)
+
+        val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
+        assertTrue(preview.checksumVerified)
+        assertEquals(5, preview.manifest.schemaVersion)
+
+        // Wipe and change all local settings before Clean Replace restore
+        appPrefs.saveCustomFolders(emptyList())
+        appPrefs.setLastActiveFolderId("all")
+        appPrefs.savePromptPresets(emptyList())
+        PromptPresetMode.entries.forEach { appPrefs.setActivePromptPresetId(it, null) }
+        appPrefs.saveQuestionPromptDraft(QuestionPromptConfig())
+        appPrefs.saveFlashcardPromptDraft(FlashcardPromptConfig())
+        appPrefs.saveDismissedFormatTips(emptySet())
+        appPrefs.saveWordOfTheDayCacheJson("")
+        appPrefs.setFontScaleMode(AppFontScaleMode.STANDARD_FIXED)
+        appPrefs.setFontSizeScale(1.0f)
+        themePrefs.setThemeMode(ThemeMode.LIGHT)
+        themePrefs.setColorSchemePreset(ColorSchemePreset.MINIMAL)
+
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.FULL_REPLACE,
+            mergeAppSettings = true
+        )
+
+        assertEquals(folder.id, appPrefs.getLastActiveFolderId())
+        assertEquals(qPreset.id, appPrefs.getActivePromptPresetId(PromptPresetMode.QUESTION_SET))
+        assertEquals(kPreset.id, appPrefs.getActivePromptPresetId(PromptPresetMode.KNOWLEDGE_SET))
+        assertEquals("Draft Q Subject", appPrefs.getQuestionPromptDraft()?.subject)
+        assertEquals("Draft FC Subject", appPrefs.getFlashcardPromptDraft()?.subject)
+        assertEquals(setOf("tip_one_liner", "tip_q_json"), appPrefs.getDismissedFormatTips())
+        assertEquals("{\"word\":\"Perspicacious\",\"date\":\"2026-11-24\"}", appPrefs.getWordOfTheDayCacheJson())
+        assertEquals(AppFontScaleMode.FOLLOW_SYSTEM, appPrefs.getFontScaleMode())
+        assertEquals(1.25f, appPrefs.getFontSizeScale(), 0.001f)
+        assertEquals(ThemeMode.DARK, themePrefs.getThemeMode())
+        assertEquals(ColorSchemePreset.EYE_COMFORT, themePrefs.getColorSchemePreset())
+    }
+
+    @Test
+    fun `smartMerge resolves conflicts by newest updatedAt across folders presets countdowns and todos`() = runBlocking {
+        // Incoming archive has newer folder & todo, older preset & countdown
+        val incFolder = FolderItem(id = "fld_shared", name = "Renamed Folder V2", color = "#10B981", createdAt = 100L, updatedAt = 5_000L)
+        val incPreset = PromptPreset(
+            id = "preset_shared",
+            name = "Older Preset Name",
+            mode = PromptPresetMode.QUESTION_SET,
+            createdAt = 100L,
+            updatedAt = 1_000L,
+            questionConfig = QuestionPromptConfig(subject = "Old Subject")
+        )
+        val incCountdown = ExamCountdownTarget(
+            id = "cd_shared",
+            title = "Older Exam Title",
+            targetDateStr = "2027-06-01",
+            createdAt = 100L,
+            updatedAt = 1_000L
+        )
+        val incTodo = StudyTodoItem(
+            id = "td_shared",
+            title = "Updated Todo Title",
+            priority = TodoPriority.HIGH,
+            createdAt = 100L,
+            updatedAt = 8_000L
+        )
+
+        appPrefs.saveCustomFolders(listOf(incFolder))
+        appPrefs.savePromptPresets(listOf(incPreset))
+        appPrefs.saveExamCountdowns(listOf(incCountdown))
+        appPrefs.saveStudyTodos(listOf(incTodo))
+
+        val archiveFile = File(tempDir, "newest_wins.examset.zip")
+        VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+        val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
+
+        // Local state has older folder & todo, newer preset & countdown
+        appPrefs.saveCustomFolders(listOf(incFolder.copy(name = "Stale Local Folder", updatedAt = 1_000L)))
+        appPrefs.savePromptPresets(listOf(incPreset.copy(name = "Newer Local Preset", updatedAt = 6_000L)))
+        appPrefs.saveExamCountdowns(listOf(incCountdown.copy(title = "Newer Local Exam", updatedAt = 7_000L)))
+        appPrefs.saveStudyTodos(listOf(incTodo.copy(title = "Older Local Todo", updatedAt = 2_000L)))
+
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE,
+            mergeAppSettings = true
+        )
+
+        assertEquals("Renamed Folder V2", appPrefs.getCustomFolders().first { it.id == "fld_shared" }.name)
+        assertEquals("Newer Local Preset", appPrefs.getPromptPresets().first { it.id == "preset_shared" }.name)
+        assertEquals("Newer Local Exam", appPrefs.getExamCountdowns().first { it.id == "cd_shared" }.title)
+        assertEquals("Updated Todo Title", appPrefs.getStudyTodos().first { it.id == "td_shared" }.title)
+    }
+
+    @Test
+    fun `smartMerge respects mergeAppSettings flag to preserve local appearance and font scale`() = runBlocking {
+        themePrefs.setThemeMode(ThemeMode.DARK)
+        themePrefs.setColorSchemePreset(ColorSchemePreset.WARM_PAPER)
+        appPrefs.setFontScaleMode(AppFontScaleMode.LARGE)
+        appPrefs.setFontSizeScale(1.35f)
+        appPrefs.setDailyGoalMinutes(90)
+        appPrefs.saveDismissedFormatTips(setOf("tip_cloud"))
+
+        val archiveFile = File(tempDir, "settings_toggle.examset.zip")
+        VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+        val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
+
+        // Switch local device to Light Minimal 1.0x
+        themePrefs.setThemeMode(ThemeMode.LIGHT)
+        themePrefs.setColorSchemePreset(ColorSchemePreset.MINIMAL)
+        appPrefs.setFontScaleMode(AppFontScaleMode.STANDARD_FIXED)
+        appPrefs.setFontSizeScale(1.0f)
+        appPrefs.setDailyGoalMinutes(30)
+        appPrefs.saveDismissedFormatTips(emptySet())
+
+        // Restore with mergeAppSettings = false
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE,
+            mergeAppSettings = false
+        )
+
+        assertEquals(ThemeMode.LIGHT, themePrefs.getThemeMode())
+        assertEquals(ColorSchemePreset.MINIMAL, themePrefs.getColorSchemePreset())
+        assertEquals(AppFontScaleMode.STANDARD_FIXED, appPrefs.getFontScaleMode())
+        assertEquals(1.0f, appPrefs.getFontSizeScale(), 0.001f)
+        assertEquals(30, appPrefs.getDailyGoalMinutes())
+        assertTrue(appPrefs.getDismissedFormatTips().isEmpty())
+
+        // Restore again with mergeAppSettings = true
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE,
+            mergeAppSettings = true
+        )
+
+        assertEquals(ThemeMode.DARK, themePrefs.getThemeMode())
+        assertEquals(ColorSchemePreset.WARM_PAPER, themePrefs.getColorSchemePreset())
+        assertEquals(AppFontScaleMode.LARGE, appPrefs.getFontScaleMode())
+        assertEquals(1.35f, appPrefs.getFontSizeScale(), 0.001f)
+        assertEquals(90, appPrefs.getDailyGoalMinutes())
+        assertEquals(setOf("tip_cloud"), appPrefs.getDismissedFormatTips())
+    }
+
+    @Test
+    fun `promptPresetsPack export and import merges by updatedAt and restores active selections and drafts`() {
+        val presetA = PromptPreset(
+            id = "pack_p_a",
+            name = "Polity Pack v2",
+            mode = PromptPresetMode.QUESTION_SET,
+            updatedAt = 5_000L,
+            questionConfig = QuestionPromptConfig(subject = "Fundamental Rights", questionCount = 20)
+        )
+        val presetB = PromptPreset(
+            id = "pack_p_b",
+            name = "Older Economy Pack",
+            mode = PromptPresetMode.KNOWLEDGE_SET,
+            updatedAt = 1_000L,
+            knowledgeConfig = KnowledgePromptConfig(subject = "Fiscal Policy Old")
+        )
+        appPrefs.savePromptPresets(listOf(presetA, presetB))
+        appPrefs.setActivePromptPresetId(PromptPresetMode.QUESTION_SET, presetA.id)
+        appPrefs.saveVocabularyPromptDraft(VocabularyPromptConfig(language = "German", wordCount = 12))
+
+        val exportedJson = VaultArchiveEngine.exportPromptPresetsPackJson(appPrefs)
+
+        // Reset local presets, keep a newer version of presetB locally
+        val newerLocalB = presetB.copy(
+            name = "Newer Economy Local",
+            updatedAt = 9_000L,
+            knowledgeConfig = KnowledgePromptConfig(subject = "Monetary Policy New")
+        )
+        appPrefs.savePromptPresets(listOf(newerLocalB))
+        appPrefs.setActivePromptPresetId(PromptPresetMode.QUESTION_SET, null)
+        appPrefs.clearVocabularyPromptDraft()
+
+        val summary = VaultArchiveEngine.importPromptPresetsPackJson(exportedJson, appPrefs, overwriteAll = false)
+        assertEquals(2, summary.totalPresetsInPack)
+        assertEquals(1, summary.addedCount)
+        assertEquals(0, summary.updatedCount)
+        assertTrue(summary.activeSelectionsRestored >= 1)
+        assertTrue(summary.draftsRestored >= 1)
+
+        val finalPresets = appPrefs.getPromptPresets().associateBy { it.id }
+        assertEquals("Polity Pack v2", finalPresets["pack_p_a"]?.name)
+        assertEquals("Newer Economy Local", finalPresets["pack_p_b"]?.name)
+        assertEquals("pack_p_a", appPrefs.getActivePromptPresetId(PromptPresetMode.QUESTION_SET))
+        assertEquals("German", appPrefs.getVocabularyPromptDraft()?.language)
     }
 }

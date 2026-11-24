@@ -1906,6 +1906,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _statusMessage.value = "Enter a title and valid YYYY-MM-DD date"
             return false
         }
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         val list = _examCountdowns.value.toMutableList()
         val existingIdx = if (!id.isNullOrBlank()) list.indexOfFirst { it.id == id } else -1
         if (existingIdx >= 0) {
@@ -1914,7 +1915,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 targetDateStr = cleanDate,
                 subject = subject.trim(),
                 colorHex = colorHex,
-                isPinned = isPinned
+                isPinned = isPinned,
+                updatedAt = now
             )
         } else {
             list.add(
@@ -1924,7 +1926,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     subject = subject.trim(),
                     colorHex = colorHex,
                     isPinned = isPinned,
-                    createdAt = TrustedTimeManager.getTrustedTimeMillis()
+                    createdAt = now,
+                    updatedAt = now
                 )
             )
         }
@@ -1942,8 +1945,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePinExamCountdown(id: String) {
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         val updated = _examCountdowns.value.map {
-            if (it.id == id) it.copy(isPinned = !it.isPinned) else it
+            if (it.id == id) it.copy(isPinned = !it.isPinned, updatedAt = now) else it
         }
         _examCountdowns.value = updated
         appPreferences.saveExamCountdowns(updated)
@@ -1991,7 +1995,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val nextDone = !item.isCompleted
                 item.copy(
                     isCompleted = nextDone,
-                    completedAt = if (nextDone) now else null
+                    completedAt = if (nextDone) now else null,
+                    updatedAt = now
                 )
             } else item
         }
@@ -2006,9 +2011,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun incrementTodoPomodoro(id: String) {
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         val updated = _studyTodos.value.map { item ->
             if (item.id == id) {
-                item.copy(completedPomodoros = item.completedPomodoros + 1)
+                item.copy(
+                    completedPomodoros = item.completedPomodoros + 1,
+                    updatedAt = now
+                )
             } else item
         }
         _studyTodos.value = updated
@@ -4199,8 +4208,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val target = _folders.value.find { it.id == folderId } ?: return false
         if (target.name == cleanName) return true
 
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         val updatedFolders = _folders.value.map {
-            if (it.id == folderId) it.copy(name = cleanName) else it
+            if (it.id == folderId) it.copy(name = cleanName, updatedAt = now) else it
         }
         _folders.value = updatedFolders
         appPreferences.saveCustomFolders(updatedFolders)
@@ -4229,8 +4239,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val target = _folders.value.find { it.id == folderId } ?: return
         if (target.color == newColor) return
 
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         val updatedFolders = _folders.value.map {
-            if (it.id == folderId) it.copy(color = newColor) else it
+            if (it.id == folderId) it.copy(color = newColor, updatedAt = now) else it
         }
         _folders.value = updatedFolders
         appPreferences.saveCustomFolders(updatedFolders)
@@ -4262,8 +4273,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        val now = TrustedTimeManager.getTrustedTimeMillis()
         val updatedFolders = _folders.value.map {
-            if (it.id == folderId) it.copy(parentId = newParentId) else it
+            if (it.id == folderId) it.copy(parentId = newParentId, updatedAt = now) else it
         }
         _folders.value = updatedFolders
         appPreferences.saveCustomFolders(updatedFolders)
@@ -5415,7 +5427,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _restorePreview.value = null
     }
 
-    fun confirmRestore(mode: RestoreMode) {
+    fun confirmRestore(mode: RestoreMode, mergeAppSettings: Boolean = true) {
         val preview = _restorePreview.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _backupOpState.value = BackupOperationState.Running("Restoring library (${mode.label})…", 0.5f)
@@ -5426,7 +5438,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     appPrefs = appPreferences,
                     themePrefs = themePreferences,
                     preview = preview,
-                    mode = mode
+                    mode = mode,
+                    mergeAppSettings = mergeAppSettings
                 )
                 val refreshedFolders = appPreferences.getCustomFolders()
                 val refreshedPresets = appPreferences.getPromptPresets()
@@ -5439,9 +5452,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val refreshedKDraft = appPreferences.getKnowledgePromptDraft()
                 val refreshedFDraft = appPreferences.getFlashcardPromptDraft()
                 val refreshedVDraft = appPreferences.getVocabularyPromptDraft()
+                val refreshedQPresetId = appPreferences.getActivePromptPresetId(PromptPresetMode.QUESTION_SET)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.QUESTION_SET } }
+                val refreshedKPresetId = appPreferences.getActivePromptPresetId(PromptPresetMode.KNOWLEDGE_SET)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.KNOWLEDGE_SET } }
+                val refreshedFPresetId = appPreferences.getActivePromptPresetId(PromptPresetMode.FLASHCARD_SET)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.FLASHCARD_SET } }
+                val refreshedVPresetId = appPreferences.getActivePromptPresetId(PromptPresetMode.VOCABULARY)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.VOCABULARY } }
+                val refreshedActiveFolderId = appPreferences.getLastActiveFolderId().let { id ->
+                    if (id == "all" || refreshedFolders.any { it.id == id }) id else "all"
+                }
+                val refreshedShuffle = appPreferences.getShuffleOptions()
+                val refreshedDismissedTips = appPreferences.getDismissedFormatTips()
                 withContext(Dispatchers.Main) {
                     _folders.value = refreshedFolders
+                    _lastActiveFolderId.value = refreshedActiveFolderId
                     _promptPresets.value = refreshedPresets
+                    activeQuestionPresetId = refreshedQPresetId
+                    activeKnowledgePresetId = refreshedKPresetId
+                    activeFlashcardPresetId = refreshedFPresetId
+                    activeVocabularyPresetId = refreshedVPresetId
                     _vocabularyDecks.value = refreshedVocabDecks
                     _vocabularySrsByDeck.value = refreshedVocabSrs
                     _flashcardSrsByNote.value = refreshedFlashcardSrs
@@ -5464,6 +5495,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
+                    _shuffleOptions.value = refreshedShuffle
+                    _dismissedFormatTips.value = refreshedDismissedTips
                     _brainLabStats.value = appPreferences.getBrainLabStats()
                     _brainLabSettings.value = appPreferences.getBrainLabSettings()
                     _restorePreview.value = null
@@ -5474,6 +5507,196 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 _backupOpState.value = BackupOperationState.Error("Restore failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    /**
+     * One-tap "Sync Everything" orchestration: creates a verified local vault snapshot containing
+     * all papers, notes, vocab, presets, countdowns, todos, drafts, and settings, then pushes it
+     * to every connected sync target (Linked Cloud File, Google Drive, OneDrive).
+     */
+    fun syncAllConnectedTargets() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val linked = cloudAuthStore.getLinkedCloudFileStatus()
+            val driveConnected = cloudAuthStore.buildAccountStatus(CloudProviderType.GOOGLE_DRIVE).isConnected
+            val oneDriveConnected = cloudAuthStore.buildAccountStatus(CloudProviderType.ONEDRIVE).isConnected
+
+            _backupOpState.value = BackupOperationState.Running("Packing complete library, presets & settings…", 0.25f)
+            try {
+                val (snapshot, vaultFile) = VaultArchiveEngine.createLocalRollingSnapshot(
+                    context = app,
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences,
+                    providerTag = "LOCAL_VAULT",
+                    prefix = "sync_all"
+                )
+                val syncedTargets = mutableListOf("Local Snapshot")
+                val targetErrors = mutableListOf<String>()
+
+                if (linked.isLinked) {
+                    _backupOpState.value = BackupOperationState.Running("Syncing to ${linked.displayName.ifBlank { "Linked Cloud File" }}…", 0.5f)
+                    val uri = Uri.parse(linked.uriString)
+                    val displayName = linked.displayName.ifBlank { "ExamSet_Live_Sync.examset.zip" }
+                    try {
+                        val outStream = app.contentResolver.openOutputStream(uri, "wt")
+                            ?: app.contentResolver.openOutputStream(uri)
+                            ?: throw IllegalStateException("Cannot open linked file for writing")
+                        outStream.use { out ->
+                            FileInputStream(vaultFile).use { input ->
+                                input.copyTo(out, bufferSize = 16 * 1024)
+                            }
+                            out.flush()
+                        }
+                        val syncedAt = TrustedTimeManager.getTrustedTimeMillis()
+                        cloudAuthStore.saveLinkedCloudFile(uri.toString(), displayName, syncedAt)
+                        syncedTargets += "Cloud File"
+                    } catch (e: Exception) {
+                        val msg = e.localizedMessage ?: "Linked file write failed"
+                        cloudAuthStore.setLinkedCloudFileError(msg)
+                        targetErrors += "Cloud File: $msg"
+                    }
+                }
+
+                if (driveConnected) {
+                    _backupOpState.value = BackupOperationState.Running("Uploading to Google Drive…", 0.72f)
+                    val res = CloudBackupClients.uploadBackupFile(
+                        provider = CloudProviderType.GOOGLE_DRIVE,
+                        authStore = cloudAuthStore,
+                        vaultFile = vaultFile,
+                        context = app
+                    )
+                    res.onSuccess { remote ->
+                        backupSnapshotDao.insertSnapshot(
+                            BackupSnapshotEntity(
+                                provider = CloudProviderType.GOOGLE_DRIVE.code,
+                                fileName = remote.name,
+                                localPath = vaultFile.absolutePath,
+                                remoteFileId = remote.remoteId,
+                                checksumSha256 = snapshot.checksumSha256,
+                                papersCount = snapshot.papersCount,
+                                notesCount = snapshot.notesCount,
+                                foldersCount = snapshot.foldersCount,
+                                attemptsCount = snapshot.attemptsCount,
+                                sizeBytes = remote.sizeBytes,
+                                status = "UPLOADED",
+                                details = snapshot.details
+                            )
+                        )
+                        syncedTargets += "Google Drive"
+                    }.onFailure { err ->
+                        targetErrors += "Drive: ${err.localizedMessage ?: "upload failed"}"
+                    }
+                }
+
+                if (oneDriveConnected) {
+                    _backupOpState.value = BackupOperationState.Running("Uploading to OneDrive…", 0.88f)
+                    val res = CloudBackupClients.uploadBackupFile(
+                        provider = CloudProviderType.ONEDRIVE,
+                        authStore = cloudAuthStore,
+                        vaultFile = vaultFile,
+                        context = app
+                    )
+                    res.onSuccess { remote ->
+                        backupSnapshotDao.insertSnapshot(
+                            BackupSnapshotEntity(
+                                provider = CloudProviderType.ONEDRIVE.code,
+                                fileName = remote.name,
+                                localPath = vaultFile.absolutePath,
+                                remoteFileId = remote.remoteId,
+                                checksumSha256 = snapshot.checksumSha256,
+                                papersCount = snapshot.papersCount,
+                                notesCount = snapshot.notesCount,
+                                foldersCount = snapshot.foldersCount,
+                                attemptsCount = snapshot.attemptsCount,
+                                sizeBytes = remote.sizeBytes,
+                                status = "UPLOADED",
+                                details = snapshot.details
+                            )
+                        )
+                        syncedTargets += "OneDrive"
+                    }.onFailure { err ->
+                        targetErrors += "OneDrive: ${err.localizedMessage ?: "upload failed"}"
+                    }
+                }
+
+                refreshCloudAccountStatuses()
+                if (driveConnected) loadRemoteBackups(CloudProviderType.GOOGLE_DRIVE)
+                if (oneDriveConnected) loadRemoteBackups(CloudProviderType.ONEDRIVE)
+
+                if (targetErrors.isEmpty()) {
+                    _backupOpState.value = BackupOperationState.Success(
+                        "Synced everything to ${syncedTargets.joinToString(" + ")} (${appPreferences.getPromptPresets().size} presets included)."
+                    )
+                } else {
+                    _backupOpState.value = BackupOperationState.Error(
+                        "Synced ${syncedTargets.joinToString(", ")}; errors: ${targetErrors.joinToString(" • ")}"
+                    )
+                }
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Sync failed: ${e.localizedMessage ?: e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    fun exportPromptPresetsPackToUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Exporting Prompt Presets & drafts pack…", 0.4f)
+            try {
+                val packJson = VaultArchiveEngine.exportPromptPresetsPackJson(appPreferences)
+                val out = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: getApplication<Application>().contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Unable to open destination file.")
+                out.bufferedWriter(Charsets.UTF_8).use { it.write(packJson) }
+                val count = appPreferences.getPromptPresets().size
+                _backupOpState.value = BackupOperationState.Success("Exported $count AI Prompt Presets + active drafts (.json)")
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Preset pack export failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun importPromptPresetsPackFromUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Importing Prompt Presets pack…", 0.4f)
+            try {
+                val rawJson = getApplication<Application>().contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
+                    it.readText()
+                } ?: throw IllegalStateException("Unable to read selected preset pack file.")
+                val summary = VaultArchiveEngine.importPromptPresetsPackJson(rawJson, appPreferences, overwriteAll = false)
+                val refreshedPresets = appPreferences.getPromptPresets()
+                val refreshedQId = appPreferences.getActivePromptPresetId(PromptPresetMode.QUESTION_SET)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.QUESTION_SET } }
+                val refreshedKId = appPreferences.getActivePromptPresetId(PromptPresetMode.KNOWLEDGE_SET)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.KNOWLEDGE_SET } }
+                val refreshedFId = appPreferences.getActivePromptPresetId(PromptPresetMode.FLASHCARD_SET)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.FLASHCARD_SET } }
+                val refreshedVId = appPreferences.getActivePromptPresetId(PromptPresetMode.VOCABULARY)
+                    ?.takeIf { id -> refreshedPresets.any { it.id == id && it.mode == PromptPresetMode.VOCABULARY } }
+                val qDraft = appPreferences.getQuestionPromptDraft()
+                val kDraft = appPreferences.getKnowledgePromptDraft()
+                val fDraft = appPreferences.getFlashcardPromptDraft()
+                val vDraft = appPreferences.getVocabularyPromptDraft()
+
+                withContext(Dispatchers.Main) {
+                    _promptPresets.value = refreshedPresets
+                    activeQuestionPresetId = refreshedQId
+                    activeKnowledgePresetId = refreshedKId
+                    activeFlashcardPresetId = refreshedFId
+                    activeVocabularyPresetId = refreshedVId
+                    qDraft?.let { questionPromptState.applyConfig(it, preserveTopic = false) }
+                    kDraft?.let { knowledgePromptState.applyConfig(it, preserveTopic = false) }
+                    fDraft?.let { flashcardPromptState.applyConfig(it, preserveTopic = false) }
+                    vDraft?.let { vocabularyPromptState.applyConfig(it, preserveTopic = false) }
+                    _backupOpState.value = BackupOperationState.Success(
+                        "Imported presets pack: +${summary.addedCount} added, ${summary.updatedCount} updated (${refreshedPresets.size} total)."
+                    )
+                    _statusMessage.value = "Prompt presets imported"
+                }
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Preset pack import failed: ${e.localizedMessage}")
             }
         }
     }

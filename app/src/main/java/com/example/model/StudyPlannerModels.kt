@@ -89,7 +89,8 @@ data class ExamCountdownTarget(
     val subject: String = "",
     val colorHex: String = "#0D9488",
     val isPinned: Boolean = true,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt
 ) {
     fun daysRemaining(nowMillis: Long): Long? {
         return StudyDateUtils.computeDaysRemaining(targetDateStr, nowMillis)
@@ -116,6 +117,7 @@ data class ExamCountdownTarget(
         put("colorHex", colorHex)
         put("isPinned", isPinned)
         put("createdAt", createdAt)
+        put("updatedAt", updatedAt)
     }
 
     companion object {
@@ -126,6 +128,7 @@ data class ExamCountdownTarget(
             if (title.isBlank() || StudyDateUtils.parseDateToStartOfDayMillis(dateStr) == null) {
                 return null
             }
+            val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
             return ExamCountdownTarget(
                 id = obj.optString("id", "").ifBlank { UUID.randomUUID().toString() },
                 title = title,
@@ -133,7 +136,8 @@ data class ExamCountdownTarget(
                 subject = obj.optString("subject", "").trim(),
                 colorHex = obj.optString("colorHex", "#0D9488").ifBlank { "#0D9488" },
                 isPinned = obj.optBoolean("isPinned", true),
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+                createdAt = createdAt,
+                updatedAt = obj.optLong("updatedAt", createdAt)
             )
         }
 
@@ -199,7 +203,8 @@ data class StudyTodoItem(
     val linkedDeckLanguage: String = "",
     val linkedLabel: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val updatedAt: Long = maxOf(completedAt ?: 0L, createdAt)
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -216,6 +221,7 @@ data class StudyTodoItem(
         put("linkedLabel", linkedLabel)
         put("createdAt", createdAt)
         if (completedAt != null) put("completedAt", completedAt)
+        put("updatedAt", updatedAt)
     }
 
     companion object {
@@ -232,6 +238,8 @@ data class StudyTodoItem(
             val completedAt = if (obj.has("completedAt") && !obj.isNull("completedAt")) {
                 obj.optLong("completedAt", 0L).takeIf { it > 0L }
             } else null
+            val createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+            val defaultUpdatedAt = maxOf(completedAt ?: 0L, createdAt)
 
             return StudyTodoItem(
                 id = obj.optString("id", "").ifBlank { UUID.randomUUID().toString() },
@@ -246,8 +254,9 @@ data class StudyTodoItem(
                 linkedNoteId = noteId,
                 linkedDeckLanguage = obj.optString("linkedDeckLanguage", "").trim(),
                 linkedLabel = obj.optString("linkedLabel", "").trim(),
-                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                completedAt = completedAt
+                createdAt = createdAt,
+                completedAt = completedAt,
+                updatedAt = obj.optLong("updatedAt", defaultUpdatedAt)
             )
         }
 

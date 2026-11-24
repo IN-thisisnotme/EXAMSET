@@ -4,7 +4,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -51,10 +56,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.AttemptEntity
 import com.example.data.PaperEntity
 import com.example.ui.theme.ExamTheme
@@ -83,6 +90,7 @@ fun SubjectFolderDialog(
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()) }
     var searchQuery by remember { mutableStateOf("") }
     var segregationMode by remember { mutableStateOf(DialogSegregation.ALL) }
+    var pendingDeletePaper by remember { mutableStateOf<PaperEntity?>(null) }
 
     val subjectPapers = remember(papers, subjectName) {
         val s = subjectName.trim().lowercase()
@@ -110,15 +118,53 @@ fun SubjectFolderDialog(
         allAttempts.count { it.paperId in ids }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    pendingDeletePaper?.let { paperToDelete ->
+        AlertDialog(
+            onDismissRequest = { pendingDeletePaper = null },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Delete Question Set?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Permanently delete \"${paperToDelete.title.ifBlank { "Untitled Set" }}\" and its past attempts?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeletePaper(paperToDelete)
+                        pendingDeletePaper = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { pendingDeletePaper = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.inkBold)
+                }
+            }
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = colors.surface,
             border = BorderStroke(1.dp, colors.border),
             tonalElevation = 8.dp,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 780.dp)
+                .heightIn(max = 680.dp)
+                .padding(vertical = 12.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -164,7 +210,7 @@ fun SubjectFolderDialog(
                         }
                     }
 
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.muted)
                     }
                 }
@@ -179,30 +225,34 @@ fun SubjectFolderDialog(
                     DialogSegregation.values().forEach { mode ->
                         val isSelected = segregationMode == mode
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = if (isSelected) colors.inkBold else colors.surfaceVariant,
-                            border = BorderStroke(0.6.dp, if (isSelected) colors.inkBold else colors.border),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) colors.primaryButtonBg else colors.surfaceVariant,
+                            border = BorderStroke(0.6.dp, if (isSelected) colors.primaryButtonBg else colors.border),
                             modifier = Modifier
                                 .weight(1f)
+                                .heightIn(min = 48.dp)
                                 .clickable { segregationMode = mode }
                         ) {
                             Row(
-                                modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp),
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = mode.icon,
                                     contentDescription = null,
-                                    tint = if (isSelected) colors.surface else colors.inkMuted,
-                                    modifier = Modifier.size(12.dp)
+                                    tint = if (isSelected) colors.primaryButtonText else colors.inkMuted,
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = mode.label,
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) colors.surface else colors.ink
+                                    color = if (isSelected) colors.primaryButtonText else colors.ink,
+                                    maxLines = 2,
+                                    textAlign = TextAlign.Center,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -218,13 +268,13 @@ fun SubjectFolderDialog(
                         onValueChange = { searchQuery = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp),
+                            .heightIn(min = 48.dp),
                         placeholder = {
                             Text(
                                 text = "Search sets...",
                                 fontSize = 12.5.sp,
                                 maxLines = 1,
-                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
                                 color = colors.muted
                             )
                         },
@@ -233,7 +283,7 @@ fun SubjectFolderDialog(
                         },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
+                                IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(48.dp)) {
                                     Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(15.dp))
                                 }
                             }
@@ -259,87 +309,166 @@ fun SubjectFolderDialog(
                         )
                     }
                 } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f, fill = false)
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .fillMaxWidth()
                     ) {
-                        when (segregationMode) {
-                            DialogSegregation.ALL -> {
-                                items(filteredPapers, key = { it.id }) { paper ->
-                                    SubjectPaperItem(
-                                        paper = paper,
-                                        allAttempts = allAttempts,
-                                        dateFormat = dateFormat,
-                                        onSelectPaper = onSelectPaper,
-                                        onStartTest = onStartTest,
-                                        onDeletePaper = onDeletePaper,
-                                        onDismiss = onDismiss
-                                    )
-                                }
-                            }
-
-                            DialogSegregation.STAGE -> {
-                                val grouped = filteredPapers.groupBy { getDialogStageCategory(it) }
-                                grouped.forEach { (stage, groupList) ->
-                                    item(key = "stage_header_$stage") {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = colors.teal.copy(alpha = 0.09f),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
+                        val isTwoColumn = maxWidth >= 540.dp
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            when (segregationMode) {
+                                DialogSegregation.ALL -> {
+                                    if (isTwoColumn) {
+                                        items(filteredPapers.chunked(2), key = { row -> row.joinToString("_") { it.id.toString() } }) { pair ->
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Text(text = stage, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
-                                                Text(text = "${groupList.size} Sets", fontSize = 10.5.sp, color = colors.tealDark, fontWeight = FontWeight.SemiBold)
+                                                pair.forEach { paper ->
+                                                    Box(modifier = Modifier.weight(1f)) {
+                                                        SubjectPaperItem(
+                                                            paper = paper,
+                                                            allAttempts = allAttempts,
+                                                            dateFormat = dateFormat,
+                                                            onSelectPaper = onSelectPaper,
+                                                            onStartTest = onStartTest,
+                                                            onDeletePaper = { pendingDeletePaper = it },
+                                                            onDismiss = onDismiss
+                                                        )
+                                                    }
+                                                }
+                                                if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    } else {
+                                        items(filteredPapers, key = { it.id }) { paper ->
+                                            SubjectPaperItem(
+                                                paper = paper,
+                                                allAttempts = allAttempts,
+                                                dateFormat = dateFormat,
+                                                onSelectPaper = onSelectPaper,
+                                                onStartTest = onStartTest,
+                                                onDeletePaper = { pendingDeletePaper = it },
+                                                onDismiss = onDismiss
+                                            )
+                                        }
+                                    }
+                                }
+
+                                DialogSegregation.STAGE -> {
+                                    val grouped = filteredPapers.groupBy { getDialogStageCategory(it) }
+                                    grouped.forEach { (stage, groupList) ->
+                                        item(key = "stage_header_$stage") {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = colors.tealLight,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(text = stage, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold, modifier = Modifier.weight(1f))
+                                                    Text(text = "${groupList.size} Sets", fontSize = 10.5.sp, color = colors.tealDark, fontWeight = FontWeight.SemiBold)
+                                                }
+                                            }
+                                        }
+                                        if (isTwoColumn) {
+                                            items(groupList.chunked(2), key = { row -> "stage_${stage}_" + row.joinToString("_") { it.id.toString() } }) { pair ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    pair.forEach { paper ->
+                                                        Box(modifier = Modifier.weight(1f)) {
+                                                            SubjectPaperItem(
+                                                                paper = paper,
+                                                                allAttempts = allAttempts,
+                                                                dateFormat = dateFormat,
+                                                                onSelectPaper = onSelectPaper,
+                                                                onStartTest = onStartTest,
+                                                                onDeletePaper = { pendingDeletePaper = it },
+                                                                onDismiss = onDismiss
+                                                            )
+                                                        }
+                                                    }
+                                                    if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
+                                                }
+                                            }
+                                        } else {
+                                            items(groupList, key = { it.id }) { paper ->
+                                                SubjectPaperItem(
+                                                    paper = paper,
+                                                    allAttempts = allAttempts,
+                                                    dateFormat = dateFormat,
+                                                    onSelectPaper = onSelectPaper,
+                                                    onStartTest = onStartTest,
+                                                    onDeletePaper = { pendingDeletePaper = it },
+                                                    onDismiss = onDismiss
+                                                )
                                             }
                                         }
                                     }
-                                    items(groupList, key = { it.id }) { paper ->
-                                        SubjectPaperItem(
-                                            paper = paper,
-                                            allAttempts = allAttempts,
-                                            dateFormat = dateFormat,
-                                            onSelectPaper = onSelectPaper,
-                                            onStartTest = onStartTest,
-                                            onDeletePaper = onDeletePaper,
-                                            onDismiss = onDismiss
-                                        )
-                                    }
                                 }
-                            }
 
-                            DialogSegregation.SET_SERIES -> {
-                                val grouped = filteredPapers.groupBy { getDialogSetSeries(it) }.toSortedMap()
-                                grouped.forEach { (series, groupList) ->
-                                    item(key = "series_header_$series") {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = Color(0xFF0D9488).copy(alpha = 0.09f),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                DialogSegregation.SET_SERIES -> {
+                                    val grouped = filteredPapers.groupBy { getDialogSetSeries(it) }.toSortedMap()
+                                    grouped.forEach { (series, groupList) ->
+                                        item(key = "series_header_$series") {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = colors.tealLight,
+                                                modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Text(text = series, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold)
-                                                Text(text = "${groupList.size} Sets", fontSize = 10.5.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.SemiBold)
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(text = series, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = colors.inkBold, modifier = Modifier.weight(1f))
+                                                    Text(text = "${groupList.size} Sets", fontSize = 10.5.sp, color = colors.tealDark, fontWeight = FontWeight.SemiBold)
+                                                }
                                             }
                                         }
-                                    }
-                                    items(groupList, key = { it.id }) { paper ->
-                                        SubjectPaperItem(
-                                            paper = paper,
-                                            allAttempts = allAttempts,
-                                            dateFormat = dateFormat,
-                                            onSelectPaper = onSelectPaper,
-                                            onStartTest = onStartTest,
-                                            onDeletePaper = onDeletePaper,
-                                            onDismiss = onDismiss
-                                        )
+                                        if (isTwoColumn) {
+                                            items(groupList.chunked(2), key = { row -> "series_${series}_" + row.joinToString("_") { it.id.toString() } }) { pair ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    pair.forEach { paper ->
+                                                        Box(modifier = Modifier.weight(1f)) {
+                                                            SubjectPaperItem(
+                                                                paper = paper,
+                                                                allAttempts = allAttempts,
+                                                                dateFormat = dateFormat,
+                                                                onSelectPaper = onSelectPaper,
+                                                                onStartTest = onStartTest,
+                                                                onDeletePaper = { pendingDeletePaper = it },
+                                                                onDismiss = onDismiss
+                                                            )
+                                                        }
+                                                    }
+                                                    if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
+                                                }
+                                            }
+                                        } else {
+                                            items(groupList, key = { it.id }) { paper ->
+                                                SubjectPaperItem(
+                                                    paper = paper,
+                                                    allAttempts = allAttempts,
+                                                    dateFormat = dateFormat,
+                                                    onSelectPaper = onSelectPaper,
+                                                    onStartTest = onStartTest,
+                                                    onDeletePaper = { pendingDeletePaper = it },
+                                                    onDismiss = onDismiss
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -351,6 +480,7 @@ fun SubjectFolderDialog(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SubjectPaperItem(
     paper: PaperEntity,
@@ -380,17 +510,20 @@ private fun SubjectPaperItem(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.tealLight,
-                            modifier = Modifier.padding(end = 6.dp)
+                            modifier = Modifier.align(Alignment.CenterVertically)
                         ) {
                             Text(
                                 text = ExamNumberGenerator.formatSetDisplayLabel(paper.setNumber),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.teal,
+                                color = colors.tealDark,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -418,9 +551,9 @@ private fun SubjectPaperItem(
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
-                    Row(
+                    FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = colors.muted, modifier = Modifier.size(12.dp))
@@ -442,7 +575,7 @@ private fun SubjectPaperItem(
 
                 IconButton(
                     onClick = { onDeletePaper(paper) },
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.DeleteOutline,
@@ -467,7 +600,7 @@ private fun SubjectPaperItem(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 44.dp),
+                        .heightIn(min = 48.dp),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
@@ -475,7 +608,7 @@ private fun SubjectPaperItem(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.teal)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("View Paper", fontSize = 12.sp, maxLines = 1, softWrap = true)
+                    Text("View Paper", fontSize = 12.sp, maxLines = 2, softWrap = true, textAlign = TextAlign.Center)
                 }
 
                 Button(
@@ -485,13 +618,13 @@ private fun SubjectPaperItem(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 44.dp),
+                        .heightIn(min = 48.dp),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = when {
-                            isCompleted -> Color(0xFF16A34A)
-                            isInProgress -> Color(0xFFD97706)
+                            isCompleted -> colors.green
+                            isInProgress -> colors.amber
                             else -> colors.primaryButtonBg
                         },
                         contentColor = if (isCompleted || isInProgress) Color.White else colors.primaryButtonText
@@ -502,14 +635,15 @@ private fun SubjectPaperItem(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = when {
-                            isCompleted -> "Review Analysis"
-                            isInProgress -> "Resume Test"
+                            isCompleted -> "Review"
+                            isInProgress -> "Resume"
                             else -> "Start Test"
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 2,
                         softWrap = true,
+                        textAlign = TextAlign.Center,
                         color = btnFg
                     )
                 }
