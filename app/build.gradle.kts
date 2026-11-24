@@ -195,26 +195,39 @@ abstract class CopyExamSetApkTask : org.gradle.api.DefaultTask() {
 
 val copyDebugApkToFolder = tasks.register<CopyExamSetApkTask>("copyDebugApkToFolder") {
   description = "Atomically overwrites apk/ExamSet.apk with the newly built debug APK"
+  dependsOn("packageDebug")
+  mustRunAfter("assembleDebug")
   sourceApk.set(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
   targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
-  mustRunAfter("packageDebug")
   outputs.upToDateWhen { false }
   outputs.cacheIf { false }
 }
 
 val copyReleaseApkToFolder = tasks.register<CopyExamSetApkTask>("copyReleaseApkToFolder") {
   description = "Atomically overwrites apk/ExamSet.apk with the newly built release APK"
+  dependsOn("packageRelease")
+  mustRunAfter("assembleRelease")
   sourceApk.set(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
   targetApk.set(rootProject.layout.projectDirectory.file("apk/ExamSet.apk"))
-  mustRunAfter("packageRelease", copyDebugApkToFolder)
   outputs.upToDateWhen { false }
   outputs.cacheIf { false }
 }
 
-tasks.matching { it.name == "packageDebug" || it.name == "assembleDebug" }.configureEach {
-  finalizedBy(copyDebugApkToFolder)
+// Opt-in hook only when explicitly requested via `-PexportExamSetApk=true` so default AI Studio
+// builds and streaming emulator deployments are never altered or delayed by workspace APK copies.
+if (providers.gradleProperty("exportExamSetApk").map { it.equals("true", ignoreCase = true) }.getOrElse(false)) {
+  tasks.matching { it.name == "assembleDebug" }.configureEach {
+    finalizedBy(copyDebugApkToFolder)
+  }
+  tasks.matching { it.name == "assembleRelease" }.configureEach {
+    finalizedBy(copyReleaseApkToFolder)
+  }
 }
 
-tasks.matching { it.name == "packageRelease" || it.name == "assembleRelease" }.configureEach {
-  finalizedBy(copyReleaseApkToFolder)
-}
+// [DEPRECATED 2026-11-24] Reason: Unconditional finalizedBy hooks on packageDebug/assembleDebug/packageRelease/assembleRelease mutate apk/ExamSet.apk inside the workspace root on every default AI Studio build, interfering with incremental outputs and emulator preview sync. Restore if: Automatic apk/ExamSet.apk overwrite on every build is explicitly required outside AI Studio (or pass -PexportExamSetApk=true).
+// tasks.matching { it.name == "packageDebug" || it.name == "assembleDebug" }.configureEach {
+//   finalizedBy(copyDebugApkToFolder)
+// }
+// tasks.matching { it.name == "packageRelease" || it.name == "assembleRelease" }.configureEach {
+//   finalizedBy(copyReleaseApkToFolder)
+// }
