@@ -15,7 +15,19 @@ import {
   StudyNoteRecord,
   VocabularyDeck,
 } from '../types/phase4';
+import {
+  DEFAULT_BRAIN_LAB_SETTINGS,
+  DEFAULT_POMODORO_CONFIG,
+  EMPTY_BRAIN_LAB_STATS,
+  type BrainLabSettings,
+  type BrainLabStats,
+  type DailyStudyAnalytics,
+  type PomodoroConfig,
+  type StudyTodoItem,
+  type VaultSnapshotRecord,
+} from '../types/phase5';
 import { ExamNumberGenerator } from '../utils/examNumberGenerator';
+import { StudyDateUtils } from '../utils/studyPlannerEngine';
 
 const KEYS = {
   ACTIVE_PAPER: 'examset_active_paper',
@@ -35,6 +47,14 @@ const KEYS = {
   WOTD_STATES: 'examset_wotd_states_v1',
   PROMPT_PRESETS: 'examset_prompt_presets_v1',
   DICTATION_CONFIG: 'examset_dictation_config_v1',
+  // Phase 5 Storage Keys
+  STUDY_TODOS: 'examset_study_todos_v1',
+  POMODORO_CONFIG: 'examset_pomodoro_config_v1',
+  DAILY_ANALYTICS: 'examset_daily_analytics_v1',
+  BRAIN_LAB_SETTINGS: 'examset_brain_lab_settings_v1',
+  BRAIN_LAB_STATS: 'examset_brain_lab_stats_v1',
+  VAULT_SNAPSHOTS: 'examset_vault_snapshots_v1',
+  DISMISSED_TIPS: 'examset_dismissed_tips_v1',
 };
 
 const LEGACY_SAMPLE_FOLDER_IDS = new Set(['f-science', 'f-upsc', 'f-ssc']);
@@ -211,6 +231,10 @@ export const ExamStore = {
     return map[paperId] || null;
   },
 
+  getAllActiveSessions(): Record<string, ActiveExamSession> {
+    return safeReadJson<Record<string, ActiveExamSession>>(KEYS.SESSIONS, {});
+  },
+
   saveActiveSession(paperId: string, session: ActiveExamSession | null): void {
     const map = safeReadJson<Record<string, ActiveExamSession>>(KEYS.SESSIONS, {});
     if (session === null) {
@@ -326,5 +350,128 @@ export const ExamStore = {
 
   saveDictationConfig(cfg: DictationConfig): void {
     safeWriteJson(KEYS.DICTATION_CONFIG, cfg);
+  },
+
+  // --- Phase 5 Persistence Methods ---
+
+  loadStudyTodos(): StudyTodoItem[] {
+    return safeReadJson<StudyTodoItem[]>(KEYS.STUDY_TODOS, []);
+  },
+
+  saveStudyTodos(todos: StudyTodoItem[]): void {
+    safeWriteJson(KEYS.STUDY_TODOS, todos);
+  },
+
+  loadPomodoroConfig(): PomodoroConfig {
+    const raw = safeReadJson<Partial<PomodoroConfig> | null>(KEYS.POMODORO_CONFIG, null);
+    return raw ? { ...DEFAULT_POMODORO_CONFIG, ...raw } : DEFAULT_POMODORO_CONFIG;
+  },
+
+  savePomodoroConfig(cfg: PomodoroConfig): void {
+    safeWriteJson(KEYS.POMODORO_CONFIG, cfg);
+  },
+
+  loadDailyAnalytics(): Record<string, DailyStudyAnalytics> {
+    return safeReadJson<Record<string, DailyStudyAnalytics>>(KEYS.DAILY_ANALYTICS, {});
+  },
+
+  saveDailyAnalytics(map: Record<string, DailyStudyAnalytics>): void {
+    safeWriteJson(KEYS.DAILY_ANALYTICS, map);
+  },
+
+  recordStudyTimeSeconds(seconds: number, nowMs: number = Date.now()): Record<string, DailyStudyAnalytics> {
+    const safeSecs = Math.max(0, Math.round(seconds));
+    const map = this.loadDailyAnalytics();
+    if (safeSecs <= 0) return map;
+    const key = StudyDateUtils.todayDateStr(nowMs);
+    const cur = map[key] || {
+      dateStr: key,
+      testsCompleted: 0,
+      questionsAnswered: 0,
+      correctAnswers: 0,
+      studyTimeSeconds: 0,
+      flashcardsReviewed: 0,
+      vocabWordsReviewed: 0,
+    };
+    const next: Record<string, DailyStudyAnalytics> = {
+      ...map,
+      [key]: { ...cur, studyTimeSeconds: cur.studyTimeSeconds + safeSecs },
+    };
+    this.saveDailyAnalytics(next);
+    return next;
+  },
+
+  recordTestAttemptAnalytics(record: AttemptRecord): Record<string, DailyStudyAnalytics> {
+    const map = this.loadDailyAnalytics();
+    const key = StudyDateUtils.todayDateStr(record.submittedAt || Date.now());
+    const cur = map[key] || {
+      dateStr: key,
+      testsCompleted: 0,
+      questionsAnswered: 0,
+      correctAnswers: 0,
+      studyTimeSeconds: 0,
+      flashcardsReviewed: 0,
+      vocabWordsReviewed: 0,
+    };
+    const answered = record.correctCount + record.partialCount + record.incorrectCount;
+    const next: Record<string, DailyStudyAnalytics> = {
+      ...map,
+      [key]: {
+        ...cur,
+        testsCompleted: cur.testsCompleted + 1,
+        questionsAnswered: cur.questionsAnswered + answered,
+        correctAnswers: cur.correctAnswers + record.correctCount,
+        studyTimeSeconds: cur.studyTimeSeconds + Math.max(0, Math.round(record.timeSpentSeconds || 0)),
+      },
+    };
+    this.saveDailyAnalytics(next);
+    return next;
+  },
+
+  loadBrainLabSettings(): BrainLabSettings {
+    const raw = safeReadJson<Partial<BrainLabSettings> | null>(KEYS.BRAIN_LAB_SETTINGS, null);
+    return raw ? { ...DEFAULT_BRAIN_LAB_SETTINGS, ...raw } : DEFAULT_BRAIN_LAB_SETTINGS;
+  },
+
+  saveBrainLabSettings(settings: BrainLabSettings): void {
+    safeWriteJson(KEYS.BRAIN_LAB_SETTINGS, settings);
+  },
+
+  loadBrainLabStats(): BrainLabStats {
+    const raw = safeReadJson<Partial<BrainLabStats> | null>(KEYS.BRAIN_LAB_STATS, null);
+    return raw ? { ...EMPTY_BRAIN_LAB_STATS, ...raw } : EMPTY_BRAIN_LAB_STATS;
+  },
+
+  saveBrainLabStats(stats: BrainLabStats): void {
+    safeWriteJson(KEYS.BRAIN_LAB_STATS, stats);
+  },
+
+  loadVaultSnapshots(): VaultSnapshotRecord[] {
+    return safeReadJson<VaultSnapshotRecord[]>(KEYS.VAULT_SNAPSHOTS, []).sort(
+      (a, b) => b.createdAt - a.createdAt
+    );
+  },
+
+  saveVaultSnapshots(snapshots: VaultSnapshotRecord[]): void {
+    safeWriteJson(KEYS.VAULT_SNAPSHOTS, snapshots);
+  },
+
+  addVaultSnapshot(snap: VaultSnapshotRecord): VaultSnapshotRecord[] {
+    const existing = this.loadVaultSnapshots();
+    const combined = [snap, ...existing];
+    // Preserve manual checkpoints and cap rolling pre_restore safety snapshots to 5
+    const manuals = combined.filter((s) => s.kind === 'manual').slice(0, 10);
+    const autoRestores = combined.filter((s) => s.kind === 'pre_restore').slice(0, 5);
+    const next = [...manuals, ...autoRestores].sort((a, b) => b.createdAt - a.createdAt);
+    this.saveVaultSnapshots(next);
+    return next;
+  },
+
+  loadDismissedTips(): string[] {
+    return safeReadJson<string[]>(KEYS.DISMISSED_TIPS, []);
+  },
+
+  saveDismissedTips(tips: string[]): void {
+    safeWriteJson(KEYS.DISMISSED_TIPS, tips);
   },
 };

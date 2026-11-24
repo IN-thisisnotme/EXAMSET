@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Archive,
   Bell,
   BookMarked,
   BookOpen,
+  Brain,
+  CalendarCheck,
   CheckCircle2,
   Eye,
   FileText,
   Folder,
   Globe,
+  HelpCircle,
   Menu,
   Mic,
   Palette,
@@ -33,9 +37,22 @@ import {
   StudyNoteRecord,
   VocabularyDeck,
 } from './types/phase4';
+import {
+  type BrainLabSettings,
+  type BrainLabStats,
+  type DailyStudyAnalytics,
+  type GuideDestination,
+  type PomodoroConfig,
+  type RestoreMode,
+  type RestorePreview,
+  type StudyDueSuggestion,
+  type StudyTodoItem,
+  type VaultSnapshotRecord,
+} from './types/phase5';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
-import { ExamStore, normalizePaperMetadata } from './data/examStore';
+import { DEFAULT_ROOT_FOLDER, ExamStore, normalizePaperMetadata } from './data/examStore';
 import { STARTER_STUDY_NOTES, STARTER_VOCAB_DECKS } from './data/phase4Seeds';
+import { applyVaultRestoreToState, buildVaultArchive, type WorkspaceBackupState } from './utils/vaultArchiveEngine';
 import { ThemePaletteModal } from './components/ThemePaletteModal';
 import { FontScaleModal } from './components/FontScaleModal';
 import { InputModal } from './components/InputModal';
@@ -47,6 +64,7 @@ import { StudyNoteEditorModal } from './components/StudyNoteEditorModal';
 import { VocabularyImportModal } from './components/VocabularyImportModal';
 import { VocabularyAuditModal } from './components/VocabularyAuditModal';
 import { HeadwordInboxModal } from './components/HeadwordInboxModal';
+import { AppGuideModal } from './components/AppGuideModal';
 import { CreatorTab } from './components/tabs/CreatorTab';
 import { MasterViewTab } from './components/tabs/MasterViewTab';
 import { PrintGeneratorTab } from './components/tabs/PrintGeneratorTab';
@@ -57,6 +75,9 @@ import { NotebookDictationTab } from './components/tabs/NotebookDictationTab';
 import { VocabularyHubTab } from './components/tabs/VocabularyHubTab';
 import { PromptGeneratorTab } from './components/tabs/PromptGeneratorTab';
 import { ShareSystemTab } from './components/tabs/ShareSystemTab';
+import { StudyPlannerTab } from './components/tabs/StudyPlannerTab';
+import { BrainLabTab } from './components/tabs/BrainLabTab';
+import { BackupVaultTab } from './components/tabs/BackupVaultTab';
 
 export type ActiveTab =
   | 'creator'
@@ -68,6 +89,9 @@ export type ActiveTab =
   | 'dictation'
   | 'vocabulary_hub'
   | 'prompt_generator'
+  | 'study_planner'
+  | 'brain_lab'
+  | 'backup_vault'
   | 'share';
 
 export const DEFAULT_PAPER: QuestionPaper = {
@@ -171,7 +195,16 @@ export const DEFAULT_PAPER: QuestionPaper = {
 };
 
 const ExamSetWorkspace: React.FC = () => {
-  const { colors, isDark } = useTheme();
+  const {
+    themeMode,
+    setThemeMode,
+    preset,
+    setPreset,
+    fontScaleMode,
+    setFontScaleMode,
+    colors,
+    isDark,
+  } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>('creator');
 
   const [papers, setPapers] = useState<QuestionPaper[]>(() => ExamStore.loadPapers(DEFAULT_PAPER));
@@ -238,6 +271,26 @@ const ExamSetWorkspace: React.FC = () => {
     subject?: string;
     topic?: string;
   } | null>(null);
+  // Phase 5 Persistent State
+  const [studyTodos, setStudyTodos] = useState<StudyTodoItem[]>(() => ExamStore.loadStudyTodos());
+  const [pomodoroConfig, setPomodoroConfig] = useState<PomodoroConfig>(() =>
+    ExamStore.loadPomodoroConfig()
+  );
+  const [dailyAnalytics, setDailyAnalytics] = useState<Record<string, DailyStudyAnalytics>>(() =>
+    ExamStore.loadDailyAnalytics()
+  );
+  const [brainLabSettings, setBrainLabSettings] = useState<BrainLabSettings>(() =>
+    ExamStore.loadBrainLabSettings()
+  );
+  const [brainLabStats, setBrainLabStats] = useState<BrainLabStats>(() =>
+    ExamStore.loadBrainLabStats()
+  );
+  const [vaultSnapshots, setVaultSnapshots] = useState<VaultSnapshotRecord[]>(() =>
+    ExamStore.loadVaultSnapshots()
+  );
+  const [dismissedTips, setDismissedTips] = useState<string[]>(() => ExamStore.loadDismissedTips());
+  const [showAppGuideModal, setShowAppGuideModal] = useState<boolean>(false);
+
   const [showVocabImportModal, setShowVocabImportModal] = useState<boolean>(false);
   const [vocabImportDefaultLang, setVocabImportDefaultLang] = useState<string>('English');
   const [auditVocabDeck, setAuditVocabDeck] = useState<VocabularyDeck | null>(null);
@@ -389,6 +442,8 @@ const ExamSetWorkspace: React.FC = () => {
   const handleSaveAttempt = (record: AttemptRecord) => {
     const next = ExamStore.saveAttempt(record);
     setAttempts(next);
+    const updatedAnalytics = ExamStore.recordTestAttemptAnalytics(record);
+    setDailyAnalytics(updatedAnalytics);
     showToast(`Saved attempt score: ${record.score.toFixed(2)} / ${record.maxScore}`);
   };
 
@@ -447,12 +502,290 @@ const ExamSetWorkspace: React.FC = () => {
     ExamStore.saveDictationConfig(cfg);
   };
 
+  // Phase 5 Handlers & Workspace Snapshot State
+  const handleSaveTodos = (next: StudyTodoItem[]) => {
+    setStudyTodos(next);
+    ExamStore.saveStudyTodos(next);
+  };
+
+  const handleSavePomodoroConfig = (cfg: PomodoroConfig) => {
+    setPomodoroConfig(cfg);
+    ExamStore.savePomodoroConfig(cfg);
+  };
+
+  const handleRecordStudySeconds = (seconds: number) => {
+    const next = ExamStore.recordStudyTimeSeconds(seconds);
+    setDailyAnalytics(next);
+  };
+
+  const handleSaveBrainLabStats = (next: BrainLabStats) => {
+    setBrainLabStats(next);
+    ExamStore.saveBrainLabStats(next);
+  };
+
+  const handleSaveBrainLabSettings = (next: BrainLabSettings) => {
+    setBrainLabSettings(next);
+    ExamStore.saveBrainLabSettings(next);
+  };
+
+  const workspaceBackupState: WorkspaceBackupState = useMemo(
+    () => ({
+      papers,
+      folders,
+      attempts,
+      countdowns,
+      studyNotes,
+      vocabDecks,
+      vocabSrs,
+      englishVariant,
+      headwordInbox,
+      dismissedHeadwords,
+      wotdStates,
+      promptPresets,
+      dictationConfig,
+      studyTodos,
+      pomodoroConfig,
+      dailyAnalytics,
+      brainLabStats,
+      brainLabSettings,
+      dismissedTips,
+      themeMode,
+      colorPreset: preset,
+      fontScaleMode,
+    }),
+    [
+      papers,
+      folders,
+      attempts,
+      countdowns,
+      studyNotes,
+      vocabDecks,
+      vocabSrs,
+      englishVariant,
+      headwordInbox,
+      dismissedHeadwords,
+      wotdStates,
+      promptPresets,
+      dictationConfig,
+      studyTodos,
+      pomodoroConfig,
+      dailyAnalytics,
+      brainLabStats,
+      brainLabSettings,
+      dismissedTips,
+      themeMode,
+      preset,
+      fontScaleMode,
+    ]
+  );
+
+  const handleCreateSnapshot = (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => {
+    const { manifest } = buildVaultArchive(workspaceBackupState, 'ExamSet Browser Vault');
+    const snap: VaultSnapshotRecord = {
+      id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      label,
+      kind,
+      createdAt: Date.now(),
+      manifest,
+      rawJson,
+    };
+    const next = ExamStore.addVaultSnapshot(snap);
+    setVaultSnapshots(next);
+  };
+
+  const handleDeleteSnapshot = (snapshotId: string) => {
+    const next = vaultSnapshots.filter((s) => s.id !== snapshotId);
+    setVaultSnapshots(next);
+    ExamStore.saveVaultSnapshots(next);
+    showToast('Deleted local vault snapshot');
+  };
+
+  const handleExecuteRestore = (preview: RestorePreview, mode: RestoreMode) => {
+    if (mode === 'FULL_REPLACE') {
+      const preArchive = buildVaultArchive(workspaceBackupState, 'Pre-Replace Safety Guard');
+      handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
+    }
+
+    const merged = applyVaultRestoreToState(
+      workspaceBackupState,
+      preview,
+      mode,
+      DEFAULT_ROOT_FOLDER
+    );
+
+    const safePapers =
+      merged.papers.length > 0 ? merged.papers : [normalizePaperMetadata(DEFAULT_PAPER)];
+    setPapers(safePapers);
+    ExamStore.savePapers(safePapers);
+
+    const activeMatch =
+      safePapers.find((p) => p.metadata.id === currentPaper.metadata.id) || safePapers[0];
+    setCurrentPaper(activeMatch);
+    ExamStore.setActivePaper(activeMatch);
+
+    setFolders(merged.folders);
+    ExamStore.saveFolders(merged.folders);
+
+    setAttempts(merged.attempts);
+    localStorage.setItem('examset_attempts_v2', JSON.stringify(merged.attempts));
+
+    setCountdowns(merged.countdowns);
+    ExamStore.saveCountdowns(merged.countdowns);
+
+    setStudyNotes(merged.studyNotes);
+    ExamStore.saveStudyNotes(merged.studyNotes);
+
+    setVocabDecks(merged.vocabDecks);
+    ExamStore.saveVocabDecks(merged.vocabDecks);
+
+    setVocabSrs(merged.vocabSrs);
+    ExamStore.saveVocabSrs(merged.vocabSrs);
+
+    setEnglishVariant(merged.englishVariant);
+    ExamStore.saveEnglishVariant(merged.englishVariant);
+
+    setHeadwordInbox(merged.headwordInbox);
+    ExamStore.saveHeadwordInbox(merged.headwordInbox);
+
+    setDismissedHeadwords(merged.dismissedHeadwords);
+    ExamStore.saveDismissedHeadwords(merged.dismissedHeadwords);
+
+    setWotdStates(merged.wotdStates);
+    ExamStore.saveWotdStates(merged.wotdStates);
+
+    setPromptPresets(merged.promptPresets);
+    ExamStore.savePromptPresets(merged.promptPresets);
+
+    setDictationConfig(merged.dictationConfig);
+    ExamStore.saveDictationConfig(merged.dictationConfig);
+
+    setStudyTodos(merged.studyTodos);
+    ExamStore.saveStudyTodos(merged.studyTodos);
+
+    setPomodoroConfig(merged.pomodoroConfig);
+    ExamStore.savePomodoroConfig(merged.pomodoroConfig);
+
+    setDailyAnalytics(merged.dailyAnalytics);
+    ExamStore.saveDailyAnalytics(merged.dailyAnalytics);
+
+    setBrainLabStats(merged.brainLabStats);
+    ExamStore.saveBrainLabStats(merged.brainLabStats);
+
+    setBrainLabSettings(merged.brainLabSettings);
+    ExamStore.saveBrainLabSettings(merged.brainLabSettings);
+
+    setDismissedTips(merged.dismissedTips);
+    ExamStore.saveDismissedTips(merged.dismissedTips);
+
+    if (mode === 'FULL_REPLACE') {
+      setThemeMode(merged.themeMode);
+      setPreset(merged.colorPreset);
+      setFontScaleMode(merged.fontScaleMode);
+    }
+
+    showToast(
+      mode === 'SMART_MERGE'
+        ? `Smart Merged "${preview.sourceLabel}" cleanly`
+        : `Clean Replaced library with "${preview.sourceLabel}"`
+    );
+  };
+
+  const handleJumpToSuggestion = (sugg: StudyDueSuggestion) => {
+    if (sugg.category === 'PAUSED_TEST' && sugg.paperId) {
+      const target = papers.find((p) => p.metadata.id === sugg.paperId);
+      if (target) {
+        setCurrentPaper(target);
+        setActiveTab('student_portal');
+      }
+    } else if (sugg.category === 'FLASHCARDS') {
+      setActiveTab('knowledge_studio');
+    } else if (sugg.category === 'VOCABULARY') {
+      setActiveTab('vocabulary_hub');
+    } else if (sugg.category === 'HEADWORD_INBOX') {
+      setActiveTab('vocabulary_hub');
+      setShowHeadwordInboxModal(true);
+    }
+  };
+
+  const handleJumpToTodoLink = (todo: StudyTodoItem) => {
+    if (todo.linkedType === 'PAPER' && todo.linkedPaperId) {
+      const p = papers.find((x) => x.metadata.id === todo.linkedPaperId);
+      if (p) {
+        setCurrentPaper(p);
+        setActiveTab('student_portal');
+      }
+    } else if (todo.linkedType === 'NOTE') {
+      setActiveTab('knowledge_studio');
+    } else if (todo.linkedType === 'VOCAB_DECK') {
+      setActiveTab('vocabulary_hub');
+    }
+  };
+
+  const handleGuideNavigate = (dest: GuideDestination) => {
+    switch (dest) {
+      case 'CREATOR':
+        setActiveTab('creator');
+        break;
+      case 'MASTER_VIEW':
+        setActiveTab('master');
+        break;
+      case 'PRINT_OMR':
+        setActiveTab('print');
+        break;
+      case 'STUDENT_TEST':
+        setActiveTab('student_portal');
+        break;
+      case 'FOLDERS':
+        setActiveTab('folders');
+        break;
+      case 'KNOWLEDGE_STUDIO':
+        setActiveTab('knowledge_studio');
+        break;
+      case 'DICTATION_LAB':
+        setActiveTab('dictation');
+        break;
+      case 'VOCABULARY_HUB':
+        setActiveTab('vocabulary_hub');
+        break;
+      case 'HEADWORD_INBOX':
+        setActiveTab('vocabulary_hub');
+        setShowHeadwordInboxModal(true);
+        break;
+      case 'AI_PROMPT_STUDIO':
+        setActiveTab('prompt_generator');
+        break;
+      case 'STUDY_PLANNER':
+        setActiveTab('study_planner');
+        break;
+      case 'BRAIN_LAB':
+        setActiveTab('brain_lab');
+        break;
+      case 'BACKUP_VAULT':
+        setActiveTab('backup_vault');
+        break;
+      case 'COUNTDOWNS':
+        setShowCountdownsModal(true);
+        break;
+    }
+  };
+
   const totalVocabWords = useMemo(
     () => vocabDecks.reduce((sum, d) => sum + d.entries.length, 0),
     [vocabDecks]
   );
 
-  const navItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string; group: 'exam' | 'study' }[] = useMemo(
+  const openTodoCount = useMemo(
+    () => studyTodos.filter((t) => !t.isCompleted).length,
+    [studyTodos]
+  );
+
+  const navItems: {
+    id: ActiveTab;
+    label: string;
+    icon: React.ReactNode;
+    badge?: string;
+    group: 'exam' | 'study' | 'focus';
+  }[] = useMemo(
     () => [
       { id: 'creator', label: 'Question Creator', icon: <FileText className="w-4 h-4" />, group: 'exam' },
       { id: 'master', label: 'Master View', icon: <Eye className="w-4 h-4" />, badge: `${currentPaper.questions.length}`, group: 'exam' },
@@ -463,9 +796,12 @@ const ExamSetWorkspace: React.FC = () => {
       { id: 'dictation', label: 'Dictation Lab', icon: <Mic className="w-4 h-4" />, group: 'study' },
       { id: 'vocabulary_hub', label: 'Vocabulary Hub', icon: <Globe className="w-4 h-4" />, badge: `${totalVocabWords}`, group: 'study' },
       { id: 'prompt_generator', label: 'Prompt Studio', icon: <Sparkles className="w-4 h-4" />, group: 'study' },
-      { id: 'share', label: 'Share & Export', icon: <Share2 className="w-4 h-4" />, group: 'study' },
+      { id: 'study_planner', label: 'Study Planner', icon: <CalendarCheck className="w-4 h-4" />, badge: openTodoCount > 0 ? `${openTodoCount}` : undefined, group: 'focus' },
+      { id: 'brain_lab', label: 'Brain & Calm', icon: <Brain className="w-4 h-4" />, group: 'focus' },
+      { id: 'backup_vault', label: 'Backup Vault', icon: <Archive className="w-4 h-4" />, badge: vaultSnapshots.length > 0 ? `${vaultSnapshots.length}` : undefined, group: 'focus' },
+      { id: 'share', label: 'Share & Export', icon: <Share2 className="w-4 h-4" />, group: 'focus' },
     ],
-    [currentPaper.questions.length, papers.length, studyNotes.length, totalVocabWords]
+    [currentPaper.questions.length, papers.length, studyNotes.length, totalVocabWords, openTodoCount, vaultSnapshots.length]
   );
 
   return (
@@ -528,8 +864,18 @@ const ExamSetWorkspace: React.FC = () => {
               </div>
             </div>
 
-            {/* Theme / Typography Controls + Mobile Toggle */}
+            {/* Theme / Typography / App Guide Controls + Mobile Toggle */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                onClick={() => setShowAppGuideModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
+                style={{ backgroundColor: colors.tealLight, borderColor: colors.border, color: colors.tealDark }}
+                title="App Guide & Feature Finder"
+              >
+                <HelpCircle className="w-4 h-4" style={{ color: colors.teal }} />
+                <span className="hidden sm:inline">Guide</span>
+              </button>
+
               <button
                 onClick={() => setShowThemeModal(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
@@ -792,6 +1138,50 @@ const ExamSetWorkspace: React.FC = () => {
             />
           )}
 
+          {activeTab === 'study_planner' && (
+            <StudyPlannerTab
+              papers={papers}
+              studyNotes={studyNotes}
+              vocabDecks={vocabDecks}
+              vocabSrs={vocabSrs}
+              headwordInbox={headwordInbox}
+              activeSessions={ExamStore.getAllActiveSessions()}
+              countdowns={countdowns}
+              todos={studyTodos}
+              pomodoroConfig={pomodoroConfig}
+              dailyAnalytics={dailyAnalytics}
+              onSaveTodos={handleSaveTodos}
+              onSavePomodoroConfig={handleSavePomodoroConfig}
+              onRecordFocusSeconds={handleRecordStudySeconds}
+              onOpenCountdownsModal={() => setShowCountdownsModal(true)}
+              onJumpToSuggestion={handleJumpToSuggestion}
+              onJumpToTodoLink={handleJumpToTodoLink}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeTab === 'brain_lab' && (
+            <BrainLabTab
+              stats={brainLabStats}
+              settings={brainLabSettings}
+              onSaveStats={handleSaveBrainLabStats}
+              onSaveSettings={handleSaveBrainLabSettings}
+              onRecordStudySeconds={handleRecordStudySeconds}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeTab === 'backup_vault' && (
+            <BackupVaultTab
+              workspaceState={workspaceBackupState}
+              snapshots={vaultSnapshots}
+              onCreateSnapshot={handleCreateSnapshot}
+              onDeleteSnapshot={handleDeleteSnapshot}
+              onExecuteRestore={handleExecuteRestore}
+              onNotify={showToast}
+            />
+          )}
+
           {activeTab === 'share' && (
             <ShareSystemTab
               currentPaper={currentPaper}
@@ -812,7 +1202,7 @@ const ExamSetWorkspace: React.FC = () => {
         className="border-t py-3 text-center text-xs"
         style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.muted }}
       >
-        ExamSet Suite • Single-Page A4 OMR • Knowledge Studio &amp; SM-2 • Dictation Lab • Vocabulary Hub
+        ExamSet Suite • A4 OMR • SM-2 &amp; Dictation • Vocabulary Hub • Study Planner &amp; Focus • Brain Lab • Backup Vault
       </footer>
 
       {/* Global Dialogs & Workflow Modals */}
@@ -946,6 +1336,11 @@ const ExamSetWorkspace: React.FC = () => {
           onClose={() => setShowHeadwordInboxModal(false)}
         />
       )}
+      <AppGuideModal
+        isOpen={showAppGuideModal}
+        onClose={() => setShowAppGuideModal(false)}
+        onNavigateDestination={handleGuideNavigate}
+      />
     </div>
   );
 };
