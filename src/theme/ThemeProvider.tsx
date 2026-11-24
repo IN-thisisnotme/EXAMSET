@@ -186,7 +186,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Coordinate root rem font sizing cleanly across System, Browser, and Fixed App presets
     if (fontScaleMode === 'FOLLOW_SYSTEM') {
-      // Keep user's browser/OS root preference intact, safely clamped via percentage
+      // Keep user's browser/OS root preference intact, safely clamped via px if extreme
       const safeRatio = Math.min(1.5, Math.max(0.8, browserBaselinePx / 16));
       if (Math.abs(safeRatio - browserBaselinePx / 16) > 0.01) {
         root.style.fontSize = `${(16 * safeRatio).toFixed(2)}px`;
@@ -197,6 +197,56 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       root.style.fontSize = `${(16 * fontScale).toFixed(2)}px`;
     }
     root.setAttribute('data-font-scale', fontScaleMode);
+
+    // Maintain a single scoped <style> block for cross-browser typography consistency,
+    // max-2-line wrapping, smooth horizontal title scroll strips, and non-collapsing form fields.
+    if (typeof document.head !== 'undefined') {
+      let styleEl = document.getElementById('examset-global-theme-css') as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'examset-global-theme-css';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = `
+        html {
+          -webkit-text-size-adjust: 100%;
+          text-size-adjust: 100%;
+          font-synthesis-weight: none;
+        }
+        body {
+          background-color: var(--es-bg);
+          color: var(--es-ink);
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        input, textarea, select, button {
+          font-family: inherit;
+        }
+        textarea {
+          line-height: 1.55;
+        }
+        input::placeholder, textarea::placeholder {
+          color: var(--es-muted);
+          opacity: 0.78;
+        }
+        .es-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .es-scroll-x {
+          overflow-x: auto;
+          white-space: nowrap;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          -webkit-overflow-scrolling: touch;
+        }
+        .es-scroll-x::-webkit-scrollbar {
+          display: none;
+        }
+      `;
+    }
   }, [colors, isDark, fontScale, fontScaleMode, browserBaselinePx]);
 
   const value = useMemo<ThemeContextValue>(

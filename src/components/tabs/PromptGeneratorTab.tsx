@@ -412,16 +412,16 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
     <div className="space-y-5">
       {/* Header Banner + Mode Switcher */}
       <div
-        className="p-4 rounded-xl border space-y-4"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        className="p-4 sm:p-5 rounded-2xl border space-y-4"
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
-              <Sparkles className="w-5 h-5" style={{ color: colors.amber }} />
-              Multi-Mode AI Prompt Architect
+          <div className="min-w-0">
+            <h3 className="text-base font-black flex items-center gap-2 tracking-tight" style={{ color: colors.inkBold }}>
+              <Sparkles className="w-5 h-5 flex-shrink-0" style={{ color: colors.amber }} />
+              <span className="es-clamp-2">Multi-Mode AI Prompt Architect</span>
             </h3>
-            <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+            <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
               Zero-drift prompt blueprints synced with ExamSet Question Parser, Knowledge Studio, SM-2 Flashcards, and Vocabulary Hub.
             </p>
           </div>
@@ -519,7 +519,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                 <div className="min-w-0">
                   <div className="text-xs font-bold truncate">{mt.label}</div>
                   <div
-                    className="text-[10px] truncate"
+                    className="text-[0.625rem] truncate"
                     style={{ color: active ? 'rgba(255,255,255,0.82)' : colors.muted }}
                   >
                     {mt.sub}
@@ -605,7 +605,8 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     value={qCfg.topic}
                     onChange={(e) => setQCfg({ ...qCfg, topic: e.target.value })}
                     rows={2}
-                    className="w-full px-3 py-1.5 rounded-lg border"
+                    placeholder="e.g., Electrostatics, Gauss's Law, Capacitors..."
+                    className="w-full min-h-[4.5rem] resize-y px-3 py-2 rounded-lg border"
                     style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   />
                 </div>
@@ -624,10 +625,10 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                           key={optN}
                           type="button"
                           onClick={() => setQCfg({ ...qCfg, optionCount: optN })}
-                          className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                          className="px-2 py-0.5 rounded text-[0.625rem] font-bold border"
                           style={
                             qCfg.optionCount === optN
-                              ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                              ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                               : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
                           }
                         >
@@ -656,7 +657,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                   </div>
 
                   <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: colors.borderLight }}>
-                    <span className="text-[11px]" style={{ color: colors.muted }}>
+                    <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
                       Prompt Length:
                     </span>
                     <div className="flex gap-1">
@@ -665,7 +666,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                           key={d}
                           type="button"
                           onClick={() => setQCfg({ ...qCfg, promptDensity: d })}
-                          className="px-2 py-0.5 rounded text-[10px] font-bold"
+                          className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                           style={
                             qCfg.promptDensity === d
                               ? { backgroundColor: colors.navyBanner, color: colors.navyBannerText }
@@ -737,10 +738,10 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                         key={lng}
                         type="button"
                         onClick={() => setQCfg({ ...qCfg, questionLanguage: lng })}
-                        className="px-1.5 py-0.5 rounded text-[10px] border font-semibold"
+                        className="px-1.5 py-0.5 rounded text-[0.625rem] border font-semibold"
                         style={
                           qCfg.questionLanguage.toLowerCase() === lng.toLowerCase()
-                            ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                            ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                             : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
                         }
                       >
@@ -826,7 +827,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                       </option>
                     ))}
                   </select>
-                  <p className="text-[11px] mt-1" style={{ color: colors.muted }}>
+                  <p className="text-[0.6875rem] mt-1" style={{ color: colors.muted }}>
                     {KNOWLEDGE_COLLECTION_META[kCfg.collectionType].description}
                   </p>
                 </div>
@@ -882,7 +883,8 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     value={kCfg.topic}
                     onChange={(e) => setKCfg({ ...kCfg, topic: e.target.value })}
                     rows={2}
-                    className="w-full px-3 py-1.5 rounded-lg border"
+                    placeholder="e.g., Landmark Constitutional Amendments & Doctrines..."
+                    className="w-full min-h-[4.5rem] resize-y px-3 py-2 rounded-lg border"
                     style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   />
                 </div>
@@ -1009,7 +1011,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                           key={st}
                           type="button"
                           onClick={() => setFCfg({ ...fCfg, cardStyle: st })}
-                          className="p-2 rounded-lg border text-left font-bold text-[11px] transition"
+                          className="p-2 rounded-lg border text-left font-bold text-[0.6875rem] transition"
                           style={
                             active
                               ? {
@@ -1065,8 +1067,9 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                   <textarea
                     value={fCfg.topic}
                     onChange={(e) => setFCfg({ ...fCfg, topic: e.target.value })}
-                    rows={2}
-                    className="w-full px-3 py-1.5 rounded-lg border"
+                    rows={3}
+                    placeholder="Enter flashcard deck topics or syllabus modules..."
+                    className="w-full px-3 py-2 rounded-lg border min-h-[4.5rem] resize-y"
                     style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   />
                 </div>
@@ -1145,10 +1148,10 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                           key={lng}
                           type="button"
                           onClick={() => setVCfg({ ...vCfg, language: lng })}
-                          className="px-1.5 py-0.5 rounded text-[10px] border font-semibold"
+                          className="px-1.5 py-0.5 rounded text-[0.625rem] border font-semibold"
                           style={
                             vCfg.language.toLowerCase() === lng.toLowerCase()
-                              ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                              ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                               : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
                           }
                         >
@@ -1191,10 +1194,10 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                           key={vr}
                           type="button"
                           onClick={() => setVCfg({ ...vCfg, languageVariant: vr })}
-                          className="px-2.5 py-1 rounded-md text-[11px] font-bold border"
+                          className="px-2.5 py-1 rounded-md text-[0.6875rem] font-bold border"
                           style={
                             vCfg.languageVariant.toUpperCase() === vr.toUpperCase()
-                              ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                              ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                               : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
                           }
                         >
@@ -1435,7 +1438,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
             />
 
             <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[0.6875rem] text-slate-400">
                 Engineered for zero-drift offline parsing
               </span>
               <button

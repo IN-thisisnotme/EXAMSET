@@ -168,20 +168,20 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <div>
-              <h2 className="text-base font-black" style={{ color: colors.inkBold }}>
+            <div className="min-w-0">
+              <h2 className="text-base font-black es-clamp-2" style={{ color: colors.inkBold }}>
                 {activeMeta.title}
               </h2>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem] es-scroll-x" style={{ color: colors.muted }}>
                 Exam Transfer: {activeMeta.examTransfer}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {budgetActive && (
               <span
-                className="px-3 py-1 rounded-full text-xs font-black"
+                className="px-3 py-1 rounded-full text-xs font-black tabular-nums"
                 style={{ backgroundColor: colors.amberLight, color: colors.amber }}
               >
                 Budget: {formatMmSs(budgetSecondsLeft)}
@@ -256,16 +256,16 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
       {/* Hub Banner */}
       <div
         className="rounded-2xl border p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5" style={{ color: colors.teal }} />
-            <h2 className="font-black" style={{ fontSize: scalePx(20), color: colors.inkBold }}>
+            <Brain className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
+            <h2 className="font-black es-clamp-2" style={{ fontSize: scalePx(20), color: colors.inkBold }}>
               Brain &amp; Calm Lab
             </h2>
           </div>
-          <p className="text-xs mt-1" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
             12 offline exam-transfer cognitive drills &amp; calm reset exercises with deterministic verification
           </p>
         </div>
@@ -295,7 +295,7 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
             style={
               budgetActive
                 ? { backgroundColor: colors.amberLight, borderColor: colors.amber, color: colors.amber }
-                : { backgroundColor: colors.teal, borderColor: colors.teal, color: '#fff' }
+                : { backgroundColor: colors.teal, borderColor: colors.teal, color: colors.onAccentText }
             }
           >
             <Clock className="w-3.5 h-3.5" />
@@ -398,7 +398,7 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span
-                    className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase"
+                    className="text-[0.625rem] font-black px-2 py-0.5 rounded-full uppercase"
                     style={{
                       backgroundColor: isCalm ? colors.tealLight : colors.surface,
                       color: isCalm ? colors.tealDark : colors.teal,
@@ -406,7 +406,7 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
                   >
                     {pillarMeta.badge}
                   </span>
-                  <span className="text-[11px] font-bold" style={{ color: colors.muted }}>
+                  <span className="text-[0.6875rem] font-bold" style={{ color: colors.muted }}>
                     ~{act.defaultBudgetMinutes}m
                   </span>
                 </div>
@@ -426,7 +426,7 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
                 </p>
 
                 <div
-                  className="p-2 rounded-lg border text-[11px]"
+                  className="p-2 rounded-lg border text-[0.6875rem]"
                   style={{ backgroundColor: colors.surface, borderColor: colors.borderLight, color: colors.muted }}
                 >
                   <strong>Exam Transfer:</strong> {act.examTransfer}
@@ -434,14 +434,14 @@ export const BrainLabTab: React.FC<BrainLabTabProps> = ({
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: colors.borderLight }}>
-                <span className="text-[11px] font-bold" style={{ color: colors.teal }}>
+                <span className="text-[0.6875rem] font-bold" style={{ color: colors.teal }}>
                   {statBadgeForActivity(act.id)}
                 </span>
                 <button
                   type="button"
                   onClick={() => setActiveActivityId(act.id)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white flex items-center gap-1.5"
-                  style={{ backgroundColor: colors.teal }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5"
+                  style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                 >
                   <Play className="w-3.5 h-3.5" />
                   Launch

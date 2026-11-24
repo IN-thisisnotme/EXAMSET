@@ -49,7 +49,7 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
         >
           <Calculator className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: colors.teal }} />
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: colors.tealDark }}>
+            <div className="text-[0.625rem] font-bold uppercase tracking-wider" style={{ color: colors.tealDark }}>
               Reference Formula
             </div>
             <div className="text-xs font-mono font-semibold mt-0.5" style={{ color: colors.inkBold }}>
@@ -67,16 +67,16 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
             border: `1px solid ${colors.border}`,
           }}
         >
-          <div className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: colors.inkBold }}>
-            <ImageIcon className="w-3.5 h-3.5" style={{ color: colors.teal }} />
-            <span>{diagramLabel || 'Attached Figure / Diagram'}</span>
+          <div className="flex items-center gap-1.5 text-[0.6875rem] font-bold" style={{ color: colors.inkBold }}>
+            <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: colors.teal }} />
+            <span className="es-clamp-2">{diagramLabel || 'Attached Figure / Diagram'}</span>
           </div>
           {diagramUrl && (
             <img
               src={diagramUrl}
               alt={diagramLabel || 'Question diagram'}
               className="max-h-56 rounded border object-contain"
-              style={{ borderColor: colors.border, backgroundColor: '#FFFFFF' }}
+              style={{ borderColor: colors.border, backgroundColor: colors.surfaceElevated }}
             />
           )}
         </div>
@@ -86,7 +86,7 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
         <div className="mt-2 flex flex-wrap gap-1.5">
           {isVerified && (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
               style={{ backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }}
             >
               <ShieldCheck className="w-3 h-3" />
@@ -95,7 +95,7 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
           )}
           {isNeutralized && (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
               style={{ backgroundColor: colors.badgeWarningBg, color: colors.badgeWarningText }}
             >
               <AlertTriangle className="w-3 h-3" />
@@ -125,7 +125,7 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
         >
           <div className="flex items-start gap-2.5">
             <span
-              className="px-2 py-0.5 rounded text-[11px] font-bold flex-shrink-0 uppercase tracking-wide"
+              className="px-2 py-0.5 rounded text-[0.6875rem] font-bold flex-shrink-0 uppercase tracking-wide"
               style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
             >
               Assertion (A)
@@ -137,8 +137,8 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
 
           <div className="pt-2 flex items-start gap-2.5" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
             <span
-              className="px-2 py-0.5 rounded text-[11px] font-bold flex-shrink-0 uppercase tracking-wide"
-              style={{ backgroundColor: colors.teal, color: '#FFFFFF' }}
+              className="px-2 py-0.5 rounded text-[0.6875rem] font-bold flex-shrink-0 uppercase tracking-wide"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               Reason (R)
             </span>
@@ -193,7 +193,7 @@ export const StructuredQuestionView: React.FC<StructuredQuestionViewProps> = ({
           {stParts.statements.map((st, idx) => (
             <div key={idx} className="flex items-start gap-2">
               <span
-                className="px-1.5 py-0.5 rounded text-[11px] font-bold flex-shrink-0"
+                className="px-1.5 py-0.5 rounded text-[0.6875rem] font-bold flex-shrink-0"
                 style={{ backgroundColor: colors.tealLight, color: colors.tealDark }}
               >
                 {st.label}

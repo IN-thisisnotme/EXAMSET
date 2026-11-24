@@ -216,16 +216,18 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
 
       {/* Top Banner */}
       <div
-        className="p-5 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-        style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
+        className="p-4 sm:p-5 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+        style={{ background: colors.heroGradient, color: colors.navyBannerText, boxShadow: colors.cardShadow }}
       >
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-xs font-bold opacity-85 uppercase tracking-wider">
-            <Award className="w-4 h-4" />
-            <span>Master Answer Key & Solutions Repository</span>
+            <Award className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">Master Answer Key & Solutions Repository</span>
           </div>
-          <h2 className="text-lg font-black mt-1">{currentPaper.metadata.title}</h2>
-          <p className="text-xs opacity-85 mt-0.5">
+          <h2 className="text-lg font-black mt-1 es-clamp-2" title={currentPaper.metadata.title}>
+            {currentPaper.metadata.title}
+          </h2>
+          <p className="es-scroll-x text-xs opacity-85 mt-0.5">
             {currentPaper.metadata.subject} • Set {currentPaper.metadata.setNumber} • Marking: +
             {currentPaper.metadata.positiveMarks ?? 2} / -{currentPaper.metadata.negativeMarks ?? 0.66} •{' '}
             {currentPaper.metadata.msqScoringPolicy === 'PARTIAL_STRICT' ? 'MSQ Partial' : 'MSQ All-or-Nothing'}
@@ -259,8 +261,8 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                 <button
                   type="button"
                   onClick={onOpenAuditModal}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white"
-                  style={{ backgroundColor: colors.teal }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition hover:opacity-95"
+                  style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                 >
                   <ShieldCheck className="w-4 h-4" />
                   3-Phase Audit
@@ -297,8 +299,8 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
               <button
                 type="button"
                 onClick={handleRequestFinishEdit}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ backgroundColor: colors.green }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold shadow-sm"
+                style={{ backgroundColor: colors.green, color: colors.onAccentText }}
               >
                 <Check className="w-4 h-4" />
                 Review & Save ({diffs.length})
@@ -313,7 +315,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
         className="p-3 rounded-xl flex items-center gap-1.5 overflow-x-auto"
         style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}` }}
       >
-        <span className="text-[11px] font-bold uppercase tracking-wider mr-1 flex-shrink-0" style={{ color: colors.muted }}>
+        <span className="text-[0.6875rem] font-bold uppercase tracking-wider mr-1 flex-shrink-0" style={{ color: colors.muted }}>
           Jump:
         </span>
         {activeQuestions.map((q) => {
@@ -322,7 +324,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
             <a
               key={q.id}
               href={`#master-q-${q.num}`}
-              className="px-2 py-1 rounded text-[11px] font-bold flex-shrink-0 transition"
+              className="px-2 py-1 rounded text-[0.6875rem] font-bold flex-shrink-0 transition"
               style={{
                 backgroundColor: q.isNeutralized
                   ? colors.purpleLight
@@ -369,7 +371,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
               className="px-2.5 py-1.5 rounded-lg font-bold transition"
               style={{
                 backgroundColor: filterMode === tab.id ? colors.teal : colors.surfaceVariant,
-                color: filterMode === tab.id ? '#FFFFFF' : colors.ink,
+                color: filterMode === tab.id ? colors.onAccentText : colors.ink,
               }}
             >
               {tab.label}
@@ -405,7 +407,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                   </span>
                   {isMsq && (
                     <span
-                      className="px-2 py-0.5 rounded text-[10.5px] font-bold"
+                      className="px-2 py-0.5 rounded text-[0.65625rem] font-bold"
                       style={{ backgroundColor: colors.purpleLight, color: colors.purple }}
                     >
                       MSQ • Multi-Select
@@ -413,7 +415,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                   )}
                   {q.isVerified && (
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65625rem] font-bold"
                       style={{ backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }}
                     >
                       <CheckCircle2 className="w-3 h-3" />
@@ -422,7 +424,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                   )}
                   {q.isNeutralized && (
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65625rem] font-bold"
                       style={{ backgroundColor: colors.badgeWarningBg, color: colors.badgeWarningText }}
                     >
                       <AlertTriangle className="w-3 h-3" />
@@ -454,7 +456,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                             questionType: isMsq ? 'conceptual' : 'multiple-select',
                           }))
                         }
-                        className="px-2 py-1 rounded text-[11px] font-bold border"
+                        className="px-2 py-1 rounded text-[0.6875rem] font-bold border"
                         style={{
                           borderColor: colors.border,
                           backgroundColor: isMsq ? colors.purpleLight : colors.surfaceVariant,
@@ -466,7 +468,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                       <button
                         type="button"
                         onClick={() => updateDraftQ(q.num, (x) => ({ ...x, isVerified: !x.isVerified }))}
-                        className="px-2 py-1 rounded text-[11px] font-bold border"
+                        className="px-2 py-1 rounded text-[0.6875rem] font-bold border"
                         style={{
                           borderColor: colors.border,
                           backgroundColor: q.isVerified ? colors.greenLight : colors.surfaceVariant,
@@ -478,7 +480,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                       <button
                         type="button"
                         onClick={() => updateDraftQ(q.num, (x) => ({ ...x, isNeutralized: !x.isNeutralized }))}
-                        className="px-2 py-1 rounded text-[11px] font-bold border"
+                        className="px-2 py-1 rounded text-[0.6875rem] font-bold border"
                         style={{
                           borderColor: colors.border,
                           backgroundColor: q.isNeutralized ? colors.amberLight : colors.surfaceVariant,
@@ -508,7 +510,8 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                     value={q.question}
                     onChange={(e) => updateDraftQ(q.num, (x) => ({ ...x, question: e.target.value }))}
                     rows={3}
-                    className="w-full p-3 rounded-xl text-xs font-medium focus:outline-none"
+                    placeholder="Enter question stem text..."
+                    className="w-full min-h-[5.5rem] resize-y p-3 rounded-xl text-xs font-medium leading-relaxed focus:outline-none"
                     style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
@@ -588,7 +591,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                         className={`w-7 h-7 ${isMsq ? 'rounded-md' : 'rounded-full'} flex items-center justify-center text-xs font-bold flex-shrink-0`}
                         style={{
                           backgroundColor: isSelectedKey ? colors.green : colors.surface,
-                          color: isSelectedKey ? '#FFFFFF' : colors.inkBold,
+                          color: isSelectedKey ? colors.onAccentText : colors.inkBold,
                           border: isSelectedKey ? 'none' : `1px solid ${colors.border}`,
                         }}
                         title={isEditMode ? `Toggle ${letter} as correct key` : undefined}
@@ -624,7 +627,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                 className="p-3.5 rounded-xl space-y-1.5"
                 style={{ backgroundColor: colors.blueLight, border: `1px solid ${colors.border}` }}
               >
-                <div className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1" style={{ color: colors.tealDark }}>
+                <div className="text-[0.6875rem] font-bold uppercase tracking-wider flex items-center gap-1" style={{ color: colors.tealDark }}>
                   <BookOpen className="w-3.5 h-3.5" />
                   <span>Detailed Explanation</span>
                 </div>
@@ -634,7 +637,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
                     onChange={(e) => updateDraftQ(q.num, (x) => ({ ...x, explanation: e.target.value }))}
                     rows={3}
                     placeholder="Enter step-by-step pedagogical explanation..."
-                    className="w-full p-2.5 rounded-lg text-xs focus:outline-none"
+                    className="w-full min-h-[5.5rem] resize-y p-2.5 rounded-lg text-xs leading-relaxed focus:outline-none"
                     style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
                   />
                 ) : (
@@ -684,9 +687,9 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
               <textarea
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
-                rows={7}
-                placeholder={'1. A\n2. B, C\n\nDetailed Explanation\n1. Step-by-step explanation...'}
-                className="w-full p-3 rounded-xl font-mono text-xs focus:outline-none"
+                rows={8}
+                placeholder="Paste Answer Keys (e.g. 1. A, 2. B, C) and/or Detailed Explanation section..."
+                className="w-full min-h-[11rem] resize-y p-3 rounded-xl font-mono text-xs leading-relaxed focus:outline-none"
                 style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
               />
               {bulkStatusMsg && (
@@ -705,8 +708,8 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
               <button
                 type="button"
                 onClick={handleApplyBulkMerge}
-                className="px-4 py-2 min-h-[44px] rounded-lg text-xs font-bold text-white"
-                style={{ backgroundColor: colors.teal }}
+                className="px-4 py-2 min-h-[44px] rounded-lg text-xs font-bold"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 Merge into Active Paper
               </button>

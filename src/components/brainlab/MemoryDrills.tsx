@@ -108,7 +108,7 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
                     className="flex-1 py-2 rounded-xl border text-xs font-black"
                     style={
                       nTier === tier
-                        ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                         : { backgroundColor: colors.surface, color: colors.inkBold, borderColor: colors.border }
                     }
                   >
@@ -157,8 +157,8 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
           <button
             type="button"
             onClick={() => startRun(nTier)}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <Play className="w-4 h-4" />
             Begin {nTier}-Back Session
@@ -207,7 +207,7 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
                     style={{
                       backgroundColor: active ? colors.teal : colors.surfaceVariant,
                       borderColor: active ? colors.teal : colors.border,
-                      color: active ? '#fff' : colors.muted,
+                      color: active ? colors.onAccentText : colors.muted,
                     }}
                   >
                     {active ? '●' : ''}
@@ -228,7 +228,7 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
                 className="flex-1 py-3 rounded-xl text-xs font-black border disabled:opacity-40"
                 style={
                   userPosTaps.has(currentTrial.stepIndex)
-                    ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                    ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                     : { backgroundColor: colors.surfaceVariant, color: colors.inkBold, borderColor: colors.border }
                 }
               >
@@ -245,7 +245,7 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
                 className="flex-1 py-3 rounded-xl text-xs font-black border disabled:opacity-40"
                 style={
                   userLetterTaps.has(currentTrial.stepIndex)
-                    ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                    ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                     : { backgroundColor: colors.surfaceVariant, color: colors.inkBold, borderColor: colors.border }
                 }
               >
@@ -254,7 +254,7 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
             )}
           </div>
           {stepIdx < nTier && (
-            <p className="text-[11px] text-center" style={{ color: colors.muted }}>
+            <p className="text-[0.6875rem] text-center" style={{ color: colors.muted }}>
               Observe initial {nTier} lead-in trial(s) — matching unlocks at Trial {nTier + 1}.
             </p>
           )}
@@ -296,8 +296,8 @@ export const NBackDrill: React.FC<DrillCommonProps> = ({ stats, settings, onUpda
                 setNTier(evaluation.nextRecommendedN);
                 startRun(evaluation.nextRecommendedN);
               }}
-              className="px-4 py-2 rounded-xl text-xs font-black text-white"
-              style={{ backgroundColor: colors.teal }}
+              className="px-4 py-2 rounded-xl text-xs font-black"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               Run {evaluation.nextRecommendedN}-Back Next
             </button>
@@ -476,7 +476,7 @@ export const CorsiSpanDrill: React.FC<DrillCommonProps> = ({ stats, settings, on
                     ? colors.amberLight
                     : colors.surfaceVariant,
                   borderColor: isLit || userOrderIdx >= 0 ? colors.teal : colors.border,
-                  color: isLit ? '#fff' : colors.inkBold,
+                  color: isLit ? colors.onAccentText : colors.inkBold,
                 }}
               >
                 {userOrderIdx >= 0
@@ -494,8 +494,8 @@ export const CorsiSpanDrill: React.FC<DrillCommonProps> = ({ stats, settings, on
             <button
               type="button"
               onClick={() => beginRound(span)}
-              className="px-5 py-2.5 rounded-xl text-xs font-black text-white flex items-center gap-1.5"
-              style={{ backgroundColor: colors.teal }}
+              className="px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               <Play className="w-4 h-4" />
               Watch Sequence ({span})
@@ -509,8 +509,8 @@ export const CorsiSpanDrill: React.FC<DrillCommonProps> = ({ stats, settings, on
                 setSpan(next);
                 beginRound(next);
               }}
-              className="px-5 py-2.5 rounded-xl text-xs font-black text-white flex items-center gap-1.5"
-              style={{ backgroundColor: colors.teal }}
+              className="px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               <RotateCcw className="w-4 h-4" />
               {passed ? `Advance to Span ${Math.min(8, span + 1)}` : `Retry Span ${Math.max(4, span - 1)}`}
@@ -615,8 +615,8 @@ export const StroopSwitchDrill: React.FC<DrillCommonProps> = ({ stats, settings,
           <button
             type="button"
             onClick={startSession}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <Play className="w-4 h-4" />
             Start 15-Trial Impulse Arena
@@ -638,7 +638,7 @@ export const StroopSwitchDrill: React.FC<DrillCommonProps> = ({ stats, settings,
             style={{ backgroundColor: colors.amberLight, borderColor: colors.amber, color: colors.inkBold }}
           >
             {STROOP_RULE_META[trial.rule].badge}
-            <div className="text-[11px] font-medium normal-case mt-0.5" style={{ color: colors.ink }}>
+            <div className="text-[0.6875rem] font-medium normal-case mt-0.5" style={{ color: colors.ink }}>
               {STROOP_RULE_META[trial.rule].instruction}
             </div>
           </div>
@@ -693,8 +693,8 @@ export const StroopSwitchDrill: React.FC<DrillCommonProps> = ({ stats, settings,
           <button
             type="button"
             onClick={startSession}
-            className="px-5 py-2 rounded-xl text-xs font-black text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="px-5 py-2 rounded-xl text-xs font-black"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Play Another 15 Trials
           </button>

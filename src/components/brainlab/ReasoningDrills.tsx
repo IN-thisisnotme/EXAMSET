@@ -77,7 +77,7 @@ export const SyllogismDrill: React.FC<DrillCommonProps> = ({ stats, settings, on
         style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
       >
         <div>
-          <div className="text-[11px] font-black uppercase mb-1.5" style={{ color: colors.teal }}>
+          <div className="text-[0.6875rem] font-black uppercase mb-1.5" style={{ color: colors.teal }}>
             Statements (Assume strictly true)
           </div>
           <ul className="space-y-1 text-xs font-semibold" style={{ color: colors.inkBold }}>
@@ -90,7 +90,7 @@ export const SyllogismDrill: React.FC<DrillCommonProps> = ({ stats, settings, on
         </div>
 
         <div className="pt-2 border-t" style={{ borderColor: colors.borderLight }}>
-          <div className="text-[11px] font-black uppercase mb-1.5" style={{ color: colors.inkBold }}>
+          <div className="text-[0.6875rem] font-black uppercase mb-1.5" style={{ color: colors.inkBold }}>
             Conclusions
           </div>
           <div className="space-y-1 text-xs font-bold" style={{ color: colors.ink }}>
@@ -153,8 +153,8 @@ export const SyllogismDrill: React.FC<DrillCommonProps> = ({ stats, settings, on
           <button
             type="button"
             onClick={nextPuzzle}
-            className="mt-1 px-4 py-2 rounded-lg text-xs font-black text-white inline-flex items-center gap-1.5"
-            style={{ backgroundColor: colors.teal }}
+            className="mt-1 px-4 py-2 rounded-lg text-xs font-black inline-flex items-center gap-1.5"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Next Venn Puzzle
             <ArrowRight className="w-3.5 h-3.5" />
@@ -260,7 +260,7 @@ export const SeatingGridDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
         className="p-4 rounded-xl border space-y-2"
         style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
       >
-        <div className="text-[11px] font-black uppercase" style={{ color: colors.teal }}>
+        <div className="text-[0.6875rem] font-black uppercase" style={{ color: colors.teal }}>
           Constraints
         </div>
         <ul className="space-y-1 text-xs font-semibold" style={{ color: colors.inkBold }}>
@@ -275,7 +275,7 @@ export const SeatingGridDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
         className="p-3.5 rounded-xl border space-y-2.5"
         style={{ backgroundColor: colors.surface, borderColor: colors.border }}
       >
-        <div className="flex items-center justify-between text-[11px]">
+        <div className="flex items-center justify-between text-[0.6875rem]">
           <span className="font-bold" style={{ color: colors.inkBold }}>
             1-Tap Elimination Scratchpad (tap a person, then tap a seat)
           </span>
@@ -300,7 +300,7 @@ export const SeatingGridDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
                 className="px-2.5 py-1 rounded-full text-xs font-bold border"
                 style={
                   active
-                    ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                    ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                     : placed
                     ? { backgroundColor: colors.surfaceVariant, color: colors.muted, borderColor: colors.border }
                     : { backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.border }
@@ -323,7 +323,7 @@ export const SeatingGridDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
                 borderColor: activePerson ? colors.teal : colors.border,
               }}
             >
-              <div className="text-[10px] font-bold" style={{ color: colors.muted }}>
+              <div className="text-[0.625rem] font-bold" style={{ color: colors.muted }}>
                 Seat #{sIdx + 1}
               </div>
               <div className="text-xs font-black truncate mt-0.5" style={{ color: colors.inkBold }}>
@@ -381,8 +381,8 @@ export const SeatingGridDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
           <button
             type="button"
             onClick={() => loadNewPuzzle(seatCount, isCircular)}
-            className="px-4 py-2 rounded-lg text-xs font-black text-white inline-flex items-center gap-1.5"
-            style={{ backgroundColor: colors.teal }}
+            className="px-4 py-2 rounded-lg text-xs font-black inline-flex items-center gap-1.5"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <RotateCcw className="w-3.5 h-3.5" />
             New Seating Puzzle
@@ -502,8 +502,8 @@ export const ArgumentCritiqueDrill: React.FC<DrillCommonProps> = ({ stats, setti
           <button
             type="button"
             onClick={handleNext}
-            className="px-4 py-2 rounded-lg text-xs font-black text-white inline-flex items-center gap-1.5"
-            style={{ backgroundColor: colors.teal }}
+            className="px-4 py-2 rounded-lg text-xs font-black inline-flex items-center gap-1.5"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Next Argument
             <ArrowRight className="w-3.5 h-3.5" />
@@ -626,8 +626,8 @@ export const DataSufficiencyDrill: React.FC<DrillCommonProps> = ({ stats, settin
           <button
             type="button"
             onClick={handleNext}
-            className="px-4 py-2 rounded-lg text-xs font-black text-white inline-flex items-center gap-1.5"
-            style={{ backgroundColor: colors.teal }}
+            className="px-4 py-2 rounded-lg text-xs font-black inline-flex items-center gap-1.5"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Next Trap Check
             <ArrowRight className="w-3.5 h-3.5" />

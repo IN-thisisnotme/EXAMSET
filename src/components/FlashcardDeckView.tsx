@@ -168,7 +168,7 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
       return (
         <div className="space-y-2 text-center">
           <span
-            className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
+            className="inline-block px-2.5 py-0.5 rounded-full text-[0.625rem] font-bold border"
             style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
           >
             Item #{card.displayIndex} • {reverseSides ? 'Reverse Clue' : 'Front Prompt'}
@@ -185,14 +185,14 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
       <div className="space-y-3 text-center">
         <div className="flex flex-wrap items-center justify-center gap-1.5">
           <span
-            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
+            className="px-2.5 py-0.5 rounded-full text-[0.625rem] font-bold border"
             style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
           >
             {card.displayIndex} • {card.questionType || 'Concept Card'}
           </span>
           {card.statusTag && (
             <span
-              className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+              className="px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
               style={{ backgroundColor: colors.redLight, color: colors.red }}
             >
               {card.statusTag}
@@ -220,7 +220,7 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
       const back = reverseSides ? card.leadTerm || card.detail : card.detail;
       return (
         <div className="space-y-2">
-          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
+          <div className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
             Active Recall Answer
           </div>
           <div className="text-sm sm:text-base leading-relaxed" style={{ color: colors.inkBold }}>
@@ -232,7 +232,7 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
 
     return (
       <div className="space-y-2.5 text-left">
-        <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
+        <div className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
           Answer &amp; Key Breakdown
         </div>
         {card.correctAnswer && (
@@ -317,7 +317,7 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
             Mastered: {deckStats.masteredCount}
           </span>
           {deckStats.retentionPercent > 0 && (
-            <span className="text-[11px] font-bold" style={{ color: colors.teal }}>
+            <span className="text-[0.6875rem] font-bold" style={{ color: colors.teal }}>
               Retention: {deckStats.retentionPercent}%
             </span>
           )}
@@ -445,7 +445,7 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
               {reviewedInSession > 0 ? ` • Reviewed: ${reviewedInSession}` : ''}
             </span>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono">
+              <span className="text-[0.6875rem] font-mono">
                 Status: {SpacedRepetitionEngine.statusOf(activeSrs)}
               </span>
               <button
@@ -524,7 +524,7 @@ export const FlashcardDeckView: React.FC<FlashcardDeckViewProps> = ({
                     style={{ backgroundColor: btn.bg, borderColor: btn.bd, color: btn.fg }}
                   >
                     <div className="text-xs font-black">{btn.label}</div>
-                    <div className="text-[11px] font-bold opacity-85 mt-0.5">
+                    <div className="text-[0.6875rem] font-bold opacity-85 mt-0.5">
                       Next: {intervalPreviews[btn.rating]}
                     </div>
                   </button>

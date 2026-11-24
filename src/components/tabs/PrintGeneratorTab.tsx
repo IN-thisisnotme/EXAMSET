@@ -165,15 +165,15 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
     <div className="space-y-6">
       {/* Header Strip */}
       <div
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 rounded-xl border"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl border"
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
-        <div>
-          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
+        <div className="min-w-0">
+          <h3 className="text-base font-black flex items-center gap-2 tracking-tight" style={{ color: colors.inkBold }}>
             <Printer className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
-            Print &amp; OMR Studio • A4 Booklet &amp; CBT Exporter
+            <span className="es-clamp-2">Print &amp; OMR Studio • A4 Booklet &amp; CBT Exporter</span>
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
             Generates ISO A4 question booklets, drop-out magenta OMR sheets (4 or 5 options, up to 200 items), and offline HTML CBT apps.
           </p>
         </div>
@@ -328,7 +328,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
                   <button
                     type="button"
                     onClick={handleAutoNextRoll}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold"
+                    className="inline-flex items-center gap-1 text-[0.625rem] font-bold"
                     style={{ color: colors.teal }}
                   >
                     <RefreshCw className="w-3 h-3" />
@@ -352,7 +352,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
                   <button
                     type="button"
                     onClick={handleAutoNextBooklet}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold"
+                    className="inline-flex items-center gap-1 text-[0.625rem] font-bold"
                     style={{ color: colors.teal }}
                   >
                     <RefreshCw className="w-3 h-3" />
@@ -382,7 +382,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
                   onChange={(e) =>
                     setConfig({ ...config, omrBubblingMode: e.target.value as OmrBubblingMode })
                   }
-                  className="w-full px-2 py-1.5 rounded-lg border text-[11px]"
+                  className="w-full px-2 py-1.5 rounded-lg border text-[0.6875rem]"
                   style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 >
                   <option value="BLANK_CANDIDATE">Blank Boxes</option>
@@ -399,7 +399,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
                   onChange={(e) =>
                     setConfig({ ...config, omrOptionCount: Number(e.target.value) === 5 ? 5 : 4 })
                   }
-                  className="w-full px-2 py-1.5 rounded-lg border text-[11px]"
+                  className="w-full px-2 py-1.5 rounded-lg border text-[0.6875rem]"
                   style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 >
                   <option value={4}>4 Options (A–D)</option>
@@ -439,7 +439,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
                   onChange={(e) =>
                     setConfig({ ...config, msqScoringPolicy: e.target.value as MsqScoringPolicy })
                   }
-                  className="w-full px-1.5 py-1 rounded border text-[10px]"
+                  className="w-full px-1.5 py-1 rounded border text-[0.625rem]"
                   style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 >
                   <option value="ALL_OR_NOTHING">Strict</option>

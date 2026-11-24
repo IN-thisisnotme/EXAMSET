@@ -86,12 +86,12 @@ export const PromptPresetBar: React.FC<PromptPresetBarProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Bookmark className="w-4 h-4" style={{ color: colors.teal }} />
-          <span className="font-bold uppercase tracking-wider text-[11px]" style={{ color: colors.inkBold }}>
+          <span className="font-bold uppercase tracking-wider text-[0.6875rem]" style={{ color: colors.inkBold }}>
             Saved Prompt Presets ({modePresets.length})
           </span>
           {activePreset && (
             <span
-              className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+              className="px-2 py-0.5 rounded-full text-[0.625rem] font-bold border"
               style={{
                 backgroundColor: colors.tealLight,
                 color: colors.tealDark,
@@ -229,7 +229,7 @@ export const PromptPresetBar: React.FC<PromptPresetBarProps> = ({
             type="button"
             onClick={handleConfirmSaveNew}
             className="px-3 py-1.5 rounded-lg font-bold"
-            style={{ backgroundColor: colors.teal, color: '#ffffff' }}
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Save
           </button>
@@ -263,7 +263,7 @@ export const PromptPresetBar: React.FC<PromptPresetBarProps> = ({
             type="button"
             onClick={handleConfirmRename}
             className="px-3 py-1.5 rounded-lg font-bold"
-            style={{ backgroundColor: colors.teal, color: '#ffffff' }}
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Rename
           </button>
@@ -305,7 +305,7 @@ export const PromptPresetBar: React.FC<PromptPresetBarProps> = ({
                 key={preset.id}
                 type="button"
                 onClick={() => onSelectPreset(preset)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold transition text-[11px]"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold transition text-[0.6875rem]"
                 style={
                   isSel
                     ? {
@@ -327,7 +327,7 @@ export const PromptPresetBar: React.FC<PromptPresetBarProps> = ({
           })}
         </div>
       ) : (
-        <p className="text-[11px]" style={{ color: colors.muted }}>
+        <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
           No saved presets in this mode yet. Configure parameters below and click <strong>Save New Preset</strong>.
         </p>
       )}

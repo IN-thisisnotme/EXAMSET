@@ -327,7 +327,7 @@ export const VocabularyRecallView: React.FC<VocabularyRecallViewProps> = ({
             className="min-h-[140px] flex flex-col items-center justify-center p-5 rounded-xl border text-center space-y-2"
             style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.borderLight }}
           >
-            <div className="flex items-center gap-1.5 text-[10px] font-bold">
+            <div className="flex items-center gap-1.5 text-[0.625rem] font-bold">
               <span
                 className="px-2 py-0.5 rounded border"
                 style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
@@ -459,7 +459,7 @@ export const VocabularyRecallView: React.FC<VocabularyRecallViewProps> = ({
                     style={{ backgroundColor: b.bg, borderColor: b.bd, color: b.fg }}
                   >
                     <div className="text-xs font-black">{b.lbl}</div>
-                    <div className="text-[11px] font-bold opacity-85 mt-0.5">
+                    <div className="text-[0.6875rem] font-bold opacity-85 mt-0.5">
                       Next: {intervalPreviews[b.r]}
                     </div>
                   </button>

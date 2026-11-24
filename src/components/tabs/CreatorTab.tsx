@@ -87,29 +87,31 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
     <div className="space-y-6">
       {/* Protected Active Exam Header Banner */}
       <div
-        className="p-5 rounded-2xl space-y-4"
-        style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
+        className="p-4 sm:p-5 rounded-2xl space-y-4"
+        style={{ background: colors.heroGradient, color: colors.navyBannerText, boxShadow: colors.cardShadow }}
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[0.6875rem] font-bold"
                 style={{ backgroundColor: 'rgba(255,255,255,0.14)' }}
               >
                 <Lock className="w-3 h-3" />
                 Protected Exam Workbench
               </span>
               <span
-                className="px-2 py-0.5 rounded text-[11px] font-mono font-bold"
-                style={{ backgroundColor: colors.teal, color: '#FFFFFF' }}
+                className="px-2 py-0.5 rounded text-[0.6875rem] font-mono font-bold"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 Set {currentPaper.metadata.setNumber}
               </span>
-              <span className="text-[11px] opacity-85">{detectedLangs.join(' + ')}</span>
+              <span className="text-[0.6875rem] opacity-85">{detectedLangs.join(' + ')}</span>
             </div>
-            <h2 className="text-lg font-black tracking-tight">{currentPaper.metadata.title}</h2>
-            <p className="text-xs opacity-85">
+            <h2 className="text-lg font-black tracking-tight es-clamp-2" title={currentPaper.metadata.title}>
+              {currentPaper.metadata.title}
+            </h2>
+            <p className="es-scroll-x text-xs opacity-85">
               {currentPaper.metadata.subject}
               {currentPaper.metadata.topic ? ` • ${currentPaper.metadata.topic}` : ''} • Roll{' '}
               <span className="font-mono">{currentPaper.metadata.rollNumber || '0000000001'}</span> • Booklet{' '}
@@ -133,8 +135,8 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
               <button
                 type="button"
                 onClick={onOpenAuditModal}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold text-white"
-                style={{ backgroundColor: colors.teal }}
+                className="flex items-center gap-1.5 px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-bold shadow-sm transition hover:opacity-95"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 <ShieldCheck className="w-4 h-4" />
                 AI Audit Hub
@@ -158,8 +160,8 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
               className="p-2.5 rounded-xl text-center"
               style={{ backgroundColor: 'rgba(255,255,255,0.10)' }}
             >
-              <div className="text-base font-black">{stat.value}</div>
-              <div className="text-[10.5px] opacity-80 font-semibold">{stat.label}</div>
+              <div className="text-base font-black tabular-nums">{stat.value}</div>
+              <div className="text-[0.65625rem] opacity-85 font-semibold">{stat.label}</div>
             </div>
           ))}
         </div>
@@ -179,7 +181,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                 Create New Question Set
               </div>
-              <div className="text-[11px]" style={{ color: colors.inkMuted }}>
+              <div className="text-[0.6875rem]" style={{ color: colors.inkMuted }}>
                 Paste AI text/JSON safely without overwriting active paper
               </div>
             </div>
@@ -198,7 +200,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                 Batch Import Files
               </div>
-              <div className="text-[11px]" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Bulk validate multiple .json / .txt papers & cohort IDs
               </div>
             </div>
@@ -216,7 +218,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
             <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
               Master View & Diff Editor
             </div>
-            <div className="text-[11px]" style={{ color: colors.muted }}>
+            <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
               Edit keys, MSQ flags, formulas, & review alteration diffs
             </div>
           </div>
@@ -234,7 +236,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                 Student Test Portal
               </div>
-              <div className="text-[11px]" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 TCS CBT simulation, pacing analytics &amp; CTT psychometrics
               </div>
             </div>
@@ -253,7 +255,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                 Print &amp; OMR Studio
               </div>
-              <div className="text-[11px]" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Generate printable A4 booklets, 1-page OMR &amp; CBT HTML
               </div>
             </div>
@@ -315,14 +317,14 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
                   Q{activeQ.num} of {currentPaper.questions.length}
                 </span>
                 <span
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold"
+                  className="px-2.5 py-1 rounded-lg text-[0.6875rem] font-bold"
                   style={{ backgroundColor: colors.blueLight, color: colors.tealDark }}
                 >
                   {getDisplayTypeLabel(activeQ)}
                 </span>
                 {AnswerKeyMatcher.isMultiSelect(activeQ) && (
                   <span
-                    className="px-2 py-0.5 rounded text-[10px] font-bold"
+                    className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                     style={{ backgroundColor: colors.purpleLight, color: colors.purple }}
                   >
                     MSQ
@@ -392,7 +394,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
                       className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                       style={{
                         backgroundColor: isCorrect ? colors.green : colors.surface,
-                        color: isCorrect ? '#FFFFFF' : colors.inkBold,
+                        color: isCorrect ? colors.onAccentText : colors.inkBold,
                         border: isCorrect ? 'none' : `1px solid ${colors.border}`,
                       }}
                     >

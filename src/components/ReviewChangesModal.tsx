@@ -177,7 +177,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
               <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
                 Review Alterations & Save
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 {diffs.length} question{diffs.length === 1 ? '' : 's'} modified • Full context preview before commit
               </p>
             </div>
@@ -210,7 +210,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                     </span>
                     {d.isNew && (
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold"
+                        className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                         style={{ backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }}
                       >
                         + New
@@ -218,7 +218,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                     )}
                     {d.isDeleted && (
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold"
+                        className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                         style={{ backgroundColor: colors.badgeDangerBg, color: colors.badgeDangerText }}
                       >
                         Deleted
@@ -226,7 +226,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                     )}
                     {d.answerKeyChanged && (
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold"
+                        className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                         style={{ backgroundColor: colors.amberLight, color: colors.amber }}
                       >
                         Answer Key Changed
@@ -234,7 +234,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                     )}
                     {d.stemChanged && !d.isNew && (
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold"
+                        className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                         style={{ backgroundColor: colors.tealLight, color: colors.tealDark }}
                       >
                         Stem Edited
@@ -276,7 +276,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                         Old: {d.oldAnswerKey || 'None'}
                       </span>
                       <ArrowRight className="w-3.5 h-3.5" style={{ color: colors.teal }} />
-                      <span className="px-2 py-0.5 rounded text-white" style={{ backgroundColor: colors.green }}>
+                      <span className="px-2 py-0.5 rounded" style={{ backgroundColor: colors.green, color: colors.onAccentText }}>
                         New: {d.newAnswerKey || 'None'}
                       </span>
                     </div>
@@ -292,7 +292,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setExpanded((p) => ({ ...p, [d.questionNum]: !isOpenOpts }))}
-                      className="w-full flex items-center justify-between text-[11px] font-bold"
+                      className="w-full flex items-center justify-between text-[0.6875rem] font-bold"
                       style={{ color: colors.inkBold }}
                     >
                       <span>Options Context</span>
@@ -317,9 +317,9 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                               <span>
                                 <strong>({letter})</strong> {txt || '—'}
                               </span>
-                              {isKey && <span className="text-[10px] font-bold">✓ Key</span>}
+                              {isKey && <span className="text-[0.625rem] font-bold">✓ Key</span>}
                               {!isKey && isEdited && (
-                                <span className="text-[10px] font-semibold" style={{ color: colors.teal }}>
+                                <span className="text-[0.625rem] font-semibold" style={{ color: colors.teal }}>
                                   Edited
                                 </span>
                               )}
@@ -334,7 +334,7 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
                 {/* Explanation change */}
                 {d.explanationChanged && (
                   <div
-                    className="p-2.5 rounded-lg text-[11px]"
+                    className="p-2.5 rounded-lg text-[0.6875rem]"
                     style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderLight}` }}
                   >
                     <span className="font-bold" style={{ color: colors.teal }}>
@@ -374,8 +374,8 @@ export const ReviewChangesModal: React.FC<ReviewChangesModalProps> = ({
           <button
             type="button"
             onClick={onConfirmSave}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <Check className="w-4 h-4" />
             Confirm & Save Changes

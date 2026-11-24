@@ -49,7 +49,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
               <h3 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
                 Appearance &amp; Theme Palette
               </h3>
-              <p className="text-[11px] truncate" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem] truncate" style={{ color: colors.muted }}>
                 Curated palettes tuned for long study &amp; print clarity
               </p>
             </div>
@@ -68,7 +68,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
         <div className="p-4 sm:p-5 space-y-5 overflow-y-auto flex-1">
           {/* Brightness Mode */}
           <div className="space-y-2">
-            <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
+            <label className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
               Display Mode ({isDark ? 'Dark Active' : 'Light Active'})
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -82,7 +82,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
                     className="flex items-center justify-center gap-1.5 py-2.5 px-3 min-h-[44px] rounded-xl text-xs font-bold transition"
                     style={{
                       backgroundColor: active ? colors.teal : colors.surfaceVariant,
-                      color: active ? '#FFFFFF' : colors.ink,
+                      color: active ? colors.onAccentText : colors.ink,
                       border: `1px solid ${active ? colors.teal : colors.border}`,
                     }}
                   >
@@ -96,7 +96,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
 
           {/* Preset List */}
           <div className="space-y-2">
-            <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
+            <label className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
               Color Scheme Preset
             </label>
             <div className="space-y-2">
@@ -127,15 +127,15 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
                         <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                           {item.name}
                         </div>
-                        <div className="text-[11px] leading-snug" style={{ color: colors.muted }}>
+                        <div className="text-[0.6875rem] leading-snug" style={{ color: colors.muted }}>
                           {item.subtitle}
                         </div>
                       </div>
                     </div>
                     {selected && (
                       <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-white"
-                        style={{ backgroundColor: colors.teal }}
+                        className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                       >
                         <Check className="w-3.5 h-3.5" />
                       </div>
@@ -154,7 +154,7 @@ export const ThemePaletteModal: React.FC<ThemePaletteModalProps> = ({ isOpen, on
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 min-h-[44px] rounded-lg text-xs font-bold text-white"
+            className="px-4 py-2 min-h-[44px] rounded-lg text-xs font-bold"
             style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
           >
             Done

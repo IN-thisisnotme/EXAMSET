@@ -78,7 +78,7 @@ export const VocabularyAuditModal: React.FC<VocabularyAuditModalProps> = ({
               <h3 className="text-base font-black" style={{ color: colors.navyBannerText }}>
                 Offline Lexicon Audit — {deck.title}
               </h3>
-              <p className="text-[11px] opacity-80" style={{ color: colors.navyBannerText }}>
+              <p className="text-[0.6875rem] opacity-80" style={{ color: colors.navyBannerText }}>
                 {findings.length} total entries • {issueCount} item(s) flagged for review
               </p>
             </div>
@@ -149,7 +149,7 @@ export const VocabularyAuditModal: React.FC<VocabularyAuditModalProps> = ({
                           {f.currentEntry.word}
                         </span>
                         <span
-                          className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                          className="px-2 py-0.5 rounded text-[0.625rem] font-bold border"
                           style={{
                             backgroundColor: isOk ? colors.greenLight : colors.amberLight,
                             color: isOk ? colors.greenDark : colors.amber,
@@ -167,7 +167,7 @@ export const VocabularyAuditModal: React.FC<VocabularyAuditModalProps> = ({
                         type="button"
                         onClick={() => handleApplyFix(f)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold self-start sm:self-center flex-shrink-0"
-                        style={{ backgroundColor: colors.teal, color: '#ffffff' }}
+                        style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                       >
                         <Wrench className="w-3.5 h-3.5" />
                         Apply Suggested Fix

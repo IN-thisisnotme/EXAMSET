@@ -347,15 +347,15 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
     <div className="space-y-5">
       {/* Header Banner */}
       <div
-        className="p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        className="p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
-        <div>
-          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
-            <Mic className="w-5 h-5" style={{ color: colors.teal }} />
-            Notebook Dictation Lab (Cadence &amp; WPM Trainer)
+        <div className="min-w-0">
+          <h3 className="text-base font-black flex items-center gap-2 tracking-tight" style={{ color: colors.inkBold }}>
+            <Mic className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
+            <span className="es-clamp-2">Notebook Dictation Lab (Cadence &amp; WPM Trainer)</span>
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
             Dictates structured study notes phrase-by-phrase with adjustable writing WPM, punctuation cues, progressive acceleration, and Blind vs Proofread mode.
           </p>
         </div>
@@ -474,7 +474,8 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                     setCustomText(e.target.value);
                   }}
                   rows={5}
-                  className="w-full p-2.5 rounded-lg border font-mono text-xs"
+                  placeholder="Enter or paste study text to dictate..."
+                  className="w-full min-h-[8.5rem] resize-y p-2.5 rounded-lg border font-mono text-xs"
                   style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 />
               </div>
@@ -579,7 +580,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                     key={pm.id}
                     type="button"
                     onClick={() => handleUpdateConfig({ punctuationMode: pm.id })}
-                    className="px-2 py-1.5 rounded-lg border font-bold text-[11px]"
+                    className="px-2 py-1.5 rounded-lg border font-bold text-[0.6875rem]"
                     style={
                       dictationConfig.punctuationMode === pm.id
                         ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText, borderColor: colors.primaryButtonBg }
@@ -616,7 +617,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
               {dictationConfig.elevatingEnabled && (
                 <div className="grid grid-cols-3 gap-2 pt-1">
                   <div>
-                    <label className="block text-[10px]" style={{ color: colors.muted }}>
+                    <label className="block text-[0.625rem]" style={{ color: colors.muted }}>
                       Start WPM
                     </label>
                     <input
@@ -631,7 +632,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px]" style={{ color: colors.muted }}>
+                    <label className="block text-[0.625rem]" style={{ color: colors.muted }}>
                       Target Max
                     </label>
                     <input
@@ -646,7 +647,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px]" style={{ color: colors.muted }}>
+                    <label className="block text-[0.625rem]" style={{ color: colors.muted }}>
                       Interval
                     </label>
                     <select
@@ -703,12 +704,12 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span
-                      className="px-2 py-0.5 rounded text-[10px] font-black border"
+                      className="px-2 py-0.5 rounded text-[0.625rem] font-black border"
                       style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
                     >
                       Passage {safePassageIdx + 1} / {passages.length}
                     </span>
-                    <span className="text-[11px] font-semibold" style={{ color: colors.muted }}>
+                    <span className="text-[0.6875rem] font-semibold" style={{ color: colors.muted }}>
                       {activePassage.badge}
                     </span>
                   </div>
@@ -777,7 +778,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                       {phase === 'COMPLETED' && 'Passage Dictation Completed'}
                     </span>
                   </div>
-                  <span className="font-mono text-[11px]" style={{ color: colors.teal }}>
+                  <span className="font-mono text-[0.6875rem]" style={{ color: colors.teal }}>
                     {effectiveConfig.targetWpm} WPM
                   </span>
                 </div>
@@ -888,7 +889,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
+                  <div className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
                     Interactive Phrase Timeline (Click any phrase to jump &amp; dictate)
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -926,7 +927,7 @@ export const NotebookDictationTab: React.FC<NotebookDictationTabProps> = ({
 
                   {activePhrase && dictationConfig.punctuationMode !== 'OFF' && (
                     <div
-                      className="p-2.5 rounded-lg border text-[11px] font-mono"
+                      className="p-2.5 rounded-lg border text-[0.6875rem] font-mono"
                       style={{ backgroundColor: colors.blueLight, borderColor: colors.border, color: colors.inkBold }}
                     >
                       <strong>Spoken Cue Preview:</strong> {activePhrase.spokenText}

@@ -145,7 +145,7 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
               <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
                 3-Phase Quality Audit & Resolution Hub
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Run local structural diagnostics, generate 3-phase AI audit prompts, & apply 1-tap fixes with rollback
               </p>
             </div>
@@ -182,7 +182,7 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                 <div className="text-base font-black" style={{ color: m.fg }}>
                   {m.val}
                 </div>
-                <div className="text-[10.5px] font-bold" style={{ color: m.fg }}>
+                <div className="text-[0.65625rem] font-bold" style={{ color: m.fg }}>
                   {m.label}
                 </div>
               </div>
@@ -208,7 +208,7 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                     className="px-3 py-1.5 rounded-lg text-xs font-bold transition"
                     style={{
                       backgroundColor: phase === p.id ? colors.teal : colors.surface,
-                      color: phase === p.id ? '#FFFFFF' : colors.ink,
+                      color: phase === p.id ? colors.onAccentText : colors.ink,
                       border: `1px solid ${phase === p.id ? colors.teal : colors.border}`,
                     }}
                   >
@@ -229,7 +229,7 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                 <button
                   type="button"
                   onClick={handleCopyPrompt}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold"
                   style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
                 >
                   {copiedPrompt ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -242,16 +242,16 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
               <textarea
                 value={rawJsonInput}
                 onChange={(e) => setRawJsonInput(e.target.value)}
-                rows={2}
-                placeholder="Paste JSON audit response from Gemini / ChatGPT / Claude here..."
-                className="flex-1 p-2.5 rounded-lg font-mono text-[11px] focus:outline-none"
+                rows={3}
+                placeholder="Paste JSON audit response from Gemini, ChatGPT, or Claude..."
+                className="flex-1 p-2.5 rounded-lg font-mono text-[0.6875rem] min-h-[4.75rem] resize-y focus:outline-none"
                 style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
               />
               <button
                 type="button"
                 onClick={handleImportAiAudit}
-                className="px-4 py-2 rounded-lg text-xs font-bold text-white self-stretch"
-                style={{ backgroundColor: colors.teal }}
+                className="px-4 py-2 rounded-lg text-xs font-bold self-stretch"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 <Sparkles className="w-3.5 h-3.5 inline mr-1" />
                 Parse Report
@@ -327,7 +327,7 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                           Q{rep.qNum}
                         </span>
                         <span
-                          className="px-2 py-0.5 rounded text-[10px] font-bold"
+                          className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                           style={{
                             backgroundColor: rep.status === 'CLEAN' ? colors.greenLight : colors.amberLight,
                             color: rep.status === 'CLEAN' ? colors.green : colors.amber,
@@ -336,12 +336,12 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                           {rep.status}
                         </span>
                         {rep.isVerified && (
-                          <span className="text-[10px] font-bold" style={{ color: colors.green }}>
+                          <span className="text-[0.625rem] font-bold" style={{ color: colors.green }}>
                             ✓ Sealed
                           </span>
                         )}
                         {q?.isNeutralized && (
-                          <span className="text-[10px] font-bold" style={{ color: colors.purple }}>
+                          <span className="text-[0.625rem] font-bold" style={{ color: colors.purple }}>
                             Neutralized
                           </span>
                         )}
@@ -351,7 +351,7 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                         <button
                           type="button"
                           onClick={() => handleToggleNeutralize(rep.qNum)}
-                          className="px-2.5 py-1 rounded text-[11px] font-semibold border"
+                          className="px-2.5 py-1 rounded text-[0.6875rem] font-semibold border"
                           style={{
                             borderColor: colors.border,
                             backgroundColor: q?.isNeutralized ? colors.purpleLight : colors.surface,
@@ -364,8 +364,8 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleApplyFix(rep)}
-                            className="px-2.5 py-1 rounded text-[11px] font-bold text-white"
-                            style={{ backgroundColor: colors.teal }}
+                            className="px-2.5 py-1 rounded text-[0.6875rem] font-bold"
+                            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                           >
                             Apply Fix
                           </button>
@@ -380,21 +380,21 @@ export const AuditResolutionModal: React.FC<AuditResolutionModalProps> = ({
                     )}
 
                     {rep.flawReason && (
-                      <div className="text-[11px] flex items-start gap-1.5" style={{ color: colors.amber }}>
+                      <div className="text-[0.6875rem] flex items-start gap-1.5" style={{ color: colors.amber }}>
                         <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                         <span>{rep.flawReason}</span>
                       </div>
                     )}
 
                     {rep.suggestedKey && rep.suggestedKey !== rep.currentKey && (
-                      <div className="text-[11px] font-bold" style={{ color: colors.green }}>
+                      <div className="text-[0.6875rem] font-bold" style={{ color: colors.green }}>
                         Suggested Key Change: {rep.currentKey || 'None'} → {rep.suggestedKey}
                       </div>
                     )}
 
                     {rep.replacementQuestion && (
                       <div
-                        className="p-2 rounded-lg text-[11px]"
+                        className="p-2 rounded-lg text-[0.6875rem]"
                         style={{ backgroundColor: colors.surface, border: `1px solid ${colors.teal}` }}
                       >
                         <strong style={{ color: colors.teal }}>Replacement Ready: </strong>

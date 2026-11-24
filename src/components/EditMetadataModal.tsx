@@ -121,7 +121,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = ({
               <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
                 Edit Examination Metadata & Marking
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Applies to CBT Portal, Print Headers, and OMR Bubble Grids
               </p>
             </div>
@@ -375,8 +375,8 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = ({
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <Save className="w-3.5 h-3.5" />
             Save Metadata

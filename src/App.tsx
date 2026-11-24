@@ -947,7 +947,7 @@ const ExamSetWorkspace: React.FC = () => {
                     ExamSet
                   </h1>
                   <span
-                    className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full font-bold border truncate"
+                    className="hidden sm:inline-block text-[0.625rem] px-2.5 py-0.5 rounded-full font-bold border truncate"
                     style={{
                       backgroundColor: colors.tealLight,
                       color: colors.tealDark,
@@ -957,8 +957,12 @@ const ExamSetWorkspace: React.FC = () => {
                     Set {currentPaper.metadata.setNumber || '01'} • A4 OMR • SM-2
                   </span>
                 </div>
-                <p className="text-[11px] font-medium truncate" style={{ color: colors.muted }}>
-                  {currentPaper.metadata.title} ({currentPaper.questions.length} Qs)
+                <p
+                  className="es-scroll-x text-[0.6875rem] font-medium"
+                  style={{ color: colors.muted }}
+                  title={`${currentPaper.metadata.title} (${currentPaper.questions.length} Qs)`}
+                >
+                  {currentPaper.metadata.title} <span className="tabular-nums opacity-85">({currentPaper.questions.length} Qs)</span>
                 </p>
               </div>
             </div>
@@ -1040,7 +1044,7 @@ const ExamSetWorkspace: React.FC = () => {
                     <span>{item.shortLabel}</span>
                     {item.badge && (
                       <span
-                        className="ml-0.5 text-[10px] px-1.5 py-0.2 rounded-full font-bold"
+                        className="ml-0.5 text-[0.625rem] px-1.5 py-0.2 rounded-full font-bold"
                         style={
                           isActive
                             ? { backgroundColor: 'rgba(255,255,255,0.22)', color: colors.primaryButtonText }
@@ -1066,7 +1070,7 @@ const ExamSetWorkspace: React.FC = () => {
             {(['exam', 'study', 'focus'] as const).map((grp) => (
               <div key={grp} className="space-y-1">
                 <div
-                  className="px-2 pt-1 text-[10px] font-black uppercase tracking-wider"
+                  className="px-2 pt-1 text-[0.625rem] font-black uppercase tracking-wider"
                   style={{ color: colors.muted }}
                 >
                   {navGroupLabels[grp]}
@@ -1096,7 +1100,7 @@ const ExamSetWorkspace: React.FC = () => {
                             <span className="truncate">{item.label}</span>
                           </div>
                           {item.badge && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-black/15 flex-shrink-0">
+                            <span className="text-[0.6875rem] px-2 py-0.5 rounded-full bg-black/15 flex-shrink-0">
                               {item.badge}
                             </span>
                           )}
@@ -1117,14 +1121,14 @@ const ExamSetWorkspace: React.FC = () => {
           className={`hidden lg:flex flex-col flex-shrink-0 rounded-2xl border p-2.5 self-start sticky top-[4.5rem] max-h-[calc(100dvh-5.5rem)] overflow-y-auto transition-all duration-200 ${
             railExpanded ? 'w-60' : 'w-[72px]'
           }`}
-          style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          style={{ backgroundColor: colors.surface, borderColor: colors.border, boxShadow: colors.cardShadow }}
         >
           <div className="space-y-3">
             {(['exam', 'study', 'focus'] as const).map((grp) => (
               <div key={grp} className="space-y-1">
                 {railExpanded && (
                   <div
-                    className="px-2.5 pt-1 text-[10px] font-black uppercase tracking-wider"
+                    className="px-2.5 pt-1 text-[0.625rem] font-black uppercase tracking-wider"
                     style={{ color: colors.muted }}
                   >
                     {navGroupLabels[grp]}
@@ -1155,7 +1159,7 @@ const ExamSetWorkspace: React.FC = () => {
                         </div>
                         {railExpanded && item.badge && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
+                            className="text-[0.625rem] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0"
                             style={
                               isActive
                                 ? { backgroundColor: 'rgba(255,255,255,0.22)', color: colors.primaryButtonText }
@@ -1176,8 +1180,8 @@ const ExamSetWorkspace: React.FC = () => {
         {/* Primary Workspace Card */}
         <main className="flex-1 min-w-0">
           <section
-            className="rounded-2xl shadow-sm border p-3 sm:p-5 lg:p-6 min-h-[calc(100dvh-10rem)]"
-            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+            className="rounded-2xl border p-3.5 sm:p-5 lg:p-6 min-h-[calc(100dvh-10rem)] transition-colors"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border, boxShadow: colors.cardShadow }}
           >
           {activeTab === 'creator' && (
             <CreatorTab
@@ -1411,7 +1415,7 @@ const ExamSetWorkspace: React.FC = () => {
                 setActiveTab(item.id);
                 setMobileMenuOpen(false);
               }}
-              className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold"
+              className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[0.625rem] font-bold"
               style={{
                 color: active ? colors.teal : colors.muted,
                 backgroundColor: active ? colors.tealLight : 'transparent',
@@ -1425,7 +1429,7 @@ const ExamSetWorkspace: React.FC = () => {
         <button
           type="button"
           onClick={() => setMobileMenuOpen((o) => !o)}
-          className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold"
+          className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[0.625rem] font-bold"
           style={{
             color: mobileMenuOpen ? colors.teal : colors.muted,
             backgroundColor: mobileMenuOpen ? colors.tealLight : 'transparent',

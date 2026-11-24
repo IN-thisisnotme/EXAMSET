@@ -145,7 +145,7 @@ export const InputModal: React.FC<InputModalProps> = ({
               <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
                 Create New Question Set
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Paste formatted MCQs, Markdown tables, or JSON — creates a brand new saved paper without modifying existing sets
               </p>
             </div>
@@ -159,7 +159,7 @@ export const InputModal: React.FC<InputModalProps> = ({
           {/* Quick Sample Loaders & File Upload */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-bold uppercase tracking-wider mr-1" style={{ color: colors.muted }}>
+              <span className="text-[0.6875rem] font-bold uppercase tracking-wider mr-1" style={{ color: colors.muted }}>
                 Samples:
               </span>
               {[
@@ -172,7 +172,7 @@ export const InputModal: React.FC<InputModalProps> = ({
                   key={s.label}
                   type="button"
                   onClick={() => setRawText(s.text)}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border"
+                  className="px-2.5 py-1 rounded-lg text-[0.6875rem] font-semibold transition border"
                   style={{
                     backgroundColor: colors.surfaceVariant,
                     borderColor: colors.border,
@@ -205,7 +205,7 @@ export const InputModal: React.FC<InputModalProps> = ({
             onChange={(e) => setRawText(e.target.value)}
             rows={10}
             placeholder="Paste questions, options (A)–(D) or (E), MSQ keys (e.g. A, C), Markdown tables, or ExamSet JSON..."
-            className="w-full p-3.5 rounded-xl font-mono text-xs leading-relaxed focus:outline-none"
+            className="w-full min-h-[12rem] resize-y p-3.5 rounded-xl font-mono text-xs leading-relaxed focus:outline-none"
             style={{
               backgroundColor: colors.surfaceVariant,
               border: `1px solid ${colors.border}`,
@@ -230,7 +230,7 @@ export const InputModal: React.FC<InputModalProps> = ({
                     : 'No valid questions detected yet'}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+              <div className="flex items-center gap-1.5 flex-wrap text-[0.6875rem]">
                 <span className="px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: colors.surface, color: colors.ink }}>
                   Lang: {detectedLangs.join(' + ')}
                 </span>
@@ -379,7 +379,7 @@ export const InputModal: React.FC<InputModalProps> = ({
           className="px-5 py-3 flex items-center justify-between gap-2"
           style={{ borderTop: `1px solid ${colors.border}`, backgroundColor: colors.surfaceVariant }}
         >
-          <span className="text-[11px] flex items-center gap-1" style={{ color: colors.muted }}>
+          <span className="text-[0.6875rem] flex items-center gap-1" style={{ color: colors.muted }}>
             <FileText className="w-3.5 h-3.5" />
             Non-destructive save into Library
           </span>
@@ -396,8 +396,8 @@ export const InputModal: React.FC<InputModalProps> = ({
               type="button"
               disabled={parseResult.rawCount === 0}
               onClick={handleCreate}
-              className="px-4 py-2 rounded-lg text-xs font-bold text-white disabled:opacity-40 transition"
-              style={{ backgroundColor: colors.teal }}
+              className="px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40 transition"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               Create & Load Set ({parseResult.rawCount} Qs)
             </button>

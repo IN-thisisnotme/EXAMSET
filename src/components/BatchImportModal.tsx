@@ -124,7 +124,7 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
               <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
                 Batch JSON & Multi-File Importer
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Upload multiple .json or .txt exam files simultaneously with schema validation & sequential Roll/Booklet assignment
               </p>
             </div>
@@ -137,8 +137,8 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <label
-              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm"
-              style={{ backgroundColor: colors.teal }}
+              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               <Upload className="w-4 h-4" />
               <span>Select Multiple Files (.json / .txt)</span>
@@ -227,7 +227,7 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
               <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                 No files queued for batch import
               </div>
-              <div className="text-[11px]" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Supports single ExamSet JSON, arrays of question sets, or multi-set bundles.
               </div>
             </div>
@@ -261,12 +261,12 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
                           <span className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                             {item.paper?.metadata.title || item.fileName}
                           </span>
-                          <span className="text-[10px] font-mono" style={{ color: colors.muted }}>
+                          <span className="text-[0.625rem] font-mono" style={{ color: colors.muted }}>
                             {item.fileName} ({item.fileSizeFormatted})
                           </span>
                         </div>
                         {item.paper && (
-                          <div className="text-[11px]" style={{ color: colors.inkMuted }}>
+                          <div className="text-[0.6875rem]" style={{ color: colors.inkMuted }}>
                             {item.paper.metadata.subject} • {item.paper.questions.length} Qs • Set{' '}
                             {item.paper.metadata.setNumber}
                           </div>
@@ -276,7 +276,7 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
                             {item.issues.map((iss, k) => (
                               <div
                                 key={k}
-                                className="text-[10.5px]"
+                                className="text-[0.65625rem]"
                                 style={{
                                   color:
                                     iss.severity === 'ERROR'
@@ -296,7 +296,7 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
 
                     <div className="flex items-center gap-2">
                       <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
                         style={{ backgroundColor: colors.surface, color: statusColor, border: `1px solid ${statusColor}` }}
                       >
                         <StatusIcon className="w-3 h-3" />
@@ -338,8 +338,8 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
               type="button"
               disabled={selectedCount === 0}
               onClick={handleConfirmImport}
-              className="px-4 py-2 rounded-lg text-xs font-bold text-white disabled:opacity-40"
-              style={{ backgroundColor: colors.teal }}
+              className="px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-40"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               Import {selectedCount} Selected Set{selectedCount === 1 ? '' : 's'}
             </button>

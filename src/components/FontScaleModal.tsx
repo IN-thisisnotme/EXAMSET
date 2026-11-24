@@ -51,7 +51,7 @@ export const FontScaleModal: React.FC<FontScaleModalProps> = ({ isOpen, onClose 
               <h3 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
                 Reading Typography &amp; System Scale
               </h3>
-              <p className="text-[11px] truncate" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem] truncate" style={{ color: colors.muted }}>
                 Coordinated across system, browser, and question cards
               </p>
             </div>
@@ -70,7 +70,7 @@ export const FontScaleModal: React.FC<FontScaleModalProps> = ({ isOpen, onClose 
         <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           {/* Active Resolution Diagnostic Bar */}
           <div
-            className="px-3 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-[11px]"
+            className="px-3 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-[0.6875rem]"
             style={{
               backgroundColor: colors.surfaceVariant,
               borderColor: colors.border,
@@ -104,14 +104,14 @@ export const FontScaleModal: React.FC<FontScaleModalProps> = ({ isOpen, onClose 
                     <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                       {opt.label}
                     </div>
-                    <div className="text-[11px] leading-snug" style={{ color: colors.muted }}>
+                    <div className="text-[0.6875rem] leading-snug" style={{ color: colors.muted }}>
                       {opt.description}
                     </div>
                   </div>
                   {selected && (
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0"
-                      style={{ backgroundColor: colors.teal }}
+                      className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                     >
                       <Check className="w-3.5 h-3.5" />
                     </div>
@@ -129,7 +129,7 @@ export const FontScaleModal: React.FC<FontScaleModalProps> = ({ isOpen, onClose 
               border: `1px solid ${colors.border}`,
             }}
           >
-            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
+            <div className="text-[0.625rem] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
               Live Stem &amp; Formula Preview
             </div>
             <p className="font-semibold leading-snug" style={{ fontSize: scalePx(14), color: colors.inkBold }}>
@@ -138,7 +138,7 @@ export const FontScaleModal: React.FC<FontScaleModalProps> = ({ isOpen, onClose 
             <p style={{ fontSize: scalePx(12.5), color: colors.ink }}>
               (A) Water Vapor (H₂O) &nbsp;&nbsp; (B) Carbon Dioxide (CO₂)
             </p>
-            <p className="font-mono text-[11px]" style={{ color: colors.muted }}>
+            <p className="font-mono text-[0.6875rem]" style={{ color: colors.muted }}>
               Formula density: E = mc² • pH = -log₁₀[H⁺]
             </p>
           </div>
@@ -148,7 +148,7 @@ export const FontScaleModal: React.FC<FontScaleModalProps> = ({ isOpen, onClose 
           className="px-4 sm:px-5 py-3 flex items-center justify-between gap-2 flex-shrink-0"
           style={{ borderTop: `1px solid ${colors.border}`, backgroundColor: colors.surfaceVariant }}
         >
-          <span className="text-[11px]" style={{ color: colors.muted }}>
+          <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
             Browser zoom stays active in all modes
           </span>
           <button

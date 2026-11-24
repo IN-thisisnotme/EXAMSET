@@ -600,25 +600,27 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
           >
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/15">
+                <span className="text-[0.6875rem] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/15">
                   CBT & Continuous Test Portal
                 </span>
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/10">
+                <span className="text-[0.6875rem] font-mono px-2 py-0.5 rounded bg-white/10">
                   Set {currentPaper.metadata.setNumber || '01'}
                 </span>
                 {msqCount > 0 && (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-400/20 text-amber-200">
+                  <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded bg-amber-400/20 text-amber-200">
                     {msqCount} MSQ
                   </span>
                 )}
                 {optECount > 0 && (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-teal-400/20 text-teal-100">
+                  <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded bg-teal-400/20 text-teal-100">
                     5 Options (A–E)
                   </span>
                 )}
               </div>
-              <h2 className="text-xl sm:text-2xl font-black mt-2">{currentPaper.metadata.title}</h2>
-              <p className="text-xs opacity-85 mt-1">
+              <h2 className="text-xl sm:text-2xl font-black mt-2 es-clamp-2" title={currentPaper.metadata.title}>
+                {currentPaper.metadata.title}
+              </h2>
+              <p className="es-scroll-x text-xs opacity-85 mt-1">
                 {currentPaper.metadata.subject}
                 {currentPaper.metadata.topic ? ` • ${currentPaper.metadata.topic}` : ''} • Roll:{' '}
                 {currentPaper.metadata.rollNumber || '0000000001'} • Booklet:{' '}
@@ -656,7 +658,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                     <PauseCircle className="w-4 h-4" />
                     Paused Examination Session Found
                   </div>
-                  <p className="text-[11px]" style={{ color: colors.ink }}>
+                  <p className="text-[0.6875rem]" style={{ color: colors.ink }}>
                     {Object.keys(savedSession.answers || {}).length} of {currentPaper.questions.length} answered • Elapsed{' '}
                     {formatClock(savedSession.elapsedSeconds)}
                   </p>
@@ -674,8 +676,8 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                   </button>
                   <button
                     onClick={handleResumeSession}
-                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white"
-                    style={{ backgroundColor: colors.teal }}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold"
+                    style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                   >
                     <Play className="w-3.5 h-3.5" />
                     Resume Session
@@ -693,7 +695,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                 <div className="text-lg font-black" style={{ color: colors.inkBold }}>
                   {currentPaper.questions.length}
                 </div>
-                <div className="text-[11px]" style={{ color: colors.muted }}>
+                <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                   Total Questions
                 </div>
               </div>
@@ -704,7 +706,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                 <div className="text-lg font-black" style={{ color: colors.badgeSuccessText }}>
                   +{posMarks}
                 </div>
-                <div className="text-[11px]" style={{ color: colors.badgeSuccessText }}>
+                <div className="text-[0.6875rem]" style={{ color: colors.badgeSuccessText }}>
                   Correct Mark
                 </div>
               </div>
@@ -715,7 +717,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                 <div className="text-lg font-black" style={{ color: colors.badgeDangerText }}>
                   -{negMarks}
                 </div>
-                <div className="text-[11px]" style={{ color: colors.badgeDangerText }}>
+                <div className="text-[0.6875rem]" style={{ color: colors.badgeDangerText }}>
                   Negative Penalty
                 </div>
               </div>
@@ -726,7 +728,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                 <div className="text-xs font-black mt-1" style={{ color: colors.inkBold }}>
                   {msqPolicy === 'PARTIAL_STRICT' ? 'MSQ Partial' : 'MSQ All/Nothing'}
                 </div>
-                <div className="text-[11px] mt-0.5" style={{ color: colors.muted }}>
+                <div className="text-[0.6875rem] mt-0.5" style={{ color: colors.muted }}>
                   Skip: {unkMarks > 0 ? `-${unkMarks}` : '0'}
                 </div>
               </div>
@@ -758,7 +760,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                       <Grid className="w-3.5 h-3.5" />
                       TCS iON CBT
                     </div>
-                    <div className="text-[10px] mt-1" style={{ color: colors.muted }}>
+                    <div className="text-[0.625rem] mt-1" style={{ color: colors.muted }}>
                       1 question/screen, 5-state palette & shortcuts
                     </div>
                   </button>
@@ -777,7 +779,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                       <List className="w-3.5 h-3.5" />
                       Scrollable Paper
                     </div>
-                    <div className="text-[10px] mt-1" style={{ color: colors.muted }}>
+                    <div className="text-[0.625rem] mt-1" style={{ color: colors.muted }}>
                       Full paper flow with inline answers
                     </div>
                   </button>
@@ -817,7 +819,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                     }
                   >
                     <div className="text-xs font-bold">Timed Countdown</div>
-                    <div className="text-[10px] mt-1" style={{ color: colors.muted }}>
+                    <div className="text-[0.625rem] mt-1" style={{ color: colors.muted }}>
                       Auto-submits when clock hits zero
                     </div>
                   </button>
@@ -833,7 +835,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                     }
                   >
                     <div className="text-xs font-bold">Open Stopwatch</div>
-                    <div className="text-[10px] mt-1" style={{ color: colors.muted }}>
+                    <div className="text-[0.625rem] mt-1" style={{ color: colors.muted }}>
                       Counts up; alerts past target time
                     </div>
                   </button>
@@ -849,10 +851,10 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                         key={m}
                         type="button"
                         onClick={() => setCustomMinutes(m)}
-                        className="px-2 py-0.5 rounded border text-[11px] font-bold"
+                        className="px-2 py-0.5 rounded border text-[0.6875rem] font-bold"
                         style={
                           customMinutes === m
-                            ? { backgroundColor: colors.teal, color: '#FFFFFF', borderColor: colors.teal }
+                            ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                             : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
                         }
                       >
@@ -916,7 +918,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
             {/* Primary Start Action */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t" style={{ borderColor: colors.borderLight }}>
-              <div className="text-[11px]" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Desktop shortcuts in CBT: Keys <kbd className="px-1 border rounded">1–5</kbd> / <kbd className="px-1 border rounded">A–E</kbd> select,{' '}
                 <kbd className="px-1 border rounded">←</kbd>/<kbd className="px-1 border rounded">→</kbd> navigate,{' '}
                 <kbd className="px-1 border rounded">M</kbd> flag, <kbd className="px-1 border rounded">Backspace</kbd> clear.
@@ -973,16 +975,18 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
         {/* Hero Scorecard */}
         <div
-          className="p-6 sm:p-8 rounded-2xl shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-6"
-          style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
+          className="p-6 sm:p-8 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+          style={{ background: colors.heroGradient, color: colors.navyBannerText, boxShadow: colors.cardShadow }}
         >
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0 flex-1">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-xs font-bold">
               <Award className="w-3.5 h-3.5" />
               <span>{activeSubsetNums ? 'Targeted Practice Completed' : 'Assessment Recorded'}</span>
             </div>
-            <h2 className="text-2xl font-black">{currentPaper.metadata.title}</h2>
-            <p className="text-xs opacity-85">
+            <h2 className="text-2xl font-black es-clamp-2" title={currentPaper.metadata.title}>
+              {currentPaper.metadata.title}
+            </h2>
+            <p className="es-scroll-x text-xs opacity-85">
               Time: {formatClock(lastSubmittedRecord.timeSpentSeconds)} • {activeQuestions.length} Items • Policy: +{posMarks} / -{negMarks}
             </p>
           </div>
@@ -993,11 +997,11 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                 {lastSubmittedRecord.score.toFixed(2)}{' '}
                 <span className="text-xs font-normal opacity-80">/ {lastSubmittedRecord.maxScore}</span>
               </div>
-              <div className="text-[11px] opacity-80">Net Score</div>
+              <div className="text-[0.6875rem] opacity-80">Net Score</div>
             </div>
             <div className="px-4 py-2.5 rounded-xl bg-white/10 text-center min-w-[95px]">
               <div className="text-2xl font-black text-sky-300">{lastSubmittedRecord.accuracyPercent}%</div>
-              <div className="text-[11px] opacity-80">Accuracy</div>
+              <div className="text-[0.6875rem] opacity-80">Accuracy</div>
             </div>
             <button
               onClick={() => handleStartNewTest(null)}
@@ -1032,7 +1036,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
               <div className="text-2xl font-black" style={{ color: tile.color }}>
                 {tile.val}
               </div>
-              <div className="text-[11px] font-semibold mt-0.5" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem] font-semibold mt-0.5" style={{ color: colors.muted }}>
                 {tile.label}
               </div>
             </div>
@@ -1137,10 +1141,10 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                   <button
                     key={f.id}
                     onClick={() => setReviewFilter(f.id)}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold border"
+                    className="px-2.5 py-1 rounded-lg text-[0.6875rem] font-bold border"
                     style={
                       reviewFilter === f.id
-                        ? { backgroundColor: colors.teal, color: '#FFFFFF', borderColor: colors.teal }
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                         : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
                     }
                   >
@@ -1190,7 +1194,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                         >
                           Q.{q.num}
                         </span>
-                        <span className="text-[11px] font-mono flex items-center gap-1" style={{ color: colors.muted }}>
+                        <span className="text-[0.6875rem] font-mono flex items-center gap-1" style={{ color: colors.muted }}>
                           <Clock className="w-3 h-3" />
                           {timeSpentQ}s spent
                         </span>
@@ -1243,7 +1247,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {isOfficial && (
                                 <span
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                                  className="px-1.5 py-0.5 rounded text-[0.625rem] font-bold"
                                   style={{ backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }}
                                 >
                                   Key
@@ -1251,7 +1255,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                               )}
                               {isChosen && (
                                 <span
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                                  className="px-1.5 py-0.5 rounded text-[0.625rem] font-bold"
                                   style={{
                                     backgroundColor: isOfficial ? colors.badgeSuccessBg : colors.badgeDangerBg,
                                     color: isOfficial ? colors.badgeSuccessText : colors.badgeDangerText,
@@ -1299,7 +1303,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                     <div className="text-xl font-black" style={{ color: stat.color }}>
                       {stat.value}
                     </div>
-                    <div className="text-[11px] font-semibold mt-0.5" style={{ color: colors.muted }}>
+                    <div className="text-[0.6875rem] font-semibold mt-0.5" style={{ color: colors.muted }}>
                       {stat.label}
                     </div>
                   </div>
@@ -1434,7 +1438,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
           <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.inkBold }}>
             Question Palette
           </h4>
-          <p className="text-[10px] font-mono" style={{ color: colors.muted }}>
+          <p className="text-[0.625rem] font-mono" style={{ color: colors.muted }}>
             Roll {currentPaper.metadata.rollNumber || '0000000001'} • Set {currentPaper.metadata.setNumber || '01'}
           </p>
         </div>
@@ -1450,7 +1454,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
       </div>
 
       {/* 5-state legend */}
-      <div className="grid grid-cols-2 gap-1.5 text-[10px]" style={{ color: colors.ink }}>
+      <div className="grid grid-cols-2 gap-1.5 text-[0.625rem]" style={{ color: colors.ink }}>
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-sm bg-emerald-600 inline-block" />
           <span>Answered ({paletteStates.filter((s) => s === 'ANSWERED').length})</span>
@@ -1555,8 +1559,8 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
         style={{ backgroundColor: colors.navyBanner, color: colors.navyBannerText }}
       >
         <div className="min-w-0 flex-1">
-          <h3 className="font-bold text-sm truncate">{currentPaper.metadata.title}</h3>
-          <p className="text-[11px] opacity-80">
+          <h3 className="font-bold text-sm es-scroll-x" title={currentPaper.metadata.title}>{currentPaper.metadata.title}</h3>
+          <p className="text-[0.6875rem] opacity-80 tabular-nums">
             {interfaceMode === 'TCS_ION_CBT' ? `Q.${currentQuestion?.num} (${currentIndex + 1}/${activeQuestions.length})` : `${activeQuestions.length} Questions`} •{' '}
             Answered {answeredCount}/{activeQuestions.length}
           </p>
@@ -1564,7 +1568,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Local Font Bias A- / A / A+ */}
-          <div className="flex items-center rounded-lg bg-white/10 border border-white/15 overflow-hidden text-[11px] font-bold">
+          <div className="flex items-center rounded-lg bg-white/10 border border-white/15 overflow-hidden text-[0.6875rem] font-bold">
             <button
               onClick={() => setLocalFontBias((b) => Math.max(-2, b - 1))}
               className="px-2 py-1 hover:bg-white/15"
@@ -1593,7 +1597,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
             onClick={() =>
               setInterfaceMode((m) => (m === 'TCS_ION_CBT' ? 'SCROLLABLE_PAPER' : 'TCS_ION_CBT'))
             }
-            className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold"
+            className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[0.6875rem] font-bold"
           >
             {interfaceMode === 'TCS_ION_CBT' ? 'Paper Mode' : 'CBT Mode'}
           </button>
@@ -1606,7 +1610,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
           >
             <Clock className="w-3.5 h-3.5" />
             <span>{displayClockText}</span>
-            {isOverTime && <span className="text-[10px] uppercase">Over</span>}
+            {isOverTime && <span className="text-[0.625rem] uppercase">Over</span>}
           </div>
 
           {interfaceMode === 'TCS_ION_CBT' && (
@@ -1655,13 +1659,13 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                   </span>
                   {AnswerKeyMatcher.isMultiSelect(currentQuestion) && (
                     <span
-                      className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      className="px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
                       style={{ backgroundColor: colors.badgeWarningBg, color: colors.badgeWarningText }}
                     >
                       MSQ (Select all that apply)
                     </span>
                   )}
-                  <span className="text-[11px] font-mono" style={{ color: colors.muted }}>
+                  <span className="text-[0.6875rem] font-mono" style={{ color: colors.muted }}>
                     +{posMarks} / -{negMarks}
                   </span>
                 </div>
@@ -1727,7 +1731,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                               }`}
                               style={{
                                 backgroundColor: isSel ? colors.teal : colors.surface,
-                                color: isSel ? '#FFFFFF' : colors.inkBold,
+                                color: isSel ? colors.onAccentText : colors.inkBold,
                                 border: `1px solid ${isSel ? colors.teal : colors.border}`,
                               }}
                             >
@@ -1745,9 +1749,10 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                             style={{
                               borderColor: isSel ? colors.teal : colors.border,
                               backgroundColor: isSel ? colors.teal : 'transparent',
+                              color: colors.onAccentText,
                             }}
                           >
-                            {isSel && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                            {isSel && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                           </div>
                         </button>
                       );
@@ -1832,7 +1837,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                     </span>
                     {isMsq && (
                       <span
-                        className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                        className="px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
                         style={{ backgroundColor: colors.badgeWarningBg, color: colors.badgeWarningText }}
                       >
                         MSQ
@@ -1843,7 +1848,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                     {rawAns && (
                       <button
                         onClick={() => handleClearResponse(q.num)}
-                        className="text-[11px] font-semibold"
+                        className="text-[0.6875rem] font-semibold"
                         style={{ color: colors.muted }}
                       >
                         Clear
@@ -1893,7 +1898,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                           }`}
                           style={{
                             backgroundColor: isSel ? colors.teal : colors.surface,
-                            color: isSel ? '#FFFFFF' : colors.inkBold,
+                            color: isSel ? colors.onAccentText : colors.inkBold,
                             border: `1px solid ${colors.border}`,
                           }}
                         >

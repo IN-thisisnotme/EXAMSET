@@ -185,18 +185,18 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span
-                  className="px-2 py-0.5 rounded-md text-[10px] font-black border"
+                  className="px-2 py-0.5 rounded-md text-[0.625rem] font-black border"
                   style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
                 >
                   {selectedNote.collectionType === 'CUSTOM' && selectedNote.customLabel
                     ? selectedNote.customLabel
                     : meta.shortBadge}
                 </span>
-                <span className="text-[11px] font-semibold" style={{ color: colors.muted }}>
+                <span className="text-[0.6875rem] font-semibold" style={{ color: colors.muted }}>
                   {selectedNote.subject}
                 </span>
               </div>
-              <h3 className="text-base sm:text-lg font-black mt-0.5" style={{ color: colors.inkBold }}>
+              <h3 className="text-base sm:text-lg font-black mt-0.5 es-clamp-2" style={{ color: colors.inkBold }}>
                 {selectedNote.title}
               </h3>
             </div>
@@ -301,10 +301,10 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                       setMaskMode(m.id);
                       setRevealedIndices({});
                     }}
-                    className="px-2.5 py-1 rounded-lg border font-bold text-[11px]"
+                    className="px-2.5 py-1 rounded-lg border font-bold text-[0.6875rem]"
                     style={
                       maskMode === m.id
-                        ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                         : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
                     }
                   >
@@ -316,7 +316,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
               <button
                 type="button"
                 onClick={() => setBookmarkedOnly((v) => !v)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border font-bold text-[11px]"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border font-bold text-[0.6875rem]"
                 style={
                   bookmarkedOnly
                     ? { backgroundColor: colors.amberLight, borderColor: colors.amber, color: colors.amber }
@@ -447,7 +447,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                           <button
                             type="button"
                             onClick={togglePeek}
-                            className="p-1.5 rounded-lg border text-[11px]"
+                            className="p-1.5 rounded-lg border text-[0.6875rem]"
                             style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.ink }}
                             title="Toggle Peek"
                           >
@@ -496,7 +496,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                           </span>
                           {(block.badge || block.questionType) && (
                             <span
-                              className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                              className="px-2 py-0.5 rounded text-[0.625rem] font-bold border"
                               style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.border }}
                             >
                               {block.badge || block.questionType}
@@ -504,7 +504,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                           )}
                           {block.statusTag && (
                             <span
-                              className="px-2 py-0.5 rounded text-[10px] font-bold"
+                              className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                               style={{ backgroundColor: colors.redLight, color: colors.red }}
                             >
                               {block.statusTag}
@@ -639,15 +639,15 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
     <div className="space-y-5">
       {/* Header */}
       <div
-        className="p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        className="p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
-        <div>
-          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
-            <BookOpen className="w-5 h-5" style={{ color: colors.teal }} />
-            Knowledge Studio &amp; SM-2 Spaced Repetition ({notes.length})
+        <div className="min-w-0">
+          <h3 className="text-base font-black flex items-center gap-2 tracking-tight" style={{ color: colors.inkBold }}>
+            <BookOpen className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
+            <span className="es-clamp-2">Knowledge Studio &amp; SM-2 Spaced Repetition ({notes.length})</span>
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
             Organize structured study notes, Weak-Area Logs, Formulas, and active-recall SM-2 flashcard decks.
           </p>
         </div>
@@ -708,7 +708,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                   <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                     {p.metadata.title}
                   </div>
-                  <div className="text-[11px] mt-0.5" style={{ color: colors.muted }}>
+                  <div className="text-[0.6875rem] mt-0.5" style={{ color: colors.muted }}>
                     {p.questions.length} Qs • {latest ? `Latest score: ${latest.score.toFixed(1)}` : 'Full paper review'}
                   </div>
                 </button>
@@ -792,12 +792,12 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className="px-2 py-0.5 rounded-md text-[10px] font-black border"
+                      className="px-2 py-0.5 rounded-md text-[0.625rem] font-black border"
                       style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
                     >
                       {note.collectionType === 'CUSTOM' && note.customLabel ? note.customLabel : meta.shortBadge}
                     </span>
-                    <span className="text-[11px] font-semibold truncate" style={{ color: colors.muted }}>
+                    <span className="text-[0.6875rem] font-semibold truncate" style={{ color: colors.muted }}>
                       {note.subject}
                     </span>
                   </div>
@@ -806,7 +806,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                     {note.title}
                   </h4>
 
-                  <div className="flex flex-wrap gap-1.5 text-[10px] font-bold">
+                  <div className="flex flex-wrap gap-1.5 text-[0.625rem] font-bold">
                     <span
                       className="px-2 py-0.5 rounded"
                       style={{ backgroundColor: colors.surfaceVariant, color: colors.ink }}
@@ -888,7 +888,7 @@ export const KnowledgeStudioTab: React.FC<KnowledgeStudioTabProps> = ({
                           onDeleteNote(note.id);
                           setPendingDeleteId(null);
                         }}
-                        className="px-2 py-1 rounded-lg font-bold text-white text-[10px]"
+                        className="px-2 py-1 rounded-lg font-bold text-white text-[0.625rem]"
                         style={{ backgroundColor: colors.red }}
                       >
                         Confirm

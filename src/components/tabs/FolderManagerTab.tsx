@@ -257,8 +257,8 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
           <button
             type="button"
             onClick={() => onOpenCreateModal(activeFolderId)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold text-white shadow-sm"
-            style={{ backgroundColor: colors.teal }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <FilePlus2 className="w-4 h-4" />
             New Question Set
@@ -311,7 +311,7 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
               />
             ))}
           </div>
-          <button type="submit" className="px-3.5 py-2 rounded-lg text-xs font-bold text-white" style={{ backgroundColor: colors.teal }}>
+          <button type="submit" className="px-3.5 py-2 rounded-lg text-xs font-bold" style={{ backgroundColor: colors.teal, color: colors.onAccentText }}>
             Create
           </button>
           <button type="button" onClick={() => setIsCreatingFolder(false)} className="p-1.5" style={{ color: colors.muted }}>
@@ -361,7 +361,7 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
                     <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                       {f.name}
                     </div>
-                    <div className="text-[10.5px]" style={{ color: colors.muted }}>
+                    <div className="text-[0.65625rem]" style={{ color: colors.muted }}>
                       {countPapersRecursive(f.id)} set(s)
                     </div>
                   </div>
@@ -412,7 +412,7 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
               className="px-2.5 py-1.5 rounded-lg font-bold"
               style={{
                 backgroundColor: stageFilter === st ? colors.teal : colors.surfaceVariant,
-                color: stageFilter === st ? '#FFFFFF' : colors.ink,
+                color: stageFilter === st ? colors.onAccentText : colors.ink,
               }}
             >
               {st === 'ALL' ? 'All Stages' : st === 'PENDING' ? 'Pending' : 'Completed'}
@@ -462,8 +462,8 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
                 onMovePapersToFolder(selectedIds, moveTargetFolderId);
                 setSelectedIds([]);
               }}
-              className="px-2.5 py-1 rounded font-bold text-white"
-              style={{ backgroundColor: colors.teal }}
+              className="px-2.5 py-1 rounded font-bold"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               Move
             </button>
@@ -548,20 +548,20 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
                   </button>
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
+                      <span className="text-sm font-bold es-clamp-2" style={{ color: colors.inkBold }} title={p.metadata.title}>
                         {p.metadata.title}
                       </span>
                       {isActive && (
                         <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
-                          style={{ backgroundColor: colors.teal }}
+                          className="px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
+                          style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                         >
                           Active
                         </span>
                       )}
                       {p.metadata.isCompleted && (
                         <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                          className="px-2 py-0.5 rounded-full text-[0.625rem] font-bold"
                           style={{ backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }}
                         >
                           ✓ Completed
@@ -569,7 +569,7 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
                       )}
                       {p.metadata.manualCategory && (
                         <span
-                          className="px-2 py-0.5 rounded text-[10px] font-bold"
+                          className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                           style={{ backgroundColor: colors.purpleLight, color: colors.purple }}
                         >
                           {p.metadata.manualCategory.replace('_', ' ')}
@@ -630,7 +630,7 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
                       onSelectPaper(p);
                       onNavigateToStudentPortal();
                     }}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold"
                     style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
                   >
                     <Play className="w-3 h-3" />

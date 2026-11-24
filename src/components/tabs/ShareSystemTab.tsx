@@ -147,15 +147,15 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
     <div className="space-y-6">
       {/* Header */}
       <div
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl border"
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
-        <div>
-          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
-            <Share2 className="w-5 h-5" style={{ color: colors.teal }} />
-            Share, Bundle Export &amp; Peer Import Hub
+        <div className="min-w-0">
+          <h3 className="text-base font-black flex items-center gap-2 tracking-tight" style={{ color: colors.inkBold }}>
+            <Share2 className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
+            <span className="es-clamp-2">Share, Bundle Export &amp; Peer Import Hub</span>
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
             Export single assessments (.examset.json), full library bundles, or scan/import peer packages seamlessly.
           </p>
         </div>
@@ -218,7 +218,7 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
               style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
             >
               <div className="space-y-1 min-w-0">
-                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
+                <span className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
                   Offline Grading Matrix Ready
                 </span>
                 <h5 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
@@ -251,7 +251,7 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
               {onOpenBatchImport && (
                 <button
                   onClick={onOpenBatchImport}
-                  className="text-[11px] font-bold"
+                  className="text-[0.6875rem] font-bold"
                   style={{ color: colors.teal }}
                 >
                   Open Multi-File Batch Importer →
@@ -264,7 +264,7 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
               onChange={(e) => setImportJsonText(e.target.value)}
               placeholder="Paste single .examset.json or multi-paper bundle JSON here..."
               rows={5}
-              className="w-full p-3 font-mono text-xs border rounded-lg focus:outline-none"
+              className="w-full min-h-[8rem] resize-y p-3 font-mono text-xs border rounded-lg leading-relaxed focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
             />
 
@@ -328,10 +328,10 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
             <textarea
               readOnly
               value={sharePayload}
-              className="flex-1 w-full bg-transparent text-emerald-400 font-mono text-[11px] leading-relaxed border-0 resize-none focus:outline-none"
+              className="flex-1 w-full bg-transparent text-emerald-400 font-mono text-[0.6875rem] leading-relaxed border-0 resize-none focus:outline-none"
             />
 
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[0.6875rem] text-slate-400">
               <span>Includes metadata, MSQ keys, Option E, formulas &amp; explanations</span>
               <button onClick={handleDownloadSingleJson} className="font-semibold text-sky-400 hover:text-sky-300">
                 Download File

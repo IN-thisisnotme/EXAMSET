@@ -79,7 +79,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               <h3 className="text-sm font-bold" style={{ color: colors.inkBold }}>
                 Exam Target Countdowns
               </h3>
-              <p className="text-[11px]" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Pin milestone dates to your Folder & Library dashboard
               </p>
             </div>
@@ -122,8 +122,8 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
             </select>
             <button
               type="submit"
-              className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg font-bold text-white"
-              style={{ backgroundColor: colors.teal }}
+              className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg font-bold"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               <Plus className="w-3.5 h-3.5" />
               Add Target
@@ -151,7 +151,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                       <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
                         {cd.title}
                       </div>
-                      <div className="text-[11px]" style={{ color: colors.muted }}>
+                      <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                         {cd.examType} • {cd.targetDateIso}
                       </div>
                     </div>

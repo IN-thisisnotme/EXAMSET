@@ -430,7 +430,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <div className="text-xs font-black truncate" style={{ color: colors.inkBold }}>
                 {status.displayName}
               </div>
-              <div className="text-[11px] truncate" style={{ color: colors.muted }}>
+              <div className="text-[0.6875rem] truncate" style={{ color: colors.muted }}>
                 {status.isConnected && status.accountEmail
                   ? status.accountEmail
                   : status.isConnected
@@ -454,13 +454,13 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
         </div>
 
         {status.lastSyncedAt > 0 && (
-          <div className="text-[11px] font-medium" style={{ color: colors.tealDark }}>
+          <div className="text-[0.6875rem] font-medium" style={{ color: colors.tealDark }}>
             Last synced: {new Date(status.lastSyncedAt).toLocaleString()}
           </div>
         )}
         {status.lastError && (
           <div
-            className="p-2 rounded-lg text-[11px] font-semibold"
+            className="p-2 rounded-lg text-[0.6875rem] font-semibold"
             style={{ backgroundColor: colors.redLight, color: colors.red }}
           >
             {status.lastError}
@@ -534,16 +534,16 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
       {/* Header Banner */}
       <div
         className="rounded-2xl border p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Archive className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
-            <h2 className="font-black" style={{ fontSize: scalePx(20), color: colors.inkBold }}>
+            <h2 className="font-black es-clamp-2" style={{ fontSize: scalePx(20), color: colors.inkBold }}>
               Backup Vault, Cloud &amp; Disk Sync
             </h2>
           </div>
-          <p className="text-xs mt-1 leading-relaxed" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 leading-relaxed es-scroll-x" style={{ color: colors.muted }}>
             SHA-256 verified recovery across Question Sets, Attempts, Knowledge Notes, SM-2, Vocab, Tasks, Brain Lab stats, and Appearance settings.
           </p>
         </div>
@@ -552,8 +552,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
           <button
             type="button"
             onClick={handleSaveLocalCheckpoint}
-            className="min-h-[44px] flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black text-white shadow-sm"
-            style={{ backgroundColor: colors.teal }}
+            className="min-h-[44px] flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black shadow-sm"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <HardDrive className="w-4 h-4" />
             Save Snapshot
@@ -607,7 +607,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
             <div className="text-sm font-black truncate" style={{ color: colors.teal }}>
               {stat.value}
             </div>
-            <div className="text-[11px] font-semibold mt-0.5 truncate" style={{ color: colors.muted }}>
+            <div className="text-[0.6875rem] font-semibold mt-0.5 truncate" style={{ color: colors.muted }}>
               {stat.label}
             </div>
           </div>
@@ -666,7 +666,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
           <button
             type="button"
             onClick={() => void refreshAllSyncStates()}
-            className="min-h-[36px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold"
+            className="min-h-[36px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[0.6875rem] font-bold"
             style={{
               backgroundColor: trustedTime.isSynced ? colors.greenLight : colors.amberLight,
               borderColor: trustedTime.isSynced ? colors.green : colors.amber,
@@ -700,7 +700,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                   : 'Link an .examset.json file on your computer hard disk—or inside your synced Google Drive for Desktop, OneDrive, iCloud Drive, or Dropbox folder—for 1-click overwrite and restore.'}
               </p>
               {isEmbeddedFrame && !diskStatus.isLinked && (
-                <p className="text-[11px] mt-1 font-semibold" style={{ color: colors.amber }}>
+                <p className="text-[0.6875rem] mt-1 font-semibold" style={{ color: colors.amber }}>
                   Note: Persistent File Picker handles require a direct Chrome/Edge browser tab; inside embedded preview frames or Safari/Firefox, safe file download/import is used automatically.
                 </p>
               )}
@@ -714,8 +714,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                   type="button"
                   onClick={() => void handleLinkNewDiskFile()}
                   disabled={Boolean(opBusyLabel)}
-                  className="min-h-[42px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black text-white disabled:opacity-50"
-                  style={{ backgroundColor: colors.teal }}
+                  className="min-h-[42px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black disabled:opacity-50"
+                  style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                 >
                   <CloudUpload className="w-4 h-4" />
                   Link Disk / Cloud Folder File
@@ -737,8 +737,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                   type="button"
                   onClick={() => void handleSyncDiskNow()}
                   disabled={Boolean(opBusyLabel)}
-                  className="min-h-[42px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black text-white disabled:opacity-50"
-                  style={{ backgroundColor: colors.teal }}
+                  className="min-h-[42px] flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black disabled:opacity-50"
+                  style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Sync Disk File Now
@@ -778,7 +778,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
 
         {/* Direct OAuth2 Cloud Providers Grid */}
         <div className="space-y-2">
-          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
+          <div className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
             Direct OAuth2 Cloud Drive Sync (BYO Web Client ID)
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -797,7 +797,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={() => setRemoteBackups([])}
-                className="text-[11px] font-semibold"
+                className="text-[0.6875rem] font-semibold"
                 style={{ color: colors.muted }}
               >
                 Clear List
@@ -814,7 +814,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                       {remote.name}
                     </div>
-                    <div className="text-[11px]" style={{ color: colors.muted }}>
+                    <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
                       {remote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'OneDrive'} •{' '}
                       {formatBytes(remote.sizeBytes)}
                       {remote.modifiedAt > 0
@@ -851,7 +851,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
             <h3 className="text-xs font-black uppercase tracking-wider" style={{ color: colors.inkMuted }}>
               Auto-Backup Schedule &amp; Workspace Guard
             </h3>
-            <p className="text-[11px] mt-0.5" style={{ color: colors.muted }}>
+            <p className="text-[0.6875rem] mt-0.5" style={{ color: colors.muted }}>
               {lastAutoBackupAt > 0
                 ? `Last auto-backup run: ${new Date(lastAutoBackupAt).toLocaleString()}`
                 : 'Automatically stores rolling recovery checkpoints (and syncs granted disk/cloud links while active).'}
@@ -875,7 +875,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                 <div className="text-xs font-black" style={{ color: colors.inkBold }}>
                   {opt.label}
                 </div>
-                <div className="text-[11px] mt-0.5 leading-snug" style={{ color: colors.muted }}>
+                <div className="text-[0.6875rem] mt-0.5 leading-snug" style={{ color: colors.muted }}>
                   {opt.description}
                 </div>
               </button>
@@ -917,8 +917,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={handleSaveLocalCheckpoint}
-                className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black text-white flex-shrink-0"
-                style={{ backgroundColor: colors.teal }}
+                className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black flex-shrink-0"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 Save Snapshot
               </button>
@@ -954,7 +954,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                   value={rawPasteText}
                   onChange={(e) => setRawPasteText(e.target.value)}
                   placeholder="Paste contents of an .examset.json vault archive or Question Paper JSON..."
-                  className="w-full p-2.5 rounded-xl border text-xs font-mono"
+                  className="w-full min-h-[8.5rem] resize-y p-2.5 rounded-xl border text-xs font-mono leading-relaxed"
                   style={{
                     backgroundColor: colors.surfaceVariant,
                     borderColor: colors.border,
@@ -964,8 +964,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                 <button
                   type="button"
                   onClick={() => handleInspectRaw(rawPasteText, 'Pasted JSON')}
-                  className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black text-white"
-                  style={{ backgroundColor: colors.teal }}
+                  className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black"
+                  style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                 >
                   Inspect &amp; Verify Checksum
                 </button>
@@ -1032,7 +1032,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     <div className="text-xs font-black" style={{ color: colors.inkBold }}>
                       {cnt}
                     </div>
-                    <div className="text-[10px]" style={{ color: colors.muted }}>
+                    <div className="text-[0.625rem]" style={{ color: colors.muted }}>
                       {lbl}
                     </div>
                   </div>
@@ -1054,7 +1054,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     <Layers className="w-4 h-4" style={{ color: colors.teal }} />
                     Smart Merge (Recommended)
                   </div>
-                  <p className="text-[11px] mt-1" style={{ color: colors.muted }}>
+                  <p className="text-[0.6875rem] mt-1" style={{ color: colors.muted }}>
                     Keeps local items, adds missing records, merges SRS progress &amp; takes newer updates cleanly.
                   </p>
                 </button>
@@ -1073,7 +1073,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     <RefreshCw className="w-4 h-4" style={{ color: colors.amber }} />
                     Clean Replace
                   </div>
-                  <p className="text-[11px] mt-1" style={{ color: colors.muted }}>
+                  <p className="text-[0.6875rem] mt-1" style={{ color: colors.muted }}>
                     Automatically saves a pre-restore safety snapshot first, then replaces your library with this vault.
                   </p>
                 </button>
@@ -1082,8 +1082,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={confirmRestore}
-                className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-black text-white flex items-center justify-center gap-2"
-                style={{ backgroundColor: colors.teal }}
+                className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 <CheckCircle2 className="w-4 h-4" />
                 {restoreMode === 'SMART_MERGE' ? 'Apply Smart Merge' : 'Save Safety Snapshot & Clean Replace'}
@@ -1103,7 +1103,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                   Local Vault Snapshots ({snapshots.length})
                 </h3>
               </div>
-              <span className="text-[11px]" style={{ color: colors.muted }}>
+              <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
                 Up to 5 rolling pre-restore guards kept automatically
               </span>
             </div>
@@ -1126,7 +1126,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span
-                          className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase flex-shrink-0"
+                          className="text-[0.625rem] font-black px-2 py-0.5 rounded-full uppercase flex-shrink-0"
                           style={{
                             backgroundColor: snap.kind === 'pre_restore' ? colors.amberLight : colors.tealLight,
                             color: snap.kind === 'pre_restore' ? colors.amber : colors.tealDark,
@@ -1138,7 +1138,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                           {snap.label}
                         </span>
                       </div>
-                      <div className="text-[11px] mt-1" style={{ color: colors.muted }}>
+                      <div className="text-[0.6875rem] mt-1" style={{ color: colors.muted }}>
                         {new Date(snap.createdAt).toLocaleString()} • {snap.manifest.counts.papersCount} Sets •{' '}
                         {snap.manifest.counts.notesCount} Notes • {snap.manifest.counts.vocabWordsCount} Words
                       </div>
@@ -1148,8 +1148,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleInspectRaw(snap.rawJson, snap.label)}
-                        className="min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-                        style={{ backgroundColor: colors.teal }}
+                        className="min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold"
+                        style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                       >
                         Restore
                       </button>
@@ -1230,17 +1230,17 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-bold uppercase" style={{ color: colors.muted }}>
+                  <div className="text-[0.625rem] font-bold uppercase" style={{ color: colors.muted }}>
                     Authorized JavaScript Origin
                   </div>
-                  <div className="font-mono text-[11px] truncate" style={{ color: colors.inkBold }}>
+                  <div className="font-mono text-[0.6875rem] truncate" style={{ color: colors.inkBold }}>
                     {activeOrigin}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => copyHelperValue('origin', activeOrigin)}
-                  className="px-2.5 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1 flex-shrink-0"
+                  className="px-2.5 py-1.5 rounded-lg border text-[0.6875rem] font-bold flex items-center gap-1 flex-shrink-0"
                   style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.teal }}
                 >
                   <Copy className="w-3 h-3" />
@@ -1254,17 +1254,17 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-bold uppercase" style={{ color: colors.muted }}>
+                  <div className="text-[0.625rem] font-bold uppercase" style={{ color: colors.muted }}>
                     Authorized Redirect URI
                   </div>
-                  <div className="font-mono text-[11px] truncate" style={{ color: colors.inkBold }}>
+                  <div className="font-mono text-[0.6875rem] truncate" style={{ color: colors.inkBold }}>
                     {activeRedirectUri}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => copyHelperValue('redirect', activeRedirectUri)}
-                  className="px-2.5 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1 flex-shrink-0"
+                  className="px-2.5 py-1.5 rounded-lg border text-[0.6875rem] font-bold flex items-center gap-1 flex-shrink-0"
                   style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.teal }}
                 >
                   <Copy className="w-3 h-3" />
@@ -1304,7 +1304,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                   <strong className="block" style={{ color: colors.inkBold }}>
                     Remember token across browser restarts
                   </strong>
-                  <span className="text-[11px]" style={{ color: colors.muted }}>
+                  <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
                     Off by default (stores token in safer tab sessionStorage; enable only on your personal private computer).
                   </span>
                 </span>
@@ -1326,8 +1326,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={saveProviderConfig}
-                className="min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-black text-white"
-                style={{ backgroundColor: colors.teal }}
+                className="min-h-[40px] px-4 py-1.5 rounded-lg text-xs font-black"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 Save Client Config
               </button>

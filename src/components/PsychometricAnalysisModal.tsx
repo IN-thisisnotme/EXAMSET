@@ -83,7 +83,7 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
               <h3 className="text-base font-bold leading-tight">
                 Classical Test Theory (CTT) Psychometric Engine
               </h3>
-              <p className="text-[11px] opacity-85">
+              <p className="text-[0.6875rem] opacity-85">
                 {paper.metadata.title} • {paper.questions.length} Items • Item Facility, Upper/Lower 27% Discrimination & Reliability
               </p>
             </div>
@@ -110,7 +110,7 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition disabled:opacity-50"
               style={
                 !useSyntheticDemo && realAttempts.length > 0
-                  ? { backgroundColor: colors.teal, color: '#FFFFFF', borderColor: colors.teal }
+                  ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                   : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
               }
             >
@@ -123,7 +123,7 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition"
               style={
                 useSyntheticDemo
-                  ? { backgroundColor: colors.amber, color: '#FFFFFF', borderColor: colors.amber }
+                  ? { backgroundColor: colors.amber, color: colors.onAccentText, borderColor: colors.amber }
                   : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
               }
             >
@@ -196,13 +196,13 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
                 className="p-3 rounded-xl border"
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
               >
-                <div className="text-[11px] font-semibold" style={{ color: colors.muted }}>
+                <div className="text-[0.6875rem] font-semibold" style={{ color: colors.muted }}>
                   {stat.label}
                 </div>
                 <div className="text-lg font-black mt-0.5" style={{ color: colors.inkBold }}>
                   {stat.value}
                 </div>
-                <div className="text-[10px]" style={{ color: colors.inkMuted }}>
+                <div className="text-[0.625rem]" style={{ color: colors.inkMuted }}>
                   {stat.sub}
                 </div>
               </div>
@@ -280,7 +280,7 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
                         <td className="px-3 py-2 font-bold">Q.{item.questionNum}</td>
                         <td className="px-3 py-2">
                           <span className="font-bold">{item.difficultyP.toFixed(2)}</span>{' '}
-                          <span className="text-[10px]" style={{ color: colors.muted }}>
+                          <span className="text-[0.625rem]" style={{ color: colors.muted }}>
                             ({item.difficultyLabel})
                           </span>
                         </td>
@@ -291,7 +291,7 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
                           >
                             {item.discriminationD.toFixed(2)}
                           </span>{' '}
-                          <span className="text-[10px]" style={{ color: colors.muted }}>
+                          <span className="text-[0.625rem]" style={{ color: colors.muted }}>
                             ({item.discriminationLabel})
                           </span>
                         </td>
@@ -306,7 +306,7 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
                               return (
                                 <span
                                   key={opt}
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                                  className="px-1.5 py-0.5 rounded text-[0.625rem] font-bold"
                                   style={
                                     isKey
                                       ? { backgroundColor: colors.badgeSuccessBg, color: colors.badgeSuccessText }
@@ -321,13 +321,13 @@ export const PsychometricAnalysisModal: React.FC<PsychometricAnalysisModalProps>
                         </td>
                         <td className="px-3 py-2 max-w-xs">
                           {item.isFlagged ? (
-                            <div className="flex items-start gap-1 text-[11px]" style={{ color: colors.badgeDangerText }}>
+                            <div className="flex items-start gap-1 text-[0.6875rem]" style={{ color: colors.badgeDangerText }}>
                               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                               <span>{item.flagReason}</span>
                             </div>
                           ) : (
                             <span
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold"
+                              className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold"
                               style={{ color: colors.badgeSuccessText }}
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />

@@ -143,7 +143,7 @@ export const SchulteTrailDrill: React.FC<DrillCommonProps> = ({ stats, settings,
           <span style={{ color: colors.teal }}>
             {isFinished ? 'Completed!' : `Find: ${board.expectedOrder[nextIdx] || 'Done'}`}
           </span>
-          <span style={{ color: colors.inkBold }}>
+          <span className="tabular-nums" style={{ color: colors.inkBold }}>
             {(elapsedMs / 1000).toFixed(1)}s{' '}
             {bestForMode > 0 && <span className="font-semibold opacity-70">(Best {(bestForMode / 1000).toFixed(1)}s)</span>}
           </span>
@@ -272,8 +272,8 @@ export const MentalQuantDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
           <button
             type="button"
             onClick={startBlitz}
-            className="px-5 py-2.5 rounded-xl text-xs font-black text-white inline-flex items-center gap-1.5"
-            style={{ backgroundColor: colors.teal }}
+            className="px-5 py-2.5 rounded-xl text-xs font-black inline-flex items-center gap-1.5"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <Play className="w-4 h-4" />
             Start 60s Quant Blitz
@@ -283,7 +283,7 @@ export const MentalQuantDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
 
       {phase === 'RUNNING' && (
         <div className="max-w-md mx-auto space-y-4">
-          <div className="flex items-center justify-between text-xs font-black">
+          <div className="flex items-center justify-between text-xs font-black tabular-nums">
             <span style={{ color: timeLeft <= 10 ? colors.red : colors.teal }}>⏱ {timeLeft}s left</span>
             <span style={{ color: colors.inkBold }}>Score: {score}</span>
           </div>
@@ -293,7 +293,7 @@ export const MentalQuantDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
             style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
           >
             <span
-              className="text-[10px] font-black px-2 py-0.5 rounded-full"
+              className="text-[0.625rem] font-black px-2 py-0.5 rounded-full"
               style={{ backgroundColor: colors.tealLight, color: colors.tealDark }}
             >
               {QUANT_BADGE_MAP[question.type]}
@@ -343,8 +343,8 @@ export const MentalQuantDrill: React.FC<DrillCommonProps> = ({ stats, settings, 
           <button
             type="button"
             onClick={startBlitz}
-            className="px-5 py-2 rounded-xl text-xs font-black text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="px-5 py-2 rounded-xl text-xs font-black"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Run Blitz Again
           </button>
@@ -428,7 +428,7 @@ export const GuidedBreathingDrill: React.FC<DrillCommonProps> = ({ settings, onU
               <div className="text-xs font-black">
                 {p.title} ({p.ratioLabel})
               </div>
-              <div className="text-[11px] mt-0.5 opacity-80">{p.description}</div>
+              <div className="text-[0.6875rem] mt-0.5 opacity-80">{p.description}</div>
             </button>
           );
         })}
@@ -471,8 +471,8 @@ export const GuidedBreathingDrill: React.FC<DrillCommonProps> = ({ settings, onU
               lastPhaseRef.current = -1;
               setIsRunning(true);
             }}
-            className="px-6 py-2.5 rounded-xl text-xs font-black text-white flex items-center gap-2"
-            style={{ backgroundColor: colors.teal }}
+            className="px-6 py-2.5 rounded-xl text-xs font-black flex items-center gap-2"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             <Play className="w-4 h-4" />
             Begin Guided Breathing
@@ -551,15 +551,15 @@ export const VisualSoftResetDrill: React.FC<DrillCommonProps> = ({ settings, onU
               setSecInStep(20);
               setRunning(true);
             }}
-            className="px-5 py-2 rounded-xl text-xs font-black text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="px-5 py-2 rounded-xl text-xs font-black"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             Restart 60s Reset
           </button>
         </>
       ) : (
         <>
-          <div className="text-xs font-black uppercase" style={{ color: colors.teal }}>
+          <div className="text-xs font-black uppercase tabular-nums" style={{ color: colors.teal }}>
             Step {stepIdx + 1} / {SOFT_RESET_STEPS.length} • {secInStep}s
           </div>
           <div className="text-base font-black" style={{ color: colors.inkBold }}>
@@ -572,8 +572,8 @@ export const VisualSoftResetDrill: React.FC<DrillCommonProps> = ({ settings, onU
             <button
               type="button"
               onClick={() => setRunning(true)}
-              className="px-5 py-2.5 rounded-xl text-xs font-black text-white inline-flex items-center gap-1.5"
-              style={{ backgroundColor: colors.teal }}
+              className="px-5 py-2.5 rounded-xl text-xs font-black inline-flex items-center gap-1.5"
+              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
             >
               <Play className="w-4 h-4" />
               Begin 60s Soft Reset
@@ -723,8 +723,8 @@ export const ZenLogicGridDrill: React.FC<DrillCommonProps> = ({ stats, settings,
           <button
             type="button"
             onClick={() => startNewPuzzle(gridSize)}
-            className="px-4 py-2 rounded-lg text-xs font-black text-white"
-            style={{ backgroundColor: colors.teal }}
+            className="px-4 py-2 rounded-lg text-xs font-black"
+            style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
             New Untimed Grid
           </button>

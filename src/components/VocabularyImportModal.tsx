@@ -211,7 +211,7 @@ export const VocabularyImportModal: React.FC<VocabularyImportModalProps> = ({
               <h3 className="text-base font-black" style={{ color: colors.navyBannerText }}>
                 Vocabulary Batch Importer &amp; Duplicate Segment Merger
               </h3>
-              <p className="text-[11px] opacity-80" style={{ color: colors.navyBannerText }}>
+              <p className="text-[0.6875rem] opacity-80" style={{ color: colors.navyBannerText }}>
                 Accepts Strict JSON arrays or WORD:/MEANING:/EXAMPLES: text blocks with automatic duplicate segment review
               </p>
             </div>
@@ -343,8 +343,8 @@ export const VocabularyImportModal: React.FC<VocabularyImportModalProps> = ({
               value={rawInput}
               onChange={(e) => setRawInput(e.target.value)}
               rows={8}
-              placeholder='[{"word":"perspicacious","partOfSpeech":"adjective","level":"C1","meaning":"Having ready insight and understanding.","examples":[{"context":"Editorial","sentence":"Her perspicacious critique exposed the flaw."}]}]'
-              className="w-full p-3 rounded-xl border font-mono text-xs"
+              placeholder='Paste Vocabulary JSON array (e.g. [{"word":"...", "meaning":"...", "level":"C1"}]) or word list...'
+              className="w-full min-h-[10.5rem] resize-y p-3 rounded-xl border font-mono text-xs leading-relaxed"
               style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
             />
           </div>
@@ -398,7 +398,7 @@ export const VocabularyImportModal: React.FC<VocabularyImportModalProps> = ({
                             <span className="font-black text-sm" style={{ color: colors.inkBold }}>
                               {dup.incoming.word}
                             </span>
-                            <span className="ml-2 text-[11px]" style={{ color: colors.muted }}>
+                            <span className="ml-2 text-[0.6875rem]" style={{ color: colors.muted }}>
                               Already in: {dup.existingDeckTitle} ({dup.existingLevelTitle})
                             </span>
                           </div>
@@ -419,7 +419,7 @@ export const VocabularyImportModal: React.FC<VocabularyImportModalProps> = ({
                         </div>
 
                         {dec.action === 'MERGE_SEGMENTS' && (
-                          <div className="flex flex-wrap gap-3 text-[11px] pt-1">
+                          <div className="flex flex-wrap gap-3 text-[0.6875rem] pt-1">
                             {[
                               { k: 'mergeExamples', label: 'Append Examples' },
                               { k: 'mergeSynonymsAndCollocations', label: 'Union Synonyms/Collocations' },

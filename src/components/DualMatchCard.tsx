@@ -47,7 +47,7 @@ export const DualMatchCard: React.FC<DualMatchCardProps> = ({ data }) => {
             >
               {row.leftKey && (
                 <span
-                  className="px-1.5 py-0.5 rounded text-[11px] font-bold flex-shrink-0"
+                  className="px-1.5 py-0.5 rounded text-[0.6875rem] font-bold flex-shrink-0"
                   style={{ backgroundColor: colors.tealLight, color: colors.tealDark }}
                 >
                   {row.leftKey}
@@ -60,7 +60,7 @@ export const DualMatchCard: React.FC<DualMatchCardProps> = ({ data }) => {
             <div className="px-3 py-2 flex items-start gap-2" style={{ color: colors.ink }}>
               {row.rightKey && (
                 <span
-                  className="px-1.5 py-0.5 rounded text-[11px] font-bold flex-shrink-0"
+                  className="px-1.5 py-0.5 rounded text-[0.6875rem] font-bold flex-shrink-0"
                   style={{ backgroundColor: colors.blueLight, color: colors.inkBold }}
                 >
                   {row.rightKey}

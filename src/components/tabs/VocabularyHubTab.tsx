@@ -232,21 +232,21 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
               </span>
             )}
             <span
-              className="px-2 py-0.5 rounded text-[10px] font-bold border"
+              className="px-2 py-0.5 rounded text-[0.625rem] font-bold border"
               style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
             >
               {entry.customLevelLabel || entry.levelCode}
             </span>
             {entry.partOfSpeech && (
               <span
-                className="px-2 py-0.5 rounded text-[10px] font-semibold border"
+                className="px-2 py-0.5 rounded text-[0.625rem] font-semibold border"
                 style={{ backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }}
               >
                 {entry.partOfSpeech}
               </span>
             )}
             {showDeckLabel && (
-              <span className="text-[10px] font-semibold" style={{ color: colors.muted }}>
+              <span className="text-[0.625rem] font-semibold" style={{ color: colors.muted }}>
                 • {showDeckLabel}
               </span>
             )}
@@ -294,7 +294,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
             <button
               type="button"
               onClick={() => handleDeleteWord(deckId, entry.id)}
-              className="px-2 py-1 rounded-lg font-bold text-white text-[10px]"
+              className="px-2 py-1 rounded-lg font-bold text-white text-[0.625rem]"
               style={{ backgroundColor: colors.red }}
             >
               Delete
@@ -327,7 +327,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
       )}
 
       {(entry.synonyms.length > 0 || entry.collocations.length > 0 || entry.usageNote) && (
-        <div className="flex flex-wrap gap-3 text-[11px]" style={{ color: colors.muted }}>
+        <div className="flex flex-wrap gap-3 text-[0.6875rem]" style={{ color: colors.muted }}>
           {entry.synonyms.length > 0 && (
             <span>
               <strong style={{ color: colors.ink }}>Synonyms:</strong> {entry.synonyms.join(', ')}
@@ -390,11 +390,11 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
               <ArrowLeft className="w-4 h-4" />
               Back
             </button>
-            <div>
-              <h3 className="text-base font-black" style={{ color: colors.inkBold }}>
+            <div className="min-w-0">
+              <h3 className="text-base font-black es-clamp-2" style={{ color: colors.inkBold }}>
                 {view.title}
               </h3>
-              <p className="text-xs" style={{ color: colors.muted }}>
+              <p className="text-xs es-scroll-x" style={{ color: colors.muted }}>
                 {view.subtitle}
               </p>
             </div>
@@ -468,16 +468,16 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span
-                  className="px-2 py-0.5 rounded text-[10px] font-black border"
+                  className="px-2 py-0.5 rounded text-[0.625rem] font-black border"
                   style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }}
                 >
                   {getLevelDescriptor(selectedDeck.levelCode, selectedDeck.language, selectedDeck.customLevelLabel).shortBadge}
                 </span>
-                <span className="text-[11px]" style={{ color: colors.muted }}>
+                <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
                   {selectedDeck.domain} • {selectedDeck.entries.length} word(s)
                 </span>
               </div>
-              <h3 className="text-base sm:text-lg font-black mt-0.5" style={{ color: colors.inkBold }}>
+              <h3 className="text-base sm:text-lg font-black mt-0.5 es-clamp-2" style={{ color: colors.inkBold }}>
                 {selectedDeck.title}
               </h3>
             </div>
@@ -619,11 +619,11 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
               <ArrowLeft className="w-4 h-4" />
               All Languages
             </button>
-            <div>
-              <h3 className="text-base font-black" style={{ color: colors.inkBold }}>
+            <div className="min-w-0">
+              <h3 className="text-base font-black es-clamp-2" style={{ color: colors.inkBold }}>
                 {lang} Proficiency Folders
               </h3>
-              <p className="text-xs" style={{ color: colors.muted }}>
+              <p className="text-xs es-scroll-x" style={{ color: colors.muted }}>
                 {langDecks.length} deck(s) • Localized proficiency tracks &amp; daily spotlight
               </p>
             </div>
@@ -743,7 +743,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                         {wotdResolution.entry.pronunciation}
                       </span>
                     )}
-                    <span className="text-[11px] font-bold" style={{ color: colors.tealDark }}>
+                    <span className="text-[0.6875rem] font-bold" style={{ color: colors.tealDark }}>
                       Cycle #{wotdResolution.cycleNumber} ({wotdResolution.seenCount}/{wotdResolution.uniqueCount} seen)
                     </span>
                   </div>
@@ -757,7 +757,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                   )}
 
                   {wotdHistoryOpen && wotdResolution.history.length > 0 && (
-                    <div className="pt-2 mt-2 border-t text-[11px] space-y-1" style={{ borderColor: colors.borderLight }}>
+                    <div className="pt-2 mt-2 border-t text-[0.6875rem] space-y-1" style={{ borderColor: colors.borderLight }}>
                       <div className="font-bold" style={{ color: colors.muted }}>
                         Recent Spotlight History:
                       </div>
@@ -796,7 +796,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                     </span>
                   </div>
                   <span
-                    className="px-2 py-0.5 rounded text-[10px] font-bold"
+                    className="px-2 py-0.5 rounded text-[0.625rem] font-bold"
                     style={{ backgroundColor: colors.surfaceVariant, color: colors.ink }}
                   >
                     {totalWords} words
@@ -823,10 +823,10 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
+                              <div className="text-xs font-bold es-clamp-2" style={{ color: colors.inkBold }}>
                                 {deck.title}
                               </div>
-                              <div className="text-[10px]" style={{ color: colors.muted }}>
+                              <div className="text-[0.625rem] es-scroll-x" style={{ color: colors.muted }}>
                                 {deck.entries.length} words • {stats.dueCount + stats.newCount} due/new •{' '}
                                 {stats.masteredCount} mastered
                               </div>
@@ -841,7 +841,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                                   setDeckSubTab('WORDS');
                                   setView({ kind: 'DECK_DETAIL', language: lang, deckId: deck.id });
                                 }}
-                                className="px-2.5 py-1 rounded text-[11px] font-bold"
+                                className="px-2.5 py-1 rounded text-[0.6875rem] font-bold"
                                 style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
                               >
                                 Open Deck
@@ -852,7 +852,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                                   setDeckSubTab('RECALL');
                                   setView({ kind: 'DECK_DETAIL', language: lang, deckId: deck.id });
                                 }}
-                                className="px-2.5 py-1 rounded border text-[11px] font-bold"
+                                className="px-2.5 py-1 rounded border text-[0.6875rem] font-bold"
                                 style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.tealDark }}
                               >
                                 Train SM-2
@@ -863,7 +863,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteDeck(deck.id)}
-                                className="px-2 py-1 rounded text-[10px] font-bold text-white"
+                                className="px-2 py-1 rounded text-[0.625rem] font-bold text-white"
                                 style={{ backgroundColor: colors.red }}
                               >
                                 Confirm
@@ -898,15 +898,15 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
     <div className="space-y-5">
       {/* Top Banner */}
       <div
-        className="p-4 rounded-xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-        style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        className="p-4 sm:p-5 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+        style={{ background: colors.heroGradient, borderColor: colors.border, boxShadow: colors.cardShadow }}
       >
-        <div>
-          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: colors.inkBold }}>
-            <Globe className="w-5 h-5" style={{ color: colors.teal }} />
-            Vocabulary Hub &amp; Active Recall Lexicon
+        <div className="min-w-0">
+          <h3 className="text-base font-black flex items-center gap-2 tracking-tight" style={{ color: colors.inkBold }}>
+            <Globe className="w-5 h-5 flex-shrink-0" style={{ color: colors.teal }} />
+            <span className="es-clamp-2">Vocabulary Hub &amp; Active Recall Lexicon</span>
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: colors.muted }}>
+          <p className="text-xs mt-1 es-scroll-x" style={{ color: colors.muted }}>
             Organize vocabulary by Language → Proficiency Folder (CEFR / JLPT / HSK / TOPIK) with UTC Word of the Day, Headword Inbox &amp; SM-2 SRS.
           </p>
         </div>
@@ -917,7 +917,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
             className="flex items-center gap-1 px-2 py-1 rounded-lg border"
             style={{ backgroundColor: colors.surface, borderColor: colors.border }}
           >
-            <span className="font-bold text-[11px] mr-1" style={{ color: colors.muted }}>
+            <span className="font-bold text-[0.6875rem] mr-1" style={{ color: colors.muted }}>
               Variant:
             </span>
             {(['UK', 'US', 'Neutral'] as const).map((vr) => (
@@ -925,10 +925,10 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                 key={vr}
                 type="button"
                 onClick={() => onChangeEnglishVariant(vr)}
-                className="px-2 py-0.5 rounded font-bold text-[11px]"
+                className="px-2 py-0.5 rounded font-bold text-[0.6875rem]"
                 style={
                   englishVariant.toUpperCase() === vr.toUpperCase()
-                    ? { backgroundColor: colors.teal, color: '#fff' }
+                    ? { backgroundColor: colors.teal, color: colors.onAccentText }
                     : { color: colors.ink }
                 }
               >
@@ -1056,7 +1056,7 @@ export const VocabularyHubTab: React.FC<VocabularyHubTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+              <div className="flex flex-wrap gap-2 text-[0.6875rem] font-bold">
                 <span className="px-2.5 py-1 rounded-lg" style={{ backgroundColor: colors.blueLight, color: colors.inkBold }}>
                   {ls.dueCount} Due / New
                 </span>

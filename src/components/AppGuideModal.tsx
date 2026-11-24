@@ -255,7 +255,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({
               <h2 className="font-black truncate" style={{ fontSize: scalePx(16), color: colors.inkBold }}>
                 App Guide &amp; Feature Finder
               </h2>
-              <p className="text-[11px] truncate" style={{ color: colors.muted }}>
+              <p className="text-[0.6875rem] truncate" style={{ color: colors.muted }}>
                 Search workflows, syntax &amp; jump straight to any tool ({filteredEntries.length}/
                 {APP_GUIDE_CATALOG.length})
               </p>
@@ -375,7 +375,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({
                       <div className="text-sm font-black" style={{ color: colors.inkBold }}>
                         {entry.title}
                       </div>
-                      <div className="text-[11px] font-bold" style={{ color: colors.teal }}>
+                      <div className="text-[0.6875rem] font-bold" style={{ color: colors.teal }}>
                         {GUIDE_CATEGORIES.find((c) => c.id === entry.category)?.label}
                       </div>
                     </div>
@@ -401,7 +401,7 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({
                   </p>
 
                   <div
-                    className="p-2.5 rounded-lg border flex items-start gap-2 text-[11px]"
+                    className="p-2.5 rounded-lg border flex items-start gap-2 text-[0.6875rem]"
                     style={{ backgroundColor: colors.surface, borderColor: colors.borderLight }}
                   >
                     <Lightbulb className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: colors.amber }} />
@@ -421,8 +421,8 @@ export const AppGuideModal: React.FC<AppGuideModalProps> = ({
                         onClose();
                         onNavigateDestination(entry.destination);
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-black text-white"
-                      style={{ backgroundColor: colors.teal }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-black"
+                      style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                     >
                       <span>{entry.actionLabel}</span>
                       <ArrowRight className="w-3.5 h-3.5" />

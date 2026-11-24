@@ -107,7 +107,7 @@ export const RichTextHelper = {
     return tokens
       .map((t) => {
         let html = this.escapeHtml(t.text).replace(/\n/g, '<br/>');
-        if (t.code) html = `<code style="font-family:monospace;background:#f1f5f9;padding:0 3px;border-radius:3px;">${html}</code>`;
+        if (t.code) html = `<code style="font-family:monospace;background:var(--es-surface-variant,#f1f5f9);color:var(--es-ink-bold,#0f172a);border:1px solid var(--es-border,#d5e1e7);padding:0 4px;border-radius:4px;">${html}</code>`;
         if (t.bold) html = `<strong>${html}</strong>`;
         if (t.italic) html = `<em>${html}</em>`;
         if (t.sub) html = `<sub>${html}</sub>`;

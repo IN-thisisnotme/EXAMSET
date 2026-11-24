@@ -115,7 +115,7 @@ export const HeadwordInboxModal: React.FC<HeadwordInboxModalProps> = ({
               <h3 className="text-base font-black" style={{ color: colors.navyBannerText }}>
                 Stage-1 Headword Inbox ({inbox.length} queued)
               </h3>
-              <p className="text-[11px] opacity-80" style={{ color: colors.navyBannerText }}>
+              <p className="text-[0.6875rem] opacity-80" style={{ color: colors.navyBannerText }}>
                 Curate headword lists, auto-deduplicate against saved decks, and generate Stage-2 detail batches
               </p>
             </div>
@@ -170,18 +170,18 @@ export const HeadwordInboxModal: React.FC<HeadwordInboxModalProps> = ({
               value={rawPaste}
               onChange={(e) => setRawPaste(e.target.value)}
               rows={4}
-              placeholder="Paste Stage-1 Headword JSON array or word-per-line index..."
-              className="w-full p-2.5 rounded-lg border font-mono text-xs"
+              placeholder="Paste Stage-1 Headword JSON array or word-per-line list..."
+              className="w-full p-2.5 rounded-lg border font-mono text-xs min-h-[6.5rem] resize-y"
               style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
             />
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               {lastResult ? (
-                <span className="text-[11px] font-semibold" style={{ color: colors.tealDark }}>
+                <span className="text-[0.6875rem] font-semibold" style={{ color: colors.tealDark }}>
                   Added {lastResult.addedItems.length} • Already in Decks: {lastResult.skippedAlreadyInDeckCount} • In Queue: {lastResult.skippedAlreadyInQueueCount} • Dismissed: {lastResult.skippedDismissedCount}
                 </span>
               ) : (
-                <span className="text-[11px]" style={{ color: colors.muted }}>
+                <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
                   Duplicates against existing decks are filtered automatically.
                 </span>
               )}
@@ -208,7 +208,7 @@ export const HeadwordInboxModal: React.FC<HeadwordInboxModalProps> = ({
                 className="px-2.5 py-1 rounded-lg border font-bold"
                 style={
                   filterLang === 'ALL'
-                    ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                    ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                     : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
                 }
               >
@@ -222,7 +222,7 @@ export const HeadwordInboxModal: React.FC<HeadwordInboxModalProps> = ({
                   className="px-2.5 py-1 rounded-lg border font-bold"
                   style={
                     filterLang === lng
-                      ? { backgroundColor: colors.teal, color: '#fff', borderColor: colors.teal }
+                      ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
                       : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
                   }
                 >
@@ -268,19 +268,19 @@ export const HeadwordInboxModal: React.FC<HeadwordInboxModalProps> = ({
                         {item.word}
                       </span>
                       <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                        className="px-1.5 py-0.5 rounded text-[0.625rem] font-bold border"
                         style={{ backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.border }}
                       >
                         {item.language} • {item.levelCode}
                       </span>
                       {item.partOfSpeech && (
-                        <span className="text-[11px]" style={{ color: colors.muted }}>
+                        <span className="text-[0.6875rem]" style={{ color: colors.muted }}>
                           ({item.partOfSpeech})
                         </span>
                       )}
                     </div>
                     {item.utilityReason && (
-                      <p className="text-[11px] truncate" style={{ color: colors.muted }}>
+                      <p className="text-[0.6875rem] truncate" style={{ color: colors.muted }}>
                         {item.utilityReason}
                       </p>
                     )}

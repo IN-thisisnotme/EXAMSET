@@ -87,6 +87,9 @@ export interface ExamColorPalette {
   badgeDangerText: string;
   purple: string;
   purpleLight: string;
+  onAccentText: string;
+  heroGradient: string;
+  cardShadow: string;
 }
 
 export const PRESET_METADATA: {
@@ -161,6 +164,9 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#DC2626',
     purple: '#6D28D9',
     purpleLight: '#F3E8FF',
+    onAccentText: '#FFFFFF',
+    heroGradient: 'linear-gradient(135deg, #17324D 0%, #16546D 62%, #177E89 100%)',
+    cardShadow: '0 8px 24px -6px rgba(15, 23, 42, 0.08), 0 2px 6px -2px rgba(15, 23, 42, 0.04)',
   },
   WARM_PAPER: {
     bg: '#FAF7F2',
@@ -195,6 +201,9 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#B91C1C',
     purple: '#7C3AED',
     purpleLight: '#F3E8FF',
+    onAccentText: '#FFFFFF',
+    heroGradient: 'linear-gradient(135deg, #382A1C 0%, #5C3D1E 60%, #92400E 100%)',
+    cardShadow: '0 8px 24px -6px rgba(56, 42, 28, 0.09), 0 2px 6px -2px rgba(56, 42, 28, 0.04)',
   },
   FOREST_SAGE: {
     bg: '#F4F7F5',
@@ -229,6 +238,9 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#DC2626',
     purple: '#6D28D9',
     purpleLight: '#F3E8FF',
+    onAccentText: '#FFFFFF',
+    heroGradient: 'linear-gradient(135deg, #173824 0%, #165934 62%, #15803D 100%)',
+    cardShadow: '0 8px 24px -6px rgba(23, 56, 36, 0.09), 0 2px 6px -2px rgba(23, 56, 36, 0.04)',
   },
   ROYAL_INDIGO: {
     bg: '#F6F7FB',
@@ -263,6 +275,9 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#DC2626',
     purple: '#7C3AED',
     purpleLight: '#F3E8FF',
+    onAccentText: '#FFFFFF',
+    heroGradient: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 58%, #4F46E5 100%)',
+    cardShadow: '0 8px 24px -6px rgba(30, 27, 75, 0.09), 0 2px 6px -2px rgba(30, 27, 75, 0.04)',
   },
   OLED_OBSIDIAN: {
     bg: '#F9FAFB',
@@ -297,6 +312,9 @@ const LIGHT_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#DC2626',
     purple: '#6D28D9',
     purpleLight: '#F3E8FF',
+    onAccentText: '#FFFFFF',
+    heroGradient: 'linear-gradient(135deg, #111827 0%, #1E293B 60%, #1D4ED8 100%)',
+    cardShadow: '0 8px 24px -6px rgba(17, 24, 39, 0.08), 0 2px 6px -2px rgba(17, 24, 39, 0.04)',
   },
 };
 
@@ -334,6 +352,9 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#FCA5A5',
     purple: '#A78BFA',
     purpleLight: '#2E1065',
+    onAccentText: '#0F172A',
+    heroGradient: 'linear-gradient(135deg, #0F172A 0%, #172E4E 60%, #0E4D6E 100%)',
+    cardShadow: '0 10px 28px -6px rgba(0, 0, 0, 0.45), 0 2px 8px -2px rgba(0, 0, 0, 0.3)',
   },
   WARM_PAPER: {
     bg: '#1A1612',
@@ -368,6 +389,9 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#FCA5A5',
     purple: '#C4B5FD',
     purpleLight: '#2E1065',
+    onAccentText: '#14100C',
+    heroGradient: 'linear-gradient(135deg, #26201B 0%, #3E2C1B 60%, #634217 100%)',
+    cardShadow: '0 10px 28px -6px rgba(0, 0, 0, 0.5), 0 2px 8px -2px rgba(0, 0, 0, 0.32)',
   },
   FOREST_SAGE: {
     bg: '#0C1610',
@@ -402,6 +426,9 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#FCA5A5',
     purple: '#C4B5FD',
     purpleLight: '#2E1065',
+    onAccentText: '#08170D',
+    heroGradient: 'linear-gradient(135deg, #14241A 0%, #173B25 60%, #165B33 100%)',
+    cardShadow: '0 10px 28px -6px rgba(0, 0, 0, 0.5), 0 2px 8px -2px rgba(0, 0, 0, 0.32)',
   },
   ROYAL_INDIGO: {
     bg: '#0A0C1A',
@@ -436,6 +463,9 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#FCA5A5',
     purple: '#C4B5FD',
     purpleLight: '#2E1065',
+    onAccentText: '#0A0C1A',
+    heroGradient: 'linear-gradient(135deg, #13172E 0%, #1E1B4B 58%, #3730A3 100%)',
+    cardShadow: '0 10px 28px -6px rgba(0, 0, 0, 0.52), 0 2px 8px -2px rgba(0, 0, 0, 0.35)',
   },
   OLED_OBSIDIAN: {
     bg: '#000000',
@@ -470,6 +500,9 @@ const DARK_PALETTES: Record<ColorSchemePreset, ExamColorPalette> = {
     badgeDangerText: '#FCA5A5',
     purple: '#C4B5FD',
     purpleLight: '#2E1065',
+    onAccentText: '#000000',
+    heroGradient: 'linear-gradient(135deg, #101010 0%, #182234 62%, #1D4ED8 100%)',
+    cardShadow: '0 10px 28px -6px rgba(0, 0, 0, 0.65), 0 2px 8px -2px rgba(0, 0, 0, 0.45)',
   },
 };
 
