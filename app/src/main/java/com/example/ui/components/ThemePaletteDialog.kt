@@ -56,7 +56,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -88,11 +87,6 @@ fun ThemePaletteDialog(
         }
     }
 
-    val previewCanvasBg by animateColorAsState(colors.background, tween(220), label = "preview_bg")
-    val previewCardBg by animateColorAsState(colors.surface, tween(220), label = "preview_card")
-    val previewBannerBg by animateColorAsState(colors.navyBanner, tween(220), label = "preview_banner")
-    val previewBtnBg by animateColorAsState(colors.primaryButtonBg, tween(220), label = "preview_btn")
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -110,7 +104,7 @@ fun ThemePaletteDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 18.dp)
+                    .padding(horizontal = 20.dp, vertical = 20.dp)
             ) {
                 // Header
                 Row(
@@ -128,7 +122,7 @@ fun ThemePaletteDialog(
                         Icon(
                             imageVector = Icons.Default.Palette,
                             contentDescription = "Appearance and Theme",
-                            tint = colors.inkBold,
+                            tint = colors.teal,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -141,115 +135,14 @@ fun ThemePaletteDialog(
                             color = colors.inkBold
                         )
                         Text(
-                            text = "Active: ${activePreset.title} • ${if (colors.isDark) "Dark" else "Light"}",
+                            text = "${activePreset.title} • ${if (colors.isDark) "Dark" else "Light"} Mode",
                             fontSize = 12.sp,
                             color = colors.inkMuted
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Live Theme Preview Card
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = previewCanvasBg,
-                    border = BorderStroke(1.dp, colors.border)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = previewBannerBg,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Live Preview • ${activePreset.title}",
-                                    color = colors.navyBannerText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color.White.copy(alpha = 0.16f)
-                                ) {
-                                    Text(
-                                        text = if (colors.isDark) "DARK" else "LIGHT",
-                                        color = colors.navyBannerText,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = previewCardBg,
-                            border = BorderStroke(1.dp, colors.borderLight),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Focused Typography & Ink",
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.inkBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Card contrast, borders & muted labels",
-                                        fontSize = 11.sp,
-                                        color = colors.inkMuted,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = previewBtnBg
-                                ) {
-                                    Text(
-                                        text = "Sample CTA",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.primaryButtonText,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Mode Selector (System, Light, Dark)
                 Text(
@@ -258,7 +151,7 @@ fun ThemePaletteDialog(
                     fontWeight = FontWeight.Bold,
                     color = colors.inkMuted,
                     letterSpacing = 0.8.sp,
-                    modifier = Modifier.padding(bottom = 6.dp)
+                    modifier = Modifier.padding(bottom = 8.dp)
                 )
 
                 Row(
@@ -283,7 +176,7 @@ fun ThemePaletteDialog(
                             label = "mode_bg"
                         )
                         val btnText = if (isSelected) colors.inkBold else colors.inkMuted
-                        val btnIcon = if (isSelected) colors.inkBold else colors.inkMuted
+                        val btnIcon = if (isSelected) colors.teal else colors.inkMuted
 
                         Surface(
                             modifier = Modifier
@@ -323,9 +216,9 @@ fun ThemePaletteDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = colors.border.copy(alpha = 0.6f))
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Category Filter Bar (Horizontal Scroll)
                 Row(
@@ -341,13 +234,13 @@ fun ThemePaletteDialog(
                         letterSpacing = 0.8.sp
                     )
                     Text(
-                        text = "Swipe to browse",
+                        text = "Applies instantly",
                         fontSize = 10.5.sp,
                         color = colors.inkMuted
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier
@@ -370,8 +263,8 @@ fun ThemePaletteDialog(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = colors.primaryButtonBg,
-                                selectedLabelColor = colors.primaryButtonText,
+                                selectedContainerColor = colors.teal,
+                                selectedLabelColor = Color.White,
                                 containerColor = colors.surfaceVariant,
                                 labelColor = colors.ink
                             ),
@@ -379,7 +272,7 @@ fun ThemePaletteDialog(
                                 enabled = true,
                                 selected = isCatSelected,
                                 borderColor = colors.border,
-                                selectedBorderColor = colors.primaryButtonBg
+                                selectedBorderColor = colors.teal
                             ),
                             modifier = Modifier.testTag("theme_category_${cat.name.lowercase()}")
                         )
@@ -392,7 +285,7 @@ fun ThemePaletteDialog(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 180.dp, max = 310.dp),
+                        .heightIn(min = 220.dp, max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 2.dp)
                 ) {
@@ -416,7 +309,7 @@ fun ThemePaletteDialog(
                             ),
                             border = BorderStroke(
                                 width = if (isSelected) 1.8.dp else 1.dp,
-                                color = if (isSelected) colors.primaryButtonBg else colors.border
+                                color = if (isSelected) colors.teal else colors.border
                             )
                         ) {
                             Row(
@@ -471,8 +364,8 @@ fun ThemePaletteDialog(
                                         if (preset.styleTag.isNotBlank()) {
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = if (preset == ColorSchemePreset.MINIMAL) {
-                                                    colors.primaryButtonBg.copy(alpha = if (colors.isDark) 0.18f else 0.1f)
+                                                color = if (preset == ColorSchemePreset.MINIMAL || preset == ColorSchemePreset.EYE_COMFORT) {
+                                                    colors.tealLight
                                                 } else {
                                                     colors.surface
                                                 },
@@ -483,7 +376,11 @@ fun ThemePaletteDialog(
                                                     text = preset.styleTag,
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.SemiBold,
-                                                    color = colors.inkMuted,
+                                                    color = if (preset == ColorSchemePreset.MINIMAL || preset == ColorSchemePreset.EYE_COMFORT) {
+                                                        colors.teal
+                                                    } else {
+                                                        colors.inkMuted
+                                                    },
                                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                     maxLines = 1
                                                 )
@@ -505,13 +402,13 @@ fun ThemePaletteDialog(
                                         modifier = Modifier
                                             .size(26.dp)
                                             .clip(CircleShape)
-                                            .background(colors.primaryButtonBg),
+                                            .background(colors.teal),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = "Selected theme",
-                                            tint = colors.primaryButtonText,
+                                            tint = Color.White,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
@@ -521,7 +418,7 @@ fun ThemePaletteDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Done Button
                 Button(
@@ -536,7 +433,7 @@ fun ThemePaletteDialog(
                         contentColor = colors.primaryButtonText
                     )
                 ) {
-                    Text("Apply & Close", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Done", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
         }

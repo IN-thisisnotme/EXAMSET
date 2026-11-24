@@ -21,9 +21,9 @@ enum class ThemeMode {
 
 enum class ThemeCategory(val label: String) {
     ALL("All Themes"),
-    MINIMAL("Minimal & Clean"),
-    READING("Eye Comfort"),
-    ACCENT("Focus & Contrast")
+    MINIMAL("Minimal"),
+    READING("Eye Protection"),
+    ACCENT("Calm Focus")
 }
 
 enum class ColorSchemePreset(
@@ -36,84 +36,91 @@ enum class ColorSchemePreset(
     MINIMAL(
         id = "MINIMAL",
         title = "Minimal",
-        subtitle = "Crisp alabaster & matte graphite monochrome with zero visual clutter",
+        subtitle = "Clean monochrome slate & matte graphite with calm steel accents",
         category = ThemeCategory.MINIMAL,
         styleTag = "Default"
     ),
-    STONE_LINEN(
-        id = "STONE_LINEN",
-        title = "Stone Linen",
-        subtitle = "Soft architectural greige & warm espresso ink for quiet focus",
-        category = ThemeCategory.MINIMAL,
-        styleTag = "Editorial"
-    ),
-    NORDIC_SLATE(
-        id = "NORDIC_SLATE",
-        title = "Nordic Slate",
-        subtitle = "Balanced cool slate & ocean cyan contrast",
-        category = ThemeCategory.ACCENT,
-        styleTag = "Classic"
+    EYE_COMFORT(
+        id = "EYE_COMFORT",
+        title = "Eye Shield",
+        subtitle = "Blue-light reduced warm cream & soft olive-sepia for long sessions",
+        category = ThemeCategory.READING,
+        styleTag = "Eye Care"
     ),
     WARM_PAPER(
         id = "WARM_PAPER",
         title = "Warm Paper",
-        subtitle = "Soft amber & sepia parchment for low-glare reading",
+        subtitle = "Gentle sepia parchment & muted ochre for low-glare reading",
         category = ThemeCategory.READING,
         styleTag = "Parchment"
     ),
     SOLARIZED_INK(
         id = "SOLARIZED_INK",
         title = "Solarized Ink",
-        subtitle = "Precision cream & midnight teal-slate engineered for long sessions",
+        subtitle = "Precision cream & muted cyan-slate engineered for eye comfort",
         category = ThemeCategory.READING,
-        styleTag = "Reading"
+        styleTag = "Eye Care"
+    ),
+    STONE_LINEN(
+        id = "STONE_LINEN",
+        title = "Stone Linen",
+        subtitle = "Soft architectural greige & muted espresso neutral tones",
+        category = ThemeCategory.MINIMAL,
+        styleTag = "Soft Matte"
     ),
     FOREST_SAGE(
         id = "FOREST_SAGE",
         title = "Forest Sage",
-        subtitle = "Calm botanical emerald & soft eucalyptus tones",
+        subtitle = "Soothing botanical eucalyptus & soft moss green",
         category = ThemeCategory.READING,
         styleTag = "Botanical"
     ),
     OCEAN_DUSK(
         id = "OCEAN_DUSK",
         title = "Ocean Dusk",
-        subtitle = "Sea-glass mist & deep marine slate serenity",
+        subtitle = "Calm coastal mist & muted deep marine slate",
         category = ThemeCategory.ACCENT,
         styleTag = "Coastal"
+    ),
+    NORDIC_SLATE(
+        id = "NORDIC_SLATE",
+        title = "Nordic Slate",
+        subtitle = "Balanced cool slate & classic ocean cyan contrast",
+        category = ThemeCategory.ACCENT,
+        styleTag = "Classic"
     ),
     ROYAL_INDIGO(
         id = "ROYAL_INDIGO",
         title = "Royal Indigo",
-        subtitle = "Academic deep navy & crisp indigo accents",
+        subtitle = "Academic deep navy & restrained slate-indigo accents",
         category = ThemeCategory.ACCENT,
         styleTag = "Academic"
     ),
     TERRACOTTA_CLAY(
         id = "TERRACOTTA_CLAY",
         title = "Terracotta Clay",
-        subtitle = "Warm limestone canvas with burnt sienna studio accents",
+        subtitle = "Warm limestone canvas with muted burnt sienna tones",
         category = ThemeCategory.READING,
         styleTag = "Warm Earth"
     ),
     ROSEWOOD_QUILL(
         id = "ROSEWOOD_QUILL",
         title = "Rosewood Quill",
-        subtitle = "Editorial ivory paired with muted burgundy & plum ink",
+        subtitle = "Soft ivory paired with calm muted burgundy & plum ink",
         category = ThemeCategory.ACCENT,
         styleTag = "Editorial"
     ),
     MIDNIGHT_AMBER(
         id = "MIDNIGHT_AMBER",
         title = "Midnight Gold",
-        subtitle = "Low-fatigue slate canvas with refined warm brass contrast",
+        subtitle = "Low-glare warm slate with restrained antique brass contrast",
         category = ThemeCategory.ACCENT,
         styleTag = "Studio"
     ),
     OLED_OBSIDIAN(
         id = "OLED_OBSIDIAN",
         title = "OLED Obsidian",
-        subtitle = "Pure pitch black background & crisp high-contrast surfaces",
+        subtitle = "Pure pitch-black background with softened titanium surfaces",
         category = ThemeCategory.MINIMAL,
         styleTag = "AMOLED"
     ),
