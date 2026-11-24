@@ -5,6 +5,16 @@ import {
   FolderItem,
   QuestionPaper,
 } from '../types/exam';
+import {
+  DEFAULT_DICTATION_CONFIG,
+  DictationConfig,
+  FlashcardSrsState,
+  HeadwordQueueItem,
+  LanguageWordOfTheDayState,
+  PromptPreset,
+  StudyNoteRecord,
+  VocabularyDeck,
+} from '../types/phase4';
 import { ExamNumberGenerator } from '../utils/examNumberGenerator';
 
 const KEYS = {
@@ -15,6 +25,16 @@ const KEYS = {
   ATTEMPTS: 'examset_attempts_v2',
   SESSIONS: 'examset_active_sessions_v1',
   COUNTDOWNS: 'examset_countdowns_v1',
+  // Phase 4 Storage Keys
+  STUDY_NOTES: 'examset_study_notes_v1',
+  VOCAB_DECKS: 'examset_vocab_decks_v1',
+  VOCAB_SRS: 'examset_vocab_srs_v1',
+  VOCAB_VARIANT: 'examset_vocab_variant_v1',
+  HEADWORD_INBOX: 'examset_headword_inbox_v1',
+  HEADWORD_DISMISSED: 'examset_headword_dismissed_v1',
+  WOTD_STATES: 'examset_wotd_states_v1',
+  PROMPT_PRESETS: 'examset_prompt_presets_v1',
+  DICTATION_CONFIG: 'examset_dictation_config_v1',
 };
 
 const LEGACY_SAMPLE_FOLDER_IDS = new Set(['f-science', 'f-upsc', 'f-ssc']);
@@ -207,5 +227,104 @@ export const ExamStore = {
 
   saveCountdowns(items: ExamCountdownTarget[]): void {
     safeWriteJson(KEYS.COUNTDOWNS, items);
+  },
+
+  // --- Phase 4 Persistence Methods ---
+
+  loadStudyNotes(seedNotes: StudyNoteRecord[] = []): StudyNoteRecord[] {
+    const stored = safeReadJson<StudyNoteRecord[] | null>(KEYS.STUDY_NOTES, null);
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      return [...stored].sort((a, b) => b.updatedAt - a.updatedAt);
+    }
+    if (stored === null && seedNotes.length > 0) {
+      safeWriteJson(KEYS.STUDY_NOTES, seedNotes);
+      return seedNotes;
+    }
+    return stored || [];
+  },
+
+  saveStudyNotes(notes: StudyNoteRecord[]): void {
+    safeWriteJson(KEYS.STUDY_NOTES, notes);
+  },
+
+  loadVocabDecks(seedDecks: VocabularyDeck[] = []): VocabularyDeck[] {
+    const stored = safeReadJson<VocabularyDeck[] | null>(KEYS.VOCAB_DECKS, null);
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      return stored;
+    }
+    if (stored === null && seedDecks.length > 0) {
+      safeWriteJson(KEYS.VOCAB_DECKS, seedDecks);
+      return seedDecks;
+    }
+    return stored || [];
+  },
+
+  saveVocabDecks(decks: VocabularyDeck[]): void {
+    safeWriteJson(KEYS.VOCAB_DECKS, decks);
+  },
+
+  loadVocabSrs(): Record<string, Record<string, FlashcardSrsState>> {
+    return safeReadJson<Record<string, Record<string, FlashcardSrsState>>>(KEYS.VOCAB_SRS, {});
+  },
+
+  saveVocabSrs(srsMap: Record<string, Record<string, FlashcardSrsState>>): void {
+    safeWriteJson(KEYS.VOCAB_SRS, srsMap);
+  },
+
+  loadEnglishVariant(): string {
+    try {
+      return localStorage.getItem(KEYS.VOCAB_VARIANT) || 'UK';
+    } catch {
+      return 'UK';
+    }
+  },
+
+  saveEnglishVariant(variant: string): void {
+    try {
+      localStorage.setItem(KEYS.VOCAB_VARIANT, variant);
+    } catch {
+      // ignore
+    }
+  },
+
+  loadHeadwordInbox(): HeadwordQueueItem[] {
+    return safeReadJson<HeadwordQueueItem[]>(KEYS.HEADWORD_INBOX, []);
+  },
+
+  saveHeadwordInbox(items: HeadwordQueueItem[]): void {
+    safeWriteJson(KEYS.HEADWORD_INBOX, items);
+  },
+
+  loadDismissedHeadwords(): string[] {
+    return safeReadJson<string[]>(KEYS.HEADWORD_DISMISSED, []);
+  },
+
+  saveDismissedHeadwords(keys: string[]): void {
+    safeWriteJson(KEYS.HEADWORD_DISMISSED, keys.slice(-2000));
+  },
+
+  loadWotdStates(): Record<string, LanguageWordOfTheDayState> {
+    return safeReadJson<Record<string, LanguageWordOfTheDayState>>(KEYS.WOTD_STATES, {});
+  },
+
+  saveWotdStates(states: Record<string, LanguageWordOfTheDayState>): void {
+    safeWriteJson(KEYS.WOTD_STATES, states);
+  },
+
+  loadPromptPresets(): PromptPreset[] {
+    return safeReadJson<PromptPreset[]>(KEYS.PROMPT_PRESETS, []);
+  },
+
+  savePromptPresets(presets: PromptPreset[]): void {
+    safeWriteJson(KEYS.PROMPT_PRESETS, presets);
+  },
+
+  loadDictationConfig(): DictationConfig {
+    const raw = safeReadJson<Partial<DictationConfig> | null>(KEYS.DICTATION_CONFIG, null);
+    return raw ? { ...DEFAULT_DICTATION_CONFIG, ...raw } : DEFAULT_DICTATION_CONFIG;
+  },
+
+  saveDictationConfig(cfg: DictationConfig): void {
+    safeWriteJson(KEYS.DICTATION_CONFIG, cfg);
   },
 };

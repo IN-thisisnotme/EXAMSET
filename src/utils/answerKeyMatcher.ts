@@ -1,4 +1,4 @@
-import { MsqScoringPolicy, QuestionItem } from '../types/exam';
+import type { MsqScoringPolicy, QuestionItem } from '../types/exam';
 
 export type QuestionGradeStatus = 'CORRECT' | 'PARTIAL' | 'INCORRECT' | 'UNANSWERED' | 'NEUTRALIZED';
 

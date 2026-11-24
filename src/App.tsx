@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bell,
+  BookMarked,
   BookOpen,
   CheckCircle2,
   Eye,
   FileText,
   Folder,
+  Globe,
   Menu,
+  Mic,
   Palette,
   Printer,
   Share2,
@@ -20,8 +23,19 @@ import {
   FolderItem,
   QuestionPaper,
 } from './types/exam';
+import {
+  DictationConfig,
+  FlashcardSrsState,
+  HeadwordQueueItem,
+  KnowledgeCollectionType,
+  LanguageWordOfTheDayState,
+  PromptPreset,
+  StudyNoteRecord,
+  VocabularyDeck,
+} from './types/phase4';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
 import { ExamStore, normalizePaperMetadata } from './data/examStore';
+import { STARTER_STUDY_NOTES, STARTER_VOCAB_DECKS } from './data/phase4Seeds';
 import { ThemePaletteModal } from './components/ThemePaletteModal';
 import { FontScaleModal } from './components/FontScaleModal';
 import { InputModal } from './components/InputModal';
@@ -29,11 +43,18 @@ import { BatchImportModal } from './components/BatchImportModal';
 import { EditMetadataModal } from './components/EditMetadataModal';
 import { AuditResolutionModal } from './components/AuditResolutionModal';
 import { ExamCountdownsModal } from './components/ExamCountdownsModal';
+import { StudyNoteEditorModal } from './components/StudyNoteEditorModal';
+import { VocabularyImportModal } from './components/VocabularyImportModal';
+import { VocabularyAuditModal } from './components/VocabularyAuditModal';
+import { HeadwordInboxModal } from './components/HeadwordInboxModal';
 import { CreatorTab } from './components/tabs/CreatorTab';
 import { MasterViewTab } from './components/tabs/MasterViewTab';
 import { PrintGeneratorTab } from './components/tabs/PrintGeneratorTab';
 import { StudentPortalTab } from './components/tabs/StudentPortalTab';
 import { FolderManagerTab } from './components/tabs/FolderManagerTab';
+import { KnowledgeStudioTab } from './components/tabs/KnowledgeStudioTab';
+import { NotebookDictationTab } from './components/tabs/NotebookDictationTab';
+import { VocabularyHubTab } from './components/tabs/VocabularyHubTab';
 import { PromptGeneratorTab } from './components/tabs/PromptGeneratorTab';
 import { ShareSystemTab } from './components/tabs/ShareSystemTab';
 
@@ -43,6 +64,9 @@ export type ActiveTab =
   | 'print'
   | 'student_portal'
   | 'folders'
+  | 'knowledge_studio'
+  | 'dictation'
+  | 'vocabulary_hub'
   | 'prompt_generator'
   | 'share';
 
@@ -162,6 +186,36 @@ const ExamSetWorkspace: React.FC = () => {
   );
   const [attempts, setAttempts] = useState<AttemptRecord[]>(() => ExamStore.loadAttempts());
 
+  // Phase 4 Persistent State
+  const [studyNotes, setStudyNotes] = useState<StudyNoteRecord[]>(() =>
+    ExamStore.loadStudyNotes(STARTER_STUDY_NOTES)
+  );
+  const [vocabDecks, setVocabDecks] = useState<VocabularyDeck[]>(() =>
+    ExamStore.loadVocabDecks(STARTER_VOCAB_DECKS)
+  );
+  const [vocabSrs, setVocabSrs] = useState<Record<string, Record<string, FlashcardSrsState>>>(() =>
+    ExamStore.loadVocabSrs()
+  );
+  const [englishVariant, setEnglishVariant] = useState<string>(() =>
+    ExamStore.loadEnglishVariant()
+  );
+  const [headwordInbox, setHeadwordInbox] = useState<HeadwordQueueItem[]>(() =>
+    ExamStore.loadHeadwordInbox()
+  );
+  const [dismissedHeadwords, setDismissedHeadwords] = useState<string[]>(() =>
+    ExamStore.loadDismissedHeadwords()
+  );
+  const [wotdStates, setWotdStates] = useState<Record<string, LanguageWordOfTheDayState>>(() =>
+    ExamStore.loadWotdStates()
+  );
+  const [promptPresets, setPromptPresets] = useState<PromptPreset[]>(() =>
+    ExamStore.loadPromptPresets()
+  );
+  const [dictationConfig, setDictationConfig] = useState<DictationConfig>(() =>
+    ExamStore.loadDictationConfig()
+  );
+  const [dictationTargetNoteId, setDictationTargetNoteId] = useState<string | null>(null);
+
   const [notification, setNotification] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
@@ -175,6 +229,19 @@ const ExamSetWorkspace: React.FC = () => {
   const [editingMetadataPaper, setEditingMetadataPaper] = useState<QuestionPaper | null>(null);
   const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
   const [showCountdownsModal, setShowCountdownsModal] = useState<boolean>(false);
+
+  // Phase 4 Modal States
+  const [showStudyNoteModal, setShowStudyNoteModal] = useState<boolean>(false);
+  const [editingStudyNote, setEditingStudyNote] = useState<StudyNoteRecord | null>(null);
+  const [studyNotePrefill, setStudyNotePrefill] = useState<{
+    collectionType?: KnowledgeCollectionType;
+    subject?: string;
+    topic?: string;
+  } | null>(null);
+  const [showVocabImportModal, setShowVocabImportModal] = useState<boolean>(false);
+  const [vocabImportDefaultLang, setVocabImportDefaultLang] = useState<string>('English');
+  const [auditVocabDeck, setAuditVocabDeck] = useState<VocabularyDeck | null>(null);
+  const [showHeadwordInboxModal, setShowHeadwordInboxModal] = useState<boolean>(false);
 
   const showToast = (message: string) => {
     setNotification(message);
@@ -246,7 +313,6 @@ const ExamSetWorkspace: React.FC = () => {
 
   const handleDeleteFolder = (folderId: string) => {
     if (folderId === 'default') return;
-    // Move papers cleanly back to root folder before removing custom folder
     const updatedPapers = papers.map((p) =>
       p.metadata.folderId === folderId
         ? { ...p, metadata: { ...p.metadata, folderId: 'default' } }
@@ -331,17 +397,75 @@ const ExamSetWorkspace: React.FC = () => {
     setAttempts(next);
   };
 
-  const navItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string }[] = useMemo(
+  // Phase 4 Handlers
+  const handleSaveStudyNote = (note: StudyNoteRecord) => {
+    const idx = studyNotes.findIndex((n) => n.id === note.id);
+    const next = idx >= 0 ? studyNotes.map((n, i) => (i === idx ? note : n)) : [note, ...studyNotes];
+    setStudyNotes(next);
+    ExamStore.saveStudyNotes(next);
+    setShowStudyNoteModal(false);
+    setEditingStudyNote(null);
+    setStudyNotePrefill(null);
+    showToast(`Saved Study Note "${note.title}"`);
+  };
+
+  const handleDeleteStudyNote = (noteId: string) => {
+    const next = studyNotes.filter((n) => n.id !== noteId);
+    setStudyNotes(next);
+    ExamStore.saveStudyNotes(next);
+    showToast('Study note removed');
+  };
+
+  const handleUpdateVocabDecks = (next: VocabularyDeck[]) => {
+    setVocabDecks(next);
+    ExamStore.saveVocabDecks(next);
+  };
+
+  const handleUpdateVocabSrs = (next: Record<string, Record<string, FlashcardSrsState>>) => {
+    setVocabSrs(next);
+    ExamStore.saveVocabSrs(next);
+  };
+
+  const handleChangeEnglishVariant = (vr: string) => {
+    setEnglishVariant(vr);
+    ExamStore.saveEnglishVariant(vr);
+    showToast(`Default English variant set to ${vr}`);
+  };
+
+  const handleSaveWotdStates = (next: Record<string, LanguageWordOfTheDayState>) => {
+    setWotdStates(next);
+    ExamStore.saveWotdStates(next);
+  };
+
+  const handleSavePromptPresets = (next: PromptPreset[]) => {
+    setPromptPresets(next);
+    ExamStore.savePromptPresets(next);
+  };
+
+  const handleSaveDictationConfig = (cfg: DictationConfig) => {
+    setDictationConfig(cfg);
+    ExamStore.saveDictationConfig(cfg);
+  };
+
+  const totalVocabWords = useMemo(
+    () => vocabDecks.reduce((sum, d) => sum + d.entries.length, 0),
+    [vocabDecks]
+  );
+
+  const navItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string; group: 'exam' | 'study' }[] = useMemo(
     () => [
-      { id: 'creator', label: 'Question Creator', icon: <FileText className="w-4 h-4" /> },
-      { id: 'master', label: 'Master View', icon: <Eye className="w-4 h-4" />, badge: `${currentPaper.questions.length}` },
-      { id: 'print', label: 'Print & OMR', icon: <Printer className="w-4 h-4" /> },
-      { id: 'student_portal', label: 'Student Portal', icon: <CheckCircle2 className="w-4 h-4" /> },
-      { id: 'folders', label: 'Folders', icon: <Folder className="w-4 h-4" />, badge: `${papers.length}` },
-      { id: 'prompt_generator', label: 'Prompt Studio', icon: <Sparkles className="w-4 h-4" /> },
-      { id: 'share', label: 'Share & Export', icon: <Share2 className="w-4 h-4" /> },
+      { id: 'creator', label: 'Question Creator', icon: <FileText className="w-4 h-4" />, group: 'exam' },
+      { id: 'master', label: 'Master View', icon: <Eye className="w-4 h-4" />, badge: `${currentPaper.questions.length}`, group: 'exam' },
+      { id: 'print', label: 'Print & OMR', icon: <Printer className="w-4 h-4" />, group: 'exam' },
+      { id: 'student_portal', label: 'Student Portal', icon: <CheckCircle2 className="w-4 h-4" />, group: 'exam' },
+      { id: 'folders', label: 'Folders', icon: <Folder className="w-4 h-4" />, badge: `${papers.length}`, group: 'exam' },
+      { id: 'knowledge_studio', label: 'Knowledge Studio', icon: <BookMarked className="w-4 h-4" />, badge: `${studyNotes.length}`, group: 'study' },
+      { id: 'dictation', label: 'Dictation Lab', icon: <Mic className="w-4 h-4" />, group: 'study' },
+      { id: 'vocabulary_hub', label: 'Vocabulary Hub', icon: <Globe className="w-4 h-4" />, badge: `${totalVocabWords}`, group: 'study' },
+      { id: 'prompt_generator', label: 'Prompt Studio', icon: <Sparkles className="w-4 h-4" />, group: 'study' },
+      { id: 'share', label: 'Share & Export', icon: <Share2 className="w-4 h-4" />, group: 'study' },
     ],
-    [currentPaper.questions.length, papers.length]
+    [currentPaper.questions.length, papers.length, studyNotes.length, totalVocabWords]
   );
 
   return (
@@ -373,7 +497,7 @@ const ExamSetWorkspace: React.FC = () => {
         }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-3">
+          <div className="flex items-center justify-between h-14 gap-3">
             {/* Brand + Active Set Summary */}
             <div className="flex items-center gap-3 min-w-0">
               <div
@@ -395,48 +519,14 @@ const ExamSetWorkspace: React.FC = () => {
                       borderColor: colors.border,
                     }}
                   >
-                    Set {currentPaper.metadata.setNumber || '01'} • A4 OMR
+                    Set {currentPaper.metadata.setNumber || '01'} • A4 OMR • SM-2
                   </span>
                 </div>
-                <p className="text-[11px] font-medium truncate max-w-[180px] sm:max-w-xs" style={{ color: colors.muted }}>
+                <p className="text-[11px] font-medium truncate max-w-[180px] sm:max-w-sm" style={{ color: colors.muted }}>
                   {currentPaper.metadata.title} ({currentPaper.questions.length} Qs)
                 </p>
               </div>
             </div>
-
-            {/* Desktop Navigation */}
-            <nav className="hidden xl:flex items-center gap-1">
-              {navItems.map((item) => {
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold transition"
-                    style={
-                      isActive
-                        ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
-                        : { color: colors.inkMuted, backgroundColor: 'transparent' }
-                    }
-                  >
-                    {item.icon}
-                    <span>{item.label}</span>
-                    {item.badge && (
-                      <span
-                        className="ml-0.5 text-[10px] px-1.5 py-0.2 rounded-full font-bold"
-                        style={
-                          isActive
-                            ? { backgroundColor: 'rgba(255,255,255,0.22)', color: colors.primaryButtonText }
-                            : { backgroundColor: colors.surfaceVariant, color: colors.ink }
-                        }
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
 
             {/* Theme / Typography Controls + Mobile Toggle */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -461,7 +551,7 @@ const ExamSetWorkspace: React.FC = () => {
 
               <button
                 onClick={() => setMobileMenuOpen((o) => !o)}
-                className="xl:hidden p-2 rounded-lg border"
+                className="md:hidden p-2 rounded-lg border"
                 style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                 aria-label="Toggle Navigation"
               >
@@ -470,33 +560,56 @@ const ExamSetWorkspace: React.FC = () => {
             </div>
           </div>
 
-          {/* Medium Tablet Compact Tab Strip */}
-          <div className="hidden md:flex xl:hidden items-center gap-1 pb-2 overflow-x-auto">
-            {navItems.map((item) => {
+          {/* Desktop & Tablet Clean Scrollable Navigation Strip */}
+          <nav
+            className="hidden md:flex items-center gap-1 pb-2 pt-1 overflow-x-auto border-t"
+            style={{ borderColor: colors.borderLight }}
+          >
+            {navItems.map((item, idx) => {
               const isActive = activeTab === item.id;
+              const prevGroup = idx > 0 ? navItems[idx - 1].group : item.group;
               return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition"
-                  style={
-                    isActive
-                      ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
-                      : { backgroundColor: colors.surfaceVariant, color: colors.ink }
-                  }
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </button>
+                <React.Fragment key={item.id}>
+                  {idx > 0 && item.group !== prevGroup && (
+                    <span
+                      className="h-5 w-px mx-1 flex-shrink-0"
+                      style={{ backgroundColor: colors.border }}
+                    />
+                  )}
+                  <button
+                    onClick={() => setActiveTab(item.id)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition flex-shrink-0"
+                    style={
+                      isActive
+                        ? { backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }
+                        : { color: colors.inkMuted, backgroundColor: 'transparent' }
+                    }
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                    {item.badge && (
+                      <span
+                        className="ml-0.5 text-[10px] px-1.5 py-0.2 rounded-full font-bold"
+                        style={
+                          isActive
+                            ? { backgroundColor: 'rgba(255,255,255,0.22)', color: colors.primaryButtonText }
+                            : { backgroundColor: colors.surfaceVariant, color: colors.ink }
+                        }
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                </React.Fragment>
               );
             })}
-          </div>
+          </nav>
         </div>
 
         {/* Mobile Drawer Menu */}
         {mobileMenuOpen && (
           <div
-            className="xl:hidden border-t px-3 py-3 space-y-1 shadow-lg"
+            className="md:hidden border-t px-3 py-3 space-y-1 shadow-lg max-h-[75vh] overflow-y-auto"
             style={{ backgroundColor: colors.surface, borderColor: colors.border }}
           >
             {navItems.map((item) => {
@@ -600,13 +713,81 @@ const ExamSetWorkspace: React.FC = () => {
             />
           )}
 
+          {activeTab === 'knowledge_studio' && (
+            <KnowledgeStudioTab
+              notes={studyNotes}
+              papers={papers}
+              attempts={attempts}
+              folders={folders}
+              onSaveNote={handleSaveStudyNote}
+              onDeleteNote={handleDeleteStudyNote}
+              onOpenEditor={(note) => {
+                setEditingStudyNote(note || null);
+                setStudyNotePrefill(null);
+                setShowStudyNoteModal(true);
+              }}
+              onSendNoteToDictation={(noteId) => {
+                setDictationTargetNoteId(noteId);
+                setActiveTab('dictation');
+              }}
+            />
+          )}
+
+          {activeTab === 'dictation' && (
+            <NotebookDictationTab
+              studyNotes={studyNotes}
+              initialNoteId={dictationTargetNoteId}
+              dictationConfig={dictationConfig}
+              onSaveConfig={handleSaveDictationConfig}
+            />
+          )}
+
+          {activeTab === 'vocabulary_hub' && (
+            <VocabularyHubTab
+              decks={vocabDecks}
+              srsByDeck={vocabSrs}
+              englishVariant={englishVariant}
+              headwordInbox={headwordInbox}
+              wotdStates={wotdStates}
+              onChangeEnglishVariant={handleChangeEnglishVariant}
+              onUpdateDecks={handleUpdateVocabDecks}
+              onUpdateSrs={handleUpdateVocabSrs}
+              onSaveWotdStates={handleSaveWotdStates}
+              onOpenImportModal={(lang) => {
+                setVocabImportDefaultLang(lang || 'English');
+                setShowVocabImportModal(true);
+              }}
+              onOpenHeadwordInbox={() => setShowHeadwordInboxModal(true)}
+              onOpenAuditModal={(deck) => setAuditVocabDeck(deck)}
+            />
+          )}
+
           {activeTab === 'prompt_generator' && (
             <PromptGeneratorTab
+              presets={promptPresets}
+              onSavePresets={handleSavePromptPresets}
+              vocabDecks={vocabDecks}
+              defaultEnglishVariant={englishVariant}
               onNavigateToCreator={() => setActiveTab('creator')}
+              onNavigateToKnowledge={() => setActiveTab('knowledge_studio')}
               onSendToCreator={(promptText) => {
                 setCreateDefaultFolderId(currentPaper.metadata.folderId || 'default');
                 setCreateInitialText(promptText);
                 setShowCreateModal(true);
+              }}
+              onCreateStudyNoteFromPrompt={(collectionType, subject, topic) => {
+                setEditingStudyNote(null);
+                setStudyNotePrefill({ collectionType, subject, topic });
+                setActiveTab('knowledge_studio');
+                setShowStudyNoteModal(true);
+              }}
+              onOpenVocabImport={() => {
+                setActiveTab('vocabulary_hub');
+                setShowVocabImportModal(true);
+              }}
+              onOpenHeadwordInbox={() => {
+                setActiveTab('vocabulary_hub');
+                setShowHeadwordInboxModal(true);
               }}
             />
           )}
@@ -631,7 +812,7 @@ const ExamSetWorkspace: React.FC = () => {
         className="border-t py-3 text-center text-xs"
         style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.muted }}
       >
-        ExamSet Suite • Single-Page A4 OMR • CBT &amp; CTT Psychometric Engine
+        ExamSet Suite • Single-Page A4 OMR • Knowledge Studio &amp; SM-2 • Dictation Lab • Vocabulary Hub
       </footer>
 
       {/* Global Dialogs & Workflow Modals */}
@@ -693,6 +874,76 @@ const ExamSetWorkspace: React.FC = () => {
           countdowns={countdowns}
           onSaveCountdowns={handleSaveCountdowns}
           onClose={() => setShowCountdownsModal(false)}
+        />
+      )}
+
+      {/* Phase 4 Modals */}
+      {showStudyNoteModal && (
+        <StudyNoteEditorModal
+          isOpen={showStudyNoteModal}
+          initialNote={editingStudyNote}
+          prefill={studyNotePrefill}
+          papers={papers}
+          folders={folders}
+          onSaveNote={handleSaveStudyNote}
+          onClose={() => {
+            setShowStudyNoteModal(false);
+            setEditingStudyNote(null);
+            setStudyNotePrefill(null);
+          }}
+        />
+      )}
+
+      {showVocabImportModal && (
+        <VocabularyImportModal
+          isOpen={showVocabImportModal}
+          decks={vocabDecks}
+          defaultLanguage={vocabImportDefaultLang}
+          defaultEnglishVariant={englishVariant}
+          onCompleteImport={(updatedDecks, msg) => {
+            handleUpdateVocabDecks(updatedDecks);
+            setShowVocabImportModal(false);
+            showToast(msg);
+          }}
+          onClose={() => setShowVocabImportModal(false)}
+        />
+      )}
+
+      {auditVocabDeck && (
+        <VocabularyAuditModal
+          isOpen={Boolean(auditVocabDeck)}
+          deck={vocabDecks.find((d) => d.id === auditVocabDeck.id) || auditVocabDeck}
+          allDecks={vocabDecks}
+          onUpdateDeck={(updated) => {
+            const next = vocabDecks.map((d) => (d.id === updated.id ? updated : d));
+            handleUpdateVocabDecks(next);
+            setAuditVocabDeck(updated);
+            showToast(`Updated audited deck "${updated.title}"`);
+          }}
+          onClose={() => setAuditVocabDeck(null)}
+        />
+      )}
+
+      {showHeadwordInboxModal && (
+        <HeadwordInboxModal
+          isOpen={showHeadwordInboxModal}
+          inbox={headwordInbox}
+          dismissedKeys={dismissedHeadwords}
+          decks={vocabDecks}
+          defaultEnglishVariant={englishVariant}
+          onSaveInbox={(items) => {
+            setHeadwordInbox(items);
+            ExamStore.saveHeadwordInbox(items);
+          }}
+          onDismissKey={(compositeKey, itemId) => {
+            const nextInbox = headwordInbox.filter((x) => x.id !== itemId);
+            const nextDismissed = Array.from(new Set([...dismissedHeadwords, compositeKey]));
+            setHeadwordInbox(nextInbox);
+            setDismissedHeadwords(nextDismissed);
+            ExamStore.saveHeadwordInbox(nextInbox);
+            ExamStore.saveDismissedHeadwords(nextDismissed);
+          }}
+          onClose={() => setShowHeadwordInboxModal(false)}
         />
       )}
     </div>
