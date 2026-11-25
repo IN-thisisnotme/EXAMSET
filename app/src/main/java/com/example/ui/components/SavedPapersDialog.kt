@@ -11,15 +11,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -65,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.PaperEntity
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
@@ -73,6 +79,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SavedPapersDialog(
     papers: List<PaperEntity>,
@@ -93,16 +100,13 @@ fun SavedPapersDialog(
 
     var showExportMenu by remember { mutableStateOf(false) }
     var pendingExportData by remember { mutableStateOf<String?>(null) }
-    var pendingExportMimeType by remember { mutableStateOf("application/json") }
 
-    // Storage Access Framework launcher to save file directly to device File Manager
-    val createDocLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument(pendingExportMimeType)
-    ) { uri: Uri? ->
-        if (uri != null && pendingExportData != null) {
+    fun writePendingExportToUri(uri: Uri?) {
+        val data = pendingExportData
+        if (uri != null && data != null) {
             try {
                 context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.bufferedWriter(Charsets.UTF_8).write(pendingExportData!!)
+                    stream.bufferedWriter(Charsets.UTF_8).write(data)
                 }
                 Toast.makeText(context, "Saved file successfully to device!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -110,6 +114,19 @@ fun SavedPapersDialog(
             }
         }
     }
+
+    // [DEPRECATED 2026-11-25] Reason: Single CreateDocument(pendingExportMimeType) captured "application/json" at composition time and ignored subsequent "text/plain" updates. Restore if: using a custom ActivityResultContract with dynamic MIME input.
+    // var pendingExportMimeType by remember { mutableStateOf("application/json") }
+    // val createDocLauncher = rememberLauncherForActivityResult(
+    //     contract = ActivityResultContracts.CreateDocument(pendingExportMimeType)
+    // ) { ... }
+    val createJsonDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? -> writePendingExportToUri(uri) }
+
+    val createTxtDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? -> writePendingExportToUri(uri) }
 
     // Open multiple documents launcher to concurrently import files
     val importFilesLauncher = rememberLauncherForActivityResult(
@@ -127,8 +144,11 @@ fun SavedPapersDialog(
 
     fun triggerExportToFile(data: String, defaultName: String, mime: String) {
         pendingExportData = data
-        pendingExportMimeType = mime
-        createDocLauncher.launch(defaultName)
+        if (mime == "text/plain") {
+            createTxtDocLauncher.launch(defaultName)
+        } else {
+            createJsonDocLauncher.launch(defaultName)
+        }
     }
 
     fun triggerShare(data: String, title: String) {
@@ -170,107 +190,130 @@ fun SavedPapersDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = colors.surface,
-            border = BorderStroke(1.dp, colors.border),
-            tonalElevation = 8.dp,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
+            val maxDialogHeight = (maxHeight * 0.92f).coerceAtLeast(300.dp)
+            val listMaxHeight = (maxHeight * 0.50f).coerceAtLeast(160.dp)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                tonalElevation = 8.dp,
                 modifier = Modifier
+                    .widthIn(max = 640.dp)
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .heightIn(max = maxDialogHeight)
+                    .testTag("saved_papers_dialog")
             ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.FolderOpen,
-                            contentDescription = null,
-                            tint = colors.teal,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isSelectionMode) "Select Question Sets" else "Saved Question Sets",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.inkBold
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.muted)
-                    }
-                }
-
-                // Action Bar: Selection Mode Toggle, Select All, and Import Launcher
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(16.dp)
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(
-                            onClick = {
-                                isSelectionMode = !isSelectionMode
-                                if (!isSelectionMode) selectedIds = emptySet()
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(28.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = colors.teal,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (isSelectionMode) "Done" else "Select",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
+                                text = if (isSelectionMode) "Select Question Sets" else "Saved Question Sets",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                softWrap = true
                             )
                         }
-
-                        if (isSelectionMode && filteredPapers.isNotEmpty()) {
-                            TextButton(
-                                onClick = {
-                                    selectedIds = if (selectedIds.size == filteredPapers.size) {
-                                        emptySet()
-                                    } else {
-                                        filteredPapers.map { it.id }.toSet()
-                                    }
-                                },
-                                modifier = Modifier.height(28.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = if (selectedIds.size == filteredPapers.size) "Deselect All" else "Select All (${filteredPapers.size})",
-                                    fontSize = 11.sp,
-                                    color = colors.teal
-                                )
-                            }
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.muted)
                         }
                     }
 
-                    // Concurrent Bulk Import button
-                    OutlinedButton(
-                        onClick = {
-                            importFilesLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    // Action Bar: Selection Mode Toggle, Select All, and Import Launcher
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Import", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    isSelectionMode = !isSelectionMode
+                                    if (!isSelectionMode) selectedIds = emptySet()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.heightIn(min = 48.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = if (isSelectionMode) "Done" else "Select",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            if (isSelectionMode && filteredPapers.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        selectedIds = if (selectedIds.size == filteredPapers.size) {
+                                            emptySet()
+                                        } else {
+                                            filteredPapers.map { it.id }.toSet()
+                                        }
+                                    },
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = if (selectedIds.size == filteredPapers.size) "Deselect All" else "Select All (${filteredPapers.size})",
+                                        fontSize = 11.5.sp,
+                                        color = colors.teal
+                                    )
+                                }
+                            }
+                        }
+
+                        // Concurrent Bulk Import button
+                        OutlinedButton(
+                            onClick = {
+                                importFilesLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.heightIn(min = 48.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
-                }
 
                 // Category Chips (Subject/Topic Categorisation)
                 if (categories.size > 2) {
@@ -344,7 +387,8 @@ fun SavedPapersDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp),
+                            .weight(1f, fill = false)
+                            .heightIn(min = 120.dp, max = listMaxHeight),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filteredPapers, key = { it.id }) { item ->
@@ -446,9 +490,9 @@ fun SavedPapersDialog(
 
                                         Spacer(modifier = Modifier.height(4.dp))
 
-                                        Row(
+                                        FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
                                             Text(
                                                 text = "${item.questionCount} Questions",
@@ -462,7 +506,6 @@ fun SavedPapersDialog(
                                                 color = colors.muted
                                             )
                                             if (item.rollNumber.isNotBlank()) {
-                                                Text("•", fontSize = 9.5.sp, color = colors.muted)
                                                 Text(
                                                     text = "Roll: ${item.rollNumber}",
                                                     fontSize = 9.5.sp,
@@ -481,13 +524,13 @@ fun SavedPapersDialog(
                                                         onEditPaper(item)
                                                         onDismiss()
                                                     },
-                                                    modifier = Modifier.size(30.dp)
+                                                    modifier = Modifier.size(48.dp)
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Edit,
                                                         contentDescription = "Edit Details",
                                                         tint = colors.teal,
-                                                        modifier = Modifier.size(16.dp)
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
                                             }
@@ -495,14 +538,14 @@ fun SavedPapersDialog(
                                             IconButton(
                                                 onClick = { paperToDelete = item },
                                                 modifier = Modifier
-                                                    .size(30.dp)
+                                                    .size(48.dp)
                                                     .testTag("delete_saved_paper_button")
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.DeleteOutline,
                                                     contentDescription = "Delete",
                                                     tint = colors.red.copy(alpha = 0.8f),
-                                                    modifier = Modifier.size(17.dp)
+                                                    modifier = Modifier.size(18.dp)
                                                 )
                                             }
                                         }
@@ -530,7 +573,9 @@ fun SavedPapersDialog(
                                         contentColor = colors.primaryButtonText
                                     ),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
                                 ) {
                                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -544,7 +589,9 @@ fun SavedPapersDialog(
                                         contentColor = colors.navyBannerText
                                     ),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
                                 ) {
                                     Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -612,6 +659,7 @@ fun SavedPapersDialog(
                 }
             }
         }
+        }
     }
 
     // Confirmation Dialog before deleting paper
@@ -649,13 +697,18 @@ fun SavedPapersDialog(
                         onDeletePaper(toDel)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = colors.red),
-                    modifier = Modifier.testTag("confirm_delete_saved_paper_button")
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("confirm_delete_saved_paper_button")
                 ) {
                     Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { paperToDelete = null }) {
+                TextButton(
+                    onClick = { paperToDelete = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
                     Text("Cancel", color = colors.ink)
                 }
             }

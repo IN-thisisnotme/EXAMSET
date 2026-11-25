@@ -12,16 +12,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import android.content.Intent
 import androidx.activity.result.PickVisualMediaRequest
@@ -73,6 +76,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -248,20 +252,26 @@ fun OmrScannerDialog(
             dismissOnClickOutside = !isProcessing
         )
     ) {
-        Surface(
-            modifier = modifier
+        Box(
+            modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
                 .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = colors.surface,
-            border = BorderStroke(1.2.dp, colors.border)
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
+            Surface(
+                modifier = modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxSize(),
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surface,
+                border = BorderStroke(1.2.dp, colors.border)
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp)
+                ) {
                 // Header with Title and Close Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -311,7 +321,9 @@ fun OmrScannerDialog(
                     IconButton(
                         onClick = onDismiss,
                         enabled = !isProcessing,
-                        modifier = Modifier.testTag("omr_scanner_close_button")
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("omr_scanner_close_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
@@ -417,6 +429,7 @@ fun OmrScannerDialog(
                         )
                     }
                 }
+                }
             }
         }
     }
@@ -514,61 +527,122 @@ private fun ScannerUploadPromptsView(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Camera capture button
-                        Button(
-                            onClick = onPickCamera,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(52.dp)
-                                .testTag("omr_scan_camera_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFBE185D),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Take Photo",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val stackButtons = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.35f
+                        if (stackButtons) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = onPickCamera,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 52.dp)
+                                        .testTag("omr_scan_camera_button"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFBE185D),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Take Photo",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
 
-                        // Gallery / File upload button
-                        OutlinedButton(
-                            onClick = onPickGallery,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(52.dp)
-                                .testTag("omr_scan_gallery_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.2.dp, colors.border),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = colors.inkBold
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Image,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = colors.teal
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "From Gallery",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                                OutlinedButton(
+                                    onClick = onPickGallery,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 52.dp)
+                                        .testTag("omr_scan_gallery_button"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.2.dp, colors.border),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = colors.inkBold
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Image,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = colors.teal
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "From Gallery",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Camera capture button
+                                Button(
+                                    onClick = onPickCamera,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 52.dp)
+                                        .testTag("omr_scan_camera_button"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFBE185D),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Take Photo",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // Gallery / File upload button
+                                OutlinedButton(
+                                    onClick = onPickGallery,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 52.dp)
+                                        .testTag("omr_scan_gallery_button"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.2.dp, colors.border),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = colors.inkBold
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Image,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = colors.teal
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "From Gallery",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -625,7 +699,7 @@ private fun ScannerUploadPromptsView(
                 onClick = onDismiss,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .heightIn(min = 48.dp)
                     .testTag("omr_scanner_bottom_close_button"),
                 shape = RoundedCornerShape(10.dp),
                 border = BorderStroke(1.2.dp, colors.border),
@@ -928,7 +1002,7 @@ private fun ScannedResultReviewView(
 
                             IconButton(
                                 onClick = { isEditingHeader = !isEditingHeader },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = if (isEditingHeader) Icons.Default.Check else Icons.Default.Edit,
@@ -942,48 +1016,99 @@ private fun ScannedResultReviewView(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         if (isEditingHeader) {
-                            // Editable fields
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = editableRollNumber,
-                                    onValueChange = { if (it.length <= 10 && it.all { c -> c.isDigit() }) editableRollNumber = it },
-                                    label = { Text("Roll No. (10 digits)", fontSize = 10.sp) },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    ),
-                                    modifier = Modifier.weight(1.3f)
-                                )
+                            // Editable fields: stack vertically on narrow width or large font scale
+                            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                val stackCandidateFields = maxWidth < 460.dp || LocalDensity.current.fontScale >= 1.3f
+                                if (stackCandidateFields) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = editableRollNumber,
+                                            onValueChange = { if (it.length <= 10 && it.all { c -> c.isDigit() }) editableRollNumber = it },
+                                            label = { Text("Roll No. (10 digits)", fontSize = 11.sp) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = editableBookletNumber,
+                                                onValueChange = { if (it.length <= 7 && it.all { c -> c.isDigit() }) editableBookletNumber = it },
+                                                label = { Text("Booklet No. (7)", fontSize = 11.sp) },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                ),
+                                                modifier = Modifier.weight(1.4f)
+                                            )
+                                            OutlinedTextField(
+                                                value = editableBookletCode,
+                                                onValueChange = { if (it.length <= 2) editableBookletCode = it.uppercase() },
+                                                label = { Text("Set", fontSize = 11.sp) },
+                                                singleLine = true,
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                ),
+                                                modifier = Modifier.weight(0.8f)
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = editableRollNumber,
+                                            onValueChange = { if (it.length <= 10 && it.all { c -> c.isDigit() }) editableRollNumber = it },
+                                            label = { Text("Roll No. (10 digits)", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            ),
+                                            modifier = Modifier.weight(1.3f)
+                                        )
 
-                                OutlinedTextField(
-                                    value = editableBookletNumber,
-                                    onValueChange = { if (it.length <= 7 && it.all { c -> c.isDigit() }) editableBookletNumber = it },
-                                    label = { Text("Booklet No. (7 digits)", fontSize = 10.sp) },
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    ),
-                                    modifier = Modifier.weight(1.1f)
-                                )
+                                        OutlinedTextField(
+                                            value = editableBookletNumber,
+                                            onValueChange = { if (it.length <= 7 && it.all { c -> c.isDigit() }) editableBookletNumber = it },
+                                            label = { Text("Booklet No. (7 digits)", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            ),
+                                            modifier = Modifier.weight(1.1f)
+                                        )
 
-                                OutlinedTextField(
-                                    value = editableBookletCode,
-                                    onValueChange = { if (it.length <= 2) editableBookletCode = it.uppercase() },
-                                    label = { Text("Set", fontSize = 10.sp) },
-                                    singleLine = true,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    ),
-                                    modifier = Modifier.weight(0.6f)
-                                )
+                                        OutlinedTextField(
+                                            value = editableBookletCode,
+                                            onValueChange = { if (it.length <= 2) editableBookletCode = it.uppercase() },
+                                            label = { Text("Set", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedContainerColor = Color.White,
+                                                unfocusedContainerColor = Color.White
+                                            ),
+                                            modifier = Modifier.weight(0.6f)
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             // Read-only presentation with confidence & candidate profile
@@ -1279,115 +1404,237 @@ private fun ScannedResultReviewView(
         Spacer(modifier = Modifier.height(12.dp))
 
         // Action Buttons: Re-scan vs Share vs Save Verified Result
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = onRescan,
-                modifier = Modifier
-                    .weight(0.9f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, colors.border)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(15.dp),
-                    tint = colors.inkBold
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Re-Scan", fontSize = 11.5.sp, color = colors.inkBold)
-            }
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val useWrapActions = maxWidth < 400.dp || LocalDensity.current.fontScale >= 1.3f
+            if (useWrapActions) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onRescan,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, colors.border)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = colors.inkBold
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Re-Scan", fontSize = 11.5.sp, color = colors.inkBold)
+                        }
 
-            OutlinedButton(
-                onClick = {
-                    val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
-                        rollNumber = editableRollNumber,
-                        bookletNumber = editableBookletNumber,
-                        bookletCode = editableBookletCode
-                    )).copy(
-                        rollNumber = editableRollNumber,
-                        bookletNumber = editableBookletNumber,
-                        bookletCode = editableBookletCode
-                    )
-                    val answersSnapshot = mutableMapOf<Int, String>()
-                    for ((qNum, qResult) in result.questionResults) {
-                        val mark = qResult.selectedOption?.toString()
-                        if (!mark.isNullOrBlank() && !qResult.isMultipleMarked) {
-                            answersSnapshot[qNum] = mark
+                        OutlinedButton(
+                            onClick = {
+                                val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
+                                    rollNumber = editableRollNumber,
+                                    bookletNumber = editableBookletNumber,
+                                    bookletCode = editableBookletCode
+                                )).copy(
+                                    rollNumber = editableRollNumber,
+                                    bookletNumber = editableBookletNumber,
+                                    bookletCode = editableBookletCode
+                                )
+                                val answersSnapshot = mutableMapOf<Int, String>()
+                                for ((qNum, qResult) in result.questionResults) {
+                                    val mark = qResult.selectedOption?.toString()
+                                    if (!mark.isNullOrBlank() && !qResult.isMultipleMarked) {
+                                        answersSnapshot[qNum] = mark
+                                    }
+                                }
+                                val payload = ExamJsonHelper.OmrExportPayload(
+                                    candidateRollNumber = verifiedHeader.rollNumber,
+                                    candidateBookletNumber = verifiedHeader.bookletNumber,
+                                    candidateSetCode = verifiedHeader.bookletCode,
+                                    paperTitle = paper.metadata.title,
+                                    paperId = paper.id,
+                                    totalQuestions = result.totalQuestions,
+                                    score = result.exactScore,
+                                    correctCount = result.correctCount,
+                                    incorrectCount = result.incorrectCount + result.multipleMarkedCount,
+                                    unattemptedCount = result.unattemptedCount,
+                                    answers = answersSnapshot
+                                )
+                                val json = ExamJsonHelper.omrEvaluationToJson(payload)
+                                val sendIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, json)
+                                    type = "application/json"
+                                }
+                                val shareIntent = Intent.createChooser(sendIntent, "Share OMR Candidate Evaluation")
+                                context.startActivity(shareIntent)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share Evaluation",
+                                modifier = Modifier.size(15.dp),
+                                tint = Color(0xFF0284C7)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Share", fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
                         }
                     }
-                    val payload = ExamJsonHelper.OmrExportPayload(
-                        candidateRollNumber = verifiedHeader.rollNumber,
-                        candidateBookletNumber = verifiedHeader.bookletNumber,
-                        candidateSetCode = verifiedHeader.bookletCode,
-                        paperTitle = paper.metadata.title,
-                        paperId = paper.id,
-                        totalQuestions = result.totalQuestions,
-                        score = result.exactScore,
-                        correctCount = result.correctCount,
-                        incorrectCount = result.incorrectCount + result.multipleMarkedCount,
-                        unattemptedCount = result.unattemptedCount,
-                        answers = answersSnapshot
-                    )
-                    val json = ExamJsonHelper.omrEvaluationToJson(payload)
-                    val sendIntent = Intent().apply {
-                        action = Intent.ACTION_SEND
-                        putExtra(Intent.EXTRA_TEXT, json)
-                        type = "application/json"
-                    }
-                    val shareIntent = Intent.createChooser(sendIntent, "Share OMR Candidate Evaluation")
-                    context.startActivity(shareIntent)
-                },
-                modifier = Modifier
-                    .weight(0.9f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Share,
-                    contentDescription = "Share Evaluation",
-                    modifier = Modifier.size(15.dp),
-                    tint = Color(0xFF0284C7)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Share", fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
-            }
 
-            Button(
-                onClick = {
-                    val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
-                        rollNumber = editableRollNumber,
-                        bookletNumber = editableBookletNumber,
-                        bookletCode = editableBookletCode
-                    )).copy(
-                        rollNumber = editableRollNumber,
-                        bookletNumber = editableBookletNumber,
-                        bookletCode = editableBookletCode
-                    )
-                    val verifiedResult = result.copy(headerResult = verifiedHeader)
-                    onSubmit(verifiedResult)
-                },
-                modifier = Modifier
-                    .weight(1.3f)
-                    .height(48.dp)
-                    .testTag("omr_save_score_button"),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.navyBanner,
-                    contentColor = colors.navyBannerText
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Save & Record Result", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = {
+                            val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
+                                rollNumber = editableRollNumber,
+                                bookletNumber = editableBookletNumber,
+                                bookletCode = editableBookletCode
+                            )).copy(
+                                rollNumber = editableRollNumber,
+                                bookletNumber = editableBookletNumber,
+                                bookletCode = editableBookletCode
+                            )
+                            val verifiedResult = result.copy(headerResult = verifiedHeader)
+                            onSubmit(verifiedResult)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("omr_save_score_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.navyBanner,
+                            contentColor = colors.navyBannerText
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save & Record Result", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onRescan,
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, colors.border)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = colors.inkBold
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Re-Scan", fontSize = 11.5.sp, color = colors.inkBold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
+                                rollNumber = editableRollNumber,
+                                bookletNumber = editableBookletNumber,
+                                bookletCode = editableBookletCode
+                            )).copy(
+                                rollNumber = editableRollNumber,
+                                bookletNumber = editableBookletNumber,
+                                bookletCode = editableBookletCode
+                            )
+                            val answersSnapshot = mutableMapOf<Int, String>()
+                            for ((qNum, qResult) in result.questionResults) {
+                                val mark = qResult.selectedOption?.toString()
+                                if (!mark.isNullOrBlank() && !qResult.isMultipleMarked) {
+                                    answersSnapshot[qNum] = mark
+                                }
+                            }
+                            val payload = ExamJsonHelper.OmrExportPayload(
+                                candidateRollNumber = verifiedHeader.rollNumber,
+                                candidateBookletNumber = verifiedHeader.bookletNumber,
+                                candidateSetCode = verifiedHeader.bookletCode,
+                                paperTitle = paper.metadata.title,
+                                paperId = paper.id,
+                                totalQuestions = result.totalQuestions,
+                                score = result.exactScore,
+                                correctCount = result.correctCount,
+                                incorrectCount = result.incorrectCount + result.multipleMarkedCount,
+                                unattemptedCount = result.unattemptedCount,
+                                answers = answersSnapshot
+                            )
+                            val json = ExamJsonHelper.omrEvaluationToJson(payload)
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, json)
+                                type = "application/json"
+                            }
+                            val shareIntent = Intent.createChooser(sendIntent, "Share OMR Candidate Evaluation")
+                            context.startActivity(shareIntent)
+                        },
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share Evaluation",
+                            modifier = Modifier.size(15.dp),
+                            tint = Color(0xFF0284C7)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Share", fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val verifiedHeader = (result.headerResult ?: OmrVisionProcessor.OmrHeaderScanResult(
+                                rollNumber = editableRollNumber,
+                                bookletNumber = editableBookletNumber,
+                                bookletCode = editableBookletCode
+                            )).copy(
+                                rollNumber = editableRollNumber,
+                                bookletNumber = editableBookletNumber,
+                                bookletCode = editableBookletCode
+                            )
+                            val verifiedResult = result.copy(headerResult = verifiedHeader)
+                            onSubmit(verifiedResult)
+                        },
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .heightIn(min = 48.dp)
+                            .testTag("omr_save_score_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.navyBanner,
+                            contentColor = colors.navyBannerText
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save & Record Result", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

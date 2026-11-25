@@ -5,7 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -56,10 +60,13 @@ import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import com.example.ui.components.AuthenticOmrSheetView
@@ -240,11 +247,20 @@ fun PrintablePaperTab(
         )
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        val isShortLandscape = maxHeight < 480.dp
+        val useTwoColumnActions = maxWidth < 460.dp || LocalDensity.current.fontScale >= 1.3f
+
+        Column(
+            modifier = Modifier
+                .widthIn(max = 880.dp)
+                .fillMaxSize()
+                .then(if (isShortLandscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(horizontal = 16.dp)
+        ) {
         // Quick Action Bar
         Surface(
             modifier = Modifier
@@ -268,7 +284,7 @@ fun PrintablePaperTab(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkBold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
@@ -276,39 +292,48 @@ fun PrintablePaperTab(
                         text = "Formatted for ISO A4 Standard Printing",
                         fontSize = 11.5.sp,
                         color = colors.muted,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Uniform Action Buttons Row
-                Row(
+                // Adaptive Action Buttons FlowRow (2x2 on compact/large font, 4-across on wide viewports)
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    maxItemsInEachRow = if (useTwoColumnActions) 2 else 4
                 ) {
                     // Settings / Customize button
                     OutlinedButton(
                         onClick = onOpenConfig,
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.border),
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("configure_exam_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Configure",
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(15.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Config", fontSize = 11.5.sp, maxLines = 1, softWrap = false, color = colors.inkBold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Config",
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center,
+                            color = colors.inkBold
+                        )
                     }
 
                     // Save PDF directly to File Manager with Confirmation
@@ -317,24 +342,32 @@ fun PrintablePaperTab(
                             showConfirmSavePdfDialog = true
                         },
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.teal),
                         modifier = Modifier
-                            .weight(1.05f)
-                            .height(38.dp)
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("quick_save_pdf_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.SaveAlt,
                             contentDescription = "Save PDF",
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(15.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Save PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.inkBold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Save PDF",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center,
+                            color = colors.inkBold
+                        )
                     }
 
                     // Save Interactive CBT HTML with Confirmation
@@ -343,24 +376,32 @@ fun PrintablePaperTab(
                             showConfirmSaveHtmlDialog = true
                         },
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
                         border = BorderStroke(1.dp, colors.teal),
                         modifier = Modifier
-                            .weight(1.15f)
-                            .height(38.dp)
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("quick_save_html_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Language,
                             contentDescription = "Export CBT HTML",
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(15.dp),
                             tint = colors.teal
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("CBT HTML", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.inkBold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "CBT HTML",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center,
+                            color = colors.inkBold
+                        )
                     }
 
                     // Native Print Spooler Button
@@ -368,25 +409,33 @@ fun PrintablePaperTab(
                         onClick = {
                             PrintDocumentHelper.printQuestionPaper(context, paper, config)
                         },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
                         ),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
-                            .weight(0.95f)
-                            .height(38.dp)
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("quick_print_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Print,
                             contentDescription = "Print",
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(15.dp),
                             tint = colors.primaryButtonText
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Print", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, color = colors.primaryButtonText)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Print",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center,
+                            color = colors.primaryButtonText
+                        )
                     }
                 }
             }
@@ -421,6 +470,7 @@ fun PrintablePaperTab(
                     val isSelected = previewMode == mode
                     Surface(
                         modifier = Modifier
+                            .heightIn(min = 48.dp)
                             .clickable { previewMode = mode }
                             .testTag("preview_tab_$mode"),
                         shape = RoundedCornerShape(6.dp),
@@ -430,7 +480,7 @@ fun PrintablePaperTab(
                         border = if (isSelected) BorderStroke(1.2.dp, colors.teal) else BorderStroke(0.6.dp, Color.Transparent)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
@@ -456,7 +506,13 @@ fun PrintablePaperTab(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .then(
+                    if (isShortLandscape) {
+                        Modifier.height(360.dp).padding(bottom = 12.dp)
+                    } else {
+                        Modifier.weight(1f)
+                    }
+                ),
             shape = RoundedCornerShape(4.dp),
             colors = CardDefaults.cardColors(containerColor = colors.printPaperBg),
             border = BorderStroke(1.5.dp, colors.printPaperBorder),
@@ -544,6 +600,11 @@ fun PrintablePaperTab(
                     )
                 }
                 else -> {
+                    // Preserve authentic ISO A4 paper proportions regardless of UI font scale
+                    val baseDensity = LocalDensity.current
+                    CompositionLocalProvider(
+                        LocalDensity provides Density(density = baseDensity.density, fontScale = 1.0f)
+                    ) {
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1052,11 +1113,13 @@ fun PrintablePaperTab(
                             .padding(vertical = 12.dp)
                     )
                 }
+                    }
+                }
             }
         }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
+        }
     }
-}
 }

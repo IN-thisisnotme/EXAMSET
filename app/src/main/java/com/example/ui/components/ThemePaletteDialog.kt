@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -91,16 +92,23 @@ fun ThemePaletteDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
+        BoxWithConstraints(
             modifier = Modifier
-                .widthIn(max = 560.dp)
-                .fillMaxWidth(0.94f)
-                .padding(vertical = 16.dp)
-                .testTag("theme_palette_dialog"),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = colors.surface),
-            border = BorderStroke(1.dp, colors.border)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
+            val maxDialogHeight = (maxHeight * 0.92f).coerceAtLeast(280.dp)
+            Card(
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = maxDialogHeight)
+                    .testTag("theme_palette_dialog"),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(1.dp, colors.border)
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -181,7 +189,7 @@ fun ThemePaletteDialog(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 44.dp)
+                                .heightIn(min = 48.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { viewModel.setThemeMode(mode) }
                                 .testTag("theme_mode_${mode.name.lowercase()}"),
@@ -285,7 +293,8 @@ fun ThemePaletteDialog(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 220.dp, max = 400.dp),
+                        .weight(1f, fill = false)
+                        .heightIn(min = 120.dp, max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 2.dp)
                 ) {
@@ -436,6 +445,7 @@ fun ThemePaletteDialog(
                     Text("Done", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
+        }
         }
     }
 }

@@ -11,7 +11,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,6 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -70,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,6 +101,7 @@ private enum class InputMode {
     FILES, PASTE_JSON
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BatchImportDialog(
     initialItems: List<BatchImportItem>,
@@ -150,17 +157,25 @@ fun BatchImportDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = colors.background,
-            border = BorderStroke(1.dp, colors.border),
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
+            val isCompactFields = maxWidth < 460.dp || LocalDensity.current.fontScale >= 1.3f
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.background,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier
+                    .widthIn(max = 760.dp)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.94f)
             ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
                 // 1. Header Bar
                 Row(
                     modifier = Modifier
@@ -219,7 +234,7 @@ fun BatchImportDialog(
                     IconButton(
                         onClick = onDismiss,
                         enabled = !isImporting,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = colors.inkMuted)
                     }
@@ -228,35 +243,40 @@ fun BatchImportDialog(
                 HorizontalDivider(thickness = 0.8.dp, color = colors.border)
 
                 // 2. Mode Selector: Files vs Paste JSON
-                Row(
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.surfaceVariant.copy(alpha = 0.35f))
                         .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = if (inputMode == InputMode.FILES) colors.teal else Color.Transparent,
                             border = if (inputMode == InputMode.FILES) null else BorderStroke(0.8.dp, colors.border),
-                            modifier = Modifier.clickable { inputMode = InputMode.FILES }
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .clickable { inputMode = InputMode.FILES }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     Icons.Default.CloudUpload,
                                     contentDescription = null,
                                     tint = if (inputMode == InputMode.FILES) Color.White else colors.inkMuted,
-                                    modifier = Modifier.size(13.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "Selected Files ($totalFiles)",
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (inputMode == InputMode.FILES) Color.White else colors.ink
                                 )
@@ -267,22 +287,24 @@ fun BatchImportDialog(
                             shape = RoundedCornerShape(6.dp),
                             color = if (inputMode == InputMode.PASTE_JSON) colors.teal else Color.Transparent,
                             border = if (inputMode == InputMode.PASTE_JSON) null else BorderStroke(0.8.dp, colors.border),
-                            modifier = Modifier.clickable { inputMode = InputMode.PASTE_JSON }
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .clickable { inputMode = InputMode.PASTE_JSON }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     Icons.Default.PostAdd,
                                     contentDescription = null,
                                     tint = if (inputMode == InputMode.PASTE_JSON) Color.White else colors.inkMuted,
-                                    modifier = Modifier.size(13.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "Paste Raw JSON",
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (inputMode == InputMode.PASTE_JSON) Color.White else colors.ink
                                 )
@@ -294,11 +316,12 @@ fun BatchImportDialog(
                         OutlinedButton(
                             onClick = onAddMoreFiles,
                             shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.height(28.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Add Files", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Files", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -310,10 +333,10 @@ fun BatchImportDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                        Row(
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
@@ -336,10 +359,12 @@ fun BatchImportDialog(
                                         shape = RoundedCornerShape(6.dp),
                                         color = colors.surfaceVariant.copy(alpha = 0.5f),
                                         border = BorderStroke(0.8.dp, colors.border),
-                                        modifier = Modifier.clickable { showFolderDropdown = true }
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .clickable { showFolderDropdown = true }
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
@@ -400,17 +425,17 @@ fun BatchImportDialog(
                                                 if (it.status != BatchItemStatus.INVALID) it.copy(isSelected = true) else it
                                             }
                                         },
-                                        modifier = Modifier.height(28.dp)
+                                        modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
-                                        Text("Select Valid", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.teal)
+                                        Text("Select Valid", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.teal)
                                     }
                                     TextButton(
                                         onClick = {
                                             items = items.map { it.copy(isSelected = false) }
                                         },
-                                        modifier = Modifier.height(28.dp)
+                                        modifier = Modifier.heightIn(min = 48.dp)
                                     ) {
-                                        Text("Deselect All", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
+                                        Text("Deselect All", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
                                     }
                                 }
                             }
@@ -430,7 +455,7 @@ fun BatchImportDialog(
                                     singleLine = true,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(44.dp),
+                                        .heightIn(min = 48.dp),
                                     shape = RoundedCornerShape(6.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedContainerColor = colors.surfaceVariant.copy(alpha = 0.3f),
@@ -446,16 +471,16 @@ fun BatchImportDialog(
                                         }
                                     },
                                     shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(34.dp)
+                                    modifier = Modifier.heightIn(min = 48.dp)
                                 ) {
-                                    Text("Set", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                 }
                                 IconButton(
                                     onClick = {
                                         showCustomFolderInput = false
                                         selectedTargetFolder = "Keep Original Metadata"
                                     },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(Icons.Default.Clear, contentDescription = "Cancel", modifier = Modifier.size(16.dp))
                                 }
@@ -501,34 +526,66 @@ fun BatchImportDialog(
 
                                 if (assignCohortNumbers) {
                                     Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        OutlinedTextField(
-                                            value = startingRollInput,
-                                            onValueChange = { startingRollInput = it.filter { ch -> ch.isDigit() }.take(10) },
-                                            label = { Text("Starting Roll No (10 digits)", fontSize = 10.sp) },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f).height(48.dp),
-                                            shape = RoundedCornerShape(6.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = Color.White,
-                                                unfocusedContainerColor = Color.White
+                                    if (isCompactFields) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = startingRollInput,
+                                                onValueChange = { startingRollInput = it.filter { ch -> ch.isDigit() }.take(10) },
+                                                label = { Text("Starting Roll No (10 digits)", fontSize = 10.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
                                             )
-                                        )
-                                        OutlinedTextField(
-                                            value = startingBookletInput,
-                                            onValueChange = { startingBookletInput = it.filter { ch -> ch.isDigit() }.take(7) },
-                                            label = { Text("Starting Booklet No (7 digits)", fontSize = 10.sp) },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f).height(48.dp),
-                                            shape = RoundedCornerShape(6.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedContainerColor = Color.White,
-                                                unfocusedContainerColor = Color.White
+                                            OutlinedTextField(
+                                                value = startingBookletInput,
+                                                onValueChange = { startingBookletInput = it.filter { ch -> ch.isDigit() }.take(7) },
+                                                label = { Text("Starting Booklet No (7 digits)", fontSize = 10.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
                                             )
-                                        )
+                                        }
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = startingRollInput,
+                                                onValueChange = { startingRollInput = it.filter { ch -> ch.isDigit() }.take(10) },
+                                                label = { Text("Starting Roll No (10 digits)", fontSize = 10.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
+                                            OutlinedTextField(
+                                                value = startingBookletInput,
+                                                onValueChange = { startingBookletInput = it.filter { ch -> ch.isDigit() }.take(7) },
+                                                label = { Text("Starting Booklet No (7 digits)", fontSize = 10.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -722,12 +779,12 @@ fun BatchImportDialog(
                     border = BorderStroke(0.8.dp, colors.border),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Column {
                             Text(
@@ -747,7 +804,8 @@ fun BatchImportDialog(
                             OutlinedButton(
                                 onClick = onDismiss,
                                 enabled = !isImporting,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Text("Cancel", fontSize = 12.sp)
                             }
@@ -774,7 +832,8 @@ fun BatchImportDialog(
                                 },
                                 enabled = selectedCount > 0 && !isImporting,
                                 shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 if (isImporting) {
                                     CircularProgressIndicator(
@@ -798,6 +857,7 @@ fun BatchImportDialog(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -953,13 +1013,13 @@ private fun BatchPaperCard(
 
                 IconButton(
                     onClick = onRemove,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         Icons.Default.Clear,
                         contentDescription = "Remove from batch",
                         tint = colors.inkMuted,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

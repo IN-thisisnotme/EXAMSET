@@ -41,7 +41,9 @@ class MainActivity : ComponentActivity() {
             val fontScaleMode by viewModel.fontScaleMode.collectAsState()
             val currentDensity = LocalDensity.current
             val effectiveFontScale = when (fontScaleMode) {
-                AppFontScaleMode.FOLLOW_SYSTEM -> currentDensity.fontScale.coerceIn(0.85f, 1.35f)
+                // [DEPRECATED 2026-11-25] Reason: Expanded safe upper clamp to 1.6f now that adaptive layouts and dialogs wrap cleanly. Restore if: restricting OS scaling to 1.35f.
+                // AppFontScaleMode.FOLLOW_SYSTEM -> currentDensity.fontScale.coerceIn(0.85f, 1.35f)
+                AppFontScaleMode.FOLLOW_SYSTEM -> currentDensity.fontScale.coerceIn(0.85f, 1.6f)
                 else -> fontScaleMode.scaleFactor
             }
 

@@ -40,7 +40,7 @@ function createMemoryStorage(): Storage {
     },
   };
 }
-
+ 
 function makeWorkspaceState(): WorkspaceBackupState {
   return {
     papers: [

@@ -1137,6 +1137,7 @@ object VaultArchiveEngine {
             put("dailyGoalMinutes", appPrefs.getDailyGoalMinutes())
             put("fontScaleMode", appPrefs.getFontScaleMode().name)
             put("fontSizeScale", appPrefs.getFontSizeScale().toDouble())
+            put("cbtFontScaleStep", appPrefs.getCbtFontScaleStep())
             put("shuffleOptions", appPrefs.getShuffleOptions())
             put("lastActiveFolderId", appPrefs.getLastActiveFolderId())
             put("themeMode", themePrefs.getThemeMode().name)
@@ -1195,6 +1196,9 @@ object VaultArchiveEngine {
                 if (scale in 0.85..1.6) {
                     appPrefs.setFontSizeScale(scale.toFloat())
                 }
+            }
+            if (obj.has("cbtFontScaleStep")) {
+                appPrefs.setCbtFontScaleStep(obj.optInt("cbtFontScaleStep", 0).coerceIn(-1, 1))
             }
             if (obj.has("shuffleOptions")) {
                 appPrefs.setShuffleOptions(obj.optBoolean("shuffleOptions", false))

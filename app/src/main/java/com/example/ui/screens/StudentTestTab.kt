@@ -213,6 +213,8 @@ fun StudentTestTab(
     questionTimes: Map<Int, Long> = emptyMap(),
     questionTimesFlow: StateFlow<Map<Int, Long>>? = null,
     onActiveQuestionChanged: (Int?) -> Unit = {},
+    cbtFontScaleStep: Int = 0,
+    onSetCbtFontScaleStep: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val positiveMarks = remember(config.positiveMarks, paper.metadata.positiveMarks) {
@@ -343,6 +345,8 @@ fun StudentTestTab(
                 timeRemainingSecondsFlow = timeRemainingSecondsFlow,
                 todayTestSecondsFlow = todayTestSecondsFlow,
                 onActiveQuestionChanged = onActiveQuestionChanged,
+                cbtFontScaleStep = cbtFontScaleStep,
+                onSetCbtFontScaleStep = onSetCbtFontScaleStep,
                 modifier = modifier
             )
         }
@@ -1037,7 +1041,7 @@ private fun ExamStartOverviewView(
                                     onSetCustomTimeLimit(newVal)
                                 },
                                 modifier = Modifier
-                                    .size(44.dp)
+                                    .size(48.dp)
                                     .background(colors.surfaceVariant, RoundedCornerShape(8.dp))
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = "Increase 5m", tint = colors.inkBold)
@@ -1322,16 +1326,18 @@ private fun ExamStartOverviewView(
                                 onClick = onStartExam,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(44.dp),
+                                    .heightIn(min = 48.dp),
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                 border = BorderStroke(1.dp, colors.border)
                             ) {
                                 Text(
                                     text = "Start Fresh",
                                     fontSize = 12.sp,
                                     color = colors.inkBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    textAlign = TextAlign.Center,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -1339,9 +1345,9 @@ private fun ExamStartOverviewView(
                                 onClick = onResumeExam,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(44.dp),
+                                    .heightIn(min = 48.dp),
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = colors.primaryButtonBg,
                                     contentColor = colors.primaryButtonText
@@ -1353,7 +1359,9 @@ private fun ExamStartOverviewView(
                                     text = "Resume Test",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    textAlign = TextAlign.Center,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -1397,7 +1405,9 @@ private fun ExamStartOverviewView(
                             },
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center
                         )
                     }
 
@@ -1477,6 +1487,8 @@ private fun ActiveExamView(
     timeRemainingSecondsFlow: StateFlow<Long>? = null,
     todayTestSecondsFlow: StateFlow<Long>? = null,
     onActiveQuestionChanged: (Int?) -> Unit = {},
+    cbtFontScaleStep: Int = 0,
+    onSetCbtFontScaleStep: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -1486,7 +1498,11 @@ private fun ActiveExamView(
     val activity = context as? android.app.Activity
 
     var interfaceMode by remember { mutableStateOf(initialInterfaceMode) }
-    var fontScaleDelta by remember { mutableIntStateOf(0) }
+    // [DEPRECATED 2026-11-25] Reason: Session-only fontScaleDelta reset between papers/restarts. Restore if: per-session reset is desired:
+    // var fontScaleDelta by remember { mutableIntStateOf(0) }
+    var fontScaleDelta by remember(cbtFontScaleStep) {
+        mutableIntStateOf(cbtFontScaleStep.coerceIn(-1, 1))
+    }
     val scrollListState = rememberLazyListState()
 
     val qFontSize = when (fontScaleDelta) {
@@ -1794,24 +1810,27 @@ private fun ActiveExamView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left: Back button + Title & Progress
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = true)
+                ) {
                     IconButton(
                         onClick = { showExitConfirmDialog = true },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Exit to Overview",
                             tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Column {
                         Text(
                             text = paper.metadata.subject.ifBlank { paper.metadata.title.ifBlank { "Examination" } },
@@ -1824,47 +1843,46 @@ private fun ActiveExamView(
                         Text(
                             text = if (interfaceMode == ExamInterfaceMode.TCS_CBT) "Q ${currentIndex + 1} / $totalQuestions" else "$answeredCount / $totalQuestions answered",
                             fontSize = 10.5.sp,
-                            color = Color(0xFF94A3B8)
+                            color = Color(0xFF94A3B8),
+                            maxLines = 1
                         )
                     }
                 }
 
-                // Right controls: Font Scale (A-, A, A+), Mode Switch (CBT vs Paper), Timer Pill, Fullscreen, Palette
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Font Scale Group (A-, A, A+) matching HTML CBT
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Right controls: horizontally scrollable so 48dp targets & large font scales never crush the title
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
+                    // Font Scale Group (A-, A, A+) matching HTML CBT and persisted in preferences
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = Color(0xFF1E293B),
                         border = BorderStroke(0.6.dp, Color(0xFF334155))
                     ) {
-                        Row(modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp)) {
-                            Text(
-                                text = "A-",
-                                fontSize = 10.sp,
-                                fontWeight = if (fontScaleDelta == -1) FontWeight.ExtraBold else FontWeight.Medium,
-                                color = if (fontScaleDelta == -1) Color(0xFF38BDF8) else Color(0xFF94A3B8),
-                                modifier = Modifier
-                                    .clickable { fontScaleDelta = -1 }
-                                    .padding(horizontal = 5.dp, vertical = 3.dp)
-                            )
-                            Text(
-                                text = "A",
-                                fontSize = 10.sp,
-                                fontWeight = if (fontScaleDelta == 0) FontWeight.ExtraBold else FontWeight.Medium,
-                                color = if (fontScaleDelta == 0) Color(0xFF38BDF8) else Color(0xFF94A3B8),
-                                modifier = Modifier
-                                    .clickable { fontScaleDelta = 0 }
-                                    .padding(horizontal = 5.dp, vertical = 3.dp)
-                            )
-                            Text(
-                                text = "A+",
-                                fontSize = 10.sp,
-                                fontWeight = if (fontScaleDelta == 1) FontWeight.ExtraBold else FontWeight.Medium,
-                                color = if (fontScaleDelta == 1) Color(0xFF38BDF8) else Color(0xFF94A3B8),
-                                modifier = Modifier
-                                    .clickable { fontScaleDelta = 1 }
-                                    .padding(horizontal = 5.dp, vertical = 3.dp)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            listOf(-1 to "A-", 0 to "A", 1 to "A+").forEach { (step, label) ->
+                                Box(
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .clickable {
+                                            fontScaleDelta = step
+                                            onSetCbtFontScaleStep(step)
+                                        }
+                                        .padding(horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (fontScaleDelta == step) FontWeight.ExtraBold else FontWeight.Medium,
+                                        color = if (fontScaleDelta == step) Color(0xFF38BDF8) else Color(0xFF94A3B8)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1877,17 +1895,22 @@ private fun ActiveExamView(
                                 ExamInterfaceMode.TCS_CBT
                             }
                         },
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = if (interfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF1E3A8A) else Color(0xFF0F766E),
-                        border = BorderStroke(0.8.dp, if (interfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF3B82F6) else Color(0xFF14B8A6))
+                        border = BorderStroke(0.8.dp, if (interfaceMode == ExamInterfaceMode.TCS_CBT) Color(0xFF3B82F6) else Color(0xFF14B8A6)),
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        Text(
-                            text = if (interfaceMode == ExamInterfaceMode.TCS_CBT) "Paper" else "CBT",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                        )
+                        Box(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (interfaceMode == ExamInterfaceMode.TCS_CBT) "Paper" else "CBT",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
 
                     // Digital Timer Pill (leaf-isolated to prevent per-second outer recompositions)
@@ -1902,13 +1925,13 @@ private fun ActiveExamView(
                     // Fullscreen Toggle Button
                     IconButton(
                         onClick = { isFullscreen = !isFullscreen },
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                             contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen Mode",
                             tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -1916,14 +1939,14 @@ private fun ActiveExamView(
                     IconButton(
                         onClick = { showCbtPaletteSideSheet = true },
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(48.dp)
                             .testTag("cbt_header_palette_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Apps,
                             contentDescription = "Open CBT Palette",
                             tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }

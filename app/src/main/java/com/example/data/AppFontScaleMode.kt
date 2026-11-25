@@ -40,7 +40,9 @@ enum class AppFontScaleMode(
     FOLLOW_SYSTEM(
         scaleFactor = 1.0f,
         title = "Follow Device (System Dynamic)",
-        subtitle = "Scales directly with Android OS display settings (safely clamped).",
+        // [DEPRECATED 2026-11-25] Reason: Expanded safe upper clamp from 1.35f to 1.6f across adaptive layouts. Restore if: reverting max clamp to 135%.
+        // subtitle = "Scales directly with Android OS display settings (safely clamped).",
+        subtitle = "Adapts automatically with Android OS font size settings (0.85x–1.60x).",
         isSystemDependent = true
     );
 

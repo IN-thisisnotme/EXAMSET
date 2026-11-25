@@ -906,7 +906,8 @@ fun HomeScreen(
                                         text = label,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        maxLines = 1,
+                                        maxLines = 2,
+                                        softWrap = true,
                                         textAlign = TextAlign.Center,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -1149,7 +1150,9 @@ fun HomeScreen(
                             timeRemainingSecondsFlow = viewModel.timeRemainingSeconds,
                             todayTestSecondsFlow = viewModel.todayTestSeconds,
                             questionTimesFlow = viewModel.currentQuestionTimes,
-                            onActiveQuestionChanged = { viewModel.onActiveExamQuestionChanged(it) }
+                            onActiveQuestionChanged = { viewModel.onActiveExamQuestionChanged(it) },
+                            cbtFontScaleStep = viewModel.cbtFontScaleStep.collectAsState().value,
+                            onSetCbtFontScaleStep = { viewModel.setCbtFontScaleStep(it) }
                         )
                 } else {
                     val lastPaperForPlaceholder = viewModel.lastOpenedPaper.collectAsState().value
@@ -1260,7 +1263,9 @@ fun HomeScreen(
                                         text = label,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        maxLines = 1,
+                                        maxLines = 2,
+                                        softWrap = true,
+                                        textAlign = TextAlign.Center,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 },
@@ -2443,7 +2448,9 @@ fun NoPaperPlaceholder(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surface),
             border = BorderStroke(0.8.dp, colors.border),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 560.dp)
         ) {
             Column(
                 modifier = Modifier.padding(28.dp),
@@ -2460,7 +2467,8 @@ fun NoPaperPlaceholder(
                     text = "No Active Assessment Loaded",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.inkBold
+                    color = colors.inkBold,
+                    textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -2495,7 +2503,7 @@ fun NoPaperPlaceholder(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.inkBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -2504,12 +2512,12 @@ fun NoPaperPlaceholder(
                                 onClick = { onOpenLastPaper(lastOpenedPaper) },
                                 shape = RoundedCornerShape(6.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                modifier = Modifier.heightIn(min = 38.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.heightIn(min = 48.dp)
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text("Open Set", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Open Set", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                     }
@@ -2529,11 +2537,18 @@ fun NoPaperPlaceholder(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 38.dp)
+                            .heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Browse Library", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Browse Library",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center
+                        )
                     }
 
                     OutlinedButton(
@@ -2543,11 +2558,18 @@ fun NoPaperPlaceholder(
                         border = BorderStroke(1.dp, colors.border),
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 38.dp)
+                            .heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.teal)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Exam Tools", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Exam Tools",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            softWrap = true,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }

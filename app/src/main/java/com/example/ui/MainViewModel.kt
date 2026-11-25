@@ -1813,6 +1813,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.setFontSizeScale(scale)
     }
 
+    // Persisted CBT active reading scale step (-1 = compact, 0 = default, +1 = large)
+    private val _cbtFontScaleStep = MutableStateFlow(appPreferences.getCbtFontScaleStep())
+    val cbtFontScaleStep: StateFlow<Int> = _cbtFontScaleStep.asStateFlow()
+
+    fun setCbtFontScaleStep(step: Int) {
+        val clamped = step.coerceIn(-1, 1)
+        _cbtFontScaleStep.value = clamped
+        appPreferences.setCbtFontScaleStep(clamped)
+    }
+
     // Autosave debouncing jobs
     private var inputDebounceJob: Job? = null
     private var paperDebounceJob: Job? = null
@@ -5505,6 +5515,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
+                    _cbtFontScaleStep.value = appPreferences.getCbtFontScaleStep()
                     _dailyGoalMinutes.value = appPreferences.getDailyGoalMinutes()
                     _shuffleOptions.value = refreshedShuffle
                     _dismissedFormatTips.value = refreshedDismissedTips

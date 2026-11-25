@@ -155,17 +155,23 @@ fun SubjectFolderDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = colors.surface,
-            border = BorderStroke(1.dp, colors.border),
-            tonalElevation = 8.dp,
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .widthIn(max = 780.dp)
-                .heightIn(max = 680.dp)
-                .padding(vertical = 12.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
+            val maxDialogHeight = (maxHeight * 0.92f).coerceAtMost(680.dp).coerceAtLeast(280.dp)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surface,
+                border = BorderStroke(1.dp, colors.border),
+                tonalElevation = 8.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 780.dp)
+                    .heightIn(max = maxDialogHeight)
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -475,6 +481,7 @@ fun SubjectFolderDialog(
                         }
                     }
                 }
+            }
             }
         }
     }

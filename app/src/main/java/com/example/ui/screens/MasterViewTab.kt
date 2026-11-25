@@ -188,7 +188,9 @@ fun MasterViewTab(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(0.8.dp, colors.border),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -230,7 +232,9 @@ fun MasterViewTab(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(0.8.dp, colors.border),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(32.dp),
@@ -264,7 +268,9 @@ fun MasterViewTab(
                                 containerColor = colors.teal
                             ),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            modifier = Modifier.testTag("master_open_last_paper_button")
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("master_open_last_paper_button")
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -272,7 +278,8 @@ fun MasterViewTab(
                                 text = "Open Previous Set",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1
+                                maxLines = 2,
+                                softWrap = true
                             )
                         }
                     }
@@ -291,7 +298,7 @@ fun MasterViewTab(
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(42.dp)
+                                .heightIn(min = 48.dp)
                                 .testTag("master_browse_library_button")
                         ) {
                             Icon(Icons.Default.ListAlt, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primaryButtonText)
@@ -305,7 +312,7 @@ fun MasterViewTab(
                             border = BorderStroke(1.dp, colors.border),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(42.dp)
+                                .heightIn(min = 48.dp)
                                 .testTag("master_create_set_button")
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.inkBold)
@@ -367,11 +374,15 @@ fun MasterViewTab(
         derivedStateOf { listState.firstVisibleItemIndex > 0 }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
+    ) {
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .widthIn(max = 880.dp)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
                 top = 4.dp,
@@ -400,11 +411,11 @@ fun MasterViewTab(
                     border = BorderStroke(0.8.dp, colors.border)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        // Title & Status (separate line so action buttons never crush the header)
-                        Row(
+                        // Title & Status (FlowRow wraps cleanly at large font scales without truncation)
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -412,7 +423,7 @@ fun MasterViewTab(
                                     fontSize = 13.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colors.inkBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 if (isEditMode) {
@@ -444,7 +455,7 @@ fun MasterViewTab(
                                 },
                                 fontSize = 10.5.sp,
                                 color = if (isEditMode) colors.teal else colors.muted,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -529,7 +540,7 @@ fun MasterViewTab(
                                     color = colors.surfaceVariant,
                                     border = BorderStroke(1.dp, colors.border),
                                     modifier = Modifier
-                                        .heightIn(min = 44.dp)
+                                        .heightIn(min = 48.dp)
                                         .testTag("toolbar_bulk_merge_button")
                                 ) {
                                     Row(
@@ -559,7 +570,7 @@ fun MasterViewTab(
                                         color = colors.surfaceVariant,
                                         border = BorderStroke(1.dp, colors.border),
                                         modifier = Modifier
-                                            .heightIn(min = 44.dp)
+                                            .heightIn(min = 48.dp)
                                             .testTag("toolbar_edit_set_button")
                                     ) {
                                         Row(
@@ -590,7 +601,7 @@ fun MasterViewTab(
                                         color = colors.teal.copy(alpha = 0.15f),
                                         border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.6f)),
                                         modifier = Modifier
-                                            .heightIn(min = 44.dp)
+                                            .heightIn(min = 48.dp)
                                             .testTag("toolbar_done_button")
                                     ) {
                                         Row(
@@ -626,7 +637,7 @@ fun MasterViewTab(
                                         contentColor = colors.primaryButtonText
                                     ),
                                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
-                                    modifier = Modifier.heightIn(min = 38.dp)
+                                    modifier = Modifier.heightIn(min = 48.dp)
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = colors.primaryButtonText)
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -662,7 +673,7 @@ fun MasterViewTab(
                             if (searchQuery.isNotBlank()) {
                                 IconButton(
                                     onClick = { searchQuery = "" },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
@@ -767,8 +778,8 @@ fun MasterViewTab(
 
                         TextButton(
                             onClick = { showPaletteOverlay = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.heightIn(min = 28.dp).testTag("open_full_palette_button")
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("open_full_palette_button")
                         ) {
                             Text(
                                 text = "Full Grid",
@@ -1015,6 +1026,7 @@ fun MasterViewTab(
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .widthIn(max = 760.dp)
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 10.dp)
                 .testTag("floating_edit_bar"),
@@ -1023,17 +1035,15 @@ fun MasterViewTab(
             border = BorderStroke(1.2.dp, if (changedCount > 0) colors.teal else colors.border),
             shadowElevation = 8.dp
         ) {
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Left: Single-line status (will not wrap into multiple lines)
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
@@ -1073,27 +1083,26 @@ fun MasterViewTab(
 
                 // Right: Quick Palette jumper, Discard, Done/Review
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Question Palette Jumper inside edit mode
                     IconButton(
                         onClick = { showPaletteOverlay = true },
-                        modifier = Modifier.size(34.dp).testTag("floating_edit_palette_button")
+                        modifier = Modifier.size(48.dp).testTag("floating_edit_palette_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Apps,
                             contentDescription = "Question Palette",
                             tint = colors.teal,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
                     if (changedCount > 0) {
                         TextButton(
                             onClick = { showDiscardConfirmDialog = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            modifier = Modifier.heightIn(min = 34.dp).testTag("floating_discard_button")
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("floating_discard_button")
                         ) {
                             Text("Discard", fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = colors.red)
                         }
@@ -1111,10 +1120,10 @@ fun MasterViewTab(
                             containerColor = colors.primaryButtonBg,
                             contentColor = colors.primaryButtonText
                         ),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
-                            .heightIn(min = 36.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("floating_review_save_button")
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
@@ -1132,7 +1141,6 @@ fun MasterViewTab(
     }
 
     // Floating Navigation & Action Dock when not in edit mode:
-    // Provides instant overlay access to Question Palette, Edit Set, and Scroll-to-Top anywhere in the list!
     if (!isEditMode) {
         AnimatedVisibility(
             visible = isScrolledPastHeader,
@@ -1147,10 +1155,12 @@ fun MasterViewTab(
                 color = colors.surfaceElevated,
                 border = BorderStroke(1.dp, colors.border),
                 shadowElevation = 8.dp,
-                modifier = Modifier.testTag("floating_master_actions_bar")
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .testTag("floating_master_actions_bar")
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1160,10 +1170,10 @@ fun MasterViewTab(
                         shape = RoundedCornerShape(18.dp),
                         color = colors.teal.copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.4f)),
-                        modifier = Modifier.heightIn(min = 36.dp).testTag("floating_open_palette_button")
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("floating_open_palette_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -1188,10 +1198,10 @@ fun MasterViewTab(
                         shape = RoundedCornerShape(18.dp),
                         color = colors.surfaceVariant,
                         border = BorderStroke(1.dp, colors.border),
-                        modifier = Modifier.heightIn(min = 36.dp).testTag("floating_edit_set_button")
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("floating_edit_set_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -1217,7 +1227,7 @@ fun MasterViewTab(
                                 listState.animateScrollToItem(0)
                             }
                         },
-                        modifier = Modifier.size(36.dp).testTag("floating_scroll_to_top_button")
+                        modifier = Modifier.size(48.dp).testTag("floating_scroll_to_top_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,

@@ -112,7 +112,9 @@ class ExamSetPreferences(context: Context) {
     }
 
     fun getFontScaleMode(): AppFontScaleMode {
-        val saved = prefs.getString(KEY_FONT_SCALE_MODE, AppFontScaleMode.STANDARD_FIXED.name)
+        // [DEPRECATED 2026-11-25] Reason: Out-of-the-box typography should follow Android OS accessibility font size by default across phone/tablet form factors. Restore if: locking default installs to fixed 1.0f.
+        // val saved = prefs.getString(KEY_FONT_SCALE_MODE, AppFontScaleMode.STANDARD_FIXED.name)
+        val saved = prefs.getString(KEY_FONT_SCALE_MODE, AppFontScaleMode.FOLLOW_SYSTEM.name)
         return AppFontScaleMode.fromString(saved)
     }
 
@@ -121,6 +123,14 @@ class ExamSetPreferences(context: Context) {
             .putString(KEY_FONT_SCALE_MODE, mode.name)
             .putFloat(KEY_FONT_SIZE_SCALE, mode.scaleFactor)
             .apply()
+    }
+
+    fun getCbtFontScaleStep(): Int {
+        return prefs.getInt(KEY_CBT_FONT_SCALE_STEP, 0).coerceIn(-1, 1)
+    }
+
+    fun setCbtFontScaleStep(step: Int) {
+        prefs.edit().putInt(KEY_CBT_FONT_SCALE_STEP, step.coerceIn(-1, 1)).apply()
     }
 
     fun getShuffleOptions(): Boolean {
@@ -736,6 +746,7 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_DAILY_GOAL_MINUTES = "key_daily_goal_minutes"
         private const val KEY_FONT_SIZE_SCALE = "key_font_size_scale"
         private const val KEY_FONT_SCALE_MODE = "key_font_scale_mode"
+        private const val KEY_CBT_FONT_SCALE_STEP = "key_cbt_font_scale_step_v1"
         private const val KEY_SHUFFLE_OPTIONS = "key_shuffle_options"
         private const val KEY_LAST_ACTIVE_FOLDER_ID = "key_last_active_folder_id"
         private const val KEY_SRS_PREFIX = "key_flashcard_srs_"
