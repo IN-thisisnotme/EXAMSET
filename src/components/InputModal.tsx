@@ -165,7 +165,7 @@ export const InputModal: React.FC<InputModalProps> = ({
                 Samples:
               </span>
               {[
-                { label: 'GS Starter', text: SAMPLE_STARTER_PROMPT },
+                { label: 'Science Starter', text: SAMPLE_STARTER_PROMPT },
                 { label: 'Bio Advanced', text: SAMPLE_BIOLOGY_ADVANCED },
                 { label: 'Physics/Math MSQ+E', text: SAMPLE_PHYSICS_MATH_MSQ },
                 { label: 'Korean Hangul', text: SAMPLE_KOREAN_EXAM },

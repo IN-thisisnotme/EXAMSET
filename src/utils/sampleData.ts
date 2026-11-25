@@ -1,4 +1,4 @@
-export const SAMPLE_STARTER_PROMPT = `# UPSC / SSC CGL Combined General Studies
+export const SAMPLE_STARTER_PROMPT = `# Combined General Science & Technology Assessment
 Subject: General Science & Emerging Technologies
 Series: Set A
 Time: 120 Minutes
@@ -310,7 +310,7 @@ Max Marks: 50
 ### 5. 'ㅎ'의 조음 위치와 방식
 (b) 후음/마찰음(Glottal fricative) — **Correct.** 'ㅎ'은 목구멍(후두) 부위에서 마찰을 일으키며 나는 소리로 국제음성기호로는 [h]에 해당합니다.`;
 
-export const SAMPLE_PHYSICS_MATH_MSQ = `# JEE / GATE Physics & Quantitative Sample (MSQ + Option E)
+export const SAMPLE_PHYSICS_MATH_MSQ = `# Physics & Quantitative Assessment Sample (MSQ + Option E)
 Subject: Classical Mechanics & Electromagnetism
 Topic: Kinematics, Gauss's Law & Calculus
 Set: 04

@@ -176,7 +176,7 @@ export const STARTER_VOCAB_DECKS: VocabularyDeck[] = [
         'Present, appearing, or found everywhere at once.',
         'Digital payment QR codes have become ubiquitous across neighbourhood markets.',
         ['omnipresent', 'pervasive', 'universal'],
-        'High-frequency GRE/UPSC/IELTS adjective.'
+        'High-frequency academic & standardized-exam adjective.'
       ),
     ],
   },

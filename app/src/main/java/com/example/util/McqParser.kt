@@ -109,7 +109,7 @@ object McqParser {
     )
     private val TITLE_KEYWORD_REGEX = Regex("""(?i)\b(paper|test|exam|quiz|series|set|mcqs?|engineering|physics|chemistry|biology|mathematics|history|geography)\b""")
     private val EXAM_MATCH_REGEX = Regex(
-        """\b(UKSSSC|UKPSC|UPSC|SSC|BANK|RAILWAY|RRB|CTET|TET|NEET|JEE|CBSE|ICSE)\b.*""",
+        """\b(UKSSSC|UKPSC|UPSC|SSC|BANK|RAILWAY|RRB|CTET|TET|NEET|JEE|CBSE|ICSE|SAT|ACT|GRE|GMAT|MCAT|LSAT|USMLE|NCLEX|IELTS|TOEFL|GCSE|A-LEVEL|IB|AP|JLPT|HSK|TOPIK)\b.*""",
         RegexOption.IGNORE_CASE
     )
     private val SUBJ_FROM_TITLE_REGEX = Regex("""(?i)\b(Civil Engineering|Mechanical Engineering|Electrical Engineering|Computer Science|Physics|Chemistry|Biology|Mathematics|History|Geography|Economics|Polity)\b""")

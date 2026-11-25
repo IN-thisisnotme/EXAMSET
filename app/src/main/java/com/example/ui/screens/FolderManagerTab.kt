@@ -130,11 +130,11 @@ import java.util.Locale
  */
 enum class ExamStageFilter(val label: String) {
     ALL("All"),
-    PRELIMS_TIER1("Prelims / Tier 1"),
-    MAINS_TIER2("Mains / Tier 2"),
-    GS_PAPERS("GS Papers"),
-    CSAT_APTITUDE("CSAT / Aptitude"),
-    TECHNICAL_OPTIONAL("Technical / Optional")
+    PRELIMS_TIER1("Stage 1 / Screening"),
+    MAINS_TIER2("Stage 2 / Written"),
+    GS_PAPERS("Core & Humanities"),
+    CSAT_APTITUDE("Aptitude & Reasoning"),
+    TECHNICAL_OPTIONAL("STEM & Specialist")
 }
 
 /**
@@ -150,13 +150,13 @@ fun matchesStageFilter(paper: PaperEntity, filter: ExamStageFilter, folderPath: 
             combined.contains("tier i") || combined.contains("stage 1") || combined.contains("stage-1") ||
             combined.contains("cbt 1") || combined.contains("cbt-1") || combined.contains(" pt ") ||
             combined.contains("pt-") || combined.contains("preliminary") || combined.contains("tier1") ||
-            combined.contains("paper 1") || combined.contains("paper i")
+            combined.contains("paper 1") || combined.contains("paper i") || combined.contains("screening")
         }
         ExamStageFilter.MAINS_TIER2 -> {
             combined.contains("main") || combined.contains("tier 2") || combined.contains("tier-2") ||
             combined.contains("tier ii") || combined.contains("stage 2") || combined.contains("stage-2") ||
             combined.contains("cbt 2") || combined.contains("cbt-2") || combined.contains("tier2") ||
-            combined.contains("descriptive")
+            combined.contains("descriptive") || combined.contains("written") || combined.contains("essay")
         }
         ExamStageFilter.GS_PAPERS -> {
             combined.contains("gs") || combined.contains("general studies") ||
@@ -164,13 +164,15 @@ fun matchesStageFilter(paper: PaperEntity, filter: ExamStageFilter, folderPath: 
             combined.contains("general awareness") || combined.contains("ga") ||
             combined.contains("polity") || combined.contains("history") ||
             combined.contains("geography") || combined.contains("economy") ||
-            combined.contains("environment")
+            combined.contains("environment") || combined.contains("humanities") ||
+            combined.contains("core") || combined.contains("social") || combined.contains("law")
         }
         ExamStageFilter.CSAT_APTITUDE -> {
             combined.contains("csat") || combined.contains("aptitude") ||
             combined.contains("reasoning") || combined.contains("mental ability") ||
             combined.contains("quant") || combined.contains("english") ||
-            combined.contains("comprehension") || combined.contains("verbal")
+            combined.contains("comprehension") || combined.contains("verbal") ||
+            combined.contains("logic")
         }
         ExamStageFilter.TECHNICAL_OPTIONAL -> {
             combined.contains("technical") || combined.contains("optional") ||
@@ -179,7 +181,10 @@ fun matchesStageFilter(paper: PaperEntity, filter: ExamStageFilter, folderPath: 
             combined.contains("electronics") || combined.contains("computer") ||
             combined.contains("gate") || combined.contains("ese") ||
             combined.contains("je") || combined.contains("ae") ||
-            combined.contains("science")
+            combined.contains("science") || combined.contains("stem") ||
+            combined.contains("physics") || combined.contains("chemistry") ||
+            combined.contains("biology") || combined.contains("mathematics") ||
+            combined.contains("medicine") || combined.contains("specialist")
         }
     }
 }

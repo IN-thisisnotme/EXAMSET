@@ -349,7 +349,7 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = ({
                 className="w-full px-3 py-2 rounded-lg focus:outline-none"
                 style={inputStyle}
               >
-                <option value="ALL_OR_NOTHING">All-or-Nothing (GATE / JEE Standard)</option>
+                <option value="ALL_OR_NOTHING">All-or-Nothing (Standard Strict)</option>
                 <option value="PARTIAL_STRICT">Partial Strict (+Proportional if no wrong choice)</option>
               </select>
             </div>

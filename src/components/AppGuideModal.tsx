@@ -40,7 +40,7 @@ const APP_GUIDE_CATALOG: AppGuideEntry[] = [
     quickTip:
       'Number questions cleanly (1. / Q1.), keep options (A)-(D), and place an Answer Key section like `1: A` at the end.',
     details:
-      'Supports single-line, multi-line, Hindi/Devanagari options, LaTeX math ($...$), Assertion-Reason blocks, and automatic duplicate detection.',
+      'Supports single-line, multi-line, multilingual & non-Latin scripts, LaTeX math ($...$), Assertion-Reason blocks, and automatic duplicate detection.',
     keywords: ['import', 'aiken', 'json', 'markdown', 'table', 'paste', 'questions', 'latex'],
     actionLabel: 'Open Exam Workbench',
     destination: 'CREATOR',
