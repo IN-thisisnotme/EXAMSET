@@ -566,8 +566,8 @@ object StudyNoteParser {
             isOneLinerMode -> "Keep every item ultra-crisp and high-yield on a single line (<= 140 characters after `->`) so One-Liner recall cards stay concise."
             isLongAnswerMode -> when (rule.depth) {
                 KnowledgeDepth.CRISP -> "Write structured ~150-word model answers with a crisp Introduction, bulleted Core Arguments (with Constitutional Articles/Data/Examples), and a 2-line Conclusion."
-                KnowledgeDepth.BALANCED -> "Write comprehensive ~250-word UPSC Mains–grade model answers with contextual Introduction, multi-dimensional Body sub-headings, supporting data/cases/equations, Challenges, and Way Forward."
-                KnowledgeDepth.DEEP -> "Write exhaustive 400+ word analytical model answers covering historical/constitutional context, multi-dimensional arguments, counter-arguments, empirical data, derivations/LaTeX where relevant, and actionable Way Forward."
+                KnowledgeDepth.BALANCED -> "Write comprehensive ~250-word examination-grade model answers with contextual Introduction, multi-dimensional Body sub-headings, supporting data/cases/equations, Challenges, and Way Forward."
+                KnowledgeDepth.DEEP -> "Write exhaustive 400+ word analytical model answers covering historical/theoretical context, multi-dimensional arguments, counter-arguments, empirical data, derivations/LaTeX where relevant, and actionable Way Forward."
             }
             isTableMode -> when (rule.depth) {
                 KnowledgeDepth.CRISP -> "Keep every table cell ultra-concise (3–8 words) for instant side-by-side revision."
@@ -586,7 +586,7 @@ object StudyNoteParser {
             isLongAnswerMode -> when (rule.layerOrder) {
                 KnowledgeLayerOrder.TERM_FIRST -> "Start each item as `1. **<Question / Directive>**` followed by multi-paragraph structured answer sections (`  - Introduction:`, `  - Core Arguments:`, `  - Way Forward:`)."
                 KnowledgeLayerOrder.BACKWARDS_ANSWER_FIRST -> "Start with the core analytical conclusion/scenario clue followed by `-> **Core Concept / Theme**` and structured analytical paragraphs underneath (`  - Analytical Dimensions:`, `  - Way Forward:`)."
-                else -> "Format each long-form question cleanly as `Q1: <Full Question / UPSC Directive>` on one line, followed on the next line by `A: <Introduction>` and multi-paragraph structured sections (`**Core Analytical Dimensions:**`, `  - Point ...`, `**Way Forward:**`)."
+                else -> "Format each long-form question cleanly as `Q1: <Full Question / Analytical Directive>` on one line, followed on the next line by `A: <Introduction>` and multi-paragraph structured sections (`**Core Analytical Dimensions:**`, `  - Point ...`, `**Way Forward:**`)."
             }
             isOneLinerMode && rule.layerOrder == KnowledgeLayerOrder.AUTO_DETECT ->
                 "Always put the Key Term / Concept FIRST in **bold**, followed by `->` and the concise 1-line explanation (`1. **Concept** -> Crisp fact`)."
@@ -603,7 +603,7 @@ object StudyNoteParser {
             KnowledgeCollectionType.ONE_LINERS -> "${countPrefix ?: "Generate 20–30"} ultra-dense exam one-liners grouped under `## Section Headings`."
             KnowledgeCollectionType.MULTI_LINER -> "${countPrefix ?: "Generate 10–15"} Multi-Liner Concept Cards. Each numbered item has a **Concept Title** and 2–3 indented `- sub-points` (`- Mechanism:`, `- Example:`, `- Exception:`)."
             KnowledgeCollectionType.CONCEPT_CODEX -> "${resolvedCount?.let { "Generate exactly $it structured concept entries grouped under 4–8 `## Topic Headings` in" } ?: "Generate"} a comprehensive Concept Codex with `## Topic Headings`, **Core Principles**, indented sub-bullets, and `> Exam Trap:` callouts."
-            KnowledgeCollectionType.LONG_ANSWER -> "${countPrefix ?: "Generate 3–5"} full-length subjective / UPSC Mains–level Q&A cards grouped under `## Theme Headings`, without compressing or truncating multi-paragraph answers."
+            KnowledgeCollectionType.LONG_ANSWER -> "${countPrefix ?: "Generate 3–5"} full-length subjective / long-form analytical Q&A cards grouped under `## Theme Headings`, without compressing or truncating multi-paragraph answers."
             KnowledgeCollectionType.COMPARISON_TABLE -> {
                 if (resolvedCount != null && resolvedCount >= 25) {
                     "Cover $resolvedCount key comparison rows split cleanly across 2–5 focused Markdown tables under `## Section Headings` (`| Feature | Item A | Item B |`) followed by `> Key Difference:` insights."

@@ -107,7 +107,7 @@ export const DEFAULT_PAPER: QuestionPaper = {
     subject: 'General Science',
     topic: 'Physics, Chemistry & Ecology Core',
     setNumber: '01',
-    targetExam: 'All India Competitive Exam',
+    targetExam: 'Standard Assessment',
     rollNumber: '0000000001',
     bookletNumber: '0000001',
     durationMinutes: 30,
@@ -1341,6 +1341,7 @@ const ExamSetWorkspace: React.FC = () => {
               presets={promptPresets}
               onSavePresets={handleSavePromptPresets}
               vocabDecks={vocabDecks}
+              folders={folders}
               defaultEnglishVariant={englishVariant}
               onNavigateToCreator={() => setActiveTab('creator')}
               onNavigateToKnowledge={() => setActiveTab('knowledge_studio')}

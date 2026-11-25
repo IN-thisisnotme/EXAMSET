@@ -392,7 +392,7 @@ object PrintDocumentHelper {
         val negFormatted = String.format(java.util.Locale.US, "%.2f", negativeMarks)
 
         val metaObj = JSONObject().apply {
-            put("institution", config.institutionName.ifBlank { "CENTRAL EXAMINATION BOARD" })
+            put("institution", config.institutionName.ifBlank { "EXAMINATION BOARD" })
             put("title", config.examTitle.ifBlank { paper.metadata.title.ifBlank { "OBJECTIVE EVALUATION TEST" } })
             put("subject", paper.metadata.subject.ifBlank { config.subject.ifBlank { "General Assessment" } })
             put("topic", paper.metadata.topic.ifBlank { config.topic })
@@ -441,7 +441,7 @@ object PrintDocumentHelper {
 
         val safeTitle = escapeHtml(config.examTitle.ifBlank { "Examination Paper" })
         val safeSubject = escapeHtml(paper.metadata.subject.ifBlank { config.subject.ifBlank { "Exam" } })
-        val safeInst = escapeHtml(config.institutionName.ifBlank { "Central Examination Board" })
+        val safeInst = escapeHtml(config.institutionName.ifBlank { "Examination Board" })
         val safeRoll = escapeHtml(config.rollNumber.ifBlank { paper.metadata.rollNumber.ifBlank { "0000000001" } })
         val safeBooklet = escapeHtml(config.bookletNumber.ifBlank { paper.metadata.bookletNumber.ifBlank { "0000001" } })
 
@@ -3480,7 +3480,7 @@ object PrintDocumentHelper {
 
     private fun getOmrCss(isStandalone: Boolean): String {
         return """
-        /* Drop-out Magenta/Pink Authentic NEET & UPSC OMR Theme Rules */
+        /* Drop-out Magenta/Pink Authentic Optical Mark Recognition (OMR) Theme Rules */
         .omr-page {
             ${if (isStandalone) "" else "page-break-before: always; break-before: page;"}
             page-break-inside: avoid;
@@ -3984,7 +3984,7 @@ object PrintDocumentHelper {
                     The candidate should ensure that Roll No. and Test Booklet No. have been filled and marked correctly and Test Booklet Code printed in this sheet and Test Booklet is the same.
                 </div>
                 <div class="omr-header-title-box">
-                    <div class="omr-title">${escapeHtml(config.examTitle.ifBlank { paper.metadata.exam.ifBlank { "UPSC CSE" } }).uppercase()} OMR ANSWER SHEET</div>
+                    <div class="omr-title">${escapeHtml(config.examTitle.ifBlank { paper.metadata.exam.ifBlank { "ASSESSMENT" } }).uppercase()} OMR ANSWER SHEET</div>
                     <div class="omr-exam-subtitle">PRACTICE / MOCK TEST OMR RESPONSE SHEET — FOR EXAMINATION PREPARATION ONLY</div>
                 </div>
             </div>

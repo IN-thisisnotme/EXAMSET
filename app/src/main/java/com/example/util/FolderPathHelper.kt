@@ -65,8 +65,15 @@ object FolderPathHelper {
         return chain.joinToString(" > ")
     }
 
+    private fun levelLabelForDepth(depth: Int): String = when (depth) {
+        1 -> "Parent"
+        2 -> "Child"
+        3 -> "Sub-Child"
+        else -> "L$depth"
+    }
+
     /**
-     * Builds all user folder paths preserving Parent > Child > Sub-Child tree order.
+     * Builds all user folder paths preserving Parent > Child > Sub-Child > L4... tree order.
      */
     fun buildUserFolderSuggestions(folders: List<FolderItem>): List<FolderPathSuggestion> {
         if (folders.isEmpty()) return emptyList()
@@ -82,14 +89,9 @@ object FolderPathHelper {
                 val nextSegments = prefixSegments + cleanName
                 val fullPath = nextSegments.joinToString(" > ")
                 val depth = nextSegments.size
-                val levelLabel = when (depth) {
-                    1 -> "Parent"
-                    2 -> "Child"
-                    else -> "Sub-Child"
-                }
                 ordered.add(
                     FolderPathSuggestion(
-                        levelLabel = levelLabel,
+                        levelLabel = levelLabelForDepth(depth),
                         fullPath = fullPath,
                         leafName = cleanName,
                         accentColor = child.color,
@@ -111,14 +113,9 @@ object FolderPathHelper {
                 if (fullPath.isNotEmpty()) {
                     val segments = fullPath.split(">").map { it.trim() }.filter { it.isNotEmpty() }
                     val depth = segments.size.coerceAtLeast(1)
-                    val levelLabel = when (depth) {
-                        1 -> "Parent"
-                        2 -> "Child"
-                        else -> "Sub-Child"
-                    }
                     ordered.add(
                         FolderPathSuggestion(
-                            levelLabel = levelLabel,
+                            levelLabel = levelLabelForDepth(depth),
                             fullPath = fullPath,
                             leafName = segments.lastOrNull() ?: fullPath,
                             accentColor = folder.color,
@@ -133,77 +130,58 @@ object FolderPathHelper {
     }
 
     /**
-     * Searches strictly within the user's own folders (Parent > Child > Sub-Child).
-     * Returns an empty list if the user has not created any folders yet.
+     * Searches strictly within the user's own folders (Parent > Child > Sub-Child > L4...)
+     * using unambiguous starting-character prefix matching:
+     * 1. Parent folder name first
+     * 2. Followed by Child folder name
+     * 3. Then Sub-Child / L4+
+     * No substring contains() fallback is used; e.g. typing "y" will not match "xyz".
      */
     fun searchUserFolders(
         query: String,
         folders: List<FolderItem>,
-        maxResults: Int = 12
+        maxResults: Int = Int.MAX_VALUE
     ): List<FolderPathSuggestion> {
         val pool = buildUserFolderSuggestions(folders)
         if (pool.isEmpty()) return emptyList()
 
-        val cleanQ = query.trim().replace("/", ">").lowercase()
-        if (cleanQ.isBlank()) {
-            return pool.take(maxResults)
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
+            return if (maxResults == Int.MAX_VALUE) pool else pool.take(maxResults)
         }
 
-        val isSubfolderQuery = cleanQ.contains(">")
-        val activeSegment = if (isSubfolderQuery) cleanQ.substringAfterLast(">").trim() else cleanQ
-        val parentSegment = if (isSubfolderQuery) cleanQ.substringBeforeLast(">").trim() else ""
+        val escaped = trimmed.replace("//", LITERAL_SLASH_PLACEHOLDER)
+        val hasTrailingSeparator = escaped.endsWith(">") || escaped.endsWith("/")
+        val rawSegments = escaped
+            .replace("/", ">")
+            .split(">")
+            .map { it.replace(LITERAL_SLASH_PLACEHOLDER, "/").trim() }
+            .filter { it.isNotEmpty() }
 
-        return pool
-            .asSequence()
-            .map { entry ->
-                val fullLower = entry.fullPath.lowercase()
-                val segments = fullLower.split(">").map { it.trim() }
-                val words = fullLower.split(" ", ">", "/", "-", "(", ")", ",").filter { it.isNotBlank() }
+        if (rawSegments.isEmpty()) {
+            return if (maxResults == Int.MAX_VALUE) pool else pool.take(maxResults)
+        }
 
-                var score = 0
-                if (isSubfolderQuery) {
-                    val parentMatches = parentSegment.isBlank() || fullLower.contains(parentSegment)
-                    if (parentMatches) {
-                        score += 50
-                        if (activeSegment.isBlank()) {
-                            score += 30
-                        } else {
-                            val segmentMatchesPrefix = segments.any { it.startsWith(activeSegment) }
-                            val wordMatchesPrefix = words.any { it.startsWith(activeSegment) }
-                            if (segmentMatchesPrefix) score += 60
-                            else if (wordMatchesPrefix) score += 40
-                            else if (fullLower.contains(activeSegment)) score += 10
-                            else score = 0
-                        }
-                    } else {
-                        score = 0
-                    }
-                } else {
-                    val startsWithExact = fullLower.startsWith(cleanQ)
-                    val leafStartsWith = entry.leafName.lowercase().startsWith(cleanQ)
-                    val segmentStartsWith = segments.any { it.startsWith(cleanQ) }
-                    val wordStartsWith = words.any { it.startsWith(cleanQ) }
+        val querySegments = if (hasTrailingSeparator) rawSegments + "" else rawSegments
 
-                    if (startsWithExact) {
-                        score += 100
-                    } else if (leafStartsWith) {
-                        score += 90
-                    } else if (segmentStartsWith) {
-                        score += 80
-                    } else if (wordStartsWith) {
-                        score += 60
-                    } else if (fullLower.contains(cleanQ)) {
-                        score += 20
-                    }
+        val matches = pool.filter { entry ->
+            val entrySegments = entry.fullPath.split(">").map { it.trim() }
+            if (entrySegments.size < querySegments.size) return@filter false
+
+            for (i in 0 until (querySegments.size - 1)) {
+                if (!entrySegments[i].equals(querySegments[i], ignoreCase = true)) {
+                    return@filter false
                 }
-
-                entry to score
             }
-            .filter { it.second > 0 }
-            .sortedByDescending { it.second }
-            .map { it.first }
-            .distinctBy { it.fullPath }
-            .take(maxResults)
-            .toList()
+
+            val activePrefix = querySegments.last()
+            if (activePrefix.isEmpty()) {
+                true
+            } else {
+                entrySegments[querySegments.size - 1].startsWith(activePrefix, ignoreCase = true)
+            }
+        }
+
+        return if (maxResults == Int.MAX_VALUE) matches else matches.take(maxResults)
     }
 }

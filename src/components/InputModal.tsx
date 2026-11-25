@@ -13,6 +13,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { McqParser } from '../utils/mcqParser';
 import { PaperLanguageDetector } from '../utils/paperLanguageDetector';
 import { ExamNumberGenerator } from '../utils/examNumberGenerator';
+import { buildUserFolderSuggestions } from '../utils/folderPathHelper';
+import { UserFolderDropdownInput } from './UserFolderDropdown';
 import {
   SAMPLE_BIOLOGY_ADVANCED,
   SAMPLE_KOREAN_EXAM,
@@ -277,13 +279,18 @@ export const InputModal: React.FC<InputModalProps> = ({
               <label className="block font-bold mb-1" style={{ color: colors.inkMuted }}>
                 Subject
               </label>
-              <input
-                type="text"
+              <UserFolderDropdownInput
                 value={customSubject}
-                onChange={(e) => setCustomSubject(e.target.value)}
+                onChange={setCustomSubject}
+                onSelectEntry={(entry) => {
+                  setCustomSubject(entry.fullPath);
+                  setFolderId(entry.id);
+                }}
+                folders={folders}
                 placeholder={parseResult.paper.metadata.subject || 'General Studies'}
-                className="w-full px-3 py-2 rounded-lg focus:outline-none"
-                style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+                buttonAriaLabel="Choose Subject from your folders"
+                inputClassName="w-full px-3 py-2 pr-9 rounded-lg focus:outline-none"
+                inputStyle={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
               />
             </div>
             <div>
@@ -296,9 +303,16 @@ export const InputModal: React.FC<InputModalProps> = ({
                 className="w-full px-3 py-2 rounded-lg focus:outline-none"
                 style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
               >
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
+                {folders
+                  .filter((f) => f.id === 'default')
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                {buildUserFolderSuggestions(folders).map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    [{entry.levelLabel}] {entry.fullPath}
                   </option>
                 ))}
               </select>

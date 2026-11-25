@@ -847,14 +847,27 @@ class ExampleRobolectricTest {
         )
         assertEquals("01", nextNewFolder)
 
-        // Custom 3-level folder appears with full Parent > Child > Sub-Child breadcrumb path in FolderPathHelper
-        val searchResults = com.example.util.FolderPathHelper.searchUserFolders(
-            query = "Mock Tests",
+        // Custom 3-level folder appears with full Parent > Child > Sub-Child breadcrumb path in FolderPathHelper (strict prefix)
+        val upscSearchResults = com.example.util.FolderPathHelper.searchUserFolders(
+            query = "UPSC CSE > Prelims > Mock",
             folders = folders,
             maxResults = 10
         )
-        assertTrue(searchResults.any { it.fullPath == "UPSC CSE > Prelims > Mock Tests" && it.levelLabel == "Sub-Child" })
-        assertTrue(searchResults.any { it.fullPath == "SSC CGL > Mock Tests" && it.levelLabel == "Child" })
+        assertTrue(upscSearchResults.any { it.fullPath == "UPSC CSE > Prelims > Mock Tests" && it.levelLabel == "Sub-Child" })
+        val sscSearchResults = com.example.util.FolderPathHelper.searchUserFolders(
+            query = "SSC CGL > Mock",
+            folders = folders,
+            maxResults = 10
+        )
+        assertTrue(sscSearchResults.any { it.fullPath == "SSC CGL > Mock Tests" && it.levelLabel == "Child" })
+        // Unprefixed child name does not match ambiguously
+        assertTrue(
+            com.example.util.FolderPathHelper.searchUserFolders(
+                query = "Mock Tests",
+                folders = folders,
+                maxResults = 10
+            ).isEmpty()
+        )
     }
 
     @Test

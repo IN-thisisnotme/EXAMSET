@@ -758,7 +758,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold">
                       <Grid className="w-3.5 h-3.5" />
-                      TCS iON CBT
+                      Standard CBT Mode
                     </div>
                     <div className="text-[0.625rem] mt-1" style={{ color: colors.muted }}>
                       1 question/screen, 5-state palette & shortcuts

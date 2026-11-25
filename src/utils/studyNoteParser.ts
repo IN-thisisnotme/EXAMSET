@@ -1005,7 +1005,7 @@ export const StudyNoteParser = {
         ? 'Write structured ~150-word model answers with Introduction, bulleted Core Arguments, and 2-line Conclusion.'
         : cfg.depth === 'DEEP'
         ? 'Write exhaustive 400+ word analytical model answers with historical context, data/citations, LaTeX, and Way Forward.'
-        : 'Write ~250-word Mains-grade model answers with Introduction, Core Analytical Dimensions, Data/Cases, and Way Forward.'
+        : 'Write ~250-word examination-grade model answers with Introduction, Core Analytical Dimensions, Data/Cases, and Way Forward.'
       : isTable
       ? 'Keep every comparison table cell concise (3–12 words) highlighting core mechanisms and exam traps.'
       : cfg.depth === 'CRISP'
@@ -1032,7 +1032,7 @@ export const StudyNoteParser = {
         : cfg.collectionType === 'WEAK_AREA_REVIEW'
         ? `Generate ${cfg.itemCount} remediation cards using \`  - Trap:\`, \`  - Correct Rule:\`, and \`  - Memory Anchor:\` sub-bullets.`
         : cfg.collectionType === 'LONG_ANSWER'
-        ? `Generate ${Math.min(cfg.itemCount, 12)} full-length Mains Q&A answers grouped under \`## Theme Headings\`.`
+        ? `Generate ${Math.min(cfg.itemCount, 12)} full-length long-form Q&A answers grouped under \`## Theme Headings\`.`
         : `Generate exactly ${cfg.itemCount} structured **${collectionTitle}** entries grouped under \`## Topic Headings\`.`;
 
     const pyqTag = cfg.includePyqTags ? ' [PYQ Focus]' : '';

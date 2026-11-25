@@ -12,6 +12,7 @@ import { BatchImportItem, FolderItem, QuestionPaper } from '../types/exam';
 import { useTheme } from '../theme/ThemeProvider';
 import { BatchExamImporter } from '../utils/batchExamImporter';
 import { ExamNumberGenerator } from '../utils/examNumberGenerator';
+import { buildUserFolderSuggestions } from '../utils/folderPathHelper';
 
 interface BatchImportModalProps {
   isOpen: boolean;
@@ -162,9 +163,16 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
                   className="px-2.5 py-1.5 rounded-lg"
                   style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
                 >
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
+                  {folders
+                    .filter((f) => f.id === 'default')
+                    .map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  {buildUserFolderSuggestions(folders).map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      [{entry.levelLabel}] {entry.fullPath}
                     </option>
                   ))}
                 </select>

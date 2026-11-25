@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
@@ -94,6 +95,7 @@ import com.example.model.VocabularyPromptConfig
 import com.example.ui.MainViewModel
 import com.example.ui.components.PromptPresetBar
 import com.example.ui.components.PromptPresetOverlays
+import com.example.ui.components.UserFolderDropdownMenu
 import com.example.ui.components.rememberPromptPresetDialogState
 import com.example.ui.theme.ExamTheme
 import kotlinx.coroutines.delay
@@ -117,6 +119,7 @@ fun PromptGeneratorTab(
     val flashcardState = viewModel.flashcardPromptState
     val vocabState = viewModel.vocabularyPromptState
     val promptPresets by viewModel.promptPresets.collectAsState()
+    val folders by viewModel.folders.collectAsState()
     val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
     val headwordInbox by viewModel.headwordInbox.collectAsState()
     val dismissedWordKeys by viewModel.dismissedWordKeys.collectAsState()
@@ -323,18 +326,21 @@ fun PromptGeneratorTab(
     ) {
         derivedStateOf {
             val q = qState.questionLanguage.trim().ifBlank { "English" }
+            val customLang = qState.customExplanationLanguage.trim()
             when (qState.explanationChoice) {
                 "Same as Question" -> "$q (same language as questions)"
                 "Bilingual" -> {
                     if (q.equals("English", ignoreCase = true)) {
-                        "Bilingual (English & Hindi)"
+                        if (customLang.isNotBlank()) "Bilingual (English & $customLang)"
+                        else "Bilingual (English & Second Language)"
                     } else {
-                        "Bilingual (English & $q)"
+                        val secondLang = customLang.ifBlank { "English" }
+                        "Bilingual ($secondLang & $q)"
                     }
                 }
                 "English" -> "English"
                 "Hindi" -> "Hindi"
-                "Custom" -> qState.customExplanationLanguage.trim().ifBlank { q }
+                "Custom" -> customLang.ifBlank { q }
                 else -> qState.explanationChoice
             }
         }
@@ -1078,7 +1084,8 @@ fun PromptGeneratorTab(
                     onCopyPrompt = copyAction,
                     onOpenKnowledgeStudio = onOpenKnowledgeStudio,
                     showAdvancedSettings = showKnowledgeAdvanced,
-                    onToggleAdvancedSettings = { showKnowledgeAdvanced = !showKnowledgeAdvanced }
+                    onToggleAdvancedSettings = { showKnowledgeAdvanced = !showKnowledgeAdvanced },
+                    folders = folders
                 )
             }
             PromptBuilderMode.FLASHCARD_SET -> {
@@ -1092,7 +1099,8 @@ fun PromptGeneratorTab(
                     onCopyPrompt = copyAction,
                     onOpenFlashcardStudio = onOpenKnowledgeStudio,
                     showAdvancedSettings = showFlashcardAdvanced,
-                    onToggleAdvancedSettings = { showFlashcardAdvanced = !showFlashcardAdvanced }
+                    onToggleAdvancedSettings = { showFlashcardAdvanced = !showFlashcardAdvanced },
+                    folders = folders
                 )
             }
             PromptBuilderMode.VOCABULARY -> {
@@ -1128,124 +1136,98 @@ fun PromptGeneratorTab(
                         letterSpacing = 0.5.sp
                     )
 
-                    val examPresets = listOf(
-                        "UPSC Civil Services",
-                        "State PCS",
-                        "SSC CGL / Banking",
-                        "Railways / RRB",
-                        "NEET / Biology",
-                        "JEE / Physics",
-                        "GATE / Engineering",
-                        "USMLE / Clinical",
-                        "BAR / Law Exam",
-                        "SAT / ACT",
-                        "School Board"
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        examPresets.forEach { preset ->
-                            val isSelected = qState.examType.equals(preset, ignoreCase = true)
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    qState.examType = preset
-                                },
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) colors.teal else colors.surfaceVariant,
-                                border = BorderStroke(
-                                    if (isSelected) 1.2.dp else 0.6.dp,
-                                    if (isSelected) colors.tealDark else colors.border
-                                )
-                            ) {
-                                Text(
-                                    text = preset,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isSelected) Color.White else colors.inkBold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
+                    // [DEPRECATED 2026-11-25] Reason: Replaced static examPresets & quickSubjects strips with on-demand user folder hierarchy dropdowns (Parent > Child > Sub-Child > L4+). Restore if: Static preset strips are explicitly requested again.
+                    var isExamDropdownOpen by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = qState.examType,
+                            onValueChange = { qState.examType = it },
+                            label = { Text("Exam Name / Target Agency", fontSize = 12.sp) },
+                            placeholder = { Text("e.g. University Exam, Engineering, Certification", fontSize = 12.sp) },
+                            singleLine = true,
+                            trailingIcon = if (folders.isNotEmpty()) {
+                                {
+                                    IconButton(
+                                        onClick = { isExamDropdownOpen = !isExamDropdownOpen },
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .testTag("prompt_exam_dropdown_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "Select folder for exam",
+                                            tint = colors.muted
+                                        )
+                                    }
+                                }
+                            } else null,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = fieldColors,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("prompt_exam_input")
+                        )
+
+                        UserFolderDropdownMenu(
+                            expanded = isExamDropdownOpen && folders.isNotEmpty(),
+                            query = qState.examType,
+                            folders = folders,
+                            onDismissRequest = { isExamDropdownOpen = false },
+                            onSelectEntry = { entry ->
+                                val segs = entry.fullPath.split(">").map { it.trim() }.filter { it.isNotEmpty() }
+                                qState.examType = segs.firstOrNull() ?: entry.fullPath
+                                if (segs.size >= 2) {
+                                    qState.subject = segs.drop(1).joinToString(" > ")
+                                }
+                                isExamDropdownOpen = false
                             }
-                        }
+                        )
                     }
 
-                    OutlinedTextField(
-                        value = qState.examType,
-                        onValueChange = { qState.examType = it },
-                        label = { Text("Exam Name / Target Agency", fontSize = 12.sp) },
-                        placeholder = { Text("e.g. UPSC, State PCS, NEET, School Board", fontSize = 12.sp) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = fieldColors,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("prompt_exam_input")
-                    )
+                    var isSubjectDropdownOpen by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = qState.subject,
+                            onValueChange = { qState.subject = it },
+                            label = { Text("Subject / Folder Path", fontSize = 12.sp) },
+                            placeholder = { Text("e.g. General Science, Mechanics, World History", fontSize = 12.sp) },
+                            singleLine = true,
+                            trailingIcon = if (folders.isNotEmpty()) {
+                                {
+                                    IconButton(
+                                        onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .testTag("prompt_subject_dropdown_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "Select folder for subject",
+                                            tint = colors.muted
+                                        )
+                                    }
+                                }
+                            } else null,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = fieldColors,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("prompt_subject_input")
+                        )
 
-                    val quickSubjects = listOf(
-                        "General Science",
-                        "Modern Indian History",
-                        "Polity & Governance",
-                        "Geography & Climate",
-                        "Quantitative Aptitude",
-                        "Clinical Medicine",
-                        "Physics & Mechanics",
-                        "English Comprehension"
-                    )
-                    Text(
-                        text = "Quick Subject Ideas",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.inkMuted
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        quickSubjects.forEach { quickSub ->
-                            val isSubSelected = qState.subject.equals(quickSub, ignoreCase = true)
-                            Surface(
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    qState.subject = quickSub
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSubSelected) colors.teal else colors.surfaceVariant.copy(alpha = 0.7f),
-                                border = BorderStroke(
-                                    if (isSubSelected) 1.2.dp else 0.6.dp,
-                                    if (isSubSelected) colors.tealDark else colors.border
-                                )
-                            ) {
-                                Text(
-                                    text = quickSub,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSubSelected) Color.White else colors.inkBold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
+                        UserFolderDropdownMenu(
+                            expanded = isSubjectDropdownOpen && folders.isNotEmpty(),
+                            query = qState.subject,
+                            folders = folders,
+                            onDismissRequest = { isSubjectDropdownOpen = false },
+                            onSelectEntry = { entry ->
+                                qState.subject = entry.fullPath
+                                isSubjectDropdownOpen = false
                             }
-                        }
+                        )
                     }
-
-                    OutlinedTextField(
-                        value = qState.subject,
-                        onValueChange = { qState.subject = it },
-                        label = { Text("Subject", fontSize = 12.sp) },
-                        placeholder = { Text("e.g. General Science, Physics, History", fontSize = 12.sp) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = fieldColors,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("prompt_subject_input")
-                    )
 
                     OutlinedTextField(
                         value = qState.topic,
@@ -1633,7 +1615,7 @@ fun PromptGeneratorTab(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "SSC, Railways, JEE, NEET, UPSC",
+                                        text = "Standard MCQs (University, STEM, Civil Service)",
                                         fontSize = 10.sp,
                                         lineHeight = 13.sp,
                                         color = if (qState.optionCount == 4) colors.tealDark else colors.inkMuted
@@ -1665,7 +1647,7 @@ fun PromptGeneratorTab(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Banking, IBPS, State PSC",
+                                        text = "Extended MCQs (Medical, Licensing, Banking)",
                                         fontSize = 10.sp,
                                         lineHeight = 13.sp,
                                         color = if (qState.optionCount == 5) colors.tealDark else colors.inkMuted
@@ -1727,7 +1709,7 @@ fun PromptGeneratorTab(
                         OutlinedTextField(
                             value = qState.questionLanguage,
                             onValueChange = { qState.questionLanguage = it },
-                            placeholder = { Text("e.g. English, Hindi, Tamil, Bengali, French...", fontSize = 12.sp, color = colors.muted) },
+                            placeholder = { Text("e.g. English, Spanish, French, Hindi, Japanese...", fontSize = 12.sp, color = colors.muted) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = colors.inkBold),
@@ -1770,7 +1752,8 @@ fun PromptGeneratorTab(
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         val activeQLang = qState.questionLanguage.trim().ifBlank { "English" }
                         val bilingualPresetName = if (activeQLang.equals("English", ignoreCase = true)) {
-                            "Bilingual (Eng & Hin)"
+                            if (qState.customExplanationLanguage.isNotBlank()) "Bilingual (Eng & ${qState.customExplanationLanguage.trim()})"
+                            else "Bilingual (Dual)"
                         } else {
                             "Bilingual (Eng & $activeQLang)"
                         }
@@ -1800,7 +1783,6 @@ fun PromptGeneratorTab(
                             val explanationOptions = listOf(
                                 "Same as Question" to "Same as Question",
                                 "English" to "English",
-                                "Hindi" to "Hindi",
                                 "Bilingual" to bilingualPresetName,
                                 "Custom" to "Custom..."
                             )
@@ -1829,11 +1811,21 @@ fun PromptGeneratorTab(
                             }
                         }
 
-                        if (qState.explanationChoice == "Custom") {
+                        if (qState.explanationChoice == "Custom" || (qState.explanationChoice == "Bilingual" && activeQLang.equals("English", ignoreCase = true))) {
                             OutlinedTextField(
                                 value = qState.customExplanationLanguage,
                                 onValueChange = { qState.customExplanationLanguage = it },
-                                placeholder = { Text("Type custom explanation language (e.g. Marathi, Sanskrit, French)...", fontSize = 11.5.sp, color = colors.muted) },
+                                placeholder = {
+                                    Text(
+                                        if (qState.explanationChoice == "Bilingual") {
+                                            "Second language for bilingual explanations (e.g. Spanish, French, Hindi)..."
+                                        } else {
+                                            "Type custom explanation language (e.g. Spanish, French, Japanese)..."
+                                        },
+                                        fontSize = 11.5.sp,
+                                        color = colors.muted
+                                    )
+                                },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 textStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.inkBold),

@@ -220,7 +220,7 @@ export const PromptPresetBar: React.FC<PromptPresetBarProps> = ({
               if (e.key === 'Enter') handleConfirmSaveNew();
               if (e.key === 'Escape') setIsNamingNew(false);
             }}
-            placeholder="Preset name (e.g., UPSC Polity Mains 10Q)..."
+            placeholder="Preset name (e.g., Organic Chemistry 20Q)..."
             className="flex-1 px-2.5 py-1.5 rounded-lg border text-xs"
             style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
             autoFocus

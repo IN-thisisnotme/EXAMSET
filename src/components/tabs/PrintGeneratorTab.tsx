@@ -40,7 +40,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
     const hasE = currentPaper.questions.some((q) => Boolean(q.options.e?.trim()));
     return {
       ...DEFAULT_EXAM_CONFIG,
-      examTitle: currentPaper.metadata.title || 'ALL INDIA OBJECTIVE EXAMINATION',
+      examTitle: currentPaper.metadata.title || 'OBJECTIVE EXAMINATION PAPER',
       subject: currentPaper.metadata.subject || 'General Studies',
       topic: currentPaper.metadata.topic || '',
       seriesCode: ExamNumberGenerator.normalizeSetCode(currentPaper.metadata.setNumber),

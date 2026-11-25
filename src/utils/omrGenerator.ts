@@ -585,7 +585,7 @@ export class OmrGenerator {
           <div class="omr-top-header">
             <div class="omr-top-title-area">
               <div class="omr-inst-name">${this.escapeHtml(
-                config.institutionName || 'CENTRAL EXAMINATION BOARD'
+                config.institutionName || 'EXAMINATION BOARD'
               )}</div>
               <div class="omr-sheet-title">${this.escapeHtml(
                 config.examTitle || paper.metadata.title || 'OMR RESPONSE SHEET'

@@ -1264,7 +1264,8 @@ fun KnowledgeStudioEditorScreen(
                             onOpenKnowledgeStudio = { _, _, _, _ -> switchToInputTab() },
                             showFooterButtons = false,
                             showAdvancedSettings = showKnowledgePromptAdvanced,
-                            onToggleAdvancedSettings = { showKnowledgePromptAdvanced = !showKnowledgePromptAdvanced }
+                            onToggleAdvancedSettings = { showKnowledgePromptAdvanced = !showKnowledgePromptAdvanced },
+                            folders = folders
                         )
                     }
 

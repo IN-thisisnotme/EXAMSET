@@ -289,7 +289,7 @@ fun ExamCountdownsDialog(
                             value = titleInput,
                             onValueChange = { titleInput = it },
                             label = { Text("Exam Name") },
-                            placeholder = { Text("e.g., UPSC Prelims 2026") },
+                            placeholder = { Text("e.g., Final Exam / Certification 2026") },
                             singleLine = true,
                             modifier = Modifier
                                 .fillMaxWidth()

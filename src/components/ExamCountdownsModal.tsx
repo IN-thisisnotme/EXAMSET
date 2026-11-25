@@ -30,7 +30,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
     const d = new Date(Date.now() + 30 * 86400000);
     return d.toISOString().slice(0, 10);
   });
-  const [examType, setExamType] = useState('UPSC Prelims');
+  const [examType, setExamType] = useState('General Assessment');
 
   if (!isOpen) return null;
 
@@ -41,7 +41,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
       id: `cd-${Date.now()}`,
       title: title.trim(),
       targetDateIso: dateIso,
-      examType,
+      examType: examType.trim() || 'General Assessment',
       isPinned: true,
       color: colors.teal,
     };
@@ -96,7 +96,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Exam target (e.g. GATE CS 2027)"
+              placeholder="Exam target (e.g., Final Exam / Certification 2026)"
               className="sm:col-span-2 px-3 py-2 rounded-lg focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
             />
@@ -108,18 +108,14 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               className="px-3 py-2 rounded-lg focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
             />
-            <select
+            <input
+              type="text"
               value={examType}
               onChange={(e) => setExamType(e.target.value)}
+              placeholder="Exam / Course Track (e.g., University, Certification)"
               className="sm:col-span-2 px-3 py-2 rounded-lg focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
-            >
-              <option value="UPSC Prelims">UPSC CSE</option>
-              <option value="SSC CGL">SSC CGL</option>
-              <option value="JEE / NEET">JEE / NEET</option>
-              <option value="GATE">GATE</option>
-              <option value="University Exam">University / Board Exam</option>
-            </select>
+            />
             <button
               type="submit"
               className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg font-bold"

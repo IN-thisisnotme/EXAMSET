@@ -35,9 +35,9 @@ export const KNOWLEDGE_COLLECTION_META: Record<
   },
   LONG_ANSWER: {
     code: 'LONG_ANSWER',
-    label: 'Long-Form / Mains Q&A',
+    label: 'Long-Form / Subjective Q&A',
     shortBadge: 'LONG Q&A',
-    description: 'Multi-paragraph UPSC Mains & subjective answers with LaTeX, tables & citations',
+    description: 'Multi-paragraph long-form, essay & subjective answers with LaTeX, tables & citations',
   },
   COMPARISON_TABLE: {
     code: 'COMPARISON_TABLE',

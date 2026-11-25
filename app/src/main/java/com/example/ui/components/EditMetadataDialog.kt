@@ -420,33 +420,32 @@ fun EditMetadataDialog(
                         shape = RoundedCornerShape(10.dp)
                     )
 
-                    // Subject Input with User Folder Hierarchy Autocomplete (Parent > Child > Sub-Child)
+                    // Subject Input with on-demand User Folder Hierarchy Dropdown (Parent > Child > Sub-Child > L4+)
                     var isSubjectDropdownOpen by remember { mutableStateOf(false) }
-                    val folderSuggestions = remember(subject, folders) {
-                        FolderPathHelper.searchUserFolders(subject, folders, maxResults = 12)
-                    }
 
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = subject,
                             onValueChange = { input ->
-                                subject = input.replace("/", " > ")
+                                subject = if (input.contains("//")) input else input.replace("/", " > ")
                             },
-                            label = { Text("Subject / Folder Path (e.g. Parent > Child)") },
+                            label = { Text("Subject / Folder Path (e.g. Parent > Child)", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             placeholder = { Text("e.g. Parent > Child > Sub-Child", fontSize = 12.sp, color = colors.muted) },
                             singleLine = true,
                             colors = textFieldColors,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                             keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                             trailingIcon = {
-                                if (folderSuggestions.isNotEmpty()) {
+                                if (folders.isNotEmpty()) {
                                     IconButton(
                                         onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
-                                        modifier = Modifier.size(48.dp)
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .testTag("edit_subject_dropdown_button")
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.ArrowDropDown,
-                                            contentDescription = "User Folder Path Suggestions",
+                                            contentDescription = "Browse User Folders",
                                             tint = colors.muted
                                         )
                                     }
@@ -458,91 +457,24 @@ fun EditMetadataDialog(
                             shape = RoundedCornerShape(10.dp)
                         )
 
-                        DropdownMenu(
-                            expanded = isSubjectDropdownOpen && folderSuggestions.isNotEmpty(),
+                        UserFolderDropdownMenu(
+                            expanded = isSubjectDropdownOpen && folders.isNotEmpty(),
+                            query = subject,
+                            folders = folders,
                             onDismissRequest = { isSubjectDropdownOpen = false },
-                            properties = PopupProperties(focusable = false),
-                            modifier = Modifier.heightIn(max = 280.dp)
-                        ) {
-                            folderSuggestions.forEach { entry ->
-                                DropdownMenuItem(
-                                    leadingIcon = {
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = colors.teal.copy(alpha = 0.12f)
-                                        ) {
-                                            Text(
-                                                text = entry.levelLabel,
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.teal,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    },
-                                    text = {
-                                        Text(
-                                            text = entry.fullPath,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = colors.inkBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    },
-                                    onClick = {
-                                        subject = entry.fullPath
-                                        isSubjectDropdownOpen = false
-                                    }
-                                )
+                            onSelectEntry = { entry ->
+                                subject = entry.fullPath
+                                isSubjectDropdownOpen = false
                             }
-                        }
+                        )
                     }
 
-                    // Non-intrusive suggestion chips below text field: fast tap-to-select without dismissing keyboard
+                    // [DEPRECATED 2026-11-25] Reason: Auto-appearing chip bar below Subject felt like an unsolicited popup; replaced by explicit on-demand UserFolderDropdownMenu via the trailing drop-down icon. Restore if: Inline suggestion chips while typing are explicitly requested again.
+                    /*
                     if (subject.isNotBlank() && folderSuggestions.isNotEmpty()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(folderSuggestions.take(6)) { entry ->
-                                val isMatch = entry.fullPath.equals(subject.trim(), ignoreCase = true)
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isMatch) colors.tealLight else colors.surfaceVariant,
-                                    border = BorderStroke(0.7.dp, if (isMatch) colors.teal else colors.border),
-                                    modifier = Modifier.clickable {
-                                        subject = entry.fullPath
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(3.dp),
-                                            color = colors.teal.copy(alpha = 0.15f)
-                                        ) {
-                                            Text(
-                                                text = entry.levelLabel,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.teal,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = entry.leafName,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = colors.inkBold
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        LazyRow(...) { ... }
                     }
+                    */
 
                     if (subject.contains(">") || subject.contains("/")) {
                         val pathSegments = subject.split(">", "/").map { it.trim() }.filter { it.isNotBlank() }

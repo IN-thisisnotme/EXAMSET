@@ -177,7 +177,7 @@ export function normalizePaperMetadata(paper: QuestionPaper): QuestionPaper {
       subject: paper.metadata.subject?.trim() || 'General Assessment',
       topic: paper.metadata.topic || '',
       setNumber: ExamNumberGenerator.normalizeSetCode(paper.metadata.setNumber),
-      targetExam: paper.metadata.targetExam || 'All India Competitive Exam',
+      targetExam: paper.metadata.targetExam || 'Standard Assessment',
       rollNumber: ExamNumberGenerator.normalizeRollNumber(paper.metadata.rollNumber),
       bookletNumber: ExamNumberGenerator.normalizeBookletNumber(paper.metadata.bookletNumber),
       durationMinutes: paper.metadata.durationMinutes ?? Math.max(15, paper.questions.length * 2),

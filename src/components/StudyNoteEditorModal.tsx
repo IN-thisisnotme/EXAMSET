@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../theme/ThemeProvider';
 import { FolderItem, QuestionPaper } from '../types/exam';
+import { buildUserFolderSuggestions } from '../utils/folderPathHelper';
 import {
   DEFAULT_KNOWLEDGE_RULE,
   KNOWLEDGE_COLLECTION_META,
@@ -313,13 +314,20 @@ export const StudyNoteEditorModal: React.FC<StudyNoteEditorModalProps> = ({
                   <select
                     value={folderId}
                     onChange={(e) => setFolderId(e.target.value)}
-                    className="px-2 py-1.5 rounded-lg border max-w-[120px]"
+                    className="px-2 py-1.5 rounded-lg border max-w-[160px]"
                     style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                     title="Folder"
                   >
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
+                    {folders
+                      .filter((f) => f.id === 'default')
+                      .map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    {buildUserFolderSuggestions(folders).map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        [{entry.levelLabel}] {entry.fullPath}
                       </option>
                     ))}
                   </select>

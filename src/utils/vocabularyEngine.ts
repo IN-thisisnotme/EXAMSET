@@ -30,7 +30,7 @@ export const VOCAB_LEVELS: Record<VocabularyLevelCode, VocabLevelMeta> = {
   A2: { code: 'A2', shortBadge: 'A2', label: 'Elementary', description: 'Routine conversations & travel', sortRank: 2 },
   B1: { code: 'B1', shortBadge: 'B1', label: 'Intermediate', description: 'Independent reading & news', sortRank: 3 },
   B2: { code: 'B2', shortBadge: 'B2', label: 'Upper-Intermediate', description: 'Workplace & competitive exams', sortRank: 4 },
-  C1: { code: 'C1', shortBadge: 'C1', label: 'Advanced', description: 'Editorial, academic & GRE/UPSC precision', sortRank: 5 },
+  C1: { code: 'C1', shortBadge: 'C1', label: 'Advanced', description: 'Editorial, academic & standardized exam precision', sortRank: 5 },
   C2: { code: 'C2', shortBadge: 'C2', label: 'Mastery', description: 'Literary & specialist nuance', sortRank: 6 },
   MIXED: { code: 'MIXED', shortBadge: 'MIXED', label: 'Mixed / Progressive', description: 'Spans multiple proficiency tiers', sortRank: 7 },
   CUSTOM: { code: 'CUSTOM', shortBadge: 'CUSTOM', label: 'Custom Level', description: 'Track-specific tier (JLPT, HSK, GRE)', sortRank: 8 },

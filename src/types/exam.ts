@@ -101,8 +101,8 @@ export interface ExamConfig {
 }
 
 export const DEFAULT_EXAM_CONFIG: ExamConfig = {
-  examTitle: 'ALL INDIA OBJECTIVE EXAMINATION 2026',
-  institutionName: 'CENTRAL EXAMINATION BOARD',
+  examTitle: 'OBJECTIVE EXAMINATION PAPER',
+  institutionName: 'EXAMINATION BOARD',
   subject: 'General Studies & Sciences',
   topic: 'Comprehensive Mock',
   seriesCode: '01',

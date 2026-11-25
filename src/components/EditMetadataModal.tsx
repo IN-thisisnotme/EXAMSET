@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw, Save, Sliders, X } from 'lucide-react';
 import { FolderItem, MsqScoringPolicy, PaperCategory, QuestionPaper } from '../types/exam';
+import { buildUserFolderSuggestions } from '../utils/folderPathHelper';
 import { useTheme } from '../theme/ThemeProvider';
 import { ExamNumberGenerator } from '../utils/examNumberGenerator';
 
@@ -196,9 +197,16 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = ({
                 className="w-full px-3 py-2 rounded-lg focus:outline-none"
                 style={inputStyle}
               >
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
+                {folders
+                  .filter((f) => f.id === 'default')
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                {buildUserFolderSuggestions(folders).map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    [{entry.levelLabel}] {entry.fullPath}
                   </option>
                 ))}
               </select>

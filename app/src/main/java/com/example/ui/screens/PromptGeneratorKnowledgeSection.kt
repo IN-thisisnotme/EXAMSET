@@ -65,15 +65,20 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.IconButton
+import androidx.compose.runtime.remember
+import com.example.model.FlashcardPromptConfig
+import com.example.model.FolderItem
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
 import com.example.model.KnowledgeFormatRule
 import com.example.model.KnowledgeLayerOrder
 import com.example.model.KnowledgePromptConfig
+import com.example.ui.components.UserFolderDropdownMenu
 import com.example.ui.theme.ExamColorPalette
 import com.example.util.PaperLanguageDetector
 import com.example.util.StudyNoteParser
@@ -196,7 +201,8 @@ fun LazyListScope.knowledgePromptBuilderItems(
     onOpenKnowledgeStudio: (title: String, subject: String, collectionType: KnowledgeCollectionType, rule: KnowledgeFormatRule) -> Unit,
     showFooterButtons: Boolean = true,
     showAdvancedSettings: Boolean = true,
-    onToggleAdvancedSettings: (() -> Unit)? = null
+    onToggleAdvancedSettings: (() -> Unit)? = null,
+    folders: List<FolderItem> = emptyList()
 ) {
     val countInt = state.itemCount.toInt()
     val compiledPrompt = state.buildPrompt()
@@ -220,124 +226,98 @@ fun LazyListScope.knowledgePromptBuilderItems(
                     letterSpacing = 0.5.sp
                 )
 
-                val examPresets = listOf(
-                    "UPSC Civil Services",
-                    "State PCS",
-                    "SSC CGL / Banking",
-                    "Railways / RRB",
-                    "NEET / Biology",
-                    "JEE / Physics",
-                    "GATE / Engineering",
-                    "USMLE / Clinical",
-                    "BAR / Law Exam",
-                    "SAT / ACT",
-                    "School Board"
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    examPresets.forEach { preset ->
-                        val isSelected = state.examTarget.equals(preset, ignoreCase = true)
-                        Surface(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                state.examTarget = preset
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) colors.teal else colors.surfaceVariant,
-                            border = BorderStroke(
-                                if (isSelected) 1.2.dp else 0.6.dp,
-                                if (isSelected) colors.tealDark else colors.border
-                            )
-                        ) {
-                            Text(
-                                text = preset,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isSelected) Color.White else colors.inkBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                // [DEPRECATED 2026-11-25] Reason: Replaced static examPresets & quickSubjects strips with on-demand user folder hierarchy dropdowns (Parent > Child > Sub-Child > L4+). Restore if: Static preset strips are explicitly requested again.
+                var isExamDropdownOpen by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = state.examTarget,
+                        onValueChange = { state.examTarget = it },
+                        label = { Text("Exam Target / Level (Optional)", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. University Course, Engineering, Civil Service", fontSize = 12.sp) },
+                        singleLine = true,
+                        trailingIcon = if (folders.isNotEmpty()) {
+                            {
+                                IconButton(
+                                    onClick = { isExamDropdownOpen = !isExamDropdownOpen },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("knowledge_prompt_exam_dropdown_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select folder for exam target",
+                                        tint = colors.muted
+                                    )
+                                }
+                            }
+                        } else null,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = fieldColors,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("knowledge_prompt_exam_input")
+                    )
+
+                    UserFolderDropdownMenu(
+                        expanded = isExamDropdownOpen && folders.isNotEmpty(),
+                        query = state.examTarget,
+                        folders = folders,
+                        onDismissRequest = { isExamDropdownOpen = false },
+                        onSelectEntry = { entry ->
+                            val segs = entry.fullPath.split(">").map { it.trim() }.filter { it.isNotEmpty() }
+                            state.examTarget = segs.firstOrNull() ?: entry.fullPath
+                            if (segs.size >= 2) {
+                                state.subject = segs.drop(1).joinToString(" > ")
+                            }
+                            isExamDropdownOpen = false
                         }
-                    }
+                    )
                 }
 
-                OutlinedTextField(
-                    value = state.examTarget,
-                    onValueChange = { state.examTarget = it },
-                    label = { Text("Exam Target / Level (Optional)", fontSize = 12.sp) },
-                    placeholder = { Text("e.g. UPSC, NEET, JEE, University", fontSize = 12.sp) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = fieldColors,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("knowledge_prompt_exam_input")
-                )
+                var isSubjectDropdownOpen by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = state.subject,
+                        onValueChange = { state.subject = it },
+                        label = { Text("Subject / Folder Path", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. Physics, Thermodynamics, Constitutional Law", fontSize = 12.sp) },
+                        singleLine = true,
+                        trailingIcon = if (folders.isNotEmpty()) {
+                            {
+                                IconButton(
+                                    onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("knowledge_prompt_subject_dropdown_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select folder for subject",
+                                        tint = colors.muted
+                                    )
+                                }
+                            }
+                        } else null,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = fieldColors,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("knowledge_prompt_subject_input")
+                    )
 
-                val quickSubjects = listOf(
-                    "General Science",
-                    "Modern Indian History",
-                    "Polity & Governance",
-                    "Geography & Climate",
-                    "Organic Chemistry",
-                    "Clinical Medicine",
-                    "Physics & Mechanics",
-                    "Economics & Finance"
-                )
-                Text(
-                    text = "Quick Subject Ideas",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.inkMuted
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    quickSubjects.forEach { quickSub ->
-                        val isSubSelected = state.subject.equals(quickSub, ignoreCase = true)
-                        Surface(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                state.subject = quickSub
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSubSelected) colors.teal else colors.surfaceVariant.copy(alpha = 0.7f),
-                            border = BorderStroke(
-                                if (isSubSelected) 1.2.dp else 0.6.dp,
-                                if (isSubSelected) colors.tealDark else colors.border
-                            )
-                        ) {
-                            Text(
-                                text = quickSub,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSubSelected) Color.White else colors.inkBold,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                    UserFolderDropdownMenu(
+                        expanded = isSubjectDropdownOpen && folders.isNotEmpty(),
+                        query = state.subject,
+                        folders = folders,
+                        onDismissRequest = { isSubjectDropdownOpen = false },
+                        onSelectEntry = { entry ->
+                            state.subject = entry.fullPath
+                            isSubjectDropdownOpen = false
                         }
-                    }
+                    )
                 }
-
-                OutlinedTextField(
-                    value = state.subject,
-                    onValueChange = { state.subject = it },
-                    label = { Text("Subject", fontSize = 12.sp) },
-                    placeholder = { Text("e.g. Physics, Indian Polity, Biology", fontSize = 12.sp) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = fieldColors,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("knowledge_prompt_subject_input")
-                )
 
                 OutlinedTextField(
                     value = state.topic,

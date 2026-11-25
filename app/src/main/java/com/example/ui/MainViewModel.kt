@@ -3823,37 +3823,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             val validItems = items.filter { it.isSelected && it.paper != null && it.status != BatchItemStatus.INVALID }
 
-            // Auto-create folder if a new non-empty custom folder name is provided
+            // Auto-create folder hierarchy if a new non-empty custom folder path is provided
             val effectiveTarget = targetFolder?.trim()
-            if (!effectiveTarget.isNullOrBlank() &&
+            val isExplicitTarget = !effectiveTarget.isNullOrBlank() &&
                 !effectiveTarget.equals("all", ignoreCase = true) &&
                 !effectiveTarget.equals("Default / From Metadata", ignoreCase = true) &&
-                !effectiveTarget.equals("Keep Original", ignoreCase = true)
-            ) {
-                val exists = _folders.value.any { it.name.equals(effectiveTarget, ignoreCase = true) }
-                if (!exists) {
-                    val newFolder = FolderItem(
-                        id = "f-${System.currentTimeMillis().toString(36)}",
-                        name = effectiveTarget,
-                        color = "#0284C7"
-                    )
-                    withContext(Dispatchers.Main) {
-                        val updated = _folders.value + newFolder
-                        _folders.value = updated
-                        appPreferences.saveCustomFolders(updated)
-                    }
+                !effectiveTarget.equals("Keep Original", ignoreCase = true) &&
+                !effectiveTarget.equals("Keep Original Metadata", ignoreCase = true)
+            val resolvedTargetFolder = if (isExplicitTarget) {
+                val existingByPath = resolveFolderBySubjectPath(effectiveTarget!!, _folders.value)
+                    ?: _folders.value.find { it.name.equals(effectiveTarget, ignoreCase = true) }
+                existingByPath ?: withContext(Dispatchers.Main) {
+                    resolveOrCreateFolderPath(effectiveTarget)
                 }
+            } else {
+                null
             }
 
             validItems.forEach { item ->
                 try {
                     val p = item.paper!!
-                    val finalSubject = if (!effectiveTarget.isNullOrBlank() &&
-                        !effectiveTarget.equals("all", ignoreCase = true) &&
-                        !effectiveTarget.equals("Default / From Metadata", ignoreCase = true) &&
-                        !effectiveTarget.equals("Keep Original", ignoreCase = true)
-                    ) {
-                        effectiveTarget
+                    val finalSubject = if (isExplicitTarget) {
+                        effectiveTarget!!
                     } else if (!item.customSubject.isNullOrBlank()) {
                         item.customSubject.trim()
                     } else {
@@ -3876,9 +3867,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         ExamNumberGenerator.generateBookletNumber()
                     }
 
+                    val targetFolderId = resolvedTargetFolder?.id ?: p.metadata.folderId
                     val updatedPaper = p.copy(
                         metadata = p.metadata.copy(
                             subject = finalSubject,
+                            folderId = targetFolderId,
                             rollNumber = finalRoll,
                             bookletNumber = finalBooklet
                         )
@@ -3897,7 +3890,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         rawText = rawText,
                         createdAt = System.currentTimeMillis(),
                         updatedAt = System.currentTimeMillis(),
-                        folderId = updatedPaper.metadata.folderId,
+                        folderId = targetFolderId,
                         rollNumber = finalRoll,
                         bookletNumber = finalBooklet
                     )

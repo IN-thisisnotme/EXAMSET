@@ -123,8 +123,16 @@ fun BatchImportDialog(
 
     // Target folder selection
     val activeFolderObj = folders.find { it.id == defaultFolderId }
+    val activeFolderPath = remember(defaultFolderId, folders) {
+        if (activeFolderObj != null) {
+            com.example.util.FolderPathHelper.getFolderHierarchyPath(activeFolderObj.id, folders)
+                .ifBlank { activeFolderObj.name }
+        } else {
+            "Keep Original Metadata"
+        }
+    }
     var selectedTargetFolder by remember {
-        mutableStateOf(if (activeFolderObj != null) activeFolderObj.name else "Keep Original Metadata")
+        mutableStateOf(activeFolderPath)
     }
     var showFolderDropdown by remember { mutableStateOf(false) }
     var customNewFolderText by remember { mutableStateOf("") }
@@ -383,36 +391,28 @@ fun BatchImportDialog(
                                         }
                                     }
 
-                                    DropdownMenu(
+                                    UserFolderDropdownMenu(
                                         expanded = showFolderDropdown,
-                                        onDismissRequest = { showFolderDropdown = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Keep Original Metadata", fontSize = 12.sp) },
-                                            onClick = {
-                                                selectedTargetFolder = "Keep Original Metadata"
-                                                showCustomFolderInput = false
-                                                showFolderDropdown = false
-                                            }
-                                        )
-                                        folders.forEach { f ->
-                                            DropdownMenuItem(
-                                                text = { Text(f.name, fontSize = 12.sp) },
-                                                onClick = {
-                                                    selectedTargetFolder = f.name
-                                                    showCustomFolderInput = false
-                                                    showFolderDropdown = false
-                                                }
-                                            )
+                                        query = "",
+                                        folders = folders,
+                                        onDismissRequest = { showFolderDropdown = false },
+                                        onSelectEntry = { entry ->
+                                            selectedTargetFolder = entry.fullPath
+                                            showCustomFolderInput = false
+                                            showFolderDropdown = false
+                                        },
+                                        headerActionLabel = "Keep Original Metadata",
+                                        onHeaderActionClick = {
+                                            selectedTargetFolder = "Keep Original Metadata"
+                                            showCustomFolderInput = false
+                                            showFolderDropdown = false
+                                        },
+                                        footerActionLabel = "+ Create New Folder...",
+                                        onFooterActionClick = {
+                                            showCustomFolderInput = true
+                                            showFolderDropdown = false
                                         }
-                                        DropdownMenuItem(
-                                            text = { Text("+ Create New Folder...", fontSize = 12.sp, color = colors.teal) },
-                                            onClick = {
-                                                showCustomFolderInput = true
-                                                showFolderDropdown = false
-                                            }
-                                        )
-                                    }
+                                    )
                                 }
                             }
 

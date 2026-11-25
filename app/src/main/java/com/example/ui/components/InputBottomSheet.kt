@@ -564,18 +564,21 @@ fun InputBottomSheet(
     val effectivePromptExplanationLanguage by remember(promptQuestionLanguage, promptExplanationChoice, promptCustomExplanationLanguage) {
         derivedStateOf {
             val q = promptQuestionLanguage.trim().ifBlank { "English" }
+            val customLang = promptCustomExplanationLanguage.trim()
             when (promptExplanationChoice) {
                 "Same as Question" -> "$q (same language as the questions)"
                 "Bilingual" -> {
                     if (q.equals("English", ignoreCase = true)) {
-                        "Bilingual (English & Hindi)"
+                        if (customLang.isNotBlank()) "Bilingual (English & $customLang)"
+                        else "Bilingual (English & Second Language)"
                     } else {
-                        "Bilingual (English & $q)"
+                        val secondLang = customLang.ifBlank { "English" }
+                        "Bilingual ($secondLang & $q)"
                     }
                 }
                 "English" -> "English"
                 "Hindi" -> "Hindi"
-                "Custom" -> promptCustomExplanationLanguage.trim().ifBlank { q }
+                "Custom" -> customLang.ifBlank { q }
                 else -> promptExplanationChoice
             }
         }
@@ -1577,10 +1580,6 @@ fun InputBottomSheet(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // Subject / Folder Path full width (strictly user-folder Parent > Child > Sub-Child suggestions)
-                            val folderSuggestions = remember(customSubject, folders) {
-                                FolderPathHelper.searchUserFolders(customSubject, folders, maxResults = 12)
-                            }
-
                             Box(modifier = Modifier.fillMaxWidth()) {
 
                                 OutlinedTextField(
@@ -1595,14 +1594,16 @@ fun InputBottomSheet(
                                     singleLine = true,
                                     colors = fieldColors,
                                     trailingIcon = {
-                                        if (folderSuggestions.isNotEmpty()) {
+                                        if (folders.isNotEmpty()) {
                                             IconButton(
                                                 onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
-                                                modifier = Modifier.size(24.dp)
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .testTag("import_subject_dropdown_button")
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.ArrowDropDown,
-                                                    contentDescription = "User Folder Path Suggestions",
+                                                    contentDescription = "Browse User Folders",
                                                     tint = colors.muted
                                                 )
                                             }
@@ -1615,115 +1616,34 @@ fun InputBottomSheet(
                                     shape = RoundedCornerShape(6.dp)
                                 )
 
-                                DropdownMenu(
-                                    expanded = isSubjectDropdownOpen && folderSuggestions.isNotEmpty(),
+                                UserFolderDropdownMenu(
+                                    expanded = isSubjectDropdownOpen && folders.isNotEmpty(),
+                                    query = customSubject,
+                                    folders = folders,
                                     onDismissRequest = { isSubjectDropdownOpen = false },
-                                    properties = PopupProperties(focusable = false),
-                                    modifier = Modifier.heightIn(max = 300.dp)
-                                ) {
-                                    folderSuggestions.forEach { entry ->
-                                        DropdownMenuItem(
-                                            leadingIcon = {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = colors.teal.copy(alpha = 0.12f)
-                                                ) {
-                                                    Text(
-                                                        text = entry.levelLabel,
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = colors.teal,
-                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                            },
-                                            text = {
-                                                Column {
-                                                    Text(
-                                                        text = entry.fullPath,
-                                                        fontSize = 12.5.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        color = colors.inkBold,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                            },
-                                            onClick = {
-                                                hasManuallyEditedSubject = true
-                                                customSubject = entry.fullPath
-                                                if (!hasManuallyEditedSetNumber) {
-                                                    val nextFolderId = resolveFolderBySubjectPath(entry.fullPath, folders)?.id
-                                                    customSetNumber = computeNextSetForSubject(
-                                                        subject = entry.fullPath,
-                                                        papers = savedPapers,
-                                                        targetFolderId = nextFolderId,
-                                                        folders = folders
-                                                    )
-                                                }
-                                                isSubjectDropdownOpen = false
-                                            }
-                                        )
+                                    onSelectEntry = { entry ->
+                                        hasManuallyEditedSubject = true
+                                        customSubject = entry.fullPath
+                                        if (!hasManuallyEditedSetNumber) {
+                                            val nextFolderId = resolveFolderBySubjectPath(entry.fullPath, folders)?.id
+                                            customSetNumber = computeNextSetForSubject(
+                                                subject = entry.fullPath,
+                                                papers = savedPapers,
+                                                targetFolderId = nextFolderId,
+                                                folders = folders
+                                            )
+                                        }
+                                        isSubjectDropdownOpen = false
                                     }
-                                }
+                                )
                             }
 
-                            // Non-intrusive suggestion chips below text field (prevents closing software keyboard)
+                            // [DEPRECATED 2026-11-25] Reason: Auto-appearing chip bar below Subject felt like an unsolicited popup; replaced by on-demand UserFolderDropdownMenu on drop-down icon click. Restore if: Inline suggestion chips while typing are explicitly requested again.
+                            /*
                             if (customSubject.isNotBlank() && folderSuggestions.isNotEmpty()) {
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                ) {
-                                    items(folderSuggestions.take(6)) { entry ->
-                                        val isMatch = entry.fullPath.equals(customSubject.trim(), ignoreCase = true)
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (isMatch) colors.tealLight else colors.surfaceVariant,
-                                            border = BorderStroke(0.7.dp, if (isMatch) colors.teal else colors.border),
-                                            modifier = Modifier.clickable {
-                                                hasManuallyEditedSubject = true
-                                                customSubject = entry.fullPath
-                                                if (!hasManuallyEditedSetNumber) {
-                                                    val nextFolderId = resolveFolderBySubjectPath(entry.fullPath, folders)?.id
-                                                    customSetNumber = computeNextSetForSubject(
-                                                        subject = entry.fullPath,
-                                                        papers = savedPapers,
-                                                        targetFolderId = nextFolderId,
-                                                        folders = folders
-                                                    )
-                                                }
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(3.dp),
-                                                    color = colors.teal.copy(alpha = 0.15f)
-                                                ) {
-                                                    Text(
-                                                        text = entry.levelLabel,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = colors.teal,
-                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    )
-                                                }
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = entry.leafName,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = colors.inkBold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                                LazyRow(...) { ... }
                             }
+                            */
 
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -3095,7 +3015,8 @@ fun InputBottomSheet(
                         Column {
                             val activeQLang = promptQuestionLanguage.trim().ifBlank { "English" }
                             val bilingualPresetName = if (activeQLang.equals("English", ignoreCase = true)) {
-                                "Bilingual (Eng & Hin)"
+                                if (promptCustomExplanationLanguage.isNotBlank()) "Bilingual (Eng & ${promptCustomExplanationLanguage.trim()})"
+                                else "Bilingual (Dual)"
                             } else {
                                 "Bilingual (Eng & $activeQLang)"
                             }
@@ -3125,7 +3046,6 @@ fun InputBottomSheet(
                                 val explanationOptions = listOf(
                                     "Same as Question" to "Same as Question",
                                     "English" to "English",
-                                    "Hindi" to "Hindi",
                                     "Bilingual" to bilingualPresetName,
                                     "Custom" to "Custom..."
                                 )
@@ -3149,12 +3069,19 @@ fun InputBottomSheet(
                                 }
                             }
 
-                            if (promptExplanationChoice == "Custom") {
+                            if (promptExplanationChoice == "Custom" || (promptExplanationChoice == "Bilingual" && activeQLang.equals("English", ignoreCase = true))) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 OutlinedTextField(
                                     value = promptCustomExplanationLanguage,
                                     onValueChange = { promptCustomExplanationLanguage = it },
-                                    placeholder = { Text("Language", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    placeholder = {
+                                        Text(
+                                            if (promptExplanationChoice == "Bilingual") "Second language (e.g. Spanish, Hindi, French)..."
+                                            else "Language",
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    },
                                     singleLine = true,
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.fillMaxWidth()

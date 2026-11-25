@@ -47,7 +47,7 @@ const APP_GUIDE_CATALOG: AppGuideEntry[] = [
   },
   {
     id: 'tcs_cbt_test',
-    title: 'TCS iON CBT & Scrollable Exam Modes',
+    title: 'Standard CBT & Scrollable Exam Modes',
     category: 'EXAMS_TESTS',
     summary:
       'Practice full-screen timed mock tests with Save & Next, Mark for Review, 5-state palette, or continuous paper scroll.',

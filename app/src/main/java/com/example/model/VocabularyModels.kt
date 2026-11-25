@@ -49,7 +49,7 @@ enum class VocabularyLevel(
         code = "C1",
         shortBadge = "C1",
         label = "Advanced",
-        description = "Academic, editorial, GRE/IELTS/UPSC precision",
+        description = "Academic, editorial, graduate & professional exam precision",
         sortRank = 5
     ),
     MASTERY(
@@ -613,7 +613,7 @@ data class VocabularyLanguageFolderSummary(
 
 enum class VocabularyUtilityTier(val title: String, val subtitle: String) {
     DAILY_HIGH_FREQUENCY("Daily High-Frequency", "Core high-yield words used in daily life, conversations, and media"),
-    EXAM_EDITORIAL("Competitive Exam Editorial", "High-impact analytical vocabulary from editorials (The Hindu, Indian Express, UPSC, SSC, Banking)"),
+    EXAM_EDITORIAL("Competitive & Academic Editorial", "High-impact analytical vocabulary from global news editorials, journals & competitive exams"),
     LITERARY_PRECISION("Literary & Formal Precision", "Formal, expressive words for academic papers, essays, and literature"),
     GENERAL_BALANCED("General Balanced", "Balanced practical vocabulary across multiple domains")
 }

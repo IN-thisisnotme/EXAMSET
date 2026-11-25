@@ -192,7 +192,7 @@ enum class OmrBubblingMode {
 }
 
 data class ExamConfig(
-    val institutionName: String = "CENTRAL EXAMINATION BOARD",
+    val institutionName: String = "EXAMINATION BOARD",
     val examTitle: String = "OBJECTIVE PRACTICE & EVALUATION TEST",
     val subject: String = "",
     val topic: String = "",

@@ -561,7 +561,7 @@ export class PrintDocumentHelper {
 
     const payload = {
       meta: {
-        institution: config.institutionName || 'CENTRAL EXAMINATION BOARD',
+        institution: config.institutionName || 'EXAMINATION BOARD',
         title: config.examTitle || paper.metadata.title || 'OBJECTIVE EVALUATION TEST',
         subject: paper.metadata.subject || config.subject || 'General Assessment',
         seriesCode: config.seriesCode || paper.metadata.setNumber || '01',

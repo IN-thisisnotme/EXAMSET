@@ -166,7 +166,7 @@ enum class ResultHubTab(val label: String) {
 enum class ReviewSolutionsMode { LIST, SINGLE_QUESTION }
 
 enum class ExamInterfaceMode(val title: String, val subtitle: String) {
-    TCS_CBT("TCS iON CBT Mode", "Single question with Save & Next latency, Review & Next, and 5-state palette"),
+    TCS_CBT("Standard CBT Mode", "Single question with Save & Next latency, Review & Next, and 5-state palette"),
     SCROLLABLE_PAPER("Scrollable Paper Mode", "Continuous scrollable exam paper with instant option selection")
 }
 

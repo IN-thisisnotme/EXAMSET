@@ -35,12 +35,15 @@ import {
   VocabularyEngine,
   VocabularyVariants,
 } from '../../utils/vocabularyEngine';
+import { FolderItem } from '../../types/exam';
 import { PromptPresetBar } from '../PromptPresetBar';
+import { UserFolderDropdownInput } from '../UserFolderDropdown';
 
 interface PromptGeneratorTabProps {
   presets: PromptPreset[];
   onSavePresets: (next: PromptPreset[]) => void;
   vocabDecks: VocabularyDeck[];
+  folders?: FolderItem[];
   defaultEnglishVariant?: string;
   onSendToCreator?: (text: string) => void;
   onNavigateToCreator?: () => void;
@@ -51,9 +54,9 @@ interface PromptGeneratorTabProps {
 }
 
 const DEFAULT_QUESTION_CFG: QuestionPromptConfig = {
-  examType: 'UPSC Civil Services Examination',
-  subject: 'General Science & Environment',
-  topic: 'Ecology, Biodiversity, Climate Change & Green Energy',
+  examType: '',
+  subject: '',
+  topic: '',
   questionCount: 20,
   difficulty: 'Mixed',
   questionLanguage: 'English',
@@ -68,28 +71,28 @@ const DEFAULT_QUESTION_CFG: QuestionPromptConfig = {
 };
 
 const DEFAULT_KNOWLEDGE_CFG: KnowledgePromptConfig = {
-  examTarget: 'UPSC Civil Services / Competitive Exams',
-  subject: 'Physics & Chemistry',
-  topic: 'Thermodynamics, Electrochemistry & Optics High-Yield Laws',
+  examTarget: '',
+  subject: '',
+  topic: '',
   collectionType: 'MULTI_LINER',
   customCollectionLabel: '',
   itemCount: 15,
   depth: 'BALANCED',
   layerOrder: 'TERM_FIRST',
   language: 'English',
-  includeBilingualTerms: true,
+  includeBilingualTerms: false,
   preserveNestedBullets: true,
   includeLatexMath: true,
   includeCallouts: true,
   includeComparisonTable: true,
-  includePyqTags: true,
+  includePyqTags: false,
   customInstruction: '',
 };
 
 const DEFAULT_FLASHCARD_CFG: FlashcardPromptConfig = {
-  examTarget: 'NEET / JEE / UPSC Prelims',
-  subject: 'Indian Polity & Physics',
-  topic: 'Constitutional Articles, Writs & Core Equations',
+  examTarget: '',
+  subject: '',
+  topic: '',
   cardStyle: 'QA_RETRIEVAL',
   cardCount: 20,
   depth: 'CRISP',
@@ -109,8 +112,8 @@ const DEFAULT_VOCAB_CFG: VocabularyPromptConfig = {
   translationLanguage: '',
   levelCode: 'B2',
   customLevelLabel: '',
-  domain: 'Competitive Exam Editorial',
-  topic: 'Policy, Diplomacy, Finance & Analytical Arguments',
+  domain: 'Academic & Exam Editorial',
+  topic: 'Policy, Science, Finance & Analytical Arguments',
   wordCount: 15,
   examplesPerWord: 2,
   outputFormat: 'Strict JSON',
@@ -127,6 +130,7 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
   presets,
   onSavePresets,
   vocabDecks,
+  folders = [],
   defaultEnglishVariant = 'UK',
   onSendToCreator,
   onNavigateToCreator,
@@ -168,23 +172,27 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
 
   const effectiveExplanationLang = useMemo(() => {
     const q = qCfg.questionLanguage.trim() || 'English';
+    const customLang = qCfg.customExplanationLanguage.trim();
     switch (qCfg.explanationChoice) {
       case 'Same as Question':
         return `${q} (strictly matching question language)`;
       case 'Bilingual':
-        return q.toLowerCase() === 'english' ? 'Bilingual (English & Hindi)' : `Bilingual (English & ${q})`;
+        if (q.toLowerCase() === 'english') {
+          return customLang ? `Bilingual (English & ${customLang})` : 'Bilingual (English & Second Language)';
+        }
+        return customLang ? `Bilingual (${customLang} & ${q})` : `Bilingual (English & ${q})`;
       case 'English':
         return 'English';
-      case 'Hindi':
-        return 'Hindi';
       case 'Custom':
-        return qCfg.customExplanationLanguage.trim() || q;
+        return customLang || q;
       default:
         return qCfg.explanationChoice;
     }
   }, [qCfg]);
 
   const questionPrompt = useMemo(() => {
+    const examLabel = qCfg.examType.trim() || 'Standard Assessment';
+    const subjectLabel = qCfg.subject.trim() || 'General Topics';
     const qLang = qCfg.questionLanguage.trim() || 'English';
     const isMsq = qCfg.difficulty === 'MSQ';
     const optRule =
@@ -204,7 +212,7 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
     if (qCfg.targetOutputFormat === 'JSON') {
       const optEJson = qCfg.optionCount === 5 ? ',\n      "e": "Option E text"' : '';
       if (qCfg.promptDensity === 'Concise') {
-        return `Generate exactly ${qCfg.questionCount} multiple-choice questions for ${qCfg.examType} at ${qCfg.difficulty} standard on ${qCfg.subject}${qCfg.topic ? ` (${qCfg.topic})` : ''} in ${qLang}.
+        return `Generate exactly ${qCfg.questionCount} multiple-choice questions for ${examLabel} at ${qCfg.difficulty} standard on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} in ${qLang}.
 Output ONLY a strict, valid JSON array of objects without markdown fences or extra text. Format:
 [
   {
@@ -227,7 +235,7 @@ Requirements:
 4. Valid JSON only. Do not truncate.${strictQtyRule}`;
       }
 
-      return `Generate exactly ${qCfg.questionCount} rigorous questions at ${qCfg.difficulty} difficulty standard on ${qCfg.subject}${qCfg.topic ? ` (Focus Topics: ${qCfg.topic})` : ''}, tailored for ${qCfg.examType} in ${qLang}.
+      return `Generate exactly ${qCfg.questionCount} rigorous questions at ${qCfg.difficulty} difficulty standard on ${subjectLabel}${qCfg.topic ? ` (Focus Topics: ${qCfg.topic})` : ''}, tailored for ${examLabel} in ${qLang}.
 Output MUST be an unbroken, valid JSON array:
 [
   {
@@ -255,7 +263,7 @@ Strict Rules:
       const colEHeader = qCfg.optionCount === 5 ? ' Option E |' : '';
       const colESep = qCfg.optionCount === 5 ? ' :--- |' : '';
       const colEVal = qCfg.optionCount === 5 ? ' Choice E |' : '';
-      return `Generate exactly ${qCfg.questionCount} questions on ${qCfg.subject}${qCfg.topic ? ` (${qCfg.topic})` : ''} for ${qCfg.examType} at ${qCfg.difficulty} standard in ${qLang}.
+      return `Generate exactly ${qCfg.questionCount} questions on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} for ${examLabel} at ${qCfg.difficulty} standard in ${qLang}.
 Output MUST be a Markdown Pipe Table with these exact columns:
 | Question | Option A | Option B | Option C | Option D |${colEHeader} Answer | Explanation |
 | :--- | :--- | :--- | :--- | :--- |${colESep} :--- | :--- |
@@ -269,7 +277,7 @@ Rules:
 
     const optELine = qCfg.optionCount === 5 ? '\n(E) Option E' : '';
     if (qCfg.promptDensity === 'Concise') {
-      return `Generate ${qCfg.questionCount} questions for ${qCfg.examType} on ${qCfg.subject}${qCfg.topic ? ` (${qCfg.topic})` : ''} in ${qLang}.
+      return `Generate ${qCfg.questionCount} questions for ${examLabel} on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} in ${qLang}.
 Output format:
 Q1. Question text
 (A) Option A
@@ -282,7 +290,7 @@ EXPLANATION: Solution in ${effectiveExplanationLang}
 (${mathDirective} — Repeat sequentially for Q1 through Q${qCfg.questionCount})${strictQtyRule}`;
     }
 
-    return `Generate exactly ${qCfg.questionCount} questions at ${qCfg.difficulty} standard on ${qCfg.subject}${qCfg.topic ? ` (${qCfg.topic})` : ''} for ${qCfg.examType} in ${qLang}.
+    return `Generate exactly ${qCfg.questionCount} questions at ${qCfg.difficulty} standard on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} for ${examLabel} in ${qLang}.
 
 ## Phase 1: Questions
 Label sequentially Q1. through Q${qCfg.questionCount}. Each with options (A) through (${qCfg.optionCount === 5 ? 'E' : 'D'}).
@@ -568,32 +576,34 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                   <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                     Target Examination
                   </label>
-                  <select
+                  <UserFolderDropdownInput
                     value={qCfg.examType}
-                    onChange={(e) => setQCfg({ ...qCfg, examType: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border"
-                    style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
-                  >
-                    <option value="UPSC Civil Services Examination">UPSC Civil Services Examination</option>
-                    <option value="SSC Combined Graduate Level (CGL)">SSC Combined Graduate Level (CGL)</option>
-                    <option value="National Eligibility cum Entrance Test (NEET)">NEET Medical Entrance</option>
-                    <option value="JEE Main & Advanced">JEE Engineering Entrance (SCQ + MSQ)</option>
-                    <option value="State Public Service Commission (PSC)">State PSC Exam (5 Options Supported)</option>
-                    <option value="Banking Probationary Officer (IBPS PO / SBI)">Banking PO / Clerk</option>
-                    <option value="Central Board of Secondary Education (CBSE Class 12)">CBSE Class 12 Board</option>
-                  </select>
+                    onChange={(next) => setQCfg({ ...qCfg, examType: next })}
+                    onSelectEntry={(entry) => {
+                      const segs = entry.fullPath.split('>').map((s) => s.trim()).filter(Boolean);
+                      const parentExam = segs[0] || entry.leafName;
+                      const childPath = segs.length > 1 ? segs.slice(1).join(' > ') : qCfg.subject;
+                      setQCfg({ ...qCfg, examType: parentExam, subject: childPath });
+                    }}
+                    folders={folders}
+                    placeholder="e.g., GRE, SAT, Bar Exam, University Finals"
+                    buttonAriaLabel="Choose Target Examination from your folders"
+                    inputStyle={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                  />
                 </div>
 
                 <div>
                   <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
-                    Subject
+                    Subject / User Folder Path
                   </label>
-                  <input
-                    type="text"
+                  <UserFolderDropdownInput
                     value={qCfg.subject}
-                    onChange={(e) => setQCfg({ ...qCfg, subject: e.target.value })}
-                    className="w-full px-3 py-1.5 rounded-lg border"
-                    style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                    onChange={(next) => setQCfg({ ...qCfg, subject: next })}
+                    onSelectEntry={(entry) => setQCfg({ ...qCfg, subject: entry.fullPath })}
+                    folders={folders}
+                    placeholder="e.g., Organic Chemistry or Parent > Child > Sub-Child"
+                    buttonAriaLabel="Choose Subject from your folders"
+                    inputStyle={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   />
                 </div>
 
@@ -729,11 +739,12 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     type="text"
                     value={qCfg.questionLanguage}
                     onChange={(e) => setQCfg({ ...qCfg, questionLanguage: e.target.value })}
+                    placeholder="Any language (e.g., English, Spanish, French, Arabic...)"
                     className="w-full px-3 py-1.5 rounded-lg border"
                     style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
                   />
                   <div className="flex flex-wrap gap-1">
-                    {['English', 'Hindi', 'Bengali', 'Marathi', 'Tamil', 'Korean', 'French'].map((lng) => (
+                    {['English', 'Spanish', 'French', 'German', 'Arabic', 'Japanese', 'Hindi'].map((lng) => (
                       <button
                         key={lng}
                         type="button"
@@ -763,16 +774,27 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                       >
                         <option value="Same as Question">Same as Question</option>
                         <option value="English">English</option>
-                        <option value="Hindi">Hindi</option>
-                        <option value="Bilingual">Bilingual</option>
+                        <option value="Bilingual">
+                          {(qCfg.questionLanguage.trim() || 'English').toLowerCase() === 'english'
+                            ? qCfg.customExplanationLanguage.trim()
+                              ? `Bilingual (Eng & ${qCfg.customExplanationLanguage.trim()})`
+                              : 'Bilingual (Dual)'
+                            : `Bilingual (Eng & ${qCfg.questionLanguage.trim()})`}
+                        </option>
                         <option value="Custom">Custom...</option>
                       </select>
-                      {qCfg.explanationChoice === 'Custom' && (
+                      {(qCfg.explanationChoice === 'Custom' ||
+                        (qCfg.explanationChoice === 'Bilingual' &&
+                          (qCfg.questionLanguage.trim() || 'English').toLowerCase() === 'english')) && (
                         <input
                           type="text"
                           value={qCfg.customExplanationLanguage}
                           onChange={(e) => setQCfg({ ...qCfg, customExplanationLanguage: e.target.value })}
-                          placeholder="Language..."
+                          placeholder={
+                            qCfg.explanationChoice === 'Bilingual'
+                              ? 'Second language (e.g., Spanish, French)...'
+                              : 'Language (e.g., Spanish, Arabic)...'
+                          }
                           className="w-full mt-1 px-2 py-1 rounded border"
                           style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
                         />
@@ -853,24 +875,33 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                       Target Exam
                     </label>
-                    <input
-                      type="text"
+                    <UserFolderDropdownInput
                       value={kCfg.examTarget}
-                      onChange={(e) => setKCfg({ ...kCfg, examTarget: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg border"
-                      style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                      onChange={(next) => setKCfg({ ...kCfg, examTarget: next })}
+                      onSelectEntry={(entry) => {
+                        const segs = entry.fullPath.split('>').map((s) => s.trim()).filter(Boolean);
+                        const parentExam = segs[0] || entry.leafName;
+                        const childPath = segs.length > 1 ? segs.slice(1).join(' > ') : kCfg.subject;
+                        setKCfg({ ...kCfg, examTarget: parentExam, subject: childPath });
+                      }}
+                      folders={folders}
+                      placeholder="e.g., MCAT, Bar Exam, Finals"
+                      buttonAriaLabel="Choose Target Exam from your folders"
+                      inputStyle={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                     />
                   </div>
                   <div>
                     <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                       Subject
                     </label>
-                    <input
-                      type="text"
+                    <UserFolderDropdownInput
                       value={kCfg.subject}
-                      onChange={(e) => setKCfg({ ...kCfg, subject: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg border"
-                      style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                      onChange={(next) => setKCfg({ ...kCfg, subject: next })}
+                      onSelectEntry={(entry) => setKCfg({ ...kCfg, subject: entry.fullPath })}
+                      folders={folders}
+                      placeholder="e.g., Cell Biology, Macroeconomics"
+                      buttonAriaLabel="Choose Subject from your folders"
+                      inputStyle={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                     />
                   </div>
                 </div>
@@ -883,7 +914,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     value={kCfg.topic}
                     onChange={(e) => setKCfg({ ...kCfg, topic: e.target.value })}
                     rows={2}
-                    placeholder="e.g., Landmark Constitutional Amendments & Doctrines..."
+                    placeholder="e.g., Enzyme Kinetics, Constitutional Law, Thermodynamics..."
                     className="w-full min-h-[4.5rem] resize-y px-3 py-2 rounded-lg border"
                     style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   />
@@ -981,7 +1012,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     type="text"
                     value={kCfg.customInstruction}
                     onChange={(e) => setKCfg({ ...kCfg, customInstruction: e.target.value })}
-                    placeholder="e.g., Focus on landmark SC judgments after 2015..."
+                    placeholder="e.g., Include primary citations or worked numerical steps..."
                     className="w-full px-3 py-1.5 rounded-lg border"
                     style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                   />
@@ -1038,24 +1069,33 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                       Target Exam
                     </label>
-                    <input
-                      type="text"
+                    <UserFolderDropdownInput
                       value={fCfg.examTarget}
-                      onChange={(e) => setFCfg({ ...fCfg, examTarget: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg border"
-                      style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                      onChange={(next) => setFCfg({ ...fCfg, examTarget: next })}
+                      onSelectEntry={(entry) => {
+                        const segs = entry.fullPath.split('>').map((s) => s.trim()).filter(Boolean);
+                        const parentExam = segs[0] || entry.leafName;
+                        const childPath = segs.length > 1 ? segs.slice(1).join(' > ') : fCfg.subject;
+                        setFCfg({ ...fCfg, examTarget: parentExam, subject: childPath });
+                      }}
+                      folders={folders}
+                      placeholder="e.g., USMLE, AP Biology, University Finals"
+                      buttonAriaLabel="Choose Target Exam from your folders"
+                      inputStyle={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                     />
                   </div>
                   <div>
                     <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                       Subject
                     </label>
-                    <input
-                      type="text"
+                    <UserFolderDropdownInput
                       value={fCfg.subject}
-                      onChange={(e) => setFCfg({ ...fCfg, subject: e.target.value })}
-                      className="w-full px-3 py-1.5 rounded-lg border"
-                      style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                      onChange={(next) => setFCfg({ ...fCfg, subject: next })}
+                      onSelectEntry={(entry) => setFCfg({ ...fCfg, subject: entry.fullPath })}
+                      folders={folders}
+                      placeholder="e.g., Neuroanatomy, Linear Algebra"
+                      buttonAriaLabel="Choose Subject from your folders"
+                      inputStyle={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                     />
                   </div>
                 </div>
@@ -1229,7 +1269,7 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                       type="text"
                       value={vCfg.translationLanguage}
                       onChange={(e) => setVCfg({ ...vCfg, translationLanguage: e.target.value })}
-                      placeholder="Optional (e.g., Hindi)"
+                      placeholder="Optional (e.g., Spanish, Arabic, French)"
                       className="w-full px-3 py-1.5 rounded-lg border"
                       style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
                     />
