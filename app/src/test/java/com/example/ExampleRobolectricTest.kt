@@ -847,14 +847,14 @@ class ExampleRobolectricTest {
         )
         assertEquals("01", nextNewFolder)
 
-        // Custom 3-level folder appears with full breadcrumb path in ExamCatalogueRegistry
-        val searchResults = com.example.util.ExamCatalogueRegistry.searchCatalogue(
+        // Custom 3-level folder appears with full Parent > Child > Sub-Child breadcrumb path in FolderPathHelper
+        val searchResults = com.example.util.FolderPathHelper.searchUserFolders(
             query = "Mock Tests",
-            customFolders = folders,
+            folders = folders,
             maxResults = 10
         )
-        assertTrue(searchResults.any { it.fullPath == "UPSC CSE > Prelims > Mock Tests" })
-        assertTrue(searchResults.any { it.fullPath == "SSC CGL > Mock Tests" })
+        assertTrue(searchResults.any { it.fullPath == "UPSC CSE > Prelims > Mock Tests" && it.levelLabel == "Sub-Child" })
+        assertTrue(searchResults.any { it.fullPath == "SSC CGL > Mock Tests" && it.levelLabel == "Child" })
     }
 
     @Test

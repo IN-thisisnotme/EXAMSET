@@ -148,7 +148,7 @@ import com.example.model.PaperCategory
 import com.example.model.PromptPreset
 import com.example.model.PromptPresetMode
 import com.example.model.QuestionPromptConfig
-import com.example.util.ExamCatalogueRegistry
+import com.example.util.FolderPathHelper
 import com.example.data.PaperEntity
 import com.example.model.QuestionPaper
 import com.example.ui.components.QuestionCard
@@ -1091,7 +1091,7 @@ fun InputBottomSheet(
                                                 val cleanSubject = if (customSubject.contains("//")) {
                                                     customSubject.trim()
                                                 } else {
-                                                    ExamCatalogueRegistry.normalizeFolderPath(customSubject)
+                                                    FolderPathHelper.normalizeFolderPath(customSubject)
                                                 }
                                                 val parsedDuration = customDurationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
                                                 val parsedPosMarks = customPositiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
@@ -1576,9 +1576,9 @@ fun InputBottomSheet(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // Subject / Exam Path full width
-                            val catalogueSuggestions = remember(customSubject, folders) {
-                                ExamCatalogueRegistry.searchCatalogue(customSubject, folders, maxResults = 12)
+                            // Subject / Folder Path full width (strictly user-folder Parent > Child > Sub-Child suggestions)
+                            val folderSuggestions = remember(customSubject, folders) {
+                                FolderPathHelper.searchUserFolders(customSubject, folders, maxResults = 12)
                             }
 
                             Box(modifier = Modifier.fillMaxWidth()) {
@@ -1590,20 +1590,22 @@ fun InputBottomSheet(
                                         val normalized = if (newSub.contains("//")) newSub else newSub.replace("/", " > ")
                                         customSubject = normalized
                                     },
-                                    label = { Text("Subject / Exam Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    placeholder = { Text("e.g. UPSC CSE > Prelims", fontSize = 11.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    label = { Text("Subject / Folder Path", fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    placeholder = { Text("e.g. Parent > Child > Sub-Child", fontSize = 11.5.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                     singleLine = true,
                                     colors = fieldColors,
                                     trailingIcon = {
-                                        IconButton(
-                                            onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ArrowDropDown,
-                                                contentDescription = "Subject & Exam Autocomplete",
-                                                tint = colors.muted
-                                            )
+                                        if (folderSuggestions.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ArrowDropDown,
+                                                    contentDescription = "User Folder Path Suggestions",
+                                                    tint = colors.muted
+                                                )
+                                            }
                                         }
                                     },
                                     modifier = Modifier
@@ -1614,12 +1616,12 @@ fun InputBottomSheet(
                                 )
 
                                 DropdownMenu(
-                                    expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
+                                    expanded = isSubjectDropdownOpen && folderSuggestions.isNotEmpty(),
                                     onDismissRequest = { isSubjectDropdownOpen = false },
                                     properties = PopupProperties(focusable = false),
                                     modifier = Modifier.heightIn(max = 300.dp)
                                 ) {
-                                    catalogueSuggestions.forEach { entry ->
+                                    folderSuggestions.forEach { entry ->
                                         DropdownMenuItem(
                                             leadingIcon = {
                                                 Surface(
@@ -1627,7 +1629,7 @@ fun InputBottomSheet(
                                                     color = colors.teal.copy(alpha = 0.12f)
                                                 ) {
                                                     Text(
-                                                        text = entry.category,
+                                                        text = entry.levelLabel,
                                                         fontSize = 9.5.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = colors.teal,
@@ -1667,14 +1669,14 @@ fun InputBottomSheet(
                             }
 
                             // Non-intrusive suggestion chips below text field (prevents closing software keyboard)
-                            if (customSubject.isNotBlank() && catalogueSuggestions.isNotEmpty()) {
+                            if (customSubject.isNotBlank() && folderSuggestions.isNotEmpty()) {
                                 LazyRow(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 4.dp)
                                 ) {
-                                    items(catalogueSuggestions.take(6)) { entry ->
+                                    items(folderSuggestions.take(6)) { entry ->
                                         val isMatch = entry.fullPath.equals(customSubject.trim(), ignoreCase = true)
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
@@ -1703,7 +1705,7 @@ fun InputBottomSheet(
                                                     color = colors.teal.copy(alpha = 0.15f)
                                                 ) {
                                                     Text(
-                                                        text = entry.category,
+                                                        text = entry.levelLabel,
                                                         fontSize = 9.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = colors.teal,
@@ -1712,7 +1714,7 @@ fun InputBottomSheet(
                                                 }
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    text = entry.fullPath.substringAfterLast(">").substringAfterLast("/").trim(),
+                                                    text = entry.leafName,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Medium,
                                                     color = colors.inkBold
@@ -1895,7 +1897,7 @@ fun InputBottomSheet(
                                                     color = colors.tealDark
                                                 )
                                                 Text(
-                                                    text = pathSegments.joinToString("  ↳  "),
+                                                    text = pathSegments.joinToString(" > "),
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = colors.inkBold,

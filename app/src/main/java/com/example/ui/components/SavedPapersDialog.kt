@@ -74,6 +74,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.PaperEntity
 import com.example.ui.MainViewModel
 import com.example.ui.theme.ExamTheme
+import com.example.util.FolderPathHelper
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -468,7 +469,7 @@ fun SavedPapersDialog(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
-                                                text = item.subject,
+                                                text = FolderPathHelper.formatDisplayPath(item.subject),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Medium,
                                                 color = colors.ink,

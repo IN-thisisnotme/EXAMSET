@@ -89,7 +89,7 @@ import com.example.model.MsqScoringPolicy
 import com.example.model.PaperCategory
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
-import com.example.util.ExamCatalogueRegistry
+import com.example.util.FolderPathHelper
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -157,7 +157,7 @@ fun EditMetadataDialog(
         focusManager.clearFocus(force = true)
 
         val normalizedSet = com.example.util.ExamNumberGenerator.normalizeSetNumber(setNumber)
-        val cleanSubject = ExamCatalogueRegistry.normalizeFolderPath(subject)
+        val cleanSubject = FolderPathHelper.normalizeFolderPath(subject)
         val parsedDuration = durationMinutesStr.toIntOrNull()?.coerceIn(5, 360) ?: 60
         val parsedPosMarks = positiveMarksStr.toDoubleOrNull()?.coerceIn(0.25, 20.0) ?: 4.0
         val parsedNegMarks = negativeMarksStr.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
@@ -420,10 +420,10 @@ fun EditMetadataDialog(
                         shape = RoundedCornerShape(10.dp)
                     )
 
-                    // Subject Input with Exam Catalogue Autocomplete & Hierarchy
+                    // Subject Input with User Folder Hierarchy Autocomplete (Parent > Child > Sub-Child)
                     var isSubjectDropdownOpen by remember { mutableStateOf(false) }
-                    val catalogueSuggestions = remember(subject, folders) {
-                        ExamCatalogueRegistry.searchCatalogue(subject, folders, maxResults = 12)
+                    val folderSuggestions = remember(subject, folders) {
+                        FolderPathHelper.searchUserFolders(subject, folders, maxResults = 12)
                     }
 
                     Box(modifier = Modifier.fillMaxWidth()) {
@@ -432,22 +432,24 @@ fun EditMetadataDialog(
                             onValueChange = { input ->
                                 subject = input.replace("/", " > ")
                             },
-                            label = { Text("Subject / Exam Path (e.g. UPSC CSE > Prelims)") },
-                            placeholder = { Text("e.g. UPSC CSE > Prelims, SSC > CGL, BPSC", fontSize = 12.sp, color = colors.muted) },
+                            label = { Text("Subject / Folder Path (e.g. Parent > Child)") },
+                            placeholder = { Text("e.g. Parent > Child > Sub-Child", fontSize = 12.sp, color = colors.muted) },
                             singleLine = true,
                             colors = textFieldColors,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                             keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                             trailingIcon = {
-                                IconButton(
-                                    onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
-                                    modifier = Modifier.size(48.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = "Subject & Exam Autocomplete",
-                                        tint = colors.muted
-                                    )
+                                if (folderSuggestions.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { isSubjectDropdownOpen = !isSubjectDropdownOpen },
+                                        modifier = Modifier.size(48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "User Folder Path Suggestions",
+                                            tint = colors.muted
+                                        )
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -457,12 +459,12 @@ fun EditMetadataDialog(
                         )
 
                         DropdownMenu(
-                            expanded = isSubjectDropdownOpen && catalogueSuggestions.isNotEmpty(),
+                            expanded = isSubjectDropdownOpen && folderSuggestions.isNotEmpty(),
                             onDismissRequest = { isSubjectDropdownOpen = false },
                             properties = PopupProperties(focusable = false),
                             modifier = Modifier.heightIn(max = 280.dp)
                         ) {
-                            catalogueSuggestions.forEach { entry ->
+                            folderSuggestions.forEach { entry ->
                                 DropdownMenuItem(
                                     leadingIcon = {
                                         Surface(
@@ -470,7 +472,7 @@ fun EditMetadataDialog(
                                             color = colors.teal.copy(alpha = 0.12f)
                                         ) {
                                             Text(
-                                                text = entry.category,
+                                                text = entry.levelLabel,
                                                 fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.teal,
@@ -498,12 +500,12 @@ fun EditMetadataDialog(
                     }
 
                     // Non-intrusive suggestion chips below text field: fast tap-to-select without dismissing keyboard
-                    if (subject.isNotBlank() && catalogueSuggestions.isNotEmpty()) {
+                    if (subject.isNotBlank() && folderSuggestions.isNotEmpty()) {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(catalogueSuggestions.take(6)) { entry ->
+                            items(folderSuggestions.take(6)) { entry ->
                                 val isMatch = entry.fullPath.equals(subject.trim(), ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
@@ -522,7 +524,7 @@ fun EditMetadataDialog(
                                             color = colors.teal.copy(alpha = 0.15f)
                                         ) {
                                             Text(
-                                                text = entry.category,
+                                                text = entry.levelLabel,
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = colors.teal,
@@ -531,7 +533,7 @@ fun EditMetadataDialog(
                                         }
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = entry.fullPath.substringAfterLast(">").substringAfterLast("/").trim(),
+                                            text = entry.leafName,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = colors.inkBold
@@ -569,7 +571,7 @@ fun EditMetadataDialog(
                                         color = colors.tealDark
                                     )
                                     Text(
-                                        text = pathSegments.joinToString(" › "),
+                                        text = pathSegments.joinToString(" > "),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = colors.inkBold,

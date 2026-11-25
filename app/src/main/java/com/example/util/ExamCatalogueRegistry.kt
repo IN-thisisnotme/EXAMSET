@@ -31,8 +31,11 @@ data class ExamCatalogueEntry(
  * - I: Defence, Police & Paramilitary (NDA, CDS, AFCAT, Agniveer, CAPF, Central Forces)
  * - J: Olympiads, Competitions & Custom Assessments
  */
+@Deprecated("Use FolderPathHelper for user-folder hierarchy suggestions without a static exam catalogue.")
 object ExamCatalogueRegistry {
 
+    // [DEPRECATED 2026-11-25] Reason: Removed static examination catalogue dependence; folder suggestions now derive exclusively from user-created folders (Parent > Child > Sub-Child) via FolderPathHelper. Restore if: Pre-seeded static exam catalogue entries are explicitly requested again.
+    /*
     val MASTER_CATALOGUE: List<ExamCatalogueEntry> = listOf(
         // ==================== CATEGORY A: UPSC & CENTRAL GOVERNMENT ====================
         ExamCatalogueEntry("UPSC", "UPSC CSE > Prelims > GS Paper 1", listOf("civil services", "ias", "ips", "upsc", "prelims", "general studies"), "#0284C7"),
@@ -248,138 +251,32 @@ object ExamCatalogueRegistry {
         ExamCatalogueEntry("School", "School > CBSE Board > Class 10 & 12 Objective Practice", listOf("cbse", "class 10", "class 12", "board exam", "term 1"), "#0284C7"),
         ExamCatalogueEntry("Aptitude", "Assessment > General Aptitude > Quantitative & Logical Reasoning", listOf("aptitude", "quantitative", "reasoning", "campus placement", "mock test"), "#4F46E5")
     )
+    */
 
     /**
-     * Universal Canonical Normalizer:
-     * Converts any mixed `/` or `>` inputs into standard `Parent > Child > Subchild` format,
-     * removing empty tokens and trimming spaces defensively.
+     * Universal Canonical Normalizer: delegates to FolderPathHelper.
      */
-    fun normalizeFolderPath(raw: String?): String {
-        if (raw.isNullOrBlank()) return ""
-        return raw
-            .replace("/", " > ")
-            .split(">")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .joinToString(" > ")
-    }
+    fun normalizeFolderPath(raw: String?): String = FolderPathHelper.normalizeFolderPath(raw)
 
     /**
-     * Search the examination catalogue with intelligent prefix, word-boundary,
-     * and subfolder matching.
+     * Searches strictly within user-created folders (Parent > Child > Sub-Child).
      */
     fun searchCatalogue(
         query: String,
         customFolders: List<FolderItem> = emptyList(),
         maxResults: Int = 10
     ): List<ExamCatalogueEntry> {
-        val q = query.trim().lowercase()
-
-        // 1. Build custom entries from user-created folders and their full multi-level hierarchies
-        val folderById = customFolders.associateBy { it.id }
-        val customEntries = customFolders.map { f ->
-            val chain = mutableListOf<String>()
-            var curr: FolderItem? = f
-            val visited = mutableSetOf<String>()
-            while (curr != null && visited.add(curr.id)) {
-                chain.add(0, curr.name.trim())
-                curr = curr.parentId?.let { folderById[it] }
-            }
-            val fullPath = chain.joinToString(" > ")
+        return FolderPathHelper.searchUserFolders(
+            query = query,
+            folders = customFolders,
+            maxResults = maxResults
+        ).map { suggestion ->
             ExamCatalogueEntry(
-                category = "Custom Folder",
-                fullPath = fullPath,
-                keywords = listOf(f.name.lowercase()),
-                accentColor = f.color
+                category = suggestion.levelLabel,
+                fullPath = suggestion.fullPath,
+                keywords = listOf(suggestion.leafName.lowercase()),
+                accentColor = suggestion.accentColor
             )
         }
-
-        val cleanQ = q.replace("/", ">").trim().lowercase()
-        if (cleanQ.isBlank()) {
-            // When query is empty, return user's custom folders first, followed by top universal presets
-            val defaultPicks = listOf(
-                "UPSC CSE > Prelims > GS Paper 1",
-                "SSC > CGL > Tier 1 (CBT)",
-                "RRB > NTPC > Stage 1 (CBT-1)",
-                "SSC JE > Civil > Paper 1 (CBT)",
-                "State PSC > Bihar (BPSC) > CCE Prelims (General Studies)",
-                "State PSC > Uttar Pradesh (UPPSC) > PCS Prelims (GS 1)",
-                "Banking > IBPS > PO Prelims",
-                "Medical > NEET UG > Physics, Chemistry & Biology",
-                "Entrance > JEE Main > Paper 1 (Physics, Chemistry & Maths)"
-            )
-            val masterDefaults = MASTER_CATALOGUE.filter { it.fullPath in defaultPicks }
-            return (customEntries.take(4) + masterDefaults).distinctBy { it.fullPath }.take(maxResults)
-        }
-
-        val pool = customEntries + MASTER_CATALOGUE
-        val isSubfolderQuery = cleanQ.contains(">")
-        val activeSegment = if (isSubfolderQuery) cleanQ.substringAfterLast(">").trim() else cleanQ
-        val parentSegment = if (isSubfolderQuery) cleanQ.substringBeforeLast(">").trim() else ""
-
-        return pool
-            .asSequence()
-            .map { entry ->
-                val fullLower = entry.fullPath.lowercase()
-                val catLower = entry.category.lowercase()
-                val segments = fullLower.split(">").map { it.trim() }
-                val rootFolder = segments.firstOrNull() ?: ""
-                val leafFolder = segments.lastOrNull() ?: ""
-                val words = fullLower.split(" ", ">", "/", "-", "(", ")", ",").filter { it.isNotBlank() }
-
-                var score = 0
-                val isCustom = entry in customEntries
-
-                if (isSubfolderQuery) {
-                    // When user types "UPSC > " or "UPSC > Pre", match parent and active segment
-                    val parentMatches = parentSegment.isBlank() || fullLower.contains(parentSegment)
-                    if (parentMatches) {
-                        score += 50
-                        if (activeSegment.isBlank()) {
-                            score += 30
-                        } else {
-                            val segmentMatchesPrefix = segments.any { it.startsWith(activeSegment) }
-                            val wordMatchesPrefix = words.any { it.startsWith(activeSegment) }
-                            if (segmentMatchesPrefix) score += 60
-                            else if (wordMatchesPrefix) score += 40
-                            else if (fullLower.contains(activeSegment)) score += 10
-                            else score = 0 // Does not match active subfolder
-                        }
-                    } else {
-                        score = 0
-                    }
-                } else {
-                    // Standard root/folder query: strict word & segment prefix matching
-                    val startsWithExact = fullLower.startsWith(cleanQ) || catLower.startsWith(cleanQ)
-                    val segmentStartsWith = segments.any { it.startsWith(cleanQ) }
-                    val wordStartsWith = words.any { it.startsWith(cleanQ) }
-                    val keywordStartsWith = entry.keywords.any { it.startsWith(cleanQ) || it.split(" ").any { w -> w.startsWith(cleanQ) } }
-
-                    if (startsWithExact) {
-                        score += 100
-                    } else if (segmentStartsWith) {
-                        score += 80
-                    } else if (wordStartsWith) {
-                        score += 60
-                    } else if (keywordStartsWith) {
-                        score += 40
-                    } else if (cleanQ.length >= 3 && fullLower.contains(cleanQ)) {
-                        // Loose substring only for queries with at least 3 characters
-                        score += 15
-                    }
-                }
-
-                if (isCustom && score > 0) {
-                    score += 50 // Prioritize user-created folders
-                }
-
-                entry to score
-            }
-            .filter { it.second > 0 }
-            .sortedByDescending { it.second }
-            .map { it.first }
-            .distinctBy { it.fullPath }
-            .take(maxResults)
-            .toList()
     }
 }

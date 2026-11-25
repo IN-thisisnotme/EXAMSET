@@ -148,6 +148,7 @@ import com.example.data.PaperEntity
 import com.example.data.toQuestionPaper
 import com.example.util.McqParser
 import com.example.util.ExamNumberGenerator
+import com.example.util.FolderPathHelper
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -701,9 +702,9 @@ fun HomeScreen(
                                     }
                                 }
 
-                                val activeFolderName = remember(lastActiveFolderId, folders) {
+                                val activeFolderPath = remember(lastActiveFolderId, folders) {
                                     if (lastActiveFolderId == "all") null
-                                    else folders.find { it.id == lastActiveFolderId }?.name
+                                    else FolderPathHelper.getFolderHierarchyPath(lastActiveFolderId, folders).ifBlank { null }
                                 }
                                 Column(
                                     modifier = Modifier
@@ -720,14 +721,14 @@ fun HomeScreen(
                                         lineHeight = 20.sp
                                     )
                                     val subtitle = when {
-                                        currentPaper != null -> "${ExamNumberGenerator.formatSetDisplayLabel(currentPaper!!.metadata.setNumber)} • ${currentPaper!!.metadata.subject}"
-                                        !activeFolderName.isNullOrBlank() -> activeFolderName
+                                        currentPaper != null -> "${ExamNumberGenerator.formatSetDisplayLabel(currentPaper!!.metadata.setNumber)} • ${FolderPathHelper.formatDisplayPath(currentPaper!!.metadata.subject)}"
+                                        !activeFolderPath.isNullOrBlank() -> activeFolderPath
                                         else -> "Exam Studio"
                                     }
                                     Text(
                                         text = subtitle,
                                         fontSize = 11.5.sp,
-                                        color = if (currentPaper != null || !activeFolderName.isNullOrBlank()) colors.tealDark else colors.muted,
+                                        color = if (currentPaper != null || !activeFolderPath.isNullOrBlank()) colors.tealDark else colors.muted,
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 2,
                                         softWrap = true,
@@ -2380,7 +2381,7 @@ fun SubjectDashboard(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             Text(
-                                text = stat.name,
+                                text = FolderPathHelper.formatDisplayPath(stat.name),
                                 fontSize = 14.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.inkBold,

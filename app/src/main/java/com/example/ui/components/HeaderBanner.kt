@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.PaperMetadata
 import com.example.ui.theme.ExamTheme
 import com.example.util.ExamNumberGenerator
+import com.example.util.FolderPathHelper
 
 /**
  * Signature Navy Header Banner directly recreating Python ReportLab's draw_first_page banner.
@@ -165,7 +166,7 @@ fun HeaderBanner(
 
             // Subject Line
             Text(
-                text = metadata.subject,
+                text = FolderPathHelper.formatDisplayPath(metadata.subject),
                 color = colors.teal,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Medium,

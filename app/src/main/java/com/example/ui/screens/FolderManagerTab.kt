@@ -893,9 +893,11 @@ fun FolderManagerTab(
 
                                             Spacer(modifier = Modifier.height(4.dp))
 
-                                            val parentLabel = currentFolder?.parentId?.let { pid ->
-                                                folders.find { it.id == pid }?.name
-                                            } ?: "Root Series"
+                                            val parentLabel = if (breadcrumbPath.size > 1) {
+                                                breadcrumbPath.dropLast(1).joinToString(" > ") { it.name }
+                                            } else {
+                                                "Root Folder"
+                                            }
                                             Text(
                                                 text = "$parentLabel • Offline Question & Notes Library",
                                                 fontSize = 11.5.sp,
@@ -1432,7 +1434,7 @@ fun FolderManagerTab(
                         value = newFolderName,
                         onValueChange = { newFolderName = it },
                         label = { Text(if (isSubFolder) "Sub-Folder Name" else "Folder Name") },
-                        placeholder = { Text(if (isSubFolder) "e.g. GS Paper 1, CSAT or Prelims/CSAT" else "e.g. UPSC CSE, State PSC or UPSC/Prelims") },
+                        placeholder = { Text(if (isSubFolder) "e.g. Child > Sub-Child" else "e.g. Parent > Child > Sub-Child") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

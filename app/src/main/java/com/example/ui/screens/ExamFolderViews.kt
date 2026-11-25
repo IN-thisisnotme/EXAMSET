@@ -95,6 +95,7 @@ import com.example.ui.LibraryIndexState
 import com.example.ui.theme.ExamTheme
 import com.example.ui.theme.parseHexColorSafe
 import com.example.util.ExamNumberGenerator
+import com.example.util.FolderPathHelper
 import com.example.util.PaperLanguageDetector
 import java.util.Locale
 
@@ -836,7 +837,7 @@ fun PaperExamCard(
                             border = BorderStroke(0.5.dp, colors.teal.copy(alpha = 0.25f))
                         ) {
                             Text(
-                                text = paper.subject.substringAfterLast(">").trim(),
+                                text = FolderPathHelper.formatDisplayPath(paper.subject).substringAfterLast(">").trim(),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.infoBadgeText,
@@ -1608,7 +1609,7 @@ fun LazyListScope.renderRootExaminationLibrary(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (searchQuery.isNotBlank()) "Try searching for a different keyword" else "Create your first examination folder (e.g. 'UPSC CSE GS1', 'SSC JE') to organize test sets & notes.",
+                        text = if (searchQuery.isNotBlank()) "Try searching for a different keyword" else "Create your first folder (e.g. 'Engineering > Mechanics', 'Coursework') to organize test sets & notes.",
                         fontSize = 12.sp,
                         color = colors.inkMuted,
                         textAlign = TextAlign.Center
