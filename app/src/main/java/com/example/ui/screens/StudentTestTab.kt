@@ -753,7 +753,7 @@ private fun ExamStartOverviewView(
                             border = BorderStroke(0.8.dp, if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) cbtBorder else colors.teal)
                         ) {
                             Text(
-                                text = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) "TCS iON CBT" else "Scrollable Paper",
+                                text = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) "Standard CBT Mode" else "Scrollable Paper",
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (examInterfaceMode == ExamInterfaceMode.TCS_CBT) cbtAccent else colors.teal,
@@ -788,7 +788,7 @@ private fun ExamStartOverviewView(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "TCS iON CBT",
+                                        text = "Standard CBT Mode",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.sp,
                                         color = if (isCbtSelected) cbtTitle else colors.inkBold
@@ -1692,7 +1692,7 @@ private fun ActiveExamView(
                     Icon(Icons.Default.Assessment, contentDescription = null, tint = colors.teal)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "TCS iON Examination Summary",
+                        "Examination Summary",
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         color = colors.inkBold

@@ -129,14 +129,14 @@ private val APP_GUIDE_CATALOG: List<AppGuideEntry> = listOf(
         icon = Icons.Default.EditNote,
         summary = "Paste or import questions from text, Markdown tables, JSON arrays, or files into organized folders.",
         quickTip = "Number questions cleanly (1. / Q1.), keep options (A)-(D), and place an Answer Key section like `1: A` at the end.",
-        details = "Supports single-line, multi-line, Hindi/Devanagari options, LaTeX math ($...$), Assertion-Reason blocks, and automatic duplicate detection across your folder.",
+        details = "Supports single-line, multi-line, multilingual & non-Latin scripts, LaTeX math ($...$), Assertion-Reason blocks, and automatic duplicate detection across your folder.",
         keywords = listOf("import", "aiken", "json", "csv", "markdown", "table", "paste", "questions", "format", "latex"),
         actionLabel = "Open Importer",
         destination = GuideDestination.INPUT_MCQ_SHEET
     ),
     AppGuideEntry(
         id = "tcs_cbt_test",
-        title = "TCS iON CBT & Scrollable Exam Modes",
+        title = "Standard CBT & Scrollable Exam Modes",
         category = AppGuideCategory.EXAMS_TESTS,
         icon = Icons.Default.Quiz,
         summary = "Practice full-screen timed mock tests with Save & Next, Mark for Review, 5-state palette, or continuous paper scroll.",

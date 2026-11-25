@@ -232,7 +232,7 @@ fun ExamPaletteSideSheet(
                             )
                         }
                         Text(
-                            text = if (isCbtMode) "$totalCount Questions • TCS iON CBT Mode" else "$setNumber • $totalCount Questions",
+                            text = if (isCbtMode) "$totalCount Questions • Standard CBT Mode" else "$setNumber • $totalCount Questions",
                             fontSize = 11.5.sp,
                             color = colors.muted,
                             maxLines = 1,

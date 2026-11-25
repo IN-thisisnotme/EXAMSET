@@ -2721,120 +2721,114 @@ fun InputBottomSheet(
                             letterSpacing = 0.5.sp
                         )
 
-                        // Extended Exam Preset Catalog (Synchronized with Tools Tab)
+                        // [DEPRECATED 2026-11-25] Reason: Replaced static examPresets & quickSubjects strips with on-demand UserFolderDropdownMenu using user folders (Parent > Child > Sub-Child > L4+). Restore if: Static preset strips are explicitly requested again.
+                        /*
                         val examPresets = listOf(
-                            "UPSC Civil Services",
-                            "State PCS",
-                            "SSC CGL / Banking",
-                            "Railways / RRB",
-                            "NEET / Biology",
-                            "JEE / Physics",
-                            "GATE / Engineering",
-                            "USMLE / Clinical",
-                            "BAR / Law Exam",
-                            "SAT / ACT",
-                            "School Board"
+                            "UPSC Civil Services", "State PCS", "SSC CGL / Banking", "Railways / RRB",
+                            "NEET / Biology", "JEE / Physics", "GATE / Engineering", "USMLE / Clinical",
+                            "BAR / Law Exam", "SAT / ACT", "School Board"
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            examPresets.forEach { preset ->
-                                val isSelected = promptExam.equals(preset, ignoreCase = true) || (promptExam.isNotBlank() && promptExam.startsWith(preset.take(6)))
-                                Surface(
-                                    modifier = Modifier.clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        promptExam = preset
-                                    },
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
-                                    border = BorderStroke(if (isSelected) 1.5.dp else 0.5.dp, if (isSelected) colors.tealLight else colors.border)
-                                ) {
-                                    Text(
-                                        text = preset,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        OutlinedTextField(
-                            value = promptExam,
-                            onValueChange = { promptExam = it },
-                            label = { Text("Exam", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            placeholder = { Text("UPSC", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            modifier = Modifier.fillMaxWidth().testTag("prompt_field_exam")
-                        )
-
-                        // Quick-Pick Subject Suggestions
                         val quickSubjects = listOf(
-                            "General Science",
-                            "Modern Indian History",
-                            "Polity & Governance",
-                            "Geography & Climate",
-                            "Quantitative Aptitude",
-                            "Clinical Medicine",
-                            "Physics & Mechanics",
-                            "English Comprehension"
+                            "General Science", "Modern Indian History", "Polity & Governance",
+                            "Geography & Climate", "Quantitative Aptitude", "Clinical Medicine",
+                            "Physics & Mechanics", "English Comprehension"
                         )
-                        Text(
-                            text = "Quick Subject Ideas",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = colors.muted
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            quickSubjects.forEach { quickSub ->
-                                val isSubSelected = promptSubject.equals(quickSub, ignoreCase = true)
-                                Surface(
-                                    modifier = Modifier.clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        promptSubject = quickSub
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSubSelected) colors.teal else colors.surfaceVariant.copy(alpha = 0.6f),
-                                    border = BorderStroke(if (isSubSelected) 1.5.dp else 0.5.dp, if (isSubSelected) colors.tealLight else colors.border)
-                                ) {
-                                    Text(
-                                        text = quickSub,
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSubSelected) androidx.compose.ui.graphics.Color.White else colors.inkBold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                        */
+
+                        var isPromptExamDropdownOpen by remember { mutableStateOf(false) }
+                        var isPromptSubjectDropdownOpen by remember { mutableStateOf(false) }
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = promptExam,
+                                onValueChange = { promptExam = it },
+                                label = { Text("Exam", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                placeholder = { Text("e.g., GRE, SAT, Bar Exam, University Finals", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                trailingIcon = {
+                                    if (folders.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { isPromptExamDropdownOpen = !isPromptExamDropdownOpen },
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .testTag("sheet_prompt_exam_dropdown_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "Choose Exam from User Folders",
+                                                tint = colors.muted
+                                            )
+                                        }
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                modifier = Modifier.fillMaxWidth().testTag("prompt_field_exam")
+                            )
+
+                            UserFolderDropdownMenu(
+                                expanded = isPromptExamDropdownOpen && folders.isNotEmpty(),
+                                query = promptExam,
+                                folders = folders,
+                                onDismissRequest = { isPromptExamDropdownOpen = false },
+                                onSelectEntry = { entry ->
+                                    val segs = entry.fullPath.split(">").map { it.trim() }.filter { it.isNotEmpty() }
+                                    promptExam = segs.firstOrNull() ?: entry.leafName
+                                    if (segs.size > 1) {
+                                        promptSubject = segs.drop(1).joinToString(" > ")
+                                    }
+                                    isPromptExamDropdownOpen = false
                                 }
-                            }
+                            )
                         }
 
-                        OutlinedTextField(
-                            value = promptSubject,
-                            onValueChange = { promptSubject = it },
-                            label = { Text("Subject", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            placeholder = { Text("Physics", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            modifier = Modifier.fillMaxWidth().testTag("prompt_field_subject")
-                        )
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = promptSubject,
+                                onValueChange = { newSub ->
+                                    promptSubject = if (newSub.contains("//")) newSub else newSub.replace("/", " > ")
+                                },
+                                label = { Text("Subject / Folder Path", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                placeholder = { Text("e.g., Organic Chemistry or Parent > Child > Sub-Child", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(8.dp),
+                                trailingIcon = {
+                                    if (folders.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { isPromptSubjectDropdownOpen = !isPromptSubjectDropdownOpen },
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .testTag("sheet_prompt_subject_dropdown_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "Choose Subject from User Folders",
+                                                tint = colors.muted
+                                            )
+                                        }
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                modifier = Modifier.fillMaxWidth().testTag("prompt_field_subject")
+                            )
+
+                            UserFolderDropdownMenu(
+                                expanded = isPromptSubjectDropdownOpen && folders.isNotEmpty(),
+                                query = promptSubject,
+                                folders = folders,
+                                onDismissRequest = { isPromptSubjectDropdownOpen = false },
+                                onSelectEntry = { entry ->
+                                    promptSubject = entry.fullPath
+                                    isPromptSubjectDropdownOpen = false
+                                }
+                            )
+                        }
 
                         OutlinedTextField(
                             value = promptTopic,
                             onValueChange = { promptTopic = it },
                             label = { Text("Topic", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            placeholder = { Text("Optics", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            placeholder = { Text("e.g., Thermodynamics, Constitutional Law, Calculus", fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             singleLine = true,
                             shape = RoundedCornerShape(8.dp),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
