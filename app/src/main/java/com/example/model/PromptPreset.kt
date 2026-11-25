@@ -32,7 +32,8 @@ data class QuestionPromptConfig(
     val promptPhasingStyle: String = "Standard",
     val targetOutputFormat: String = "Strict JSON",
     val promptDensity: String = "Concise",
-    val enableQuantityCorrectionRule: Boolean = false
+    val enableQuantityCorrectionRule: Boolean = false,
+    val moduleCode: String = ""
 ) {
     fun normalized(): QuestionPromptConfig = copy(
         examType = examType.trim(),
@@ -46,7 +47,8 @@ data class QuestionPromptConfig(
         optionCount = if (optionCount == 5) 5 else 4,
         promptPhasingStyle = promptPhasingStyle.trim().ifBlank { "Standard" },
         targetOutputFormat = targetOutputFormat.trim().ifBlank { "Strict JSON" },
-        promptDensity = promptDensity.trim().ifBlank { "Concise" }
+        promptDensity = promptDensity.trim().ifBlank { "Concise" },
+        moduleCode = moduleCode.trim()
     )
 
     fun formatBadge(): String = when (targetOutputFormat) {
@@ -57,6 +59,7 @@ data class QuestionPromptConfig(
 
     fun specChips(): List<String> = buildList {
         if (examType.isNotBlank()) add(abbreviateTag(examType, 18))
+        if (moduleCode.isNotBlank()) add(abbreviateTag(moduleCode, 14))
         if (subject.isNotBlank()) add(abbreviateTag(subject, 18))
         add("${questionCount}Q")
         add(difficulty)
@@ -75,6 +78,7 @@ data class QuestionPromptConfig(
     fun suggestName(): String {
         val parts = buildList {
             if (examType.isNotBlank()) add(abbreviateTag(examType, 18))
+            if (moduleCode.isNotBlank()) add(abbreviateTag(moduleCode, 14))
             if (subject.isNotBlank()) add(abbreviateTag(subject, 16))
             add("${questionCount}Q")
             add(
@@ -104,6 +108,7 @@ data class QuestionPromptConfig(
         put("targetOutputFormat", targetOutputFormat)
         put("promptDensity", promptDensity)
         put("enableQuantityCorrectionRule", enableQuantityCorrectionRule)
+        if (moduleCode.isNotBlank()) put("moduleCode", moduleCode)
     }
 
     companion object {
@@ -124,7 +129,8 @@ data class QuestionPromptConfig(
                 promptPhasingStyle = obj.optString("promptPhasingStyle", "Standard").ifBlank { "Standard" },
                 targetOutputFormat = obj.optString("targetOutputFormat", "Strict JSON").ifBlank { "Strict JSON" },
                 promptDensity = obj.optString("promptDensity", "Concise").ifBlank { "Concise" },
-                enableQuantityCorrectionRule = obj.optBoolean("enableQuantityCorrectionRule", false)
+                enableQuantityCorrectionRule = obj.optBoolean("enableQuantityCorrectionRule", false),
+                moduleCode = obj.optString("moduleCode", "")
             ).normalized()
         }
     }
@@ -145,7 +151,9 @@ data class KnowledgePromptConfig(
     val includeCallouts: Boolean = true,
     val includeComparisonTable: Boolean = false,
     val includePyqTags: Boolean = false,
-    val customInstruction: String = ""
+    val customInstruction: String = "",
+    val moduleCode: String = "",
+    val answerWordTarget: String = ""
 ) {
     fun normalized(): KnowledgePromptConfig = copy(
         examTarget = examTarget.trim(),
@@ -153,7 +161,9 @@ data class KnowledgePromptConfig(
         customCollectionLabel = customCollectionLabel.trim(),
         itemCount = itemCount.coerceIn(3, 120),
         language = language.trim().ifBlank { "English" },
-        customInstruction = customInstruction.trim()
+        customInstruction = customInstruction.trim(),
+        moduleCode = moduleCode.trim(),
+        answerWordTarget = answerWordTarget.trim()
     )
 
     fun formatBadge(): String {
@@ -166,6 +176,7 @@ data class KnowledgePromptConfig(
 
     fun specChips(): List<String> = buildList {
         if (examTarget.isNotBlank()) add(abbreviateTag(examTarget, 18))
+        if (moduleCode.isNotBlank()) add(abbreviateTag(moduleCode, 14))
         if (subject.isNotBlank()) add(abbreviateTag(subject, 18))
         add("$itemCount Items")
         add(
@@ -175,6 +186,9 @@ data class KnowledgePromptConfig(
                 KnowledgeDepth.DEEP -> "Deep"
             }
         )
+        if (collectionType == KnowledgeCollectionType.LONG_ANSWER && answerWordTarget.isNotBlank()) {
+            add(abbreviateTag(answerWordTarget, 12))
+        }
         if (includeBilingualTerms) {
             add("Bilingual")
         } else if (!language.equals("English", ignoreCase = true)) {
@@ -188,6 +202,7 @@ data class KnowledgePromptConfig(
     fun suggestName(): String {
         val parts = buildList {
             if (examTarget.isNotBlank()) add(abbreviateTag(examTarget, 18))
+            if (moduleCode.isNotBlank()) add(abbreviateTag(moduleCode, 14))
             if (subject.isNotBlank()) add(abbreviateTag(subject, 16))
             add(
                 if (collectionType == KnowledgeCollectionType.CUSTOM && customCollectionLabel.isNotBlank()) {
@@ -216,6 +231,8 @@ data class KnowledgePromptConfig(
         put("includeComparisonTable", includeComparisonTable)
         put("includePyqTags", includePyqTags)
         put("customInstruction", customInstruction)
+        if (moduleCode.isNotBlank()) put("moduleCode", moduleCode)
+        if (answerWordTarget.isNotBlank()) put("answerWordTarget", answerWordTarget)
     }
 
     companion object {
@@ -243,7 +260,9 @@ data class KnowledgePromptConfig(
                 includeCallouts = obj.optBoolean("includeCallouts", true),
                 includeComparisonTable = obj.optBoolean("includeComparisonTable", false),
                 includePyqTags = obj.optBoolean("includePyqTags", false),
-                customInstruction = obj.optString("customInstruction", "")
+                customInstruction = obj.optString("customInstruction", ""),
+                moduleCode = obj.optString("moduleCode", ""),
+                answerWordTarget = obj.optString("answerWordTarget", "")
             ).normalized()
         }
     }

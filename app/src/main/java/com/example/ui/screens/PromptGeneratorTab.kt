@@ -347,7 +347,7 @@ fun PromptGeneratorTab(
     }
 
     val generatedPrompt by remember(
-        qState.examType, qState.subject, qState.topic, countInt, qState.difficulty, qState.questionType,
+        qState.examType, qState.subject, qState.moduleCode, qState.topic, countInt, qState.difficulty, qState.questionType,
         qState.questionLanguage, effectiveExplanationLanguage, qState.explainAllFourOptions,
         qState.includeFormulasAndDiagrams, qState.promptPhasingStyle, qState.enableQuantityCorrectionRule,
         qState.targetOutputFormat, qState.promptDensity, qState.optionCount
@@ -356,6 +356,8 @@ fun PromptGeneratorTab(
             val countInt = qState.questionCount.toInt()
             val qLang = qState.questionLanguage.trim().ifBlank { "English" }
             val targetExam = qState.examType.trim().ifBlank { "Competitive Examination" }
+            val cleanModule = qState.moduleCode.trim()
+            val moduleScopeSuffix = if (cleanModule.isNotBlank()) " [Module / Paper: $cleanModule]" else ""
             val targetSubject = buildString {
                 if (qState.subject.isNotBlank()) {
                     append(qState.subject.trim())
@@ -367,6 +369,7 @@ fun PromptGeneratorTab(
                 } else {
                     append("Comprehensive Subject Curriculum")
                 }
+                append(moduleScopeSuffix)
             }
 
             val cognitiveCalibration = when (qState.difficulty) {
@@ -1228,6 +1231,20 @@ fun PromptGeneratorTab(
                             }
                         )
                     }
+
+                    OutlinedTextField(
+                        value = qState.moduleCode,
+                        onValueChange = { qState.moduleCode = it },
+                        label = { Text("Module / Paper Code (Optional)", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. Paper I, Course-101, Unit 3", fontSize = 12.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = fieldColors,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("prompt_module_input")
+                    )
 
                     OutlinedTextField(
                         value = qState.topic,

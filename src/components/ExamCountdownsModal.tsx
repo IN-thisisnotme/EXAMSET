@@ -96,7 +96,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Exam target (e.g., Final Exam / Certification 2026)"
+              placeholder="Target (e.g., Term-End Exam / Finals / Assignment 2026)"
               className="sm:col-span-2 px-3 py-2 rounded-lg focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
             />
@@ -108,11 +108,35 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               className="px-3 py-2 rounded-lg focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
             />
+            <div className="sm:col-span-3 flex flex-wrap items-center gap-1.5">
+              <span className="text-[0.6875rem] font-semibold mr-1" style={{ color: colors.muted }}>
+                Quick Date:
+              </span>
+              {[7, 15, 30, 60, 90].map((offset) => {
+                const candidate = new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+                const selected = dateIso === candidate;
+                return (
+                  <button
+                    key={offset}
+                    type="button"
+                    onClick={() => setDateIso(candidate)}
+                    className="px-2 py-0.5 rounded-md text-[0.6875rem] font-bold border transition"
+                    style={
+                      selected
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
+                        : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
+                    }
+                  >
+                    +{offset}d
+                  </button>
+                );
+              })}
+            </div>
             <input
               type="text"
               value={examType}
               onChange={(e) => setExamType(e.target.value)}
-              placeholder="Exam / Course Track (e.g., University, Certification)"
+              placeholder="Course / Subject Focus (e.g., Course-101, Paper II, Finals)"
               className="sm:col-span-2 px-3 py-2 rounded-lg focus:outline-none"
               style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
             />

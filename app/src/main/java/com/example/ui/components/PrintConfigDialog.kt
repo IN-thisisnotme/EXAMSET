@@ -273,7 +273,7 @@ fun PrintConfigDialog(
 
                         ConfigSwitchRow(
                             title = "Printable OMR Answer Sheet",
-                            subtitle = "Authentic UPSC/NEET magenta sheet with continuous 50-row columns",
+                            subtitle = "Standard magenta OMR response sheet with continuous 50-row columns",
                             checked = config.includeOmrSheet,
                             onCheckedChange = { config = config.copy(includeOmrSheet = it) }
                         )

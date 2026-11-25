@@ -338,6 +338,50 @@ export const EditMetadataModal: React.FC<EditMetadataModalProps> = ({
             </div>
           </div>
 
+          <div
+            className="p-2.5 rounded-xl border space-y-1.5"
+            style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+          >
+            <div className="text-[0.6875rem] font-bold" style={{ color: colors.inkMuted }}>
+              Standard Marking Presets (Quick Fill)
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: '1 Pt (No Neg)', pos: 1, neg: 0 },
+                { label: '1 Pt (1/4 Neg · -0.25)', pos: 1, neg: 0.25 },
+                { label: '1 Pt (1/3 Neg · -0.33)', pos: 1, neg: 0.33 },
+                { label: '2 Pts (No Neg)', pos: 2, neg: 0 },
+                { label: '2 Pts (1/4 Neg · -0.50)', pos: 2, neg: 0.5 },
+                { label: '2 Pts (1/3 Neg · -0.67)', pos: 2, neg: 0.67 },
+                { label: '4 Pts (1/4 Neg · -1.0)', pos: 4, neg: 1 },
+                { label: '5 Pts (No Neg)', pos: 5, neg: 0 },
+              ].map((preset) => {
+                const active =
+                  Math.abs(positiveMarks - preset.pos) < 0.01 &&
+                  Math.abs(negativeMarks - preset.neg) < 0.02;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setPositiveMarks(preset.pos);
+                      setNegativeMarks(preset.neg);
+                      setUnattendedMarks(0);
+                    }}
+                    className="px-2.5 py-1 rounded-md text-[0.6875rem] font-semibold border transition"
+                    style={
+                      active
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
+                        : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
+                    }
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold mb-1" style={{ color: colors.inkMuted }}>

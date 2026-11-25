@@ -1053,7 +1053,7 @@ fun KnowledgeStudioEditorScreen(
                                     onValueChange = { rawContent = it },
                                     placeholder = {
                                         Text(
-                                            text = "Write or paste any study format here...\n\nSupports:\n• Long-Form UPSC Mains Q&A (`Q1: ...` / `A: ...` with multiple paragraphs, **bold** sections & bullets)\n• Crisp One-Liners (`1. **Article 32** -> Constitutional Remedies`) & Multi-Liner Cards\n• Inline `\$...\$` & display `\$\$...\$\$` LaTeX math, matrices & `\\ce{...}` chemistry\n• Markdown comparison tables & `> Exam Tip:` callouts",
+                                            text = "Write or paste any study format here...\n\nSupports:\n• Long-Form Subjective Q&A (`Q1: ...` / `A: ...` with multiple paragraphs, **bold** sections & bullets)\n• Crisp One-Liners (`1. **Article 32** -> Constitutional Remedies`) & Multi-Liner Cards\n• Inline `\$...\$` & display `\$\$...\$\$` LaTeX math, matrices & `\\ce{...}` chemistry\n• Markdown comparison tables & `> Exam Tip:` callouts",
                                             fontSize = 12.5.sp,
                                             color = colors.inkMuted,
                                             lineHeight = 18.sp

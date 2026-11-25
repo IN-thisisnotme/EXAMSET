@@ -56,6 +56,7 @@ interface PromptGeneratorTabProps {
 const DEFAULT_QUESTION_CFG: QuestionPromptConfig = {
   examType: '',
   subject: '',
+  moduleCode: '',
   topic: '',
   questionCount: 20,
   difficulty: 'Mixed',
@@ -73,11 +74,13 @@ const DEFAULT_QUESTION_CFG: QuestionPromptConfig = {
 const DEFAULT_KNOWLEDGE_CFG: KnowledgePromptConfig = {
   examTarget: '',
   subject: '',
+  moduleCode: '',
   topic: '',
   collectionType: 'MULTI_LINER',
   customCollectionLabel: '',
   itemCount: 15,
   depth: 'BALANCED',
+  answerWordTarget: '',
   layerOrder: 'TERM_FIRST',
   language: 'English',
   includeBilingualTerms: false,
@@ -193,6 +196,8 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
   const questionPrompt = useMemo(() => {
     const examLabel = qCfg.examType.trim() || 'Standard Assessment';
     const subjectLabel = qCfg.subject.trim() || 'General Topics';
+    const cleanModule = (qCfg.moduleCode || '').trim();
+    const topicAndModule = `${qCfg.topic ? ` (${qCfg.topic})` : ''}${cleanModule ? ` [Module / Paper: ${cleanModule}]` : ''}`;
     const qLang = qCfg.questionLanguage.trim() || 'English';
     const isMsq = qCfg.difficulty === 'MSQ';
     const optRule =
@@ -212,7 +217,7 @@ export const PromptGeneratorTab: React.FC<PromptGeneratorTabProps> = ({
     if (qCfg.targetOutputFormat === 'JSON') {
       const optEJson = qCfg.optionCount === 5 ? ',\n      "e": "Option E text"' : '';
       if (qCfg.promptDensity === 'Concise') {
-        return `Generate exactly ${qCfg.questionCount} multiple-choice questions for ${examLabel} at ${qCfg.difficulty} standard on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} in ${qLang}.
+        return `Generate exactly ${qCfg.questionCount} multiple-choice questions for ${examLabel} at ${qCfg.difficulty} standard on ${subjectLabel}${topicAndModule} in ${qLang}.
 Output ONLY a strict, valid JSON array of objects without markdown fences or extra text. Format:
 [
   {
@@ -235,7 +240,7 @@ Requirements:
 4. Valid JSON only. Do not truncate.${strictQtyRule}`;
       }
 
-      return `Generate exactly ${qCfg.questionCount} rigorous questions at ${qCfg.difficulty} difficulty standard on ${subjectLabel}${qCfg.topic ? ` (Focus Topics: ${qCfg.topic})` : ''}, tailored for ${examLabel} in ${qLang}.
+      return `Generate exactly ${qCfg.questionCount} rigorous questions at ${qCfg.difficulty} difficulty standard on ${subjectLabel}${qCfg.topic ? ` (Focus Topics: ${qCfg.topic})` : ''}${cleanModule ? ` [Module / Paper: ${cleanModule}]` : ''}, tailored for ${examLabel} in ${qLang}.
 Output MUST be an unbroken, valid JSON array:
 [
   {
@@ -263,7 +268,7 @@ Strict Rules:
       const colEHeader = qCfg.optionCount === 5 ? ' Option E |' : '';
       const colESep = qCfg.optionCount === 5 ? ' :--- |' : '';
       const colEVal = qCfg.optionCount === 5 ? ' Choice E |' : '';
-      return `Generate exactly ${qCfg.questionCount} questions on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} for ${examLabel} at ${qCfg.difficulty} standard in ${qLang}.
+      return `Generate exactly ${qCfg.questionCount} questions on ${subjectLabel}${topicAndModule} for ${examLabel} at ${qCfg.difficulty} standard in ${qLang}.
 Output MUST be a Markdown Pipe Table with these exact columns:
 | Question | Option A | Option B | Option C | Option D |${colEHeader} Answer | Explanation |
 | :--- | :--- | :--- | :--- | :--- |${colESep} :--- | :--- |
@@ -277,7 +282,7 @@ Rules:
 
     const optELine = qCfg.optionCount === 5 ? '\n(E) Option E' : '';
     if (qCfg.promptDensity === 'Concise') {
-      return `Generate ${qCfg.questionCount} questions for ${examLabel} on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} in ${qLang}.
+      return `Generate ${qCfg.questionCount} questions for ${examLabel} on ${subjectLabel}${topicAndModule} in ${qLang}.
 Output format:
 Q1. Question text
 (A) Option A
@@ -290,7 +295,7 @@ EXPLANATION: Solution in ${effectiveExplanationLang}
 (${mathDirective} — Repeat sequentially for Q1 through Q${qCfg.questionCount})${strictQtyRule}`;
     }
 
-    return `Generate exactly ${qCfg.questionCount} questions at ${qCfg.difficulty} standard on ${subjectLabel}${qCfg.topic ? ` (${qCfg.topic})` : ''} for ${examLabel} in ${qLang}.
+    return `Generate exactly ${qCfg.questionCount} questions at ${qCfg.difficulty} standard on ${subjectLabel}${topicAndModule} for ${examLabel} in ${qLang}.
 
 ## Phase 1: Questions
 Label sequentially Q1. through Q${qCfg.questionCount}. Each with options (A) through (${qCfg.optionCount === 5 ? 'E' : 'D'}).
@@ -609,6 +614,20 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
 
                 <div>
                   <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                    Module / Paper Code (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={qCfg.moduleCode || ''}
+                    onChange={(e) => setQCfg({ ...qCfg, moduleCode: e.target.value })}
+                    placeholder="e.g., Paper I, Course-101, Unit 3"
+                    className="w-full px-3 py-1.5 rounded-lg border"
+                    style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                     Specific Topics
                   </label>
                   <textarea
@@ -908,6 +927,20 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
 
                 <div>
                   <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                    Module / Paper Code (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={kCfg.moduleCode || ''}
+                    onChange={(e) => setKCfg({ ...kCfg, moduleCode: e.target.value })}
+                    placeholder="e.g., Paper I, Course-101, Unit 3"
+                    className="w-full px-3 py-1.5 rounded-lg border"
+                    style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
                     Chapter / Topic Scope
                   </label>
                   <textarea
@@ -966,6 +999,39 @@ For each question Q1 to Q${qCfg.questionCount}, explain core concept and distrac
                     />
                   </div>
                 </div>
+
+                {kCfg.collectionType === 'LONG_ANSWER' && (
+                  <div>
+                    <label className="block font-semibold mb-1" style={{ color: colors.ink }}>
+                      Response Word-Limit
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {[
+                        { value: '', label: 'Auto (By Depth)' },
+                        { value: '~150 words', label: 'Short (~150w)' },
+                        { value: '~250 words', label: 'Standard (~250w)' },
+                        { value: '~500 words', label: 'Extended (~500w)' },
+                      ].map((opt) => {
+                        const isSel = (kCfg.answerWordTarget || '') === opt.value;
+                        return (
+                          <button
+                            key={opt.label}
+                            type="button"
+                            onClick={() => setKCfg({ ...kCfg, answerWordTarget: opt.value })}
+                            className="px-2 py-1.5 rounded-md font-bold border text-[0.6875rem] transition"
+                            style={
+                              isSel
+                                ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
+                                : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
+                            }
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block font-semibold mb-1" style={{ color: colors.ink }}>

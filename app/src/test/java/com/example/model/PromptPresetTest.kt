@@ -88,6 +88,37 @@ class PromptPresetTest {
         assertEquals(FlashcardPromptStyle.FORMULA_TRAP, restored[2].flashcardConfig?.cardStyle)
         assertEquals("FORMULA SRS", restored[2].formatBadge())
 
+        // Module/Paper Code & Long-Answer Word Target round-trip
+        val modularQuestion = PromptPreset(
+            name = "Course 101 Practice",
+            mode = PromptPresetMode.QUESTION_SET,
+            questionConfig = QuestionPromptConfig(
+                examType = "Term-End Exam",
+                subject = "Economics",
+                moduleCode = "Course-101 · Unit 2",
+                questionCount = 20
+            )
+        )
+        val modularKnowledge = PromptPreset(
+            name = "Course 101 Essays",
+            mode = PromptPresetMode.KNOWLEDGE_SET,
+            knowledgeConfig = KnowledgePromptConfig(
+                examTarget = "Term-End Exam",
+                subject = "Economics",
+                moduleCode = "Paper II",
+                collectionType = KnowledgeCollectionType.LONG_ANSWER,
+                answerWordTarget = "~250 words"
+            )
+        )
+        val restoredModular = PromptPreset.deserializeList(
+            PromptPreset.serializeList(listOf(modularQuestion, modularKnowledge))
+        )
+        assertEquals("Course-101 · Unit 2", restoredModular[0].questionConfig?.moduleCode)
+        assertEquals("Paper II", restoredModular[1].knowledgeConfig?.moduleCode)
+        assertEquals("~250 words", restoredModular[1].knowledgeConfig?.answerWordTarget)
+        assertTrue(restoredModular[1].specChips().contains("Paper II"))
+        assertTrue(restoredModular[1].specChips().contains("~250 words"))
+
         // Corrupt JSON must never crash
         assertTrue(PromptPreset.deserializeList("{not valid json").isEmpty())
         assertTrue(PromptPreset.deserializeList("").isEmpty())

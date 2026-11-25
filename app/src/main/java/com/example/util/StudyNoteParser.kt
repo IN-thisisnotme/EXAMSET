@@ -519,11 +519,15 @@ object StudyNoteParser {
         subject: String = "",
         itemCount: Int? = null,
         includeBilingualTerms: Boolean = false,
-        includePyqTags: Boolean = false
+        includePyqTags: Boolean = false,
+        moduleCode: String = "",
+        answerWordTarget: String = ""
     ): String {
         val cleanTopic = topic.trim().ifBlank { "[ENTER YOUR SUBJECT / TOPIC HERE]" }
         val cleanSubject = subject.trim()
         val cleanExam = examTarget.trim()
+        val cleanModule = moduleCode.trim()
+        val cleanWordTarget = answerWordTarget.trim()
         val collectionTitle = rule.customCollectionLabel.trim().ifBlank { collectionType.label }
         val targetLang = rule.language.ifBlank { "English" }
         val isOneLinerMode = collectionType == KnowledgeCollectionType.ONE_LINERS
@@ -564,6 +568,8 @@ object StudyNoteParser {
 
         val depthInstruction = when {
             isOneLinerMode -> "Keep every item ultra-crisp and high-yield on a single line (<= 140 characters after `->`) so One-Liner recall cards stay concise."
+            isLongAnswerMode && cleanWordTarget.isNotBlank() ->
+                "Write structured $cleanWordTarget examination-grade model answers with contextual Introduction, multi-dimensional Body sub-headings, supporting data/cases/equations, and a concise Conclusion / Way Forward."
             isLongAnswerMode -> when (rule.depth) {
                 KnowledgeDepth.CRISP -> "Write structured ~150-word model answers with a crisp Introduction, bulleted Core Arguments (with Constitutional Articles/Data/Examples), and a 2-line Conclusion."
                 KnowledgeDepth.BALANCED -> "Write comprehensive ~250-word examination-grade model answers with contextual Introduction, multi-dimensional Body sub-headings, supporting data/cases/equations, Challenges, and Way Forward."
@@ -633,6 +639,9 @@ object StudyNoteParser {
             }
             if (cleanExam.isNotBlank()) {
                 appendLine("Target Examination: $cleanExam")
+            }
+            if (cleanModule.isNotBlank()) {
+                appendLine("Module / Paper Code: $cleanModule")
             }
             appendLine("Output Language: $targetLang")
             appendLine()
@@ -756,7 +765,7 @@ object StudyNoteParser {
                 if (includeCallouts) {
                     appendLine()
                     appendLine()
-                    append("> Exam Tip: Substantiate Mains answers with committee names (N.K. Singh), constitutional provisions (Art. 112/292), and balanced pros/cons.")
+                    append("> Exam Tip: Substantiate long-form answers with committee/research citations, statutory or constitutional provisions, and balanced pros/cons.")
                 }
             }.trimIndent()
             KnowledgeCollectionType.COMPARISON_TABLE -> buildString {

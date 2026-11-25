@@ -437,6 +437,7 @@ export type PromptPresetMode =
 export interface QuestionPromptConfig {
   examType: string;
   subject: string;
+  moduleCode?: string;
   topic: string;
   questionCount: number;
   difficulty: string;
@@ -454,11 +455,13 @@ export interface QuestionPromptConfig {
 export interface KnowledgePromptConfig {
   examTarget: string;
   subject: string;
+  moduleCode?: string;
   topic: string;
   collectionType: KnowledgeCollectionType;
   customCollectionLabel: string;
   itemCount: number;
   depth: KnowledgeDepth;
+  answerWordTarget?: string;
   layerOrder: KnowledgeLayerOrder;
   language: string;
   includeBilingualTerms: boolean;

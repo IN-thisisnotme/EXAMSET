@@ -1138,7 +1138,7 @@ private fun SavePromptPresetDialog(
                     value = nameInput,
                     onValueChange = { nameInput = it },
                     label = { Text("Preset Name", fontSize = 12.sp) },
-                    placeholder = { Text("e.g. UPSC Prelims 25Q JSON", fontSize = 12.sp) },
+                    placeholder = { Text("e.g. Module 01 Practice 25Q JSON", fontSize = 12.sp) },
                     singleLine = true,
                     trailingIcon = if (nameInput.isNotEmpty()) {
                         {

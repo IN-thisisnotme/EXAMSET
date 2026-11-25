@@ -288,8 +288,8 @@ fun ExamCountdownsDialog(
                         OutlinedTextField(
                             value = titleInput,
                             onValueChange = { titleInput = it },
-                            label = { Text("Exam Name") },
-                            placeholder = { Text("e.g., Final Exam / Certification 2026") },
+                            label = { Text("Target / Milestone Name") },
+                            placeholder = { Text("e.g., Term-End Exam / Finals / Assignment 2026") },
                             singleLine = true,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -318,10 +318,37 @@ fun ExamCountdownsDialog(
                                 Icon(Icons.Default.Event, contentDescription = "Pick Date", tint = colors.teal)
                             }
                         }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf(7, 15, 30, 60, 90).forEach { offsetDays ->
+                                val offsetDate = StudyDateUtils.addDaysToDateString(nowMillis, offsetDays)
+                                val isChosen = dateInput == offsetDate
+                                Surface(
+                                    onClick = { dateInput = offsetDate },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isChosen) colors.tealLight else colors.surface,
+                                    border = BorderStroke(0.7.dp, if (isChosen) colors.teal else colors.border)
+                                ) {
+                                    Text(
+                                        text = "+${offsetDays}d",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isChosen) colors.tealDark else colors.ink,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
                         OutlinedTextField(
                             value = subjectInput,
                             onValueChange = { subjectInput = it },
-                            label = { Text("Subject / Focus (Optional)") },
+                            label = { Text("Course / Subject Focus (Optional)") },
+                            placeholder = { Text("e.g., Course-101, Paper II, Organic Chemistry") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )

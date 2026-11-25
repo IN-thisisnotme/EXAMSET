@@ -987,6 +987,8 @@ export const StudyNoteParser = {
     const cleanTopic = cfg.topic.trim() || cfg.subject.trim() || '[ENTER TOPIC / CHAPTER HERE]';
     const cleanSubject = cfg.subject.trim();
     const cleanExam = cfg.examTarget.trim();
+    const cleanModule = (cfg.moduleCode || '').trim();
+    const cleanWordTarget = (cfg.answerWordTarget || '').trim();
     const targetLang = cfg.language.trim() || 'English';
     const meta = KNOWLEDGE_COLLECTION_META[cfg.collectionType];
     const collectionTitle =
@@ -1001,7 +1003,9 @@ export const StudyNoteParser = {
     const depthLine = isOneLiner
       ? 'Keep every item ultra-crisp and high-yield on a single line (<= 140 chars after `->`).'
       : isLong
-      ? cfg.depth === 'CRISP'
+      ? cleanWordTarget
+        ? `Write structured ${cleanWordTarget} examination-grade model answers with contextual Introduction, multi-dimensional Body sub-headings, supporting data/cases/equations, and a concise Conclusion / Way Forward.`
+        : cfg.depth === 'CRISP'
         ? 'Write structured ~150-word model answers with Introduction, bulleted Core Arguments, and 2-line Conclusion.'
         : cfg.depth === 'DEEP'
         ? 'Write exhaustive 400+ word analytical model answers with historical context, data/citations, LaTeX, and Way Forward.'
@@ -1055,6 +1059,7 @@ export const StudyNoteParser = {
         ? [`Subject Domain: ${cleanSubject}`]
         : []),
       ...(cleanExam ? [`Target Examination: ${cleanExam}`] : []),
+      ...(cleanModule ? [`Module / Paper Code: ${cleanModule}`] : []),
       `Output Language: ${targetLang}`,
       '',
       'ACCURACY & STRICT FORMATTING RULES:',

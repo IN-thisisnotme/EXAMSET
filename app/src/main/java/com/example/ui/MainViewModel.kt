@@ -6018,6 +6018,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "medical" in s || "neet" in s || "aiims" in s || "norcet" in s -> "#059669"
             "defence" in s || "defense" in s || "nda" in s || "cds" in s || "police" in s || "si" in s -> "#DC2626"
             "teaching" in s || "net" in s || "tet" in s -> "#4F46E5"
+            "assignment" in s || "essay" in s || "subjective" in s -> "#7C3AED"
+            "module" in s || "unit" in s || "block" in s || "chapter" in s -> "#0D9488"
+            "course" in s || "semester" in s || "term" in s || "degree" in s -> "#0284C7"
+            "pyq" in s || "previous" in s || "archive" in s -> "#D97706"
+            "mock" in s || "test" in s || "quiz" in s -> "#2563EB"
+            "revision" in s || "notes" in s || "summary" in s -> "#059669"
             else -> "#0284C7"
         }
     }

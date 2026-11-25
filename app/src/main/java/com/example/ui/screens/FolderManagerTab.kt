@@ -3788,7 +3788,7 @@ private fun TestSeriesHorizontalCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Subtitle / Subject / Folder Location
-            val subtitle = paper.topic.ifBlank { paper.subject.ifBlank { "UPSC CSE GS Paper 1" } }
+            val subtitle = paper.topic.ifBlank { paper.subject.ifBlank { "General Assessment" } }
             Text(
                 text = subtitle,
                 fontSize = 11.sp,

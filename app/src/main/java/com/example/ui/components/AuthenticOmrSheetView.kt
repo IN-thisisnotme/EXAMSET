@@ -140,7 +140,7 @@ fun AuthenticOmrSheetView(
                             horizontalAlignment = Alignment.End
                         ) {
                             Text(
-                                text = "${config.examTitle.ifBlank { paper.metadata.exam.ifBlank { "UPSC CSE" } }.uppercase()} OMR ANSWER SHEET",
+                                text = "${config.examTitle.ifBlank { paper.metadata.exam.ifBlank { "STANDARD ASSESSMENT" } }.uppercase()} OMR ANSWER SHEET",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
                                 color = OMR_MAGENTA,

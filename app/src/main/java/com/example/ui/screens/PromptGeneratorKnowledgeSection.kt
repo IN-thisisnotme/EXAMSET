@@ -87,11 +87,13 @@ import kotlin.math.roundToInt
 class KnowledgePromptState {
     var examTarget by mutableStateOf("")
     var subject by mutableStateOf("")
+    var moduleCode by mutableStateOf("")
     var topic by mutableStateOf("")
     var collectionType by mutableStateOf(KnowledgeCollectionType.MULTI_LINER)
     var customCollectionLabel by mutableStateOf("")
     var itemCount by mutableFloatStateOf(20f)
     var depth by mutableStateOf(KnowledgeDepth.BALANCED)
+    var answerWordTarget by mutableStateOf("")
     var layerOrder by mutableStateOf(KnowledgeLayerOrder.AUTO_DETECT)
     var language by mutableStateOf("English")
     var includeBilingualTerms by mutableStateOf(false)
@@ -127,17 +129,21 @@ class KnowledgePromptState {
             subject = subject,
             itemCount = itemCount.toInt(),
             includeBilingualTerms = includeBilingualTerms,
-            includePyqTags = includePyqTags
+            includePyqTags = includePyqTags,
+            moduleCode = moduleCode,
+            answerWordTarget = answerWordTarget
         )
     }
 
     fun toConfig(): KnowledgePromptConfig = KnowledgePromptConfig(
         examTarget = examTarget,
         subject = subject,
+        moduleCode = moduleCode,
         collectionType = collectionType,
         customCollectionLabel = customCollectionLabel,
         itemCount = itemCount.toInt(),
         depth = depth,
+        answerWordTarget = answerWordTarget,
         layerOrder = layerOrder,
         language = language,
         includeBilingualTerms = includeBilingualTerms,
@@ -153,11 +159,13 @@ class KnowledgePromptState {
         val c = config.normalized()
         examTarget = c.examTarget
         subject = c.subject
+        moduleCode = c.moduleCode
         if (!preserveTopic) topic = ""
         collectionType = c.collectionType
         customCollectionLabel = c.customCollectionLabel
         itemCount = c.itemCount.toFloat()
         depth = c.depth
+        answerWordTarget = c.answerWordTarget
         layerOrder = c.layerOrder
         language = c.language
         includeBilingualTerms = c.includeBilingualTerms
@@ -172,11 +180,13 @@ class KnowledgePromptState {
     fun reset() {
         examTarget = ""
         subject = ""
+        moduleCode = ""
         topic = ""
         collectionType = KnowledgeCollectionType.MULTI_LINER
         customCollectionLabel = ""
         itemCount = 20f
         depth = KnowledgeDepth.BALANCED
+        answerWordTarget = ""
         layerOrder = KnowledgeLayerOrder.AUTO_DETECT
         language = "English"
         includeBilingualTerms = false
@@ -318,6 +328,20 @@ fun LazyListScope.knowledgePromptBuilderItems(
                         }
                     )
                 }
+
+                OutlinedTextField(
+                    value = state.moduleCode,
+                    onValueChange = { state.moduleCode = it },
+                    label = { Text("Module / Paper Code (Optional)", fontSize = 12.sp) },
+                    placeholder = { Text("e.g. Paper I, Course-101, Unit 3", fontSize = 12.sp) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = fieldColors,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("knowledge_prompt_module_input")
+                )
 
                 OutlinedTextField(
                     value = state.topic,
@@ -647,6 +671,74 @@ fun LazyListScope.knowledgePromptBuilderItems(
                                     softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
+                            }
+                        }
+                    }
+                }
+
+                if (state.collectionType == KnowledgeCollectionType.LONG_ANSWER) {
+                    HorizontalDivider(color = colors.border.copy(alpha = 0.5f), thickness = 0.6.dp)
+
+                    val wordTargets = listOf(
+                        "" to "Auto (By Depth)",
+                        "~150 words" to "Short (~150w)",
+                        "~250 words" to "Standard (~250w)",
+                        "~500 words" to "Extended (~500w)"
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Response Word-Limit",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.inkBold
+                            )
+                            Text(
+                                text = state.answerWordTarget.ifBlank { "Auto" },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.teal
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            wordTargets.forEach { (value, label) ->
+                                val isSelected = state.answerWordTarget == value
+                                Surface(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        state.answerWordTarget = value
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) colors.teal else colors.surfaceVariant,
+                                    border = BorderStroke(0.6.dp, if (isSelected) colors.teal else colors.border),
+                                    modifier = Modifier
+                                        .heightIn(min = 48.dp)
+                                        .testTag("knowledge_word_target_${value.ifBlank { "auto" }.replace("~", "").replace(" ", "_")}")
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isSelected) Color.White else colors.inkBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

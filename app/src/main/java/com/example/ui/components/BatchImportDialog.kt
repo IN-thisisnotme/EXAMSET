@@ -620,7 +620,7 @@ fun BatchImportDialog(
                             onValueChange = { pastedJsonText = it },
                             placeholder = {
                                 Text(
-                                    text = "{\n  \"metadata\": { \"title\": \"UPSC Prelims Mock\" },\n  \"questions\": [\n    {\n      \"num\": 1,\n      \"question\": \"...\",\n      \"options\": { \"a\": \"...\", \"b\": \"...\" },\n      \"correctAnswer\": \"A\"\n    }\n  ]\n}",
+                                    text = "{\n  \"metadata\": { \"title\": \"Module 01 Practice Mock\" },\n  \"questions\": [\n    {\n      \"num\": 1,\n      \"question\": \"...\",\n      \"options\": { \"a\": \"...\", \"b\": \"...\" },\n      \"correctAnswer\": \"A\"\n    }\n  ]\n}",
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
                                     color = colors.inkMuted.copy(alpha = 0.6f)

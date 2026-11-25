@@ -29,6 +29,7 @@ enum class PromptBuilderMode(
 
 class QuestionPromptState {
     var examType by mutableStateOf("")
+    var moduleCode by mutableStateOf("")
     var subject by mutableStateOf("")
     var topic by mutableStateOf("")
     var questionCount by mutableFloatStateOf(20f)
@@ -60,12 +61,14 @@ class QuestionPromptState {
         promptPhasingStyle = promptPhasingStyle,
         targetOutputFormat = targetOutputFormat,
         promptDensity = promptDensity,
-        enableQuantityCorrectionRule = enableQuantityCorrectionRule
+        enableQuantityCorrectionRule = enableQuantityCorrectionRule,
+        moduleCode = moduleCode
     ).normalized()
 
     fun applyConfig(config: QuestionPromptConfig, preserveTopic: Boolean = true) {
         val c = config.normalized()
         examType = c.examType
+        moduleCode = c.moduleCode
         subject = c.subject
         if (!preserveTopic) topic = ""
         questionCount = c.questionCount.toFloat()
@@ -85,6 +88,7 @@ class QuestionPromptState {
 
     fun reset() {
         examType = ""
+        moduleCode = ""
         subject = ""
         topic = ""
         questionCount = 20f

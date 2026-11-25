@@ -1983,10 +1983,10 @@ fun InputBottomSheet(
                                     ) {
                                         Text("Marking Presets:", fontSize = 9.5.sp, color = colors.muted, fontWeight = FontWeight.Bold)
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf("Universal", "Regional").forEach { cat ->
+                                            listOf("Universal", "Standard Schemes").forEach { cat ->
                                                 val isCatSelected = scoringPresetCategory == cat
                                                 Surface(
-                                                    shape = RoundedCornerShape(10.dp),
+                                                    shape = RoundedCornerShape(8.dp),
                                                     color = if (isCatSelected) colors.teal.copy(alpha = 0.2f) else colors.surface,
                                                     border = BorderStroke(0.6.dp, if (isCatSelected) colors.teal else colors.border),
                                                     modifier = Modifier.clickable { scoringPresetCategory = cat }
@@ -2008,6 +2008,16 @@ fun InputBottomSheet(
                                         horizontalArrangement = Arrangement.spacedBy(5.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
+                                        // [DEPRECATED 2026-11-25] Reason: Replaced branded exam preset labels ("NEET/JEE", "SSC/RRB", "UPSC GS", "Banking", "GATE") with neutral fraction-based Standard Schemes labels. Restore if: Branded exam preset names are explicitly requested.
+                                        /*
+                                        listOf(
+                                            Triple("NEET/JEE (+4, -1)", 4.0, 1.0),
+                                            Triple("SSC/RRB (+2, -0.5)", 2.0, 0.5),
+                                            Triple("UPSC GS (+2, -0.67)", 2.0, 0.67),
+                                            Triple("Banking (+1, -0.25)", 1.0, 0.25),
+                                            Triple("GATE (+1, -0.33)", 1.0, 0.33)
+                                        )
+                                        */
                                         val activePresets = if (scoringPresetCategory == "Universal") {
                                             listOf(
                                                 Triple("1 Pt (No Neg)", 1.0, 0.0),
@@ -2019,11 +2029,13 @@ fun InputBottomSheet(
                                             )
                                         } else {
                                             listOf(
-                                                Triple("NEET/JEE (+4, -1)", 4.0, 1.0),
-                                                Triple("SSC/RRB (+2, -0.5)", 2.0, 0.5),
-                                                Triple("UPSC GS (+2, -0.67)", 2.0, 0.67),
-                                                Triple("Banking (+1, -0.25)", 1.0, 0.25),
-                                                Triple("GATE (+1, -0.33)", 1.0, 0.33)
+                                                Triple("4 Pts (1/4 Neg · -1.0)", 4.0, 1.0),
+                                                Triple("2 Pts (1/3 Neg · -0.67)", 2.0, 0.67),
+                                                Triple("2 Pts (1/4 Neg · -0.50)", 2.0, 0.5),
+                                                Triple("1 Pt (1/3 Neg · -0.33)", 1.0, 0.33),
+                                                Triple("1 Pt (1/4 Neg · -0.25)", 1.0, 0.25),
+                                                Triple("5 Pts (No Neg)", 5.0, 0.0),
+                                                Triple("10 Pts (No Neg)", 10.0, 0.0)
                                             )
                                         }
                                         items(activePresets) { (label, pos, neg) ->
