@@ -579,13 +579,16 @@ export function applyVaultRestoreToState(
   for (const a of s.attempts || []) addAttempt(a);
   const mergedAttempts = Array.from(attemptByKey.values()).sort((a, b) => b.submittedAt - a.submittedAt);
 
-  // Countdowns union by title+date
+  // Countdowns union by title+date+time+timezoneMode
   const countdownMap = new Map<string, ExamCountdownTarget>();
   for (const cd of current.countdowns) {
-    countdownMap.set(`${cd.title.trim().toLowerCase()}|${cd.targetDateIso}`, cd);
+    countdownMap.set(
+      `${cd.title.trim().toLowerCase()}|${cd.targetDateIso}|${cd.targetTime || ''}|${cd.timezoneMode || 'LOCAL'}`,
+      cd
+    );
   }
   for (const cd of s.countdowns || []) {
-    const k = `${cd.title.trim().toLowerCase()}|${cd.targetDateIso}`;
+    const k = `${cd.title.trim().toLowerCase()}|${cd.targetDateIso}|${cd.targetTime || ''}|${cd.timezoneMode || 'LOCAL'}`;
     if (!countdownMap.has(k)) countdownMap.set(k, cd);
   }
 

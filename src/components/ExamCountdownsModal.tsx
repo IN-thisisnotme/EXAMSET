@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { CalendarClock, Pin, Plus, Trash2, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Clock, Globe, Pencil, Pin, Plus, Trash2, X } from 'lucide-react';
 import { ExamCountdownTarget } from '../types/exam';
 import { useTheme } from '../theme/ThemeProvider';
+import { StudyDateUtils } from '../utils/studyPlannerEngine';
 
 interface ExamCountdownsModalProps {
   isOpen: boolean;
@@ -11,11 +12,7 @@ interface ExamCountdownsModalProps {
 }
 
 export function getDaysRemaining(targetDateIso: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(`${targetDateIso}T00:00:00`);
-  if (Number.isNaN(target.getTime())) return 0;
-  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return StudyDateUtils.computeDaysRemaining(targetDateIso) ?? 0;
 }
 
 export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
@@ -25,28 +22,92 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
   onClose,
 }) => {
   const { colors } = useTheme();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
-  const [dateIso, setDateIso] = useState(() => {
-    const d = new Date(Date.now() + 30 * 86400000);
-    return d.toISOString().slice(0, 10);
-  });
-  const [examType, setExamType] = useState('General Assessment');
+  const [dateIso, setDateIso] = useState(() => StudyDateUtils.addDaysToDateString(Date.now(), 30));
+  const [timeStr, setTimeStr] = useState('00:00');
+  const [timezoneMode, setTimezoneMode] = useState<'LOCAL' | 'GMT'>('LOCAL');
+  const [examType, setExamType] = useState('');
+  const [isPinned, setIsPinned] = useState(true);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setNowMs(Date.now());
+    const hasTimed = countdowns.some((cd) => StudyDateUtils.hasExplicitCountdownTime(cd));
+    if (!hasTimed) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, countdowns]);
+
+  const localTzLabel = useMemo(() => StudyDateUtils.getLocalTimezoneLabel(nowMs), [nowMs]);
+
+  const effectiveTime = timeStr.trim() || '00:00';
+  const previewUtcMs = useMemo(
+    () => StudyDateUtils.parseDateTimeMillis(dateIso, effectiveTime, timezoneMode === 'GMT'),
+    [dateIso, effectiveTime, timezoneMode]
+  );
+
+  const sortedCountdowns = useMemo(() => {
+    return [...countdowns].sort((a, b) => {
+      const ra = StudyDateUtils.computeCountdownRemainingMillis(a, nowMs) ?? Number.MAX_SAFE_INTEGER;
+      const rb = StudyDateUtils.computeCountdownRemainingMillis(b, nowMs) ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb;
+    });
+  }, [countdowns, nowMs]);
 
   if (!isOpen) return null;
 
-  const handleAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !dateIso) return;
-    const next: ExamCountdownTarget = {
-      id: `cd-${Date.now()}`,
-      title: title.trim(),
-      targetDateIso: dateIso,
-      examType: examType.trim() || 'General Assessment',
-      isPinned: true,
-      color: colors.teal,
-    };
-    onSaveCountdowns([next, ...countdowns]);
+  const resetForm = () => {
+    setEditingId(null);
     setTitle('');
+    setDateIso(StudyDateUtils.addDaysToDateString(Date.now(), 30));
+    setTimeStr('00:00');
+    setTimezoneMode('LOCAL');
+    setExamType('');
+    setIsPinned(true);
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanTitle = title.trim();
+    if (!cleanTitle || !dateIso) return;
+    const cleanTime = StudyDateUtils.normalizeTimeHmOrBlank(timeStr.trim() || '00:00') || '00:00';
+    const targetUtcMillis =
+      StudyDateUtils.parseDateTimeMillis(dateIso, cleanTime, timezoneMode === 'GMT') ?? undefined;
+
+    if (editingId) {
+      onSaveCountdowns(
+        countdowns.map((cd) =>
+          cd.id === editingId
+            ? {
+                ...cd,
+                title: cleanTitle,
+                targetDateIso: dateIso,
+                targetTime: cleanTime,
+                timezoneMode,
+                targetUtcMillis,
+                examType: examType.trim() || 'General Assessment',
+                isPinned,
+              }
+            : cd
+        )
+      );
+    } else {
+      const next: ExamCountdownTarget = {
+        id: `cd-${Date.now()}`,
+        title: cleanTitle,
+        targetDateIso: dateIso,
+        targetTime: cleanTime,
+        timezoneMode,
+        targetUtcMillis,
+        examType: examType.trim() || 'General Assessment',
+        isPinned,
+        color: colors.teal,
+      };
+      onSaveCountdowns([next, ...countdowns]);
+    }
+    resetForm();
   };
 
   return (
@@ -56,7 +117,7 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+        className="w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
         style={{
           backgroundColor: colors.surface,
           border: `1px solid ${colors.border}`,
@@ -80,137 +141,250 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                 Exam Target Countdowns
               </h3>
               <p className="text-[0.6875rem]" style={{ color: colors.muted }}>
-                Pin milestone dates to your Folder & Library dashboard
+                Canonical UTC countdowns auto-displayed in your local timezone ({localTzLabel})
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg" style={{ color: colors.muted }}>
+          <button onClick={onClose} className="p-2 rounded-lg" style={{ color: colors.muted }} aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-5 overflow-y-auto space-y-4">
-          <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <form
+            onSubmit={handleSave}
+            className="p-3.5 rounded-xl space-y-2.5 text-xs"
+            style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}` }}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-xs" style={{ color: colors.inkBold }}>
+                {editingId ? 'Edit Exam Target' : 'Add Exam Target'}
+              </span>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="text-[0.6875rem] font-semibold underline"
+                  style={{ color: colors.muted }}
+                >
+                  Cancel Edit
+                </button>
+              )}
+            </div>
+
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Target (e.g., Term-End Exam / Finals / Assignment 2026)"
-              className="sm:col-span-2 px-3 py-2 rounded-lg focus:outline-none"
-              style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+              placeholder="Target (e.g., Term-End Exam / Finals)"
+              className="w-full px-3 py-2 rounded-lg focus:outline-none"
+              style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
             />
-            <input
-              type="date"
-              required
-              value={dateIso}
-              onChange={(e) => setDateIso(e.target.value)}
-              className="px-3 py-2 rounded-lg focus:outline-none"
-              style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
-            />
-            <div className="sm:col-span-3 flex flex-wrap items-center gap-1.5">
-              <span className="text-[0.6875rem] font-semibold mr-1" style={{ color: colors.muted }}>
-                Quick Date:
-              </span>
-              {[7, 15, 30, 60, 90].map((offset) => {
-                const candidate = new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
-                const selected = dateIso === candidate;
-                return (
-                  <button
-                    key={offset}
-                    type="button"
-                    onClick={() => setDateIso(candidate)}
-                    className="px-2 py-0.5 rounded-md text-[0.6875rem] font-bold border transition"
-                    style={
-                      selected
-                        ? { backgroundColor: colors.teal, color: colors.onAccentText, borderColor: colors.teal }
-                        : { backgroundColor: colors.surfaceVariant, color: colors.ink, borderColor: colors.border }
-                    }
-                  >
-                    +{offset}d
-                  </button>
-                );
-              })}
+
+            {/* [DEPRECATED 2026-11-25] Reason: Quick date offset chips (+7d/+15d/+30d/+60d/+90d) removed per user request ("no quick thing in it"). Restore if: Quick preset date shortcuts are requested again. */}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block space-y-1">
+                <span className="text-[0.6875rem] font-semibold" style={{ color: colors.muted }}>
+                  Date
+                </span>
+                <input
+                  type="date"
+                  required
+                  value={dateIso}
+                  onChange={(e) => setDateIso(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg focus:outline-none"
+                  style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+                />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-[0.6875rem] font-semibold flex items-center gap-1" style={{ color: colors.muted }}>
+                  <Clock className="w-3 h-3" />
+                  Time (24h, default 00:00)
+                </span>
+                <input
+                  type="time"
+                  required
+                  value={timeStr}
+                  onChange={(e) => setTimeStr(e.target.value || '00:00')}
+                  className="w-full px-3 py-2 rounded-lg focus:outline-none"
+                  style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+                />
+              </label>
             </div>
-            <input
-              type="text"
-              value={examType}
-              onChange={(e) => setExamType(e.target.value)}
-              placeholder="Course / Subject Focus (e.g., Course-101, Paper II, Finals)"
-              className="sm:col-span-2 px-3 py-2 rounded-lg focus:outline-none"
-              style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}`, color: colors.inkBold }}
-            />
-            <button
-              type="submit"
-              className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg font-bold"
-              style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Target
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[0.6875rem] font-semibold flex items-center gap-1" style={{ color: colors.muted }}>
+                <Globe className="w-3 h-3" />
+                Zone:
+              </span>
+              <button
+                type="button"
+                onClick={() => setTimezoneMode('LOCAL')}
+                className="px-3 py-1.5 rounded-lg text-[0.6875rem] font-bold border transition"
+                style={
+                  timezoneMode === 'LOCAL'
+                    ? { backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }
+                    : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
+                }
+              >
+                Local ({localTzLabel})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimezoneMode('GMT')}
+                className="px-3 py-1.5 rounded-lg text-[0.6875rem] font-bold border transition"
+                style={
+                  timezoneMode === 'GMT'
+                    ? { backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }
+                    : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.border }
+                }
+              >
+                GMT (UTC)
+              </button>
+            </div>
+
+            {previewUtcMs !== null && (
+              <div className="text-[0.6875rem] font-medium" style={{ color: colors.tealDark }}>
+                Targets {StudyDateUtils.formatHumanDateTimeLocal(previewUtcMs)}
+                {timezoneMode === 'GMT' &&
+                localTzLabel.toUpperCase() !== 'GMT' &&
+                localTzLabel.toUpperCase() !== 'UTC'
+                  ? ` (${effectiveTime} GMT)`
+                  : ''}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input
+                type="text"
+                value={examType}
+                onChange={(e) => setExamType(e.target.value)}
+                placeholder="Course / Subject Focus (Optional)"
+                className="flex-1 px-3 py-2 rounded-lg focus:outline-none"
+                style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+              />
+              <label className="inline-flex items-center gap-1.5 px-1 cursor-pointer select-none whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={isPinned}
+                  onChange={(e) => setIsPinned(e.target.checked)}
+                />
+                <span className="text-[0.6875rem] font-semibold" style={{ color: colors.inkBold }}>
+                  Pin
+                </span>
+              </label>
+              <button
+                type="submit"
+                className="flex items-center justify-center gap-1 px-4 py-2 rounded-lg font-bold whitespace-nowrap"
+                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {editingId ? 'Update' : 'Add'}
+              </button>
+            </div>
           </form>
 
           <div className="space-y-2">
-            {countdowns.length === 0 ? (
+            {sortedCountdowns.length === 0 ? (
               <div
                 className="p-5 rounded-xl text-center text-xs"
                 style={{ backgroundColor: colors.surfaceVariant, color: colors.muted }}
               >
-                No exam targets yet. Add one above to track remaining days.
+                No exam targets yet. Add one above to track remaining days and hours.
               </div>
             ) : (
-              countdowns.map((cd) => {
-                const days = getDaysRemaining(cd.targetDateIso);
+              sortedCountdowns.map((cd) => {
+                const days = StudyDateUtils.computeCountdownDaysRemaining(cd, nowMs);
+                const remMs = StudyDateUtils.computeCountdownRemainingMillis(cd, nowMs);
+                const isPast = remMs !== null && remMs < 0;
+                const isUrgent = !isPast && days !== null && days <= 7;
                 return (
                   <div
                     key={cd.id}
-                    className="p-3 rounded-xl flex items-center justify-between gap-3"
-                    style={{ backgroundColor: colors.surfaceVariant, border: `1px solid ${colors.border}` }}
+                    className="p-3 rounded-xl space-y-1.5"
+                    style={{
+                      backgroundColor: colors.surfaceVariant,
+                      border: `1px solid ${cd.isPinned ? colors.teal : colors.border}`,
+                    }}
                   >
-                    <div>
-                      <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                         {cd.title}
                       </div>
-                      <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
-                        {cd.examType} • {cd.targetDateIso}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
                       <span
-                        className="px-2.5 py-1 rounded-full text-xs font-black"
+                        className="px-2.5 py-0.5 rounded-full text-[0.6875rem] font-black whitespace-nowrap flex-shrink-0"
                         style={{
-                          backgroundColor: days <= 7 ? colors.redLight : colors.tealLight,
-                          color: days <= 7 ? colors.red : colors.tealDark,
+                          backgroundColor: isUrgent ? colors.redLight : colors.tealLight,
+                          color: isPast ? colors.muted : isUrgent ? colors.red : colors.tealDark,
                         }}
                       >
-                        {days > 0 ? `${days}d left` : days === 0 ? 'Today!' : 'Completed'}
+                        {StudyDateUtils.formatCountdownDetailed(cd, nowMs)}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onSaveCountdowns(
-                            countdowns.map((x) => (x.id === cd.id ? { ...x, isPinned: !x.isPinned } : x))
-                          )
-                        }
-                        title={cd.isPinned ? 'Unpin' : 'Pin to dashboard'}
-                        className="p-1.5 rounded-lg border"
-                        style={{
-                          borderColor: cd.isPinned ? colors.teal : colors.border,
-                          backgroundColor: cd.isPinned ? colors.tealLight : colors.surface,
-                          color: cd.isPinned ? colors.teal : colors.muted,
-                        }}
-                      >
-                        <Pin className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onSaveCountdowns(countdowns.filter((x) => x.id !== cd.id))}
-                        className="p-1.5 rounded-lg"
-                        style={{ color: colors.red }}
-                        aria-label="Delete countdown"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[0.6875rem] truncate" style={{ color: colors.ink }}>
+                          {StudyDateUtils.formatCountdownSchedule(cd)}
+                        </div>
+                        {cd.examType && (
+                          <div className="text-[0.625rem] truncate" style={{ color: colors.muted }}>
+                            {cd.examType}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSaveCountdowns(
+                              countdowns.map((x) => (x.id === cd.id ? { ...x, isPinned: !x.isPinned } : x))
+                            )
+                          }
+                          title={cd.isPinned ? 'Unpin' : 'Pin to dashboard'}
+                          className="p-1.5 rounded-lg border"
+                          style={{
+                            borderColor: cd.isPinned ? colors.teal : colors.border,
+                            backgroundColor: cd.isPinned ? colors.tealLight : colors.surface,
+                            color: cd.isPinned ? colors.teal : colors.muted,
+                          }}
+                        >
+                          <Pin className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(cd.id);
+                            setTitle(cd.title);
+                            setDateIso(cd.targetDateIso);
+                            setTimeStr(cd.targetTime || '00:00');
+                            setTimezoneMode(cd.timezoneMode === 'GMT' ? 'GMT' : 'LOCAL');
+                            setExamType(cd.examType || '');
+                            setIsPinned(cd.isPinned);
+                          }}
+                          title="Edit countdown"
+                          className="p-1.5 rounded-lg border"
+                          style={{
+                            borderColor: colors.border,
+                            backgroundColor: colors.surface,
+                            color: colors.inkBold,
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onSaveCountdowns(countdowns.filter((x) => x.id !== cd.id))}
+                          className="p-1.5 rounded-lg"
+                          style={{ color: colors.red }}
+                          aria-label="Delete countdown"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

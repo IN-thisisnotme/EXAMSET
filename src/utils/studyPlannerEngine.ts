@@ -1,4 +1,4 @@
-import type { ActiveExamSession, QuestionPaper } from '../types/exam';
+import type { ActiveExamSession, ExamCountdownTarget, QuestionPaper } from '../types/exam';
 import type { FlashcardSrsState, HeadwordQueueItem, StudyNoteRecord, VocabularyDeck } from '../types/phase4';
 import type {
   DailyStudyAnalytics,
@@ -10,6 +10,9 @@ import { SpacedRepetitionEngine } from './spacedRepetitionEngine';
 import { StudyNoteParser } from './studyNoteParser';
 
 const MS_PER_DAY = 86_400_000;
+const MS_PER_HOUR = 3_600_000;
+const MS_PER_MINUTE = 60_000;
+const TIME_HM_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export const StudyDateUtils = {
   formatDateString(millis: number): string {
@@ -24,6 +27,34 @@ export const StudyDateUtils = {
     return this.formatDateString(nowMs);
   },
 
+  isValidTimeHm(timeStr: string): boolean {
+    return TIME_HM_REGEX.test((timeStr || '').trim());
+  },
+
+  normalizeTimeHmOrBlank(timeStr: string): string {
+    const trimmed = (timeStr || '').trim();
+    return TIME_HM_REGEX.test(trimmed) ? trimmed : '';
+  },
+
+  getLocalTimezoneLabel(nowMillis: number = Date.now()): string {
+    try {
+      const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(
+        new Date(nowMillis)
+      );
+      const tzPart = parts.find((p) => p.type === 'timeZoneName')?.value?.trim();
+      if (tzPart) return tzPart;
+    } catch {
+      // Fallback handled below
+    }
+    const offsetMin = -new Date(nowMillis).getTimezoneOffset();
+    if (offsetMin === 0) return 'UTC';
+    const sign = offsetMin > 0 ? '+' : '-';
+    const absMin = Math.abs(offsetMin);
+    const hh = String(Math.floor(absMin / 60)).padStart(2, '0');
+    const mm = String(absMin % 60).padStart(2, '0');
+    return `GMT${sign}${hh}:${mm}`;
+  },
+
   startOfDayMillis(millis: number): number {
     const d = new Date(millis);
     d.setHours(0, 0, 0, 0);
@@ -31,11 +62,35 @@ export const StudyDateUtils = {
   },
 
   parseDateToStartOfDayMillis(dateStr: string): number | null {
+    return this.parseDateTimeMillis(dateStr, '00:00', false);
+  },
+
+  parseDateTimeMillis(dateStr: string, timeStr: string = '00:00', useGmt: boolean = false): number | null {
     const trimmed = (dateStr || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
     const [y, m, day] = trimmed.split('-').map((n) => Number.parseInt(n, 10));
     if (!y || m < 1 || m > 12 || day < 1 || day > 31) return null;
-    const d = new Date(y, m - 1, day, 0, 0, 0, 0);
+
+    const cleanTime = (timeStr || '').trim() || '00:00';
+    const match = TIME_HM_REGEX.exec(cleanTime);
+    if (!match) return null;
+    const hour = Number.parseInt(match[1], 10);
+    const minute = Number.parseInt(match[2], 10);
+
+    if (useGmt) {
+      const ms = Date.UTC(y, m - 1, day, hour, minute, 0, 0);
+      const check = new Date(ms);
+      if (
+        check.getUTCFullYear() !== y ||
+        check.getUTCMonth() !== m - 1 ||
+        check.getUTCDate() !== day
+      ) {
+        return null;
+      }
+      return ms;
+    }
+
+    const d = new Date(y, m - 1, day, hour, minute, 0, 0);
     if (d.getFullYear() !== y || d.getMonth() !== m - 1 || d.getDate() !== day) {
       return null;
     }
@@ -67,6 +122,109 @@ export const StudyDateUtils = {
       month: 'short',
       year: 'numeric',
     });
+  },
+
+  formatHumanDateTimeLocal(epochMillis: number): string {
+    const d = new Date(epochMillis);
+    const datePart = d.toLocaleDateString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const tzLabel = this.getLocalTimezoneLabel(epochMillis);
+    return `${datePart} • ${hh}:${mm} ${tzLabel}`;
+  },
+
+  hasExplicitCountdownTime(cd: ExamCountdownTarget): boolean {
+    return (
+      this.isValidTimeHm(cd.targetTime || '') ||
+      (typeof cd.targetUtcMillis === 'number' && Number.isFinite(cd.targetUtcMillis) && cd.targetUtcMillis > 0)
+    );
+  },
+
+  resolveCountdownTargetMillis(cd: ExamCountdownTarget): number | null {
+    if (typeof cd.targetUtcMillis === 'number' && Number.isFinite(cd.targetUtcMillis) && cd.targetUtcMillis > 0) {
+      return cd.targetUtcMillis;
+    }
+    if (this.isValidTimeHm(cd.targetTime || '')) {
+      return this.parseDateTimeMillis(cd.targetDateIso, cd.targetTime!, cd.timezoneMode === 'GMT');
+    }
+    return this.parseDateToStartOfDayMillis(cd.targetDateIso);
+  },
+
+  computeCountdownRemainingMillis(cd: ExamCountdownTarget, nowMillis: number = Date.now()): number | null {
+    const targetMs = this.resolveCountdownTargetMillis(cd);
+    if (targetMs === null) return null;
+    return targetMs - nowMillis;
+  },
+
+  computeCountdownDaysRemaining(cd: ExamCountdownTarget, nowMillis: number = Date.now()): number | null {
+    if (this.hasExplicitCountdownTime(cd)) {
+      const diff = this.computeCountdownRemainingMillis(cd, nowMillis);
+      if (diff === null) return null;
+      return diff >= 0 ? Math.floor(diff / MS_PER_DAY) : -Math.floor(-diff / MS_PER_DAY);
+    }
+    return this.computeDaysRemaining(cd.targetDateIso, nowMillis);
+  },
+
+  formatRemainingDuration(diffMillis: number, compact: boolean = false): string {
+    if (diffMillis === 0) return 'Now!';
+    if (diffMillis > 0) {
+      const days = Math.floor(diffMillis / MS_PER_DAY);
+      const hours = Math.floor((diffMillis % MS_PER_DAY) / MS_PER_HOUR);
+      const mins = Math.floor((diffMillis % MS_PER_HOUR) / MS_PER_MINUTE);
+      const secs = Math.floor((diffMillis % MS_PER_MINUTE) / 1000);
+      if (days > 0) return compact ? `${days}d ${hours}h left` : `${days}d ${hours}h ${mins}m left`;
+      if (hours > 0) return compact ? `${hours}h ${mins}m left` : `${hours}h ${mins}m ${secs}s left`;
+      if (mins > 0) return compact ? `${mins}m left` : `${mins}m ${secs}s left`;
+      return `${Math.max(1, secs)}s left`;
+    }
+    const absMs = -diffMillis;
+    const days = Math.floor(absMs / MS_PER_DAY);
+    const hours = Math.floor((absMs % MS_PER_DAY) / MS_PER_HOUR);
+    const mins = Math.floor((absMs % MS_PER_HOUR) / MS_PER_MINUTE);
+    if (days > 0) return compact ? `${days}d ago` : `${days}d ${hours}h ago`;
+    if (hours > 0) return `${hours}h ${mins}m ago`;
+    if (mins > 0) return `${mins}m ago`;
+    return 'Just passed';
+  },
+
+  formatCountdownShort(cd: ExamCountdownTarget, nowMillis: number = Date.now()): string {
+    if (this.hasExplicitCountdownTime(cd)) {
+      const diff = this.computeCountdownRemainingMillis(cd, nowMillis);
+      if (diff === null) return cd.targetDateIso;
+      return this.formatRemainingDuration(diff, true);
+    }
+    const days = this.computeDaysRemaining(cd.targetDateIso, nowMillis);
+    if (days === null) return cd.targetDateIso;
+    if (days > 0) return `${days}d left`;
+    if (days === 0) return 'Today!';
+    return `${-days}d ago`;
+  },
+
+  formatCountdownDetailed(cd: ExamCountdownTarget, nowMillis: number = Date.now()): string {
+    if (this.hasExplicitCountdownTime(cd)) {
+      const diff = this.computeCountdownRemainingMillis(cd, nowMillis);
+      if (diff === null) return cd.targetDateIso;
+      return this.formatRemainingDuration(diff, false);
+    }
+    return this.formatCountdownShort(cd, nowMillis);
+  },
+
+  formatCountdownSchedule(cd: ExamCountdownTarget): string {
+    if (!this.hasExplicitCountdownTime(cd)) {
+      return this.formatHumanDate(cd.targetDateIso);
+    }
+    const ms = this.resolveCountdownTargetMillis(cd);
+    if (ms === null) return this.formatHumanDate(cd.targetDateIso);
+    const localStr = this.formatHumanDateTimeLocal(ms);
+    const localTz = this.getLocalTimezoneLabel(ms).toUpperCase();
+    if (cd.timezoneMode === 'GMT' && localTz !== 'GMT' && localTz !== 'UTC') {
+      return `${localStr} (${cd.targetTime || '00:00'} GMT)`;
+    }
+    return localStr;
   },
 };
 

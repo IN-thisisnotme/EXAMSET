@@ -111,6 +111,13 @@ export const StudyPlannerTab: React.FC<StudyPlannerTabProps> = ({
   const [totalPhaseSeconds, setTotalPhaseSeconds] = useState<number>(activeFocusMinutes * 60);
   const [linkedTodoId, setLinkedTodoId] = useState<string | null>(null);
   const [completedPomodorosSession, setCompletedPomodorosSession] = useState<number>(0);
+  const [countdownNowMs, setCountdownNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (!countdowns.some((cd) => StudyDateUtils.hasExplicitCountdownTime(cd))) return;
+    const timer = window.setInterval(() => setCountdownNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [countdowns]);
 
   const deadlineAtRef = useRef<number>(0);
   const lastFocusSyncMsRef = useRef<number>(0);
@@ -806,35 +813,33 @@ export const StudyPlannerTab: React.FC<StudyPlannerTabProps> = ({
             ) : (
               <div className="space-y-2">
                 {countdowns.slice(0, 4).map((cd) => {
-                  const days = StudyDateUtils.computeDaysRemaining(cd.targetDateIso);
+                  const days = StudyDateUtils.computeCountdownDaysRemaining(cd, countdownNowMs);
+                  const remMs = StudyDateUtils.computeCountdownRemainingMillis(cd, countdownNowMs);
+                  const isPast = remMs !== null && remMs < 0;
+                  const isUrgent = !isPast && days !== null && days <= 14;
                   return (
                     <div
                       key={cd.id}
-                      className="flex items-center justify-between px-3 py-2 rounded-xl border"
+                      className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border"
                       style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
                     >
                       <div className="min-w-0">
                         <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
                           {cd.title}
                         </div>
-                        <div className="text-[0.625rem]" style={{ color: colors.muted }}>
-                          {cd.examType} • {StudyDateUtils.formatHumanDate(cd.targetDateIso)}
+                        <div className="text-[0.625rem] truncate" style={{ color: colors.muted }}>
+                          {StudyDateUtils.formatCountdownSchedule(cd)}
+                          {cd.examType ? ` • ${cd.examType}` : ''}
                         </div>
                       </div>
                       <span
-                        className="text-xs font-black px-2.5 py-1 rounded-full flex-shrink-0"
+                        className="text-xs font-black px-2.5 py-1 rounded-full flex-shrink-0 whitespace-nowrap"
                         style={{
-                          backgroundColor: days !== null && days <= 14 ? colors.redLight : colors.tealLight,
-                          color: days !== null && days <= 14 ? colors.red : colors.tealDark,
+                          backgroundColor: isUrgent ? colors.redLight : colors.tealLight,
+                          color: isPast ? colors.muted : isUrgent ? colors.red : colors.tealDark,
                         }}
                       >
-                        {days === null
-                          ? cd.targetDateIso
-                          : days > 0
-                          ? `${days}d left`
-                          : days === 0
-                          ? 'Today!'
-                          : `${-days}d ago`}
+                        {StudyDateUtils.formatCountdownDetailed(cd, countdownNowMs)}
                       </span>
                     </div>
                   );

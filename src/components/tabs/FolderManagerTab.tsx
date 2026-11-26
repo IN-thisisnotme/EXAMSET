@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarClock,
   CheckCircle2,
@@ -26,7 +26,7 @@ import {
 import { useTheme } from '../../theme/ThemeProvider';
 import { ExamNumberGenerator } from '../../utils/examNumberGenerator';
 import { PaperLanguageDetector } from '../../utils/paperLanguageDetector';
-import { getDaysRemaining } from '../ExamCountdownsModal';
+import { StudyDateUtils } from '../../utils/studyPlannerEngine';
 
 interface FolderManagerTabProps {
   currentPaper: QuestionPaper;
@@ -77,6 +77,13 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
   const [newFolderName, setNewFolderName] = useState<string>('');
   const [newFolderColor, setNewFolderColor] = useState<string>(FOLDER_COLORS[0]);
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>('default');
+  const [countdownNowMs, setCountdownNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (!countdowns.some((cd) => StudyDateUtils.hasExplicitCountdownTime(cd))) return;
+    const timer = window.setInterval(() => setCountdownNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [countdowns]);
 
   const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
@@ -212,7 +219,10 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
             </span>
           ) : (
             pinnedCountdowns.map((cd) => {
-              const days = getDaysRemaining(cd.targetDateIso);
+              const days = StudyDateUtils.computeCountdownDaysRemaining(cd, countdownNowMs);
+              const remMs = StudyDateUtils.computeCountdownRemainingMillis(cd, countdownNowMs);
+              const isPast = remMs !== null && remMs < 0;
+              const isUrgent = !isPast && days !== null && days <= 7;
               return (
                 <span
                   key={cd.id}
@@ -220,8 +230,8 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
                   style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
                 >
                   <span>{cd.title}</span>
-                  <span style={{ color: days <= 7 ? colors.red : colors.teal }}>
-                    {days > 0 ? `${days}d` : days === 0 ? 'Today' : 'Done'}
+                  <span style={{ color: isPast ? colors.muted : isUrgent ? colors.red : colors.teal }}>
+                    {StudyDateUtils.formatCountdownShort(cd, countdownNowMs)}
                   </span>
                 </span>
               );
