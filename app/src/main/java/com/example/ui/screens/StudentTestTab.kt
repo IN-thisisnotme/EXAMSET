@@ -1970,7 +1970,7 @@ private fun ActiveExamView(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    itemsIndexed(activeQuestions, key = { _, q -> "cbt_strip_${q.num}" }) { idx, q ->
+                    itemsIndexed(activeQuestions, key = { idx, q -> "cbt_strip_${idx}_${q.num}" }) { idx, q ->
                         val isCurrent = idx == currentIndex
                         val isAnswered = answers[q.num]?.isNotBlank() == true
                         val isMarked = markedForReview.contains(q.num)
@@ -2600,7 +2600,7 @@ private fun ActiveExamView(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    itemsIndexed(activeQuestions, key = { _, q -> "scroll_strip_${q.num}" }) { idx, q ->
+                    itemsIndexed(activeQuestions, key = { idx, q -> "scroll_strip_${idx}_${q.num}" }) { idx, q ->
                         val isAnswered = answers[q.num]?.isNotBlank() == true
                         val isMarked = markedForReview.contains(q.num)
                         val bg = when {
@@ -2650,7 +2650,7 @@ private fun ActiveExamView(
                 ) {
                     item { Spacer(modifier = Modifier.height(4.dp)) }
 
-                    itemsIndexed(activeQuestions, key = { _, q -> "scroll_q_${q.num}" }) { _, q ->
+                    itemsIndexed(activeQuestions, key = { idx, q -> "scroll_q_${idx}_${q.num}" }) { _, q ->
                         val isMarked = markedForReview.contains(q.num)
                         val selectedAns = answers[q.num] ?: ""
                         val isCardMsq = remember(q) { AnswerKeyMatcher.isMultiSelect(q) }
@@ -4216,7 +4216,7 @@ private fun ExamResultAndReviewView(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp)
                         ) {
-                            itemsIndexed(filteredQuestions, key = { _, q -> "result_q_${q.num}" }) { _, q ->
+                            itemsIndexed(filteredQuestions, key = { idx, q -> "result_q_${idx}_${q.num}" }) { _, q ->
                                 ReviewQuestionCardBlock(
                                     question = q,
                                     officialAnswer = officialAnswers[q.num],

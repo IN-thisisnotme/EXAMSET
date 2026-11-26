@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -869,7 +869,7 @@ fun PrintablePaperTab(
                 }
 
                 // Examination Questions (Non-warping layout)
-                items(paper.questions, key = { "print_preview_${it.num}" }) { q ->
+                itemsIndexed(paper.questions, key = { idx, q -> "print_preview_${idx}_${q.num}" }) { _, q ->
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1038,7 +1038,7 @@ fun PrintablePaperTab(
                             )
                         }
 
-                        items(explainedQuestions, key = { "print_exp_${it.num}" }) { q ->
+                        itemsIndexed(explainedQuestions, key = { idx, q -> "print_exp_${idx}_${q.num}" }) { _, q ->
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()

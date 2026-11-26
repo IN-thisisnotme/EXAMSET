@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
@@ -121,7 +121,7 @@ fun PaperViewTab(
         }
 
         // 2. Questions (from question_card / QuestionBlock)
-        items(paper.questions, key = { "q_${it.num}" }) { q ->
+        itemsIndexed(paper.questions, key = { idx, q -> "q_${idx}_${q.num}" }) { _, q ->
             QuestionCard(
                 question = q,
                 isCardBoxed = isCardBoxed
@@ -158,10 +158,10 @@ fun PaperViewTab(
             }
 
             // 4. Detailed Explanation Cards (from explanation_card)
-            items(
+            itemsIndexed(
                 paper.questions.filter { !it.explanation.isNullOrBlank() || it.correctAnswer != null },
-                key = { "exp_${it.num}" }
-            ) { q ->
+                key = { idx, q -> "exp_${idx}_${q.num}" }
+            ) { _, q ->
                 ExplanationCard(question = q)
             }
         }

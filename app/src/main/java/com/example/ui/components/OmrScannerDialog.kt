@@ -72,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -205,13 +206,14 @@ fun OmrScannerDialog(
         }
     }
 
-    var highResCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var highResCameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     // Full-resolution camera launcher (writes full A4 camera photo to temporary FileProvider URI)
     val fullCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
         val uri = highResCameraUri
+        highResCameraUri = null
         if (success && uri != null) {
             loadBitmapFromUri(uri)
         }
@@ -410,18 +412,29 @@ fun OmrScannerDialog(
                                 val tempUri = CameraCaptureHelper.createTempPictureUri(context)
                                 if (tempUri != null) {
                                     highResCameraUri = tempUri
-                                    fullCameraLauncher.launch(tempUri)
+                                    runCatching { fullCameraLauncher.launch(tempUri) }
+                                        .onFailure {
+                                            highResCameraUri = null
+                                            errorMessage = "No camera app is available on this device."
+                                        }
                                 } else {
-                                    cameraPreviewLauncher.launch(null)
+                                    runCatching { cameraPreviewLauncher.launch(null) }
+                                        .onFailure {
+                                            errorMessage = "No camera app is available on this device."
+                                        }
                                 }
                             },
                             onPickGallery = {
-                                if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(context)) {
-                                    photoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                } else {
-                                    galleryLauncher.launch("image/*")
+                                runCatching {
+                                    if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(context)) {
+                                        photoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    } else {
+                                        galleryLauncher.launch("image/*")
+                                    }
+                                }.onFailure {
+                                    errorMessage = "No gallery or photo picker app is available on this device."
                                 }
                             },
                             onDismiss = onDismiss,
@@ -1471,7 +1484,14 @@ private fun ScannedResultReviewView(
                                     type = "application/json"
                                 }
                                 val shareIntent = Intent.createChooser(sendIntent, "Share OMR Candidate Evaluation")
-                                context.startActivity(shareIntent)
+                                runCatching { context.startActivity(shareIntent) }
+                                    .onFailure {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "No app available to share this evaluation.",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -1584,7 +1604,14 @@ private fun ScannedResultReviewView(
                                 type = "application/json"
                             }
                             val shareIntent = Intent.createChooser(sendIntent, "Share OMR Candidate Evaluation")
-                            context.startActivity(shareIntent)
+                            runCatching { context.startActivity(shareIntent) }
+                                .onFailure {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "No app available to share this evaluation.",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                         },
                         modifier = Modifier
                             .weight(0.9f)

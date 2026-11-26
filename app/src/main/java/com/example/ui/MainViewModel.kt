@@ -119,6 +119,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
@@ -195,18 +196,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isCardBoxed: StateFlow<Boolean> = _isCardBoxed.asStateFlow()
 
     val savedPapers: StateFlow<List<PaperEntity>> = paperDao.getAllPapers()
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allAttempts: StateFlow<List<AttemptEntity>> = paperDao.getAllAttempts()
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val studyNotes: StateFlow<List<StudyNoteEntity>> = studyNoteDao.getAllStudyNotes()
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val allDailyAnalytics: StateFlow<List<DailyStudyAnalyticsEntity>> = paperDao.getAllDailyAnalytics()
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val backupSnapshots: StateFlow<List<BackupSnapshotEntity>> = backupSnapshotDao.getAllSnapshots()
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _backupOpState = MutableStateFlow<BackupOperationState>(BackupOperationState.Idle)
@@ -1612,7 +1618,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val folderLangs = mutableMapOf<String, List<String>>()
 
         val paperLanguagesById = papers.associate { p ->
-            p.id to PaperLanguageDetector.detectLanguagesCached(p.id, p.updatedAt, p.rawText, p.title)
+            val langs = runCatching {
+                PaperLanguageDetector.detectLanguagesCached(p.id, p.updatedAt, p.rawText, p.title)
+            }.getOrElse { listOf("English") }
+            p.id to langs
         }
 
         for (folder in folderList) {
@@ -1675,7 +1684,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             mockPapers = mocks,
             pyqPapers = pyqs
         )
-    }.conflate().flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, LibraryIndexState())
+    }.conflate().catch { emit(LibraryIndexState()) }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, LibraryIndexState())
 
     fun setLastActiveFolderId(folderId: String) {
         _lastActiveFolderId.value = folderId
@@ -2199,8 +2208,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        suggestions
-    }.conflate().flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        suggestions.toList()
+    }.conflate().catch { emit(emptyList()) }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         focusPomodoroController.restoreDndIfOrphaned()
@@ -2272,33 +2281,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val lastPaperId = appPreferences.getLastActivePaperId()
-            if (lastPaperId > 0) {
-                val entity = paperDao.getPaperById(lastPaperId)
-                if (entity != null) {
-                    _lastOpenedPaper.value = entity
-                }
-            } else {
-                // Fetch only the single most recently updated paper instead of all papers
-                try {
+            try {
+                val lastPaperId = appPreferences.getLastActivePaperId()
+                if (lastPaperId > 0) {
+                    val entity = paperDao.getPaperById(lastPaperId)
+                    if (entity != null) {
+                        _lastOpenedPaper.value = entity
+                    }
+                } else {
+                    // Fetch only the single most recently updated paper instead of all papers
                     _lastOpenedPaper.value = paperDao.getLatestPaper()
-                } catch (e: Exception) {
-                    // Ignore
                 }
+            } catch (_: Exception) {
+                // Ignore transient database errors during startup recovery
             }
 
             // Continuously synchronize _lastOpenedPaper with Room updates
             launch {
-                savedPapers.collect { papers ->
-                    if (papers.isNotEmpty()) {
-                        val activeId = _currentPaperEntityId.value ?: appPreferences.getLastActivePaperId()
-                        val matched = if (activeId > 0) papers.find { it.id == activeId } else null
-                        val freshest = matched ?: papers.maxByOrNull { it.updatedAt }
-                        _lastOpenedPaper.value = freshest
-                    } else {
-                        _lastOpenedPaper.value = null
+                savedPapers
+                    .catch { emit(emptyList()) }
+                    .collect { papers ->
+                        if (papers.isNotEmpty()) {
+                            val activeId = _currentPaperEntityId.value ?: appPreferences.getLastActivePaperId()
+                            val matched = if (activeId > 0) papers.find { it.id == activeId } else null
+                            val freshest = matched ?: papers.maxByOrNull { it.updatedAt }
+                            _lastOpenedPaper.value = freshest
+                        } else {
+                            _lastOpenedPaper.value = null
+                        }
                     }
-                }
             }
 
             // Preserve Set Opening on Minimize, But Not on App Restart / New Process:
@@ -2309,7 +2320,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // banner provides clear visibility and quick one-tap restoration.
 
             // Restore saved tab if valid, or default to Library (0)
-            val savedTab = appPreferences.getActiveTabIndex()
+            val savedTab = runCatching { appPreferences.getActiveTabIndex() }.getOrDefault(0)
             withContext(Dispatchers.Main) {
                 if (savedTab in 0..6) {
                     _selectedTab.value = savedTab
@@ -5136,21 +5147,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mimeType: String,
         chooserTitle: String = title
     ) {
-        val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
-        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-            type = mimeType
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, title)
-            clipData = ClipData.newRawUri(title, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            if (context !is Activity) {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching {
+            val uri = VaultArchiveEngine.getShareableVaultUri(context, file)
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, title)
+                clipData = ClipData.newRawUri(title, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+            val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (context !is Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            context.startActivity(chooser)
+        }.onFailure { err ->
+            _statusMessage.value = "Could not open share dialog: ${err.localizedMessage ?: "No compatible app found"}"
         }
-        context.startActivity(chooser)
     }
 
     private fun buildQuestionPaperForExport(entity: PaperEntity): QuestionPaper {
@@ -6825,25 +6840,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun initTodayStudyAnalytics() {
         viewModelScope.launch(Dispatchers.IO) {
-            val todayStr = getTodayDateString()
-            val existing = paperDao.getDailyAnalytics(todayStr)
-            val currentGoalMins = appPreferences.getDailyGoalMinutes()
-            if (existing != null) {
-                withContext(Dispatchers.Main) {
-                    _todayStudyAnalytics.value = existing
-                    _todayTestSeconds.value = existing.totalTestTimeSeconds
+            try {
+                val todayStr = getTodayDateString()
+                val existing = paperDao.getDailyAnalytics(todayStr)
+                val currentGoalMins = appPreferences.getDailyGoalMinutes()
+                if (existing != null) {
+                    withContext(Dispatchers.Main) {
+                        _todayStudyAnalytics.value = existing
+                        _todayTestSeconds.value = existing.totalTestTimeSeconds
+                    }
+                } else {
+                    val newEntity = DailyStudyAnalyticsEntity(
+                        dateString = todayStr,
+                        totalTestTimeSeconds = 0L,
+                        dailyGoalSeconds = currentGoalMins * 60L
+                    )
+                    paperDao.upsertDailyAnalytics(newEntity)
+                    withContext(Dispatchers.Main) {
+                        _todayStudyAnalytics.value = newEntity
+                        _todayTestSeconds.value = 0L
+                    }
                 }
-            } else {
-                val newEntity = DailyStudyAnalyticsEntity(
-                    dateString = todayStr,
-                    totalTestTimeSeconds = 0L,
-                    dailyGoalSeconds = currentGoalMins * 60L
-                )
-                paperDao.upsertDailyAnalytics(newEntity)
-                withContext(Dispatchers.Main) {
-                    _todayStudyAnalytics.value = newEntity
-                    _todayTestSeconds.value = 0L
-                }
+            } catch (_: Exception) {
+                // Ignore transient startup DB errors
             }
         }
     }

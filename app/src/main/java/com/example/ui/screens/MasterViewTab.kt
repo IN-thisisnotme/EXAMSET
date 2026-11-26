@@ -177,7 +177,8 @@ fun MasterViewTab(
     var showResolutionHubDialog by remember { mutableStateOf(false) }
     var initialAuditFeedbackText by remember { mutableStateOf<String?>(null) }
 
-    if (isLoadingPaper && (currentPaper == null || (currentPaperEntityId != null && currentPaper!!.id != currentPaperEntityId))) {
+    val loadingPaperSnapshot = currentPaper
+    if (isLoadingPaper && (loadingPaperSnapshot == null || (currentPaperEntityId != null && loadingPaperSnapshot.id != currentPaperEntityId))) {
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -221,7 +222,8 @@ fun MasterViewTab(
         return
     }
 
-    if (currentPaper == null || currentPaper!!.questions.isEmpty()) {
+    val initialPaperSnapshot = currentPaper
+    if (initialPaperSnapshot == null || initialPaperSnapshot.questions.isEmpty()) {
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -259,10 +261,10 @@ fun MasterViewTab(
                         fontSize = 12.sp,
                         color = colors.inkMuted
                     )
-                    if (lastOpenedPaper != null) {
+                    lastOpenedPaper?.let { prevPaper ->
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
-                            onClick = { viewModel.loadSavedPaper(lastOpenedPaper!!) },
+                            onClick = { viewModel.loadSavedPaper(prevPaper) },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = colors.teal
@@ -326,7 +328,7 @@ fun MasterViewTab(
         return
     }
 
-    val paper = currentPaper!!
+    val paper = initialPaperSnapshot
     val questions = paper.questions
 
     val enterEditMode: () -> Unit = {
@@ -335,8 +337,9 @@ fun MasterViewTab(
     }
 
     val exitEditMode: (Boolean) -> Unit = { discard ->
-        if (discard && originalQuestionsSnapshot != null) {
-            viewModel.restorePaperQuestions(originalQuestionsSnapshot!!)
+        val snapshotToRestore = originalQuestionsSnapshot
+        if (discard && snapshotToRestore != null) {
+            viewModel.restorePaperQuestions(snapshotToRestore)
         }
         isEditMode = false
         originalQuestionsSnapshot = null
@@ -843,7 +846,7 @@ fun MasterViewTab(
         }
 
         // Questions List
-        itemsIndexed(filteredQuestions, key = { _, q -> "master_q_${q.num}" }) { idx, q ->
+        itemsIndexed(filteredQuestions, key = { idx, q -> "master_q_${idx}_${q.num}" }) { idx, q ->
             MasterQuestionCard(
                 question = q,
                 isEditProtected = !isEditMode,
@@ -1008,7 +1011,7 @@ fun MasterViewTab(
                 }
             }
 
-            items(explainedQuestions, key = { "master_exp_${it.num}" }) { q ->
+            itemsIndexed(explainedQuestions, key = { idx, q -> "master_exp_${idx}_${q.num}" }) { _, q ->
                 ExplanationCard(
                     question = q,
                     isEditMode = isEditMode,
@@ -1324,9 +1327,9 @@ fun MasterViewTab(
     }
 
     // Bulk Merge Answers & Explanations Dialog
-    if (showBulkMergeAnswersDialog && currentPaper != null) {
+    currentPaper?.takeIf { showBulkMergeAnswersDialog }?.let { activePaperForMerge ->
         BulkMergeAnswersDialog(
-            paper = currentPaper!!,
+            paper = activePaperForMerge,
             onMerge = { text ->
                 viewModel.bulkMergeAnswersAndExplanations(text)
                 showBulkMergeAnswersDialog = false
@@ -1336,9 +1339,9 @@ fun MasterViewTab(
     }
 
     // AI Bulk Audit Prompt Modal
-    if (showBulkAuditDialog && currentPaper != null) {
+    currentPaper?.takeIf { showBulkAuditDialog }?.let { activePaperForAudit ->
         BulkAuditPromptDialog(
-            paper = currentPaper!!,
+            paper = activePaperForAudit,
             onDismiss = { showBulkAuditDialog = false },
             onOpenResolutionHub = { feedbackText ->
                 initialAuditFeedbackText = feedbackText
@@ -1349,9 +1352,9 @@ fun MasterViewTab(
     }
 
     // AI Audit Resolution Hub & Analytics Modal
-    if (showResolutionHubDialog && currentPaper != null) {
+    currentPaper?.takeIf { showResolutionHubDialog }?.let { activePaperForHub ->
         AuditResolutionHubDialog(
-            paper = currentPaper!!,
+            paper = activePaperForHub,
             initialFeedbackText = initialAuditFeedbackText,
             onDismiss = { showResolutionHubDialog = false },
             onUpdateQuestion = { updatedQ ->

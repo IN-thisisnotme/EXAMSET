@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -250,9 +251,13 @@ fun PsychometricAnalysisDialog(
                 putExtra(android.content.Intent.EXTRA_TEXT, csv)
                 type = "text/plain"
             }
-            context.startActivity(
-                android.content.Intent.createChooser(sendIntent, "Share Psychometric Report CSV")
-            )
+            runCatching {
+                context.startActivity(
+                    android.content.Intent.createChooser(sendIntent, "Share Psychometric Report CSV")
+                )
+            }.onFailure {
+                Toast.makeText(context, "No compatible app found to share report.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -703,7 +708,10 @@ fun PsychometricAnalysisDialog(
                                                         )
                                                     }
                                                 } else {
-                                                    items(filteredItems, key = { "item_${it.questionNum}" }) { item ->
+                                                    itemsIndexed(
+                                                        filteredItems,
+                                                        key = { idx, item -> "item_${idx}_${item.questionNum}" }
+                                                    ) { _, item ->
                                                         val qModel = effectivePaper.questions.getOrNull(item.questionNum - 1)
                                                         PsychometricItemCard(
                                                             item = item,
@@ -718,10 +726,10 @@ fun PsychometricAnalysisDialog(
                                                         EmptyStudentRosterCard()
                                                     }
                                                 } else {
-                                                    items(
+                                                    itemsIndexed(
                                                         report.candidates,
-                                                        key = { "${it.rank}_${it.rollNumber}_${it.bookletNumber}" }
-                                                    ) { c ->
+                                                        key = { idx, c -> "${idx}_${c.rank}_${c.rollNumber}_${c.bookletNumber}" }
+                                                    ) { _, c ->
                                                         StudentScorecardRowCard(
                                                             candidate = c,
                                                             onSelectCandidate = { selectedCandidateForReportCard = c }
@@ -807,7 +815,10 @@ fun PsychometricAnalysisDialog(
                                                 )
                                             }
                                         } else {
-                                            items(filteredItems, key = { "item_${it.questionNum}" }) { item ->
+                                            itemsIndexed(
+                                                filteredItems,
+                                                key = { idx, item -> "item_${idx}_${item.questionNum}" }
+                                            ) { _, item ->
                                                 val qModel = effectivePaper.questions.getOrNull(item.questionNum - 1)
                                                 PsychometricItemCard(
                                                     item = item,
@@ -822,10 +833,10 @@ fun PsychometricAnalysisDialog(
                                                 EmptyStudentRosterCard()
                                             }
                                         } else {
-                                            items(
+                                            itemsIndexed(
                                                 report.candidates,
-                                                key = { "${it.rank}_${it.rollNumber}_${it.bookletNumber}" }
-                                            ) { c ->
+                                                key = { idx, c -> "${idx}_${c.rank}_${c.rollNumber}_${c.bookletNumber}" }
+                                            ) { _, c ->
                                                 StudentScorecardRowCard(
                                                     candidate = c,
                                                     onSelectCandidate = { selectedCandidateForReportCard = c }
@@ -2171,9 +2182,13 @@ private fun StudentReportCardOverlay(
                                 putExtra(android.content.Intent.EXTRA_TEXT, reportCardText)
                                 type = "text/plain"
                             }
-                            context.startActivity(
-                                android.content.Intent.createChooser(sendIntent, "Share Student Report Card")
-                            )
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent.createChooser(sendIntent, "Share Student Report Card")
+                                )
+                            }.onFailure {
+                                Toast.makeText(context, "No compatible app found to share report card.", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, colors.border),

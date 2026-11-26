@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -136,7 +137,7 @@ fun CreatorTab(
         }
     }
 
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var isOcrScanning by remember { mutableStateOf(false) }
     var scanResult by remember { mutableStateOf<NotesExtractionResult?>(null) }
     var showScanResultDialog by remember { mutableStateOf(false) }
@@ -145,8 +146,9 @@ fun CreatorTab(
     val takePhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { isSaved ->
-        if (isSaved && pendingCameraUri != null) {
-            val uriToProcess = pendingCameraUri!!
+        val uriToProcess = pendingCameraUri
+        pendingCameraUri = null
+        if (isSaved && uriToProcess != null) {
             isOcrScanning = true
             coroutineScope.launch {
                 val result = HandwrittenNotesExtractor.extractFromImageUri(context, uriToProcess)
@@ -459,7 +461,11 @@ fun CreatorTab(
                                 val tempUri = CameraCaptureHelper.createTempPictureUri(context)
                                 if (tempUri != null) {
                                     pendingCameraUri = tempUri
-                                    takePhotoLauncher.launch(tempUri)
+                                    runCatching { takePhotoLauncher.launch(tempUri) }
+                                        .onFailure {
+                                            pendingCameraUri = null
+                                            Toast.makeText(context, "No camera app available to capture notes.", Toast.LENGTH_SHORT).show()
+                                        }
                                 } else {
                                     Toast.makeText(context, "Unable to access camera storage.", Toast.LENGTH_SHORT).show()
                                 }

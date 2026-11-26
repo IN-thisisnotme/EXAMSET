@@ -736,8 +736,9 @@ fun HomeScreen(
                                         overflow = TextOverflow.Ellipsis,
                                         lineHeight = 20.sp
                                     )
+                                    val activePaperSnapshot = currentPaper
                                     val subtitle = when {
-                                        currentPaper != null -> "${ExamNumberGenerator.formatSetDisplayLabel(currentPaper!!.metadata.setNumber)} • ${FolderPathHelper.formatDisplayPath(currentPaper!!.metadata.subject)}"
+                                        activePaperSnapshot != null -> "${ExamNumberGenerator.formatSetDisplayLabel(activePaperSnapshot.metadata.setNumber)} • ${FolderPathHelper.formatDisplayPath(activePaperSnapshot.metadata.subject)}"
                                         !activeFolderPath.isNullOrBlank() -> activeFolderPath
                                         else -> "Exam Studio"
                                     }
@@ -900,9 +901,10 @@ fun HomeScreen(
                                 icon = {
                                     BadgedBox(
                                         badge = {
-                                            if (index == 1 && currentPaper != null && currentPaper!!.questions.isNotEmpty()) {
+                                            val badgePaper = currentPaper
+                                            if (index == 1 && badgePaper != null && badgePaper.questions.isNotEmpty()) {
                                                 Badge(containerColor = colors.teal) {
-                                                    Text("${currentPaper!!.questions.size}")
+                                                    Text("${badgePaper.questions.size}")
                                                 }
                                             } else if (index == 0 && savedPapers.isNotEmpty()) {
                                                 Badge(containerColor = colors.surfaceVariant) {
@@ -1257,9 +1259,10 @@ fun HomeScreen(
                                 icon = {
                                     BadgedBox(
                                         badge = {
-                                            if (index == 1 && currentPaper != null && currentPaper!!.questions.isNotEmpty()) {
+                                            val railBadgePaper = currentPaper
+                                            if (index == 1 && railBadgePaper != null && railBadgePaper.questions.isNotEmpty()) {
                                                 Badge(containerColor = colors.teal) {
-                                                    Text("${currentPaper!!.questions.size}")
+                                                    Text("${railBadgePaper.questions.size}")
                                                 }
                                             } else if (index == 0 && savedPapers.isNotEmpty()) {
                                                 Badge(containerColor = colors.surfaceVariant) {
@@ -1496,9 +1499,9 @@ fun HomeScreen(
     }
 
     // Print Configuration Dialog
-    if (showPrintDialog && currentPaper != null) {
+    currentPaper?.takeIf { showPrintDialog }?.let { activePrintPaper ->
         PrintConfigDialog(
-            paper = currentPaper!!,
+            paper = activePrintPaper,
             initialConfig = examConfig,
             onDismiss = { showPrintDialog = false },
             onPrintTriggered = { newConfig -> viewModel.updateExamConfig(newConfig) }
@@ -1524,8 +1527,9 @@ fun HomeScreen(
             key2 = savedPapers.firstOrNull()?.id,
             key3 = lastOpenedForScanner?.id
         ) {
-            if (currentPaper != null) {
-                value = currentPaper!!
+            val activeCurrent = currentPaper
+            if (activeCurrent != null) {
+                value = activeCurrent
             } else {
                 val candidate = lastOpenedForScanner ?: savedPapers.firstOrNull()
                 value = if (candidate != null) {

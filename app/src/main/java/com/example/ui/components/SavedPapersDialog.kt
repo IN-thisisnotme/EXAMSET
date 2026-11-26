@@ -172,7 +172,11 @@ fun SavedPapersDialog(
                 putExtra(Intent.EXTRA_SUBJECT, title)
                 type = "text/plain"
             }
-            context.startActivity(Intent.createChooser(sendIntent, "Share Question Sets"))
+            runCatching {
+                context.startActivity(Intent.createChooser(sendIntent, "Share Question Sets"))
+            }.onFailure {
+                Toast.makeText(context, "No compatible app found to share question sets.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

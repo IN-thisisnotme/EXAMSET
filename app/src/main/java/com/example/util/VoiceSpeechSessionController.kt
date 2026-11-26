@@ -1,7 +1,10 @@
 package com.example.util
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -20,11 +23,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import java.util.Locale
 
 private const val TAG = "VoiceSpeechSession"
 private const val SILENCE_AUTO_FINISH_MS = 30_000L
 private const val SILENCE_WARNING_THRESHOLD_MS = 18_000L
+private const val RAPID_EMPTY_ERROR_WINDOW_MS = 1_200L
+private const val MAX_RAPID_EMPTY_ERRORS_PER_ENGINE = 3
 private const val ERROR_LANGUAGE_NOT_SUPPORTED_CODE = 12
 private const val ERROR_LANGUAGE_UNAVAILABLE_CODE = 13
 
@@ -48,6 +54,59 @@ enum class VoiceSpeechEngineMode(
     )
 }
 
+enum class VoiceSpeechEmptyErrorAction {
+    RETRY_SAME_ENGINE,
+    FALLBACK_TO_STANDARD,
+    STOP_WITH_NOTICE
+}
+
+data class VoiceSpeechEmptyErrorDecision(
+    val action: VoiceSpeechEmptyErrorAction,
+    val nextRapidErrorCount: Int
+)
+
+object VoiceSpeechRetryPolicy {
+    fun evaluateEmptyError(
+        silenceSoFarMs: Long,
+        passElapsedMs: Long,
+        priorRapidEmptyErrors: Int,
+        engineMode: VoiceSpeechEngineMode,
+        isStandardFallbackActive: Boolean,
+        silenceAutoFinishMs: Long = SILENCE_AUTO_FINISH_MS,
+        rapidWindowMs: Long = RAPID_EMPTY_ERROR_WINDOW_MS,
+        maxRapidErrors: Int = MAX_RAPID_EMPTY_ERRORS_PER_ENGINE
+    ): VoiceSpeechEmptyErrorDecision {
+        if (silenceSoFarMs >= silenceAutoFinishMs) {
+            return VoiceSpeechEmptyErrorDecision(
+                action = VoiceSpeechEmptyErrorAction.STOP_WITH_NOTICE,
+                nextRapidErrorCount = 0
+            )
+        }
+        val nextRapidCount = if (passElapsedMs in 0L until rapidWindowMs) {
+            priorRapidEmptyErrors + 1
+        } else {
+            0
+        }
+        if (nextRapidCount >= maxRapidErrors) {
+            return if (engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST && !isStandardFallbackActive) {
+                VoiceSpeechEmptyErrorDecision(
+                    action = VoiceSpeechEmptyErrorAction.FALLBACK_TO_STANDARD,
+                    nextRapidErrorCount = 0
+                )
+            } else {
+                VoiceSpeechEmptyErrorDecision(
+                    action = VoiceSpeechEmptyErrorAction.STOP_WITH_NOTICE,
+                    nextRapidErrorCount = nextRapidCount
+                )
+            }
+        }
+        return VoiceSpeechEmptyErrorDecision(
+            action = VoiceSpeechEmptyErrorAction.RETRY_SAME_ENGINE,
+            nextRapidErrorCount = nextRapidCount
+        )
+    }
+}
+
 @Stable
 class VoiceSpeechSessionController(context: Context) {
     private val appContext = context.applicationContext ?: context
@@ -55,10 +114,13 @@ class VoiceSpeechSessionController(context: Context) {
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var recognizerUsingOnDeviceApi = false
+    private var recognizerMayBeActive = false
 
     private var activeSessionGeneration = 0L
     private var activeSegmentId = 0L
     private var retriedClientBusyInSegment = false
+    private var lastPassStartedWallMs = 0L
+    private var consecutiveRapidEmptyErrors = 0
 
     private var unpausedStartWallMs = 0L
     private var accumulatedSpeakingMs = 0L
@@ -125,6 +187,14 @@ class VoiceSpeechSessionController(context: Context) {
             return standardAvailable || onDeviceAvailable
         }
 
+    private inline fun runOnMain(crossinline block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainHandler.post { block() }
+        }
+    }
+
     private val sessionTicker = object : Runnable {
         override fun run() {
             if (status != VoiceMicSessionStatus.LISTENING) return
@@ -158,65 +228,82 @@ class VoiceSpeechSessionController(context: Context) {
         onAutoFinishOnSilence: (transcript: String, durationMs: Long, engineLabel: String) -> Unit,
         onNoSpeechTimeout: (message: String) -> Unit
     ) {
-        mainHandler.removeCallbacksAndMessages(null)
-        activeSessionGeneration++
-        activeSegmentId++
-        retriedClientBusyInSegment = false
+        runOnMain {
+            if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                lastErrorMessage = describeSpeechError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS, engineMode)
+                status = VoiceMicSessionStatus.IDLE
+                return@runOnMain
+            }
 
-        onSilenceAutoFinish = onAutoFinishOnSilence
-        onSilenceNoSpeech = onNoSpeechTimeout
+            mainHandler.removeCallbacksAndMessages(null)
+            activeSessionGeneration++
+            activeSegmentId++
+            retriedClientBusyInSegment = false
+            consecutiveRapidEmptyErrors = 0
 
-        committedTranscript = initialSeedText.trim()
-        currentSegmentPartial = ""
-        accumulatedSpeakingMs = 0L
-        activeSpeakingMs = 0L
-        silenceElapsedMs = 0L
-        normalizedRmsLevel = 0f
-        statusNotice = null
-        lastErrorMessage = null
+            onSilenceAutoFinish = onAutoFinishOnSilence
+            onSilenceNoSpeech = onNoSpeechTimeout
 
-        val now = System.currentTimeMillis()
-        unpausedStartWallMs = now
-        lastSpeechActivityWallMs = now
-        status = VoiceMicSessionStatus.LISTENING
+            committedTranscript = initialSeedText.trim()
+            currentSegmentPartial = ""
+            accumulatedSpeakingMs = 0L
+            activeSpeakingMs = 0L
+            silenceElapsedMs = 0L
+            normalizedRmsLevel = 0f
+            statusNotice = null
+            lastErrorMessage = null
 
-        mainHandler.post(sessionTicker)
-        launchListeningPass(forceStandardFallback = false)
+            val now = System.currentTimeMillis()
+            unpausedStartWallMs = now
+            lastSpeechActivityWallMs = now
+            status = VoiceMicSessionStatus.LISTENING
+
+            mainHandler.post(sessionTicker)
+            launchListeningPass(forceStandardFallback = false)
+        }
     }
 
     fun pauseByUser() {
-        if (status != VoiceMicSessionStatus.LISTENING) return
-        mainHandler.removeCallbacksAndMessages(null)
-        activeSegmentId++
+        runOnMain {
+            if (status != VoiceMicSessionStatus.LISTENING) return@runOnMain
+            mainHandler.removeCallbacksAndMessages(null)
+            activeSegmentId++
+            consecutiveRapidEmptyErrors = 0
 
-        val now = System.currentTimeMillis()
-        accumulatedSpeakingMs += (now - unpausedStartWallMs).coerceAtLeast(0L)
-        activeSpeakingMs = accumulatedSpeakingMs
-        committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, currentSegmentPartial)
-        currentSegmentPartial = ""
-        silenceElapsedMs = 0L
-        normalizedRmsLevel = 0f
+            val now = System.currentTimeMillis()
+            accumulatedSpeakingMs += (now - unpausedStartWallMs).coerceAtLeast(0L)
+            activeSpeakingMs = accumulatedSpeakingMs
+            committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, currentSegmentPartial)
+            currentSegmentPartial = ""
+            silenceElapsedMs = 0L
+            normalizedRmsLevel = 0f
 
-        runCatching { speechRecognizer?.cancel() }
-        status = VoiceMicSessionStatus.PAUSED_BY_USER
-        statusNotice = "Paused cleanly — your captured words are saved. Tap Resume Mic to continue or Finish & Check."
+            cancelRecognizerSafely()
+            status = VoiceMicSessionStatus.PAUSED_BY_USER
+            statusNotice = "Paused cleanly — your captured words are saved. Tap Resume Mic to continue or Finish & Check."
+        }
     }
 
     fun resumeByUser() {
-        if (status != VoiceMicSessionStatus.PAUSED_BY_USER) return
-        mainHandler.removeCallbacksAndMessages(null)
-        retriedClientBusyInSegment = false
+        runOnMain {
+            if (status != VoiceMicSessionStatus.PAUSED_BY_USER) return@runOnMain
+            mainHandler.removeCallbacksAndMessages(null)
+            retriedClientBusyInSegment = false
+            consecutiveRapidEmptyErrors = 0
 
-        val now = System.currentTimeMillis()
-        unpausedStartWallMs = now
-        lastSpeechActivityWallMs = now
-        silenceElapsedMs = 0L
-        lastErrorMessage = null
-        statusNotice = null
-        status = VoiceMicSessionStatus.LISTENING
+            val now = System.currentTimeMillis()
+            unpausedStartWallMs = now
+            lastSpeechActivityWallMs = now
+            silenceElapsedMs = 0L
+            lastErrorMessage = null
+            statusNotice = null
+            status = VoiceMicSessionStatus.LISTENING
 
-        mainHandler.post(sessionTicker)
-        launchListeningPass(forceStandardFallback = false)
+            mainHandler.post(sessionTicker)
+            launchListeningPass(forceStandardFallback = false)
+        }
     }
 
     fun finishSession(): Pair<String, Long> {
@@ -234,36 +321,52 @@ class VoiceSpeechSessionController(context: Context) {
     }
 
     fun cancelSession() {
-        stopInternalToIdle(clearTranscripts = true)
-        statusNotice = null
-        lastErrorMessage = null
+        runOnMain {
+            stopInternalToIdle(clearTranscripts = true)
+            statusNotice = null
+            lastErrorMessage = null
+        }
     }
 
     fun appendExternalDictation(text: String) {
-        val cleaned = text.trim()
-        if (cleaned.isBlank()) return
-        committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, cleaned)
-        lastSpeechActivityWallMs = System.currentTimeMillis()
-        silenceElapsedMs = 0L
-        lastErrorMessage = null
+        runOnMain {
+            val cleaned = text.trim()
+            if (cleaned.isBlank()) return@runOnMain
+            committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, cleaned)
+            lastSpeechActivityWallMs = System.currentTimeMillis()
+            silenceElapsedMs = 0L
+            lastErrorMessage = null
+        }
     }
 
     fun replaceTranscript(text: String) {
-        committedTranscript = text.trim()
-        currentSegmentPartial = ""
+        runOnMain {
+            committedTranscript = text.trim()
+            currentSegmentPartial = ""
+        }
     }
 
     fun clearAll() {
-        stopInternalToIdle(clearTranscripts = true)
-        statusNotice = null
-        lastErrorMessage = null
+        runOnMain {
+            stopInternalToIdle(clearTranscripts = true)
+            statusNotice = null
+            lastErrorMessage = null
+        }
+    }
+
+    private fun cancelRecognizerSafely() {
+        if (recognizerMayBeActive) {
+            runCatching { speechRecognizer?.cancel() }
+            recognizerMayBeActive = false
+        }
     }
 
     private fun stopInternalToIdle(clearTranscripts: Boolean) {
         mainHandler.removeCallbacksAndMessages(null)
         activeSessionGeneration++
         activeSegmentId++
-        runCatching { speechRecognizer?.cancel() }
+        consecutiveRapidEmptyErrors = 0
+        cancelRecognizerSafely()
         status = VoiceMicSessionStatus.IDLE
         normalizedRmsLevel = 0f
         silenceElapsedMs = 0L
@@ -296,20 +399,45 @@ class VoiceSpeechSessionController(context: Context) {
             ?.also { recognizerUsingOnDeviceApi = false }
 
         speechRecognizer = created
+        recognizerMayBeActive = false
         return created
     }
 
     private fun destroyRecognizer() {
         runCatching {
-            speechRecognizer?.cancel()
+            if (recognizerMayBeActive) {
+                speechRecognizer?.cancel()
+            }
             speechRecognizer?.destroy()
         }
         speechRecognizer = null
         recognizerUsingOnDeviceApi = false
+        recognizerMayBeActive = false
+    }
+
+    private fun extractFirstRecognizedText(bundle: Bundle?): String {
+        if (bundle == null) return ""
+        return runCatching {
+            bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull { !it.isNullOrBlank() }
+                ?.trim()
+                .orEmpty()
+        }.getOrDefault("")
     }
 
     private fun launchListeningPass(forceStandardFallback: Boolean) {
         if (status != VoiceMicSessionStatus.LISTENING) return
+        if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            stopInternalToIdle(clearTranscripts = false)
+            lastErrorMessage = describeSpeechError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS, engineMode)
+            return
+        }
+
+        // Cancel any prior listening pass BEFORE attaching a new listener so stale cancel callbacks never race.
+        cancelRecognizerSafely()
+
         val generationSnapshot = activeSessionGeneration
         val segmentSnapshot = ++activeSegmentId
 
@@ -331,158 +459,209 @@ class VoiceSpeechSessionController(context: Context) {
             else -> "Device Speech-to-Text"
         }
 
-        recognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) = Unit
+        val listenerAttached = runCatching {
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) = Unit
 
-            override fun onBeginningOfSpeech() {
-                if (generationSnapshot != activeSessionGeneration ||
-                    segmentSnapshot != activeSegmentId ||
-                    status != VoiceMicSessionStatus.LISTENING
-                ) return
-                lastSpeechActivityWallMs = System.currentTimeMillis()
-                silenceElapsedMs = 0L
-            }
-
-            override fun onRmsChanged(rmsdB: Float) {
-                if (generationSnapshot != activeSessionGeneration ||
-                    segmentSnapshot != activeSegmentId ||
-                    status != VoiceMicSessionStatus.LISTENING
-                ) return
-                normalizedRmsLevel = ((rmsdB + 2f) / 12f).coerceIn(0.05f, 1f)
-            }
-
-            override fun onBufferReceived(buffer: ByteArray?) = Unit
-
-            override fun onEndOfSpeech() {
-                if (generationSnapshot != activeSessionGeneration ||
-                    segmentSnapshot != activeSegmentId
-                ) return
-                normalizedRmsLevel = 0.08f
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                if (generationSnapshot != activeSessionGeneration ||
-                    segmentSnapshot != activeSegmentId ||
-                    status != VoiceMicSessionStatus.LISTENING
-                ) return
-                val hypothesis = partialResults
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull { it.isNotBlank() }
-                    ?.trim()
-                    .orEmpty()
-                if (hypothesis.isNotBlank() && hypothesis != currentSegmentPartial) {
-                    currentSegmentPartial = hypothesis
-                    lastSpeechActivityWallMs = System.currentTimeMillis()
-                    silenceElapsedMs = 0L
-                    statusNotice = null
-                }
-            }
-
-            override fun onResults(results: Bundle?) {
-                if (generationSnapshot != activeSessionGeneration ||
-                    segmentSnapshot != activeSegmentId ||
-                    status != VoiceMicSessionStatus.LISTENING
-                ) return
-                val finalChunk = results
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    ?.firstOrNull { it.isNotBlank() }
-                    ?.trim()
-                    .orEmpty()
-                    .ifBlank { currentSegmentPartial.trim() }
-
-                if (finalChunk.isNotBlank()) {
-                    committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, finalChunk)
-                    lastSpeechActivityWallMs = System.currentTimeMillis()
-                    silenceElapsedMs = 0L
-                }
-                currentSegmentPartial = ""
-                retriedClientBusyInSegment = false
-
-                // Keep continuous session open across natural mid-sentence pauses until user pauses/stops or 30s silence elapses.
-                mainHandler.postDelayed({
-                    if (generationSnapshot == activeSessionGeneration &&
-                        status == VoiceMicSessionStatus.LISTENING
-                    ) {
-                        launchListeningPass(forceStandardFallback = forceStandardFallback)
+                override fun onBeginningOfSpeech() {
+                    runOnMain {
+                        if (generationSnapshot != activeSessionGeneration ||
+                            segmentSnapshot != activeSegmentId ||
+                            status != VoiceMicSessionStatus.LISTENING
+                        ) return@runOnMain
+                        consecutiveRapidEmptyErrors = 0
+                        lastSpeechActivityWallMs = System.currentTimeMillis()
+                        silenceElapsedMs = 0L
                     }
-                }, 160L)
-            }
-
-            override fun onError(error: Int) {
-                if (generationSnapshot != activeSessionGeneration ||
-                    segmentSnapshot != activeSegmentId ||
-                    status != VoiceMicSessionStatus.LISTENING
-                ) return
-
-                // Always preserve any words captured in the current segment before handling error recovery.
-                if (currentSegmentPartial.isNotBlank()) {
-                    committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, currentSegmentPartial)
-                    currentSegmentPartial = ""
-                    lastSpeechActivityWallMs = System.currentTimeMillis()
                 }
 
-                when (error) {
-                    SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                        val silenceSoFar = System.currentTimeMillis() - lastSpeechActivityWallMs
-                        if (silenceSoFar < SILENCE_AUTO_FINISH_MS) {
-                            mainHandler.postDelayed({
-                                if (generationSnapshot == activeSessionGeneration &&
-                                    status == VoiceMicSessionStatus.LISTENING
-                                ) {
-                                    launchListeningPass(forceStandardFallback = forceStandardFallback)
-                                }
-                            }, 220L)
+                override fun onRmsChanged(rmsdB: Float) {
+                    runOnMain {
+                        if (generationSnapshot != activeSessionGeneration ||
+                            segmentSnapshot != activeSegmentId ||
+                            status != VoiceMicSessionStatus.LISTENING
+                        ) return@runOnMain
+                        normalizedRmsLevel = ((rmsdB + 2f) / 12f).coerceIn(0.05f, 1f)
+                    }
+                }
+
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+
+                override fun onEndOfSpeech() {
+                    runOnMain {
+                        if (generationSnapshot != activeSessionGeneration ||
+                            segmentSnapshot != activeSegmentId
+                        ) return@runOnMain
+                        normalizedRmsLevel = 0.08f
+                    }
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val hypothesis = extractFirstRecognizedText(partialResults)
+                    if (hypothesis.isBlank()) return
+                    runOnMain {
+                        if (generationSnapshot != activeSessionGeneration ||
+                            segmentSnapshot != activeSegmentId ||
+                            status != VoiceMicSessionStatus.LISTENING
+                        ) return@runOnMain
+                        consecutiveRapidEmptyErrors = 0
+                        if (hypothesis != currentSegmentPartial) {
+                            currentSegmentPartial = hypothesis
+                            lastSpeechActivityWallMs = System.currentTimeMillis()
+                            silenceElapsedMs = 0L
+                            statusNotice = null
                         }
                     }
+                }
 
-                    SpeechRecognizer.ERROR_NETWORK,
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                    SpeechRecognizer.ERROR_SERVER,
-                    ERROR_LANGUAGE_NOT_SUPPORTED_CODE,
-                    ERROR_LANGUAGE_UNAVAILABLE_CODE -> {
-                        if (engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST && !forceStandardFallback) {
-                            statusNotice = "Offline speech pack unavailable — switched automatically to device Speech Service."
-                            mainHandler.postDelayed({
-                                if (generationSnapshot == activeSessionGeneration &&
-                                    status == VoiceMicSessionStatus.LISTENING
-                                ) {
-                                    launchListeningPass(forceStandardFallback = true)
-                                }
-                            }, 180L)
-                        } else {
-                            stopInternalToIdle(clearTranscripts = false)
-                            lastErrorMessage = describeSpeechError(error, engineMode)
+                override fun onResults(results: Bundle?) {
+                    val extracted = extractFirstRecognizedText(results)
+                    runOnMain {
+                        recognizerMayBeActive = false
+                        if (generationSnapshot != activeSessionGeneration ||
+                            segmentSnapshot != activeSegmentId ||
+                            status != VoiceMicSessionStatus.LISTENING
+                        ) return@runOnMain
+                        val finalChunk = extracted.ifBlank { currentSegmentPartial.trim() }
+
+                        if (finalChunk.isNotBlank()) {
+                            committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, finalChunk)
+                            lastSpeechActivityWallMs = System.currentTimeMillis()
+                            silenceElapsedMs = 0L
+                            consecutiveRapidEmptyErrors = 0
                         }
-                    }
+                        currentSegmentPartial = ""
+                        retriedClientBusyInSegment = false
 
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
-                    SpeechRecognizer.ERROR_CLIENT -> {
-                        if (!retriedClientBusyInSegment) {
-                            retriedClientBusyInSegment = true
-                            destroyRecognizer()
-                            mainHandler.postDelayed({
-                                if (generationSnapshot == activeSessionGeneration &&
-                                    status == VoiceMicSessionStatus.LISTENING
-                                ) {
-                                    launchListeningPass(forceStandardFallback = forceStandardFallback)
-                                }
-                            }, 280L)
-                        } else {
-                            stopInternalToIdle(clearTranscripts = false)
-                            lastErrorMessage = describeSpeechError(error, engineMode)
-                        }
-                    }
-
-                    else -> {
-                        stopInternalToIdle(clearTranscripts = false)
-                        lastErrorMessage = describeSpeechError(error, engineMode)
+                        // Keep continuous session open across natural mid-sentence pauses until user pauses/stops or 30s silence elapses.
+                        mainHandler.postDelayed({
+                            if (generationSnapshot == activeSessionGeneration &&
+                                status == VoiceMicSessionStatus.LISTENING
+                            ) {
+                                launchListeningPass(forceStandardFallback = forceStandardFallback)
+                            }
+                        }, 160L)
                     }
                 }
-            }
 
-            override fun onEvent(eventType: Int, params: Bundle?) = Unit
-        })
+                @SuppressLint("SwitchIntDef")
+                override fun onError(error: Int) {
+                    runOnMain {
+                        recognizerMayBeActive = false
+                        if (generationSnapshot != activeSessionGeneration ||
+                            segmentSnapshot != activeSegmentId ||
+                            status != VoiceMicSessionStatus.LISTENING
+                        ) return@runOnMain
+
+                        // Always preserve any words captured in the current segment before handling error recovery.
+                        val hadPartialWords = currentSegmentPartial.isNotBlank()
+                        if (hadPartialWords) {
+                            committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, currentSegmentPartial)
+                            currentSegmentPartial = ""
+                            lastSpeechActivityWallMs = System.currentTimeMillis()
+                            consecutiveRapidEmptyErrors = 0
+                        }
+
+                        when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                                val now = System.currentTimeMillis()
+                                val silenceSoFar = now - lastSpeechActivityWallMs
+                                val passElapsed = now - lastPassStartedWallMs
+                                val decision = VoiceSpeechRetryPolicy.evaluateEmptyError(
+                                    silenceSoFarMs = silenceSoFar,
+                                    passElapsedMs = passElapsed,
+                                    priorRapidEmptyErrors = consecutiveRapidEmptyErrors,
+                                    engineMode = engineMode,
+                                    isStandardFallbackActive = forceStandardFallback
+                                )
+                                consecutiveRapidEmptyErrors = decision.nextRapidErrorCount
+                                when (decision.action) {
+                                    VoiceSpeechEmptyErrorAction.RETRY_SAME_ENGINE -> {
+                                        mainHandler.postDelayed({
+                                            if (generationSnapshot == activeSessionGeneration &&
+                                                status == VoiceMicSessionStatus.LISTENING
+                                            ) {
+                                                launchListeningPass(forceStandardFallback = forceStandardFallback)
+                                            }
+                                        }, 240L)
+                                    }
+                                    VoiceSpeechEmptyErrorAction.FALLBACK_TO_STANDARD -> {
+                                        destroyRecognizer()
+                                        statusNotice = "Switched to standard device Speech Service for clearer pickup."
+                                        mainHandler.postDelayed({
+                                            if (generationSnapshot == activeSessionGeneration &&
+                                                status == VoiceMicSessionStatus.LISTENING
+                                            ) {
+                                                launchListeningPass(forceStandardFallback = true)
+                                            }
+                                        }, 200L)
+                                    }
+                                    VoiceSpeechEmptyErrorAction.STOP_WITH_NOTICE -> {
+                                        stopInternalToIdle(clearTranscripts = false)
+                                        lastErrorMessage = "Live background mic is not receiving speech on this device. Tap System Voice Mic or Type Check below."
+                                    }
+                                }
+                            }
+
+                            SpeechRecognizer.ERROR_NETWORK,
+                            SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+                            SpeechRecognizer.ERROR_SERVER,
+                            ERROR_LANGUAGE_NOT_SUPPORTED_CODE,
+                            ERROR_LANGUAGE_UNAVAILABLE_CODE -> {
+                                if (engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST && !forceStandardFallback) {
+                                    destroyRecognizer()
+                                    statusNotice = "Offline speech pack unavailable — switched automatically to device Speech Service."
+                                    mainHandler.postDelayed({
+                                        if (generationSnapshot == activeSessionGeneration &&
+                                            status == VoiceMicSessionStatus.LISTENING
+                                        ) {
+                                            launchListeningPass(forceStandardFallback = true)
+                                        }
+                                    }, 200L)
+                                } else {
+                                    stopInternalToIdle(clearTranscripts = false)
+                                    lastErrorMessage = describeSpeechError(error, engineMode)
+                                }
+                            }
+
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                            SpeechRecognizer.ERROR_CLIENT -> {
+                                if (!retriedClientBusyInSegment) {
+                                    retriedClientBusyInSegment = true
+                                    destroyRecognizer()
+                                    mainHandler.postDelayed({
+                                        if (generationSnapshot == activeSessionGeneration &&
+                                            status == VoiceMicSessionStatus.LISTENING
+                                        ) {
+                                            launchListeningPass(forceStandardFallback = forceStandardFallback)
+                                        }
+                                    }, 280L)
+                                } else {
+                                    stopInternalToIdle(clearTranscripts = false)
+                                    lastErrorMessage = describeSpeechError(error, engineMode)
+                                }
+                            }
+
+                            else -> {
+                                stopInternalToIdle(clearTranscripts = false)
+                                lastErrorMessage = describeSpeechError(error, engineMode)
+                            }
+                        }
+                    }
+                }
+
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+        }
+
+        if (listenerAttached.isFailure) {
+            Log.e(TAG, "SpeechRecognizer.setRecognitionListener failed", listenerAttached.exceptionOrNull())
+            destroyRecognizer()
+            stopInternalToIdle(clearTranscripts = false)
+            lastErrorMessage = "Microphone speech listener could not attach on this device. Tap System Voice Mic or Type Check below."
+            return
+        }
 
         val languageTag = Locale.getDefault().toLanguageTag()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -500,18 +679,21 @@ class VoiceSpeechSessionController(context: Context) {
         }
 
         runCatching {
-            recognizer.cancel()
+            lastPassStartedWallMs = System.currentTimeMillis()
+            recognizerMayBeActive = true
             recognizer.startListening(intent)
         }.onFailure { err ->
+            recognizerMayBeActive = false
             Log.e(TAG, "SpeechRecognizer.startListening failed", err)
             if (engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST && !forceStandardFallback) {
+                destroyRecognizer()
                 mainHandler.postDelayed({
                     if (generationSnapshot == activeSessionGeneration &&
                         status == VoiceMicSessionStatus.LISTENING
                     ) {
                         launchListeningPass(forceStandardFallback = true)
                     }
-                }, 180L)
+                }, 200L)
             } else {
                 stopInternalToIdle(clearTranscripts = false)
                 lastErrorMessage = "Microphone speech service could not start on this device. Tap System Voice Mic or Type Check below."
@@ -520,11 +702,14 @@ class VoiceSpeechSessionController(context: Context) {
     }
 
     fun shutdown() {
-        mainHandler.removeCallbacksAndMessages(null)
-        activeSessionGeneration++
-        activeSegmentId++
-        destroyRecognizer()
-        status = VoiceMicSessionStatus.IDLE
+        runOnMain {
+            mainHandler.removeCallbacksAndMessages(null)
+            activeSessionGeneration++
+            activeSegmentId++
+            consecutiveRapidEmptyErrors = 0
+            destroyRecognizer()
+            status = VoiceMicSessionStatus.IDLE
+        }
     }
 
     private fun describeSpeechError(errorCode: Int, mode: VoiceSpeechEngineMode): String {
