@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
@@ -25,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,6 +48,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
@@ -57,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -327,23 +333,47 @@ fun ExamCountdownsDialog(
             initialMinute = parsedMinute,
             is24Hour = true
         )
+        var useKeyboardTimeInput by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
             containerColor = colors.surface,
             titleContentColor = colors.inkBold,
             title = {
-                Text(
-                    text = "Select Target Time (24h)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Select Target Time (24h)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { useKeyboardTimeInput = !useKeyboardTimeInput },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (useKeyboardTimeInput) Icons.Default.AccessTime else Icons.Default.Keyboard,
+                            contentDescription = if (useKeyboardTimeInput) "Switch to Clock Dial" else "Switch to Keyboard Time Entry",
+                            tint = colors.teal
+                        )
+                    }
+                }
             },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    TimePicker(state = timePickerState)
+                    if (useKeyboardTimeInput) {
+                        TimeInput(state = timePickerState)
+                    } else {
+                        TimePicker(state = timePickerState)
+                    }
                 }
             },
             confirmButton = {
@@ -377,6 +407,7 @@ fun ExamCountdownsDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        val currentFontScale = LocalDensity.current.fontScale
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = colors.surface,
@@ -386,426 +417,455 @@ fun ExamCountdownsDialog(
                 .fillMaxWidth(0.94f)
                 .widthIn(max = 520.dp)
                 .heightIn(max = 760.dp)
+                .imePadding()
                 .testTag("exam_countdowns_dialog")
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Exam-Day Countdowns",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = colors.inkBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close Countdowns", tint = colors.muted)
-                    }
-                }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isLargeScaleOrNarrow = currentFontScale >= 1.3f || maxWidth < 340.dp
+                val isExtraWideFont = currentFontScale >= 1.45f || maxWidth < 310.dp
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Unified scrollable content (prevents clipped lists & nested-scroll crashes)
-                LazyColumn(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f, fill = false),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
-                    item(key = "countdown_form") {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = colors.surfaceVariant,
-                            border = BorderStroke(0.8.dp, colors.border)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Text(
-                                    text = if (editingId == null) "Add Exam Target" else "Edit Exam Target",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-
-                                OutlinedTextField(
-                                    value = titleInput,
-                                    onValueChange = { titleInput = it },
-                                    label = { Text("Target / Milestone Name") },
-                                    placeholder = { Text("e.g., Term-End Exam / Finals") },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("countdown_title_input")
-                                )
-
-                                // Date Input + Calendar Button
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedTextField(
-                                        value = dateInput,
-                                        onValueChange = { dateInput = it },
-                                        label = { Text("Date (YYYY-MM-DD)") },
-                                        singleLine = true,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("countdown_date_input")
-                                    )
-                                    OutlinedButton(
-                                        onClick = { showDatePicker = true },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                                        modifier = Modifier.heightIn(min = 48.dp)
-                                    ) {
-                                        Icon(Icons.Default.Event, contentDescription = "Pick Date", tint = colors.teal)
-                                    }
-                                }
-
-                                // [DEPRECATED 2026-11-25] Reason: Quick date offset chips (+7d/+15d/+30d/+60d/+90d) removed per user request ("no quick thing in it"). Restore if: Quick preset date shortcuts are requested again.
-
-                                // Time Input (HH:mm, default 00:00) + Clock Button
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    OutlinedTextField(
-                                        value = timeInput,
-                                        onValueChange = { timeInput = it },
-                                        label = { Text("Time (HH:mm)") },
-                                        placeholder = { Text("00:00") },
-                                        isError = !isTimeFieldValid,
-                                        singleLine = true,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("countdown_time_input")
-                                    )
-                                    OutlinedButton(
-                                        onClick = { showTimePicker = true },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                                        modifier = Modifier.heightIn(min = 48.dp)
-                                    ) {
-                                        Icon(Icons.Default.AccessTime, contentDescription = "Pick Time", tint = colors.teal)
-                                    }
-                                }
-
-                                // Timezone Toggle: Local (<TZ>) vs GMT (UTC)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Zone:",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = colors.muted
-                                    )
-                                    Surface(
-                                        onClick = { tzModeInput = "LOCAL" },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (tzModeInput == "LOCAL") colors.tealLight else colors.surface,
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (tzModeInput == "LOCAL") colors.teal else colors.border
-                                        ),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 48.dp)
-                                            .testTag("countdown_tz_local")
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.Center,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "Local ($localTzLabel)",
-                                                fontSize = 12.sp,
-                                                fontWeight = if (tzModeInput == "LOCAL") FontWeight.Bold else FontWeight.Medium,
-                                                color = if (tzModeInput == "LOCAL") colors.tealDark else colors.ink,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                    Surface(
-                                        onClick = { tzModeInput = "GMT" },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (tzModeInput == "GMT") colors.tealLight else colors.surface,
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (tzModeInput == "GMT") colors.teal else colors.border
-                                        ),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .heightIn(min = 48.dp)
-                                            .testTag("countdown_tz_gmt")
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.Center,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "GMT (UTC)",
-                                                fontSize = 12.sp,
-                                                fontWeight = if (tzModeInput == "GMT") FontWeight.Bold else FontWeight.Medium,
-                                                color = if (tzModeInput == "GMT") colors.tealDark else colors.ink,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
-                                    }
-                                }
-
-                                if (previewTargetMillis != null) {
-                                    val localPreview = StudyDateUtils.formatHumanDateTimeLocal(previewTargetMillis)
-                                    val previewText = if (
-                                        tzModeInput == "GMT" &&
-                                        !localTzLabel.equals("GMT", ignoreCase = true) &&
-                                        !localTzLabel.equals("UTC", ignoreCase = true)
-                                    ) {
-                                        "Targets $localPreview ($effectiveTimeForPreview GMT)"
-                                    } else {
-                                        "Targets $localPreview"
-                                    }
-                                    Text(
-                                        text = previewText,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = colors.tealDark,
-                                        modifier = Modifier.testTag("countdown_preview_label")
-                                    )
-                                }
-
-                                OutlinedTextField(
-                                    value = subjectInput,
-                                    onValueChange = { subjectInput = it },
-                                    label = { Text("Course / Subject Focus (Optional)") },
-                                    placeholder = { Text("e.g., Course-101, Paper II, Organic Chemistry") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Switch(
-                                            checked = isPinnedInput,
-                                            onCheckedChange = { isPinnedInput = it },
-                                            colors = SwitchDefaults.colors(
-                                                checkedThumbColor = Color.White,
-                                                checkedTrackColor = colors.teal
-                                            )
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Pin to Library Strip",
-                                            fontSize = 12.5.sp,
-                                            color = colors.inkBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Button(
-                                        onClick = {
-                                            val normalizedTime = timeInput.trim().ifBlank { "00:00" }
-                                            val saved = onSaveCountdown(
-                                                editingId,
-                                                titleInput,
-                                                dateInput,
-                                                normalizedTime,
-                                                tzModeInput,
-                                                subjectInput,
-                                                "#0D9488",
-                                                isPinnedInput
-                                            )
-                                            if (saved) {
-                                                editingId = null
-                                                titleInput = ""
-                                                subjectInput = ""
-                                                dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
-                                                timeInput = "00:00"
-                                                tzModeInput = "LOCAL"
-                                                isPinnedInput = true
-                                            }
-                                        },
-                                        enabled = canSave,
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.teal,
-                                            contentColor = Color.White
-                                        ),
-                                        modifier = Modifier
-                                            .heightIn(min = 48.dp)
-                                            .testTag("save_countdown_button")
-                                    ) {
-                                        Text(
-                                            text = if (editingId == null) "Add" else "Update",
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
-                            }
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Exam-Day Countdowns",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = colors.inkBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close Countdowns", tint = colors.muted)
                         }
                     }
 
-                    item(key = "countdown_divider") {
-                        HorizontalDivider(color = colors.borderLight)
-                    }
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    if (sortedCountdowns.isEmpty()) {
-                        item(key = "countdown_empty") {
-                            Text(
-                                text = "No exam countdowns added yet.",
-                                fontSize = 12.5.sp,
-                                color = colors.muted,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                    } else {
-                        items(sortedCountdowns, key = { it.id }) { target ->
-                            val daysLeft = target.daysRemaining(liveNowMillis)
-                            val remMs = target.remainingMillis(liveNowMillis)
-                            val pillColor = when {
-                                remMs != null && remMs < 0L -> colors.muted
-                                daysLeft != null && daysLeft in 0L..7L -> colors.red
-                                daysLeft != null && daysLeft in 8L..21L -> colors.amber
-                                else -> parseHexColorSafe(target.colorHex, colors.teal)
-                            }
-                            Card(
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = colors.surface),
-                                border = BorderStroke(1.dp, if (target.isPinned) colors.teal else colors.border)
+                    // Unified scrollable content (prevents clipped lists & nested-scroll crashes)
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item(key = "countdown_form") {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = colors.surfaceVariant,
+                                border = BorderStroke(0.8.dp, colors.border)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    // Row 1: Title + Live Remaining Pill
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = target.title,
-                                            fontSize = 14.sp,
+                                            text = if (editingId == null) "Add Exam Target" else "Edit Exam Target",
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = colors.inkBold,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(999.dp),
-                                            color = pillColor.copy(alpha = 0.14f),
-                                            border = BorderStroke(0.8.dp, pillColor.copy(alpha = 0.45f))
-                                        ) {
-                                            Text(
-                                                text = target.formattedCountdownDetailed(liveNowMillis),
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = pillColor,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                            )
+                                        if (editingId != null) {
+                                            TextButton(
+                                                onClick = {
+                                                    editingId = null
+                                                    titleInput = ""
+                                                    subjectInput = ""
+                                                    dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
+                                                    timeInput = "00:00"
+                                                    tzModeInput = "LOCAL"
+                                                    isPinnedInput = true
+                                                },
+                                                modifier = Modifier
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("cancel_countdown_edit_button")
+                                            ) {
+                                                Text("Cancel", fontWeight = FontWeight.SemiBold, color = colors.muted)
+                                            }
                                         }
                                     }
 
-                                    // Row 2: Schedule & Subject on left + Action Icons on right
+                                    OutlinedTextField(
+                                        value = titleInput,
+                                        onValueChange = { titleInput = it },
+                                        label = { Text("Target / Milestone Name") },
+                                        placeholder = { Text("e.g., Term-End Exam / Finals") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("countdown_title_input")
+                                    )
+
+                                    // Date Input + Calendar Button
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
+                                        OutlinedTextField(
+                                            value = dateInput,
+                                            onValueChange = { dateInput = it },
+                                            label = { Text("Date (YYYY-MM-DD)") },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("countdown_date_input")
+                                        )
+                                        OutlinedButton(
+                                            onClick = { showDatePicker = true },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                            modifier = Modifier.heightIn(min = 48.dp)
+                                        ) {
+                                            Icon(Icons.Default.Event, contentDescription = "Pick Date", tint = colors.teal)
+                                        }
+                                    }
+
+                                    // [DEPRECATED 2026-11-25] Reason: Quick date offset chips (+7d/+15d/+30d/+60d/+90d) removed per user request ("no quick thing in it"). Restore if: Quick preset date shortcuts are requested again.
+
+                                    // Time Input (HH:mm, default 00:00) + Clock Button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = timeInput,
+                                            onValueChange = { timeInput = it },
+                                            label = { Text("Time (HH:mm)") },
+                                            placeholder = { Text("00:00") },
+                                            isError = !isTimeFieldValid,
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("countdown_time_input")
+                                        )
+                                        OutlinedButton(
+                                            onClick = { showTimePicker = true },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                            modifier = Modifier.heightIn(min = 48.dp)
+                                        ) {
+                                            Icon(Icons.Default.AccessTime, contentDescription = "Pick Time", tint = colors.teal)
+                                        }
+                                    }
+
+                                    // Timezone Toggle: Adaptive layout so Local (<TZ>) and GMT (UTC) never truncate under high font scales
+                                    val renderZonePills: @Composable (Modifier) -> Unit = { containerMod ->
+                                        if (isExtraWideFont) {
+                                            Column(
+                                                modifier = containerMod,
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Surface(
+                                                    onClick = { tzModeInput = "LOCAL" },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (tzModeInput == "LOCAL") colors.tealLight else colors.surface,
+                                                    border = BorderStroke(
+                                                        1.dp,
+                                                        if (tzModeInput == "LOCAL") colors.teal else colors.border
+                                                    ),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .heightIn(min = 48.dp)
+                                                        .testTag("countdown_tz_local")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "Local ($localTzLabel)",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = if (tzModeInput == "LOCAL") FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (tzModeInput == "LOCAL") colors.tealDark else colors.ink,
+                                                            maxLines = 2
+                                                        )
+                                                    }
+                                                }
+                                                Surface(
+                                                    onClick = { tzModeInput = "GMT" },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (tzModeInput == "GMT") colors.tealLight else colors.surface,
+                                                    border = BorderStroke(
+                                                        1.dp,
+                                                        if (tzModeInput == "GMT") colors.teal else colors.border
+                                                    ),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .heightIn(min = 48.dp)
+                                                        .testTag("countdown_tz_gmt")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "GMT (UTC)",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = if (tzModeInput == "GMT") FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (tzModeInput == "GMT") colors.tealDark else colors.ink,
+                                                            maxLines = 2
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Row(
+                                                modifier = containerMod,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    onClick = { tzModeInput = "LOCAL" },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (tzModeInput == "LOCAL") colors.tealLight else colors.surface,
+                                                    border = BorderStroke(
+                                                        1.dp,
+                                                        if (tzModeInput == "LOCAL") colors.teal else colors.border
+                                                    ),
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .heightIn(min = 48.dp)
+                                                        .testTag("countdown_tz_local")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "Local ($localTzLabel)",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = if (tzModeInput == "LOCAL") FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (tzModeInput == "LOCAL") colors.tealDark else colors.ink,
+                                                            maxLines = 2
+                                                        )
+                                                    }
+                                                }
+                                                Surface(
+                                                    onClick = { tzModeInput = "GMT" },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = if (tzModeInput == "GMT") colors.tealLight else colors.surface,
+                                                    border = BorderStroke(
+                                                        1.dp,
+                                                        if (tzModeInput == "GMT") colors.teal else colors.border
+                                                    ),
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .heightIn(min = 48.dp)
+                                                        .testTag("countdown_tz_gmt")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "GMT (UTC)",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = if (tzModeInput == "GMT") FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (tzModeInput == "GMT") colors.tealDark else colors.ink,
+                                                            maxLines = 2
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (isLargeScaleOrNarrow) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
                                             Text(
-                                                text = target.formattedTargetSchedule(),
-                                                fontSize = 11.5.sp,
-                                                color = colors.ink
+                                                text = "Zone:",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.muted
                                             )
-                                            if (target.subject.isNotBlank()) {
+                                            renderZonePills(Modifier.fillMaxWidth())
+                                        }
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Zone:",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.muted
+                                            )
+                                            renderZonePills(Modifier.weight(1f))
+                                        }
+                                    }
+
+                                    if (previewTargetMillis != null) {
+                                        val localPreview = StudyDateUtils.formatHumanDateTimeLocal(previewTargetMillis)
+                                        val previewText = if (
+                                            tzModeInput == "GMT" &&
+                                            !localTzLabel.equals("GMT", ignoreCase = true) &&
+                                            !localTzLabel.equals("UTC", ignoreCase = true)
+                                        ) {
+                                            "Targets $localPreview ($effectiveTimeForPreview GMT)"
+                                        } else {
+                                            "Targets $localPreview"
+                                        }
+                                        Text(
+                                            text = previewText,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = colors.tealDark,
+                                            modifier = Modifier.testTag("countdown_preview_label")
+                                        )
+                                    }
+
+                                    OutlinedTextField(
+                                        value = subjectInput,
+                                        onValueChange = { subjectInput = it },
+                                        label = { Text("Course / Subject Focus (Optional)") },
+                                        placeholder = { Text("e.g., Course-101, Paper II, Organic Chemistry") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    val onSaveClick = {
+                                        val normalizedTime = timeInput.trim().ifBlank { "00:00" }
+                                        val saved = onSaveCountdown(
+                                            editingId,
+                                            titleInput,
+                                            dateInput,
+                                            normalizedTime,
+                                            tzModeInput,
+                                            subjectInput,
+                                            "#0D9488",
+                                            isPinnedInput
+                                        )
+                                        if (saved) {
+                                            editingId = null
+                                            titleInput = ""
+                                            subjectInput = ""
+                                            dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
+                                            timeInput = "00:00"
+                                            tzModeInput = "LOCAL"
+                                            isPinnedInput = true
+                                        }
+                                    }
+
+                                    if (isLargeScaleOrNarrow) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Switch(
+                                                    checked = isPinnedInput,
+                                                    onCheckedChange = { isPinnedInput = it },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = Color.White,
+                                                        checkedTrackColor = colors.teal
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
-                                                    text = target.subject,
-                                                    fontSize = 11.sp,
-                                                    color = colors.muted,
+                                                    text = "Pin to Library Strip",
+                                                    fontSize = 12.5.sp,
+                                                    color = colors.inkBold,
+                                                    maxLines = 2,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                            Button(
+                                                onClick = onSaveClick,
+                                                enabled = canSave,
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = colors.teal,
+                                                    contentColor = Color.White
+                                                ),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("save_countdown_button")
+                                            ) {
+                                                Text(
+                                                    text = if (editingId == null) "Add" else "Update",
+                                                    fontWeight = FontWeight.Bold,
                                                     maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    softWrap = false
                                                 )
                                             }
                                         }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = { onTogglePin(target.id) },
-                                                modifier = Modifier.size(48.dp)
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PushPin,
-                                                    contentDescription = "Pin Countdown",
-                                                    tint = if (target.isPinned) colors.teal else colors.muted,
-                                                    modifier = Modifier.size(18.dp)
+                                                Switch(
+                                                    checked = isPinnedInput,
+                                                    onCheckedChange = { isPinnedInput = it },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = Color.White,
+                                                        checkedTrackColor = colors.teal
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = "Pin to Library Strip",
+                                                    fontSize = 12.5.sp,
+                                                    color = colors.inkBold,
+                                                    maxLines = 2,
+                                                    modifier = Modifier.weight(1f)
                                                 )
                                             }
-                                            IconButton(
-                                                onClick = {
-                                                    editingId = target.id
-                                                    titleInput = target.title
-                                                    dateInput = target.targetDateStr
-                                                    timeInput = target.targetTimeStr.ifBlank { "00:00" }
-                                                    tzModeInput = if (target.isGmtAnchored()) "GMT" else "LOCAL"
-                                                    subjectInput = target.subject
-                                                    isPinnedInput = target.isPinned
-                                                },
-                                                modifier = Modifier.size(48.dp)
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Button(
+                                                onClick = onSaveClick,
+                                                enabled = canSave,
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = colors.teal,
+                                                    contentColor = Color.White
+                                                ),
+                                                modifier = Modifier
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("save_countdown_button")
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Edit,
-                                                    contentDescription = "Edit Countdown",
-                                                    tint = colors.inkBold,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { pendingDeleteTarget = target },
-                                                modifier = Modifier.size(48.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Delete Countdown",
-                                                    tint = colors.red,
-                                                    modifier = Modifier.size(18.dp)
+                                                Text(
+                                                    text = if (editingId == null) "Add" else "Update",
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         }
@@ -813,21 +873,221 @@ fun ExamCountdownsDialog(
                                 }
                             }
                         }
+
+                        item(key = "countdown_divider") {
+                            HorizontalDivider(color = colors.borderLight)
+                        }
+
+                        if (sortedCountdowns.isEmpty()) {
+                            item(key = "countdown_empty") {
+                                Text(
+                                    text = "No exam countdowns added yet.",
+                                    fontSize = 12.5.sp,
+                                    color = colors.muted,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        } else {
+                            items(sortedCountdowns, key = { it.id }) { target ->
+                                val daysLeft = target.daysRemaining(liveNowMillis)
+                                val remMs = target.remainingMillis(liveNowMillis)
+                                val pillColor = when {
+                                    remMs != null && remMs < 0L -> colors.muted
+                                    daysLeft != null && daysLeft in 0L..7L -> colors.red
+                                    daysLeft != null && daysLeft in 8L..21L -> colors.amber
+                                    else -> parseHexColorSafe(target.colorHex, colors.teal)
+                                }
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = colors.surface),
+                                    border = BorderStroke(1.dp, if (target.isPinned) colors.teal else colors.border)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        // Row 1: Title + Live Remaining Pill (stacked at high font scale so neither clips)
+                                        if (isLargeScaleOrNarrow) {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = target.title,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.inkBold,
+                                                    maxLines = 3,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(999.dp),
+                                                    color = pillColor.copy(alpha = 0.14f),
+                                                    border = BorderStroke(0.8.dp, pillColor.copy(alpha = 0.45f))
+                                                ) {
+                                                    Text(
+                                                        text = target.formattedCountdownDetailed(liveNowMillis),
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = pillColor,
+                                                        maxLines = 2,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = target.title,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.inkBold,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(999.dp),
+                                                    color = pillColor.copy(alpha = 0.14f),
+                                                    border = BorderStroke(0.8.dp, pillColor.copy(alpha = 0.45f))
+                                                ) {
+                                                    Text(
+                                                        text = target.formattedCountdownDetailed(liveNowMillis),
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = pillColor,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        val renderActionIcons: @Composable () -> Unit = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(
+                                                    onClick = { onTogglePin(target.id) },
+                                                    modifier = Modifier.size(48.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PushPin,
+                                                        contentDescription = "Pin Countdown",
+                                                        tint = if (target.isPinned) colors.teal else colors.muted,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        editingId = target.id
+                                                        titleInput = target.title
+                                                        dateInput = target.targetDateStr
+                                                        timeInput = target.targetTimeStr.ifBlank { "00:00" }
+                                                        tzModeInput = if (target.isGmtAnchored()) "GMT" else "LOCAL"
+                                                        subjectInput = target.subject
+                                                        isPinnedInput = target.isPinned
+                                                    },
+                                                    modifier = Modifier.size(48.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Edit,
+                                                        contentDescription = "Edit Countdown",
+                                                        tint = colors.inkBold,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { pendingDeleteTarget = target },
+                                                    modifier = Modifier.size(48.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Delete,
+                                                        contentDescription = "Delete Countdown",
+                                                        tint = colors.red,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Row 2: Schedule & Subject + Action Icons (stacked cleanly at large font scale)
+                                        if (isLargeScaleOrNarrow) {
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Text(
+                                                    text = target.formattedTargetSchedule(),
+                                                    fontSize = 11.5.sp,
+                                                    color = colors.ink
+                                                )
+                                                if (target.subject.isNotBlank()) {
+                                                    Text(
+                                                        text = target.subject,
+                                                        fontSize = 11.sp,
+                                                        color = colors.muted,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.End
+                                                ) {
+                                                    renderActionIcons()
+                                                }
+                                            }
+                                        } else {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = target.formattedTargetSchedule(),
+                                                        fontSize = 11.5.sp,
+                                                        color = colors.ink
+                                                    )
+                                                    if (target.subject.isNotBlank()) {
+                                                        Text(
+                                                            text = target.subject,
+                                                            fontSize = 11.sp,
+                                                            color = colors.muted,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                                renderActionIcons()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                // Footer
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.heightIn(min = 48.dp)
+                    // Footer
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Text("Done", fontWeight = FontWeight.Bold, color = colors.teal)
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Done", fontWeight = FontWeight.Bold, color = colors.teal)
+                        }
                     }
                 }
             }

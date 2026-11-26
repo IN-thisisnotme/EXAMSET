@@ -1,14 +1,18 @@
 package com.example.ui.screens
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.Density
 import com.example.data.AttemptPacingSummary
 import com.example.data.SlowQuestionPacingEntry
 import com.example.model.DueSuggestionCategory
@@ -313,5 +317,55 @@ class AppGuideAndStudyPlannerTest {
         assertEquals("Term-End Paper I", savedTitle)
         assertEquals("00:00", savedTime)
         assertEquals("GMT", savedTzMode)
+    }
+
+    @Test
+    fun examCountdownsDialog_adaptsToHighFontScale_andSupportsCancelEdit() {
+        val nowMs = Calendar.getInstance().apply {
+            clear()
+            set(Calendar.YEAR, 2026)
+            set(Calendar.MONTH, Calendar.NOVEMBER)
+            set(Calendar.DAY_OF_MONTH, 10)
+            set(Calendar.HOUR_OF_DAY, 12)
+        }.timeInMillis
+
+        composeTestRule.setContent {
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = baseDensity.density, fontScale = 1.6f)
+            ) {
+                ExamSetTheme(darkTheme = false) {
+                    ExamCountdownsDialog(
+                        countdowns = listOf(
+                            ExamCountdownTarget(
+                                id = "c1",
+                                title = "Disaster Management",
+                                targetDateStr = "2026-12-02",
+                                targetTimeStr = "00:00",
+                                timezoneMode = "GMT",
+                                targetUtcMillis = StudyDateUtils.parseDateTimeMillis("2026-12-02", "00:00", useGmt = true)
+                            )
+                        ),
+                        nowMillis = nowMs,
+                        onSaveCountdown = { _, _, _, _, _, _, _, _ -> true },
+                        onTogglePin = {},
+                        onDelete = {},
+                        onDismiss = {}
+                    )
+                }
+            }
+        }
+
+        composeTestRule.onNodeWithTag("exam_countdowns_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Pin to Library Strip").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GMT (UTC)").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Add").assertIsDisplayed()
+
+        // Enter edit mode and cancel cleanly
+        composeTestRule.onNodeWithContentDescription("Edit Countdown").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("cancel_countdown_edit_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Add Exam Target").assertIsDisplayed()
     }
 }
