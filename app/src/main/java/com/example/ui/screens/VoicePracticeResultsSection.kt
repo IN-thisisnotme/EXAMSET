@@ -1,12 +1,14 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,11 +37,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -52,7 +59,6 @@ import com.example.model.VoiceComparisonStats
 import com.example.model.VoiceWordMatchStatus
 import com.example.ui.theme.ExamTheme
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VoicePracticeResultsSection(
     uiState: VoiceAnalysisUiState,
@@ -68,7 +74,7 @@ fun VoicePracticeResultsSection(
 
         VoiceAnalysisUiState.Analyzing -> {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(1.dp, colors.teal.copy(alpha = 0.45f)),
                 modifier = modifier
@@ -107,7 +113,7 @@ fun VoicePracticeResultsSection(
 
         is VoiceAnalysisUiState.Error -> {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.redLight),
                 border = BorderStroke(1.dp, colors.red.copy(alpha = 0.55f)),
                 modifier = modifier
@@ -131,7 +137,7 @@ fun VoicePracticeResultsSection(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "Could not complete speech check",
+                            text = "Microphone / Speech Check Notice",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkBold
@@ -153,7 +159,13 @@ fun VoicePracticeResultsSection(
                             .heightIn(min = 48.dp)
                             .testTag("voice_retry_analyze_btn")
                     ) {
-                        Text("Try Again", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Try Again",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
@@ -168,7 +180,6 @@ fun VoicePracticeResultsSection(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun VoiceSuccessBreakdownCard(
     result: VoiceAnalysisResult,
@@ -182,9 +193,9 @@ private fun VoiceSuccessBreakdownCard(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Primary Text-Match & Diagnostic Grid Card
+        // 1. Hero Score & Horizontal-Scroll Diagnostic Metrics Card
         Card(
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surface),
             border = BorderStroke(1.dp, colors.border),
             modifier = Modifier
@@ -194,87 +205,149 @@ private fun VoiceSuccessBreakdownCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.tealLight.copy(alpha = if (colors.isDark) 0.16f else 0.35f),
+                                colors.surface
+                            )
+                        )
+                    )
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = colors.tealLight
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.GraphicEq,
-                            contentDescription = null,
-                            tint = colors.teal,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = result.engineLabel,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.tealDark
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.GraphicEq,
+                                contentDescription = null,
+                                tint = colors.tealDark,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = result.engineLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
 
                     if (comp != null) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (comp.matchPercent >= 80) colors.greenLight else colors.tealLight
+                            color = if (comp.netAccuracyPercent >= 80) colors.greenLight else colors.amberLight
                         ) {
                             Text(
                                 text = "Net Accuracy ${comp.netAccuracyPercent}%",
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (comp.matchPercent >= 80) colors.green else colors.tealDark,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (comp.netAccuracyPercent >= 80) colors.green else colors.amber,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
                         }
                     }
                 }
 
                 if (comp != null && comp.totalReferenceWords > 0) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                    val accentColor = when {
+                        comp.matchPercent >= 80 -> colors.green
+                        comp.matchPercent >= 50 -> colors.teal
+                        else -> colors.amber
+                    }
+                    val animatedProgress by animateFloatAsState(
+                        targetValue = (comp.matchPercent / 100f).coerceIn(0f, 1f),
+                        animationSpec = tween(durationMillis = 650),
+                        label = "match_ring_progress"
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(74.dp)
                         ) {
+                            Canvas(modifier = Modifier.size(74.dp)) {
+                                val strokeWidth = 7.dp.toPx()
+                                drawArc(
+                                    color = colors.surfaceVariant,
+                                    startAngle = -90f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+                                drawArc(
+                                    color = accentColor,
+                                    startAngle = -90f,
+                                    sweepAngle = 360f * animatedProgress,
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+                            }
                             Text(
-                                text = "Text Matched: ${comp.matchPercent}%",
+                                text = "${comp.matchPercent}%",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.ExtraBold,
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "${comp.matchedCount} of ${comp.totalReferenceWords} reference words matched",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
                                 color = colors.inkBold
                             )
                             Text(
-                                text = "${comp.matchedCount} of ${comp.totalReferenceWords} words",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
+                                text = "${comp.totalSpokenWords} words spoken • ${comp.paceLabel}",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = colors.inkMuted
                             )
+                            LinearProgressIndicator(
+                                progress = { animatedProgress },
+                                color = accentColor,
+                                trackColor = colors.surfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(7.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                            )
                         }
-                        LinearProgressIndicator(
-                            progress = { (comp.matchPercent / 100f).coerceIn(0f, 1f) },
-                            color = when {
-                                comp.matchPercent >= 80 -> colors.green
-                                comp.matchPercent >= 50 -> colors.teal
-                                else -> colors.amber
-                            },
-                            trackColor = colors.surfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                        )
                     }
 
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    // Horizontally scrollable metric strip (never tiles or stacks vertically)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         VoiceMetricChip(
                             label = "Matched",
@@ -308,7 +381,7 @@ private fun VoiceSuccessBreakdownCard(
                         )
                         VoiceMetricChip(
                             label = "Speaking Pace",
-                            value = if (metrics.estimatedWpm > 0) "${metrics.estimatedWpm} WPM" else "Manual Check",
+                            value = if (metrics.estimatedWpm > 0) "${metrics.estimatedWpm} WPM" else "Untimed",
                             fg = colors.tealDark,
                             bg = colors.tealLight
                         )
@@ -330,10 +403,10 @@ private fun VoiceSuccessBreakdownCard(
             VoiceAlignmentComparisonCard(comp = comp)
         }
 
-        // 3. Detailed Mistakes, Extra Pronounced & Skipped Lists
+        // 3. Detailed Mistakes, Extra Pronounced & Skipped Strips (Horizontally Scrollable)
         if (comp != null && (comp.mistakePairs.isNotEmpty() || comp.extraWords.isNotEmpty() || comp.missedWords.isNotEmpty())) {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(1.dp, colors.border),
                 modifier = Modifier
@@ -353,11 +426,13 @@ private fun VoiceSuccessBreakdownCard(
                             fontWeight = FontWeight.Bold,
                             color = colors.red
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            comp.mistakePairs.take(18).forEach { pair ->
+                            comp.mistakePairs.take(24).forEach { pair ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = colors.redLight,
@@ -368,7 +443,9 @@ private fun VoiceSuccessBreakdownCard(
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.red,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
                             }
@@ -383,11 +460,13 @@ private fun VoiceSuccessBreakdownCard(
                             fontWeight = FontWeight.Bold,
                             color = colors.amber
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            comp.extraWords.take(20).forEach { word ->
+                            comp.extraWords.take(24).forEach { word ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = colors.amberLight,
@@ -398,7 +477,9 @@ private fun VoiceSuccessBreakdownCard(
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colors.amber,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
                             }
@@ -415,11 +496,14 @@ private fun VoiceSuccessBreakdownCard(
                             fontWeight = FontWeight.Bold,
                             color = colors.inkMuted
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            comp.missedWords.take(20).forEach { word ->
+                            comp.missedWords.take(24).forEach { word ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = colors.surfaceVariant,
@@ -430,16 +514,20 @@ private fun VoiceSuccessBreakdownCard(
                                         style = MaterialTheme.typography.labelLarge,
                                         color = colors.inkMuted,
                                         textDecoration = TextDecoration.LineThrough,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
                             }
-                            if (comp.missedWords.size > 20) {
+                            if (comp.missedWords.size > 24) {
                                 Text(
-                                    text = "+${comp.missedWords.size - 20} more",
+                                    text = "+${comp.missedWords.size - 24} more",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = colors.inkMuted,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
                                 )
                             }
                         }
@@ -448,7 +536,7 @@ private fun VoiceSuccessBreakdownCard(
             }
         } else if (comp != null && comp.totalReferenceWords > 0 && comp.matchPercent == 100) {
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = colors.greenLight,
                 border = BorderStroke(1.dp, colors.green.copy(alpha = 0.45f)),
                 modifier = Modifier.fillMaxWidth()
@@ -476,7 +564,7 @@ private fun VoiceSuccessBreakdownCard(
 
         // 4. What You Spoke (Captured Text)
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surface),
             border = BorderStroke(1.dp, colors.border),
             modifier = Modifier
@@ -487,14 +575,36 @@ private fun VoiceSuccessBreakdownCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "WHAT YOU SPOKE (CAPTURED TEXT)",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.tealDark
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "WHAT YOU SPOKE (CAPTURED WORDS)",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.tealDark
+                    )
+                    if (comp != null) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.tealLight
+                        ) {
+                            Text(
+                                text = "${comp.totalSpokenWords} words",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.tealDark,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = result.verbatimTranscript.ifBlank { "No words were recognized. Please speak clearly or type your text." },
                     style = MaterialTheme.typography.bodyLarge,
@@ -506,7 +616,7 @@ private fun VoiceSuccessBreakdownCard(
         // 5. Offline Feedback & Strengths
         if (result.strengths.isNotEmpty() || result.coachingTips.isNotEmpty()) {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                 border = BorderStroke(1.dp, colors.border),
                 modifier = Modifier.fillMaxWidth()
@@ -528,7 +638,7 @@ private fun VoiceSuccessBreakdownCard(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "OFFLINE PRACTICE INSIGHTS",
+                            text = "SPEAKING INSIGHTS",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = colors.tealDark
@@ -555,7 +665,6 @@ private fun VoiceSuccessBreakdownCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun VoiceAlignmentComparisonCard(comp: VoiceComparisonStats) {
     val colors = ExamTheme.colors
@@ -619,7 +728,7 @@ private fun VoiceAlignmentComparisonCard(comp: VoiceComparisonStats) {
     }
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surface),
         border = BorderStroke(1.dp, colors.border),
         modifier = Modifier
@@ -650,9 +759,13 @@ private fun VoiceAlignmentComparisonCard(comp: VoiceComparisonStats) {
                 )
             }
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            // Horizontally scrollable legend strip
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 LegendPill(dotColor = colors.green, label = "Matched")
                 LegendPill(dotColor = colors.red, label = "Mistake (expected→spoken)")
@@ -686,7 +799,9 @@ private fun LegendPill(dotColor: Color, label: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.inkMuted
+            color = colors.inkMuted,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
@@ -699,24 +814,28 @@ private fun VoiceMetricChip(
     bg: Color
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         color = bg,
         border = BorderStroke(0.8.dp, fg.copy(alpha = 0.35f))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = fg.copy(alpha = 0.85f)
+                color = fg.copy(alpha = 0.85f),
+                maxLines = 1,
+                softWrap = false
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.ExtraBold,
-                color = fg
+                color = fg,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }

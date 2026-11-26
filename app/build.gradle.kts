@@ -1,4 +1,5 @@
-import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+// [DEPRECATED 2026-11-26] Reason: Google Services plugin unused after removing Firebase AI/AppCheck. Restore if: Firebase products are re-enabled.
+// import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -9,7 +10,8 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
+  // [DEPRECATED 2026-11-26] Reason: Firebase/Google Services removed for offline-only Speak to Test. Restore if: Firebase is re-enabled.
+  // alias(libs.plugins.google.services)
 }
 
 android {
@@ -75,13 +77,15 @@ secrets {
   ignoreList.add("GEMINI_API_KEY")
 }
 
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
+// [DEPRECATED 2026-11-26] Reason: Google Services plugin removed alongside google-services.json. Restore if: Firebase is re-enabled.
+// googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
+  // [DEPRECATED 2026-11-26] Reason: Firebase BOM/AI/AppCheck removed for offline-only Speak to Test. Restore if: Firebase AI is re-enabled.
+  // implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)
@@ -106,7 +110,8 @@ dependencies {
   implementation(libs.coil.compose)
   // [DEPRECATED 2026-11-23] Reason: Moshi and Retrofit are unused in app source (networking uses OkHttp + org.json). Restore if: Retrofit/Moshi API clients are added.
   // implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // [DEPRECATED 2026-11-26] Reason: Firebase AI & App Check removed for offline-only Speak to Test. Restore if: Firebase AI vocal analysis is re-enabled.
+  // implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
 
@@ -116,8 +121,8 @@ dependencies {
   // implementation(libs.androidx.credentials)
   // implementation(libs.androidx.credentials.play.services)
   // implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
+  // implementation(libs.firebase.appcheck.recaptcha)
+  // implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // [DEPRECATED 2026-11-23] Reason: OkHttp HttpLoggingInterceptor is unused in app source. Restore if: debug HTTP logging is enabled.

@@ -695,8 +695,13 @@ object VoiceFluencyEngine {
 
     private fun verbalizeSymbolsForKeywords(text: String): String {
         return text
+            .replace("’", "'")
+            .replace("‘", "'")
+            .replace("“", "\"")
+            .replace("”", "\"")
             .replace("\\frac", " fraction ")
             .replace("\\sqrt", " square root ")
+            .replace("√", " square root ")
             .replace("\\pi", " pi ")
             .replace("π", " pi ")
             .replace("\\alpha", " alpha ")
@@ -715,10 +720,16 @@ object VoiceFluencyEngine {
             .replace("^3", " cubed ")
             .replace("->", " leads ")
             .replace("→", " leads ")
+            .replace("≠", " not equals ")
+            .replace("≤", " less than or equal ")
+            .replace("≥", " greater than or equal ")
             .replace("=", " equals ")
             .replace("+", " plus ")
+            .replace("−", " minus ")
             .replace("×", " times ")
             .replace("÷", " divided ")
+            .replace("°", " degrees ")
+            .replace("&", " and ")
     }
 
     fun computeMetrics(
@@ -792,6 +803,47 @@ object VoiceFluencyEngine {
     }
 
     /**
+     * Single source of truth for the exact passage shown in Read Aloud mode and graded by
+     * [evaluateOfflineSpeechCheck]. Strips structural labels ("Formula:", "Key answer:") so
+     * every visible word in the Read Aloud script matches word-for-word scoring 1-to-1.
+     */
+    fun resolveReadAloudPassage(prompt: VoicePromptItem): String {
+        val base = prompt.referenceSummary.ifBlank { prompt.promptQuestion }.trim()
+        val missingFormulas = prompt.formulaExpressions.filter { expr ->
+            expr.isNotBlank() && !base.contains(expr, ignoreCase = true)
+        }
+        val combined = if (missingFormulas.isEmpty()) base else "$base\n${missingFormulas.joinToString("\n")}"
+        return combined.lines()
+            .map { line ->
+                line.trim()
+                    .replace(Regex("""^(?:Formula|Key answer)\s*:\s*""", RegexOption.IGNORE_CASE), "")
+                    .trim()
+            }
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+    }
+
+    /**
+     * Returns the exact count of alignable words in [text] using the same tokenizer as scoring.
+     */
+    fun countAlignmentWords(text: String): Int =
+        tokenizeForComparison(prepareReferenceForAlignment(text)).take(260).size
+
+    /**
+     * Cleanly appends a new speech-recognition segment onto an existing transcript without
+     * losing words or creating duplicate whitespace across user pauses / engine restarts.
+     */
+    fun mergeTranscriptSegments(committed: String, incomingSegment: String): String {
+        val left = committed.trim()
+        val right = incomingSegment.trim()
+        return when {
+            left.isEmpty() -> right
+            right.isEmpty() -> left
+            else -> "$left $right"
+        }
+    }
+
+    /**
      * 100% offline, deterministic speech-to-text comparison against the shown subject text.
      * Computes exact matched words, wrong/mispronounced substitutions, skipped omissions,
      * extra pronounced words, consecutive repetitions, pace rating, and actionable tips.
@@ -804,13 +856,7 @@ object VoiceFluencyEngine {
         engineLabel: String = "Offline On-Device Text Comparison"
     ): VoiceAnalysisResult {
         val targetReference = when (mode) {
-            VoicePracticeMode.READ_ALOUD -> {
-                val base = prompt.referenceSummary.ifBlank { prompt.promptQuestion }
-                val missingFormulas = prompt.formulaExpressions.filter { expr ->
-                    expr.isNotBlank() && !base.contains(expr, ignoreCase = true)
-                }
-                if (missingFormulas.isEmpty()) base else "$base\n${missingFormulas.joinToString("\n")}"
-            }
+            VoicePracticeMode.READ_ALOUD -> resolveReadAloudPassage(prompt)
             VoicePracticeMode.EXPLAIN_FROM_MEMORY -> prompt.referenceSummary.ifBlank { prompt.promptQuestion }
             VoicePracticeMode.FREE_SUBJECT_SPEAK -> prompt.referenceSummary.ifBlank { prompt.promptQuestion }
         }
@@ -1220,11 +1266,13 @@ object VoiceFluencyEngine {
                 .replace("%", " percent ")
                 .replace("—", " ")
                 .replace("–", " ")
+                .replace(Regex("""(?<=\p{L})-(?=\p{L})"""), " ")
+                .replace(Regex("""(?<=\p{L})/(?=\p{L})"""), " ")
         )
         return expanded
             .split(Regex("\\s+"))
             .mapNotNull { piece ->
-                val cleanDisplay = piece.trim('[', ']', '(', ')', ',', '.', ';', ':', '!', '?', '"', '\'', '—', '–')
+                val cleanDisplay = piece.trim('[', ']', '(', ')', ',', '.', ';', ':', '!', '?', '"', '\'', '’', '‘', '“', '”', '—', '–')
                 val key = canonicalKey(cleanDisplay)
                 if (cleanDisplay.isNotBlank() && key.isNotBlank()) {
                     AlignmentWord(display = cleanDisplay, key = key)
@@ -1234,8 +1282,41 @@ object VoiceFluencyEngine {
             }
     }
 
+    private val spokenNumberWordMap = mapOf(
+        "zero" to "0",
+        "one" to "1",
+        "two" to "2",
+        "three" to "3",
+        "four" to "4",
+        "five" to "5",
+        "six" to "6",
+        "seven" to "7",
+        "eight" to "8",
+        "nine" to "9",
+        "ten" to "10",
+        "eleven" to "11",
+        "twelve" to "12",
+        "thirteen" to "13",
+        "fourteen" to "14",
+        "fifteen" to "15",
+        "sixteen" to "16",
+        "seventeen" to "17",
+        "eighteen" to "18",
+        "nineteen" to "19",
+        "twenty" to "20",
+        "thirty" to "30",
+        "forty" to "40",
+        "fifty" to "50",
+        "sixty" to "60",
+        "seventy" to "70",
+        "eighty" to "80",
+        "ninety" to "90",
+        "hundred" to "100"
+    )
+
     private fun canonicalKey(raw: String): String {
-        return raw.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
+        val stripped = raw.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
+        return spokenNumberWordMap[stripped] ?: stripped
     }
 
     private fun normalizeToken(raw: String): String {

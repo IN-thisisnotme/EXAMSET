@@ -1,5 +1,7 @@
 package com.example.util
 
+// [DEPRECATED 2026-11-26] Reason: Cloud Firebase AI vocal-filler (em/um) analysis removed in favor of 100% offline SpeechRecognizer word alignment. Restore if: Firebase AI multimodal audio analysis is re-enabled.
+/*
 import android.util.Log
 import com.example.model.VoiceAnalysisResult
 import com.example.model.VoiceFillerCategory
@@ -139,7 +141,6 @@ class FirebaseVoiceAiAnalyzer : VoiceAnalysisProvider {
                 }
             }
 
-            // Merge AI-reported counts with lexical extraction from the verbatim transcript so counts stay consistent
             val transcriptFillers = VoiceFluencyEngine.extractFillersFromTranscript(transcript)
             val mergedMap = linkedMapOf<String, VoiceFillerOccurrence>()
             for (f in transcriptFillers) {
@@ -210,3 +211,4 @@ class FirebaseVoiceAiAnalyzer : VoiceAnalysisProvider {
         }
     }
 }
+*/

@@ -1,5 +1,7 @@
 package com.example.util
 
+// [DEPRECATED 2026-11-26] Reason: Firebase App Check initialization removed because the app no longer uses Firebase AI or cloud Firebase products. Restore if: Firebase services and google-services.json are re-enabled.
+/*
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -63,3 +65,4 @@ fun configureAppCheck(context: Context, intent: Intent?) {
         Log.e(TAG, "Failed to initialize Firebase App Check", e)
     }
 }
+*/

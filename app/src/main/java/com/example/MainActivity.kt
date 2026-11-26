@@ -17,14 +17,16 @@ import com.example.data.ThemeMode
 import com.example.ui.MainViewModel
 import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.ExamSetTheme
-import com.example.util.configureAppCheck
+// [DEPRECATED 2026-11-26] Reason: Firebase App Check is unused after moving Speak to Test 100% offline. Restore if: Firebase services are re-enabled.
+// import com.example.util.configureAppCheck
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        configureAppCheck(this, intent)
+        // [DEPRECATED 2026-11-26] Reason: Firebase App Check removed alongside Firebase dependencies. Restore if: Firebase services are re-enabled.
+        // configureAppCheck(this, intent)
         enableEdgeToEdge()
         handleOAuthIntent(intent)
         setContent {

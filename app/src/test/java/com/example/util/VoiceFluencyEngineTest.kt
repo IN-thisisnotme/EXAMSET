@@ -265,4 +265,50 @@ class VoiceFluencyEngineTest {
         assertEquals(0, result.metrics.estimatedWpm)
         assertFalse(result.usedAiAudioAnalysis)
     }
+
+    @Test
+    fun resolveReadAloudPassage_stripsLabelsAndMatchesGradedScriptOneToOne() {
+        val prompt = com.example.model.VoicePromptItem(
+            id = "p2",
+            title = "Kinetic Energy",
+            promptQuestion = "Explain Kinetic Energy in your own words.",
+            referenceSummary = "Formula: \$K = \\frac{1}{2} m v^2\$\nKey answer: Half of mass times velocity squared.",
+            sourceLabel = "MCQ • Physics",
+            folderId = "f-other",
+            folderPath = "Physics",
+            formulaExpressions = listOf("\$K = \\frac{1}{2} m v^2\$")
+        )
+
+        val script = VoiceFluencyEngine.resolveReadAloudPassage(prompt)
+        assertFalse(script.contains("Formula:"))
+        assertFalse(script.contains("Key answer:"))
+        assertFalse(script.contains("Explain Kinetic Energy"))
+
+        val result = VoiceFluencyEngine.evaluateOfflineSpeechCheck(
+            spokenTranscript = "K equals 1 over 2 m v squared half of mass times velocity squared",
+            prompt = prompt,
+            durationMs = 6000L,
+            mode = VoicePracticeMode.READ_ALOUD
+        )
+        assertEquals(100, result.metrics.comparison?.matchPercent)
+    }
+
+    @Test
+    fun mergeTranscriptSegments_andSpokenNumberOrHyphen_matchCleanly() {
+        val merged = VoiceFluencyEngine.mergeTranscriptSegments(
+            committed = "Word for word check",
+            incomingSegment = "with 2 steps"
+        )
+        assertEquals("Word for word check with 2 steps", merged)
+
+        val stats = VoiceFluencyEngine.alignSpokenToReference(
+            referenceText = "Word-for-word check with two steps",
+            spokenText = merged,
+            estimatedWpm = 125
+        )
+        assertEquals(100, stats.matchPercent)
+        assertEquals(0, stats.mistakeCount)
+        assertEquals(0, stats.missedCount)
+        assertEquals(0, stats.extraCount)
+    }
 }
