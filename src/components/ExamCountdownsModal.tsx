@@ -257,13 +257,13 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
                 value={examType}
                 onChange={(e) => setExamType(e.target.value)}
                 placeholder="Course / Subject Focus (Optional)"
-                className="flex-1 px-3 py-2 rounded-lg focus:outline-none"
+                className="flex-1 min-w-[180px] px-3 py-2 rounded-lg focus:outline-none"
                 style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
               />
               <label className="inline-flex items-center gap-1.5 px-1 cursor-pointer select-none whitespace-nowrap">
@@ -310,8 +310,8 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                       border: `1px solid ${cd.isPinned ? colors.teal : colors.border}`,
                     }}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-bold line-clamp-2 min-w-0 flex-1" style={{ color: colors.inkBold }}>
                         {cd.title}
                       </div>
                       <span
@@ -325,13 +325,13 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-[0.6875rem] truncate" style={{ color: colors.ink }}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[0.6875rem] break-words" style={{ color: colors.ink }}>
                           {StudyDateUtils.formatCountdownSchedule(cd)}
                         </div>
                         {cd.examType && (
-                          <div className="text-[0.625rem] truncate" style={{ color: colors.muted }}>
+                          <div className="text-[0.625rem] line-clamp-2" style={{ color: colors.muted }}>
                             {cd.examType}
                           </div>
                         )}
