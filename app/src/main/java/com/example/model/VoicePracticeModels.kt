@@ -37,7 +37,9 @@ data class VoicePromptItem(
     val sourceLabel: String,
     val folderId: String?,
     val folderPath: String,
-    val language: String = "English"
+    val language: String = "English",
+    val formulaExpressions: List<String> = emptyList(),
+    val optionExpressions: List<String> = emptyList()
 )
 
 data class VoiceFolderPromptResult(

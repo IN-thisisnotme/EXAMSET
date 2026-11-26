@@ -94,8 +94,12 @@ class FirebaseVoiceAiAnalyzer : VoiceAnalysisProvider {
             appendLine("Mode: ${mode.label}")
             appendLine("Subject Folder: ${prompt.folderPath}")
             appendLine("Prompt Shown to Student: ${prompt.promptQuestion}")
+            if (prompt.formulaExpressions.isNotEmpty()) {
+                appendLine("Key Formulas / Expressions: ${prompt.formulaExpressions.joinToString(" | ")}")
+            }
             if (mode != VoicePracticeMode.FREE_SUBJECT_SPEAK && prompt.referenceSummary.isNotBlank()) {
-                appendLine("Reference Subject Content (formula-free): ${prompt.referenceSummary}")
+                appendLine("Reference Subject Content: ${prompt.referenceSummary}")
+                appendLine("Note: If the reference contains mathematical/chemical formulas, LaTeX symbols, or multiple expressions, accept natural spoken verbalizations (e.g., 'equals', 'plus', 'divided by', 'squared', 'yields') as accurate recall.")
             }
             appendLine("Return valid JSON matching the schema.")
         }

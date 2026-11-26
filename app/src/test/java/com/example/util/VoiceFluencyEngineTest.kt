@@ -150,4 +150,68 @@ class VoiceFluencyEngineTest {
         assertEquals(1, metrics.verbatimFillerCount)
         assertTrue((metrics.keywordCoveragePercent ?: 0) >= 80)
     }
+
+    @Test
+    fun buildPromptsForFolder_includesFormulasAndMultipleExpressionsByDefault() {
+        val physicsNotes = listOf(
+            StudyNoteEntity(
+                id = 20L,
+                folderId = "f-other",
+                title = "Laws of Motion",
+                subject = "Physics",
+                rawContent = """
+                    1. **Second Law of Motion**
+                       - Net force is proportional to rate of change of momentum.
+                       - Formula: ${'$'}F = m \times a${'$'}
+                       - Key Takeaway: Impulse equals change in momentum (${'$'}J = \Delta p${'$'}).
+                """.trimIndent()
+            )
+        )
+        val physicsPapers = listOf(
+            PaperEntity(
+                id = 21L,
+                folderId = "f-other",
+                title = "Kinematics Set",
+                subject = "Physics",
+                questionCount = 1,
+                answerKeyCount = 1,
+                explanationCount = 1,
+                rawText = """
+                    Q1. Which equation gives displacement under uniform acceleration?
+                    A) ${'$'}s = ut + \frac{1}{2}at^2${'$'}
+                    B) ${'$'}v = u + at${'$'}
+                    C) ${'$'}v^2 = u^2 + 2as${'$'}
+                    D) ${'$'}F = ma${'$'}
+                    Answer: A
+                    Explanation: Use ${'$'}s = ut + \frac{1}{2}at^2${'$'} for displacement with time t.
+                """.trimIndent()
+            )
+        )
+
+        val inclusive = VoiceFluencyEngine.buildPromptsForFolder(
+            selectedFolderId = "f-other",
+            folders = folders,
+            studyNotes = physicsNotes,
+            papers = physicsPapers,
+            sourceFilter = VoiceSourceFilter.ALL
+        )
+
+        assertTrue(inclusive.prompts.size >= 2)
+        val notePrompt = inclusive.prompts.first { it.id.startsWith("note_") }
+        assertTrue(notePrompt.formulaExpressions.any { it.contains("F = m") || it.contains("\\Delta p") })
+        assertTrue(notePrompt.referenceSummary.contains("Formula:"))
+
+        val mcqPrompt = inclusive.prompts.first { it.id.startsWith("paper_") }
+        assertEquals(4, mcqPrompt.optionExpressions.size)
+        assertTrue(mcqPrompt.formulaExpressions.any { it.contains("ut") || it.contains("\\frac") })
+    }
+
+    @Test
+    fun computeKeywordCoveragePercent_matchesSpokenWordsForMathSymbols() {
+        val coverage = VoiceFluencyEngine.computeKeywordCoveragePercent(
+            transcript = "Area equals pi times radius squared",
+            referenceSummary = "Area = \u03C0 r^2 and radius"
+        )
+        assertTrue((coverage ?: 0) >= 75)
+    }
 }

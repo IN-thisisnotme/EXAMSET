@@ -107,6 +107,7 @@ import com.example.model.VoicePracticeMode
 import com.example.model.VoicePromptItem
 import com.example.model.VoiceSourceFilter
 import com.example.ui.components.FontSizeSelectorDialog
+import com.example.ui.components.LatexText
 import com.example.ui.theme.ExamTheme
 import com.example.util.FirebaseVoiceAiAnalyzer
 import com.example.util.FolderPathHelper
@@ -145,6 +146,7 @@ fun VoicePracticeScreen(
         )
     }
     var sourceFilter by remember { mutableStateOf(VoiceSourceFilter.ALL) }
+    var includeFormulas by remember { mutableStateOf(true) }
     var practiceMode by remember { mutableStateOf(VoicePracticeMode.EXPLAIN_FROM_MEMORY) }
     var promptIndex by remember { mutableIntStateOf(0) }
     var shuffleNonce by remember { mutableIntStateOf(0) }
@@ -197,13 +199,14 @@ fun VoicePracticeScreen(
         }
     }
 
-    val folderResult = remember(selectedFolderId, folders, studyNotes, papers, sourceFilter) {
+    val folderResult = remember(selectedFolderId, folders, studyNotes, papers, sourceFilter, includeFormulas) {
         VoiceFluencyEngine.buildPromptsForFolder(
             selectedFolderId = selectedFolderId,
             folders = folders,
             studyNotes = studyNotes,
             papers = papers,
-            sourceFilter = sourceFilter
+            sourceFilter = sourceFilter,
+            includeFormulas = includeFormulas
         )
     }
 
@@ -211,7 +214,7 @@ fun VoicePracticeScreen(
         if (shuffleNonce == 0) folderResult.prompts else folderResult.prompts.shuffled()
     }
 
-    LaunchedEffect(orderedPrompts.size, selectedFolderId, sourceFilter) {
+    LaunchedEffect(orderedPrompts.size, selectedFolderId, sourceFilter, includeFormulas) {
         promptIndex = 0
         revealReference = false
     }
@@ -220,7 +223,7 @@ fun VoicePracticeScreen(
         promptIndex.coerceIn(0, (orderedPrompts.size - 1).coerceAtLeast(0))
     )
 
-    LaunchedEffect(currentPrompt?.id, selectedFolderId, sourceFilter) {
+    LaunchedEffect(currentPrompt?.id, selectedFolderId, sourceFilter, includeFormulas) {
         if (isOfflineSttListening) {
             runCatching { speechRecognizer?.stopListening() }
             isOfflineSttListening = false
@@ -629,7 +632,7 @@ fun VoicePracticeScreen(
                                     }
                                 }
 
-                                // Source Filter Chips (wraps safely at large font sizes)
+                                // Source & Formula Filter Chips (wraps safely at large font sizes)
                                 FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -646,15 +649,29 @@ fun VoicePracticeScreen(
                                             modifier = Modifier.heightIn(min = 48.dp)
                                         )
                                     }
+                                    FilterChip(
+                                        selected = includeFormulas,
+                                        onClick = { includeFormulas = !includeFormulas },
+                                        label = { Text("Formulas & Expressions", style = MaterialTheme.typography.labelLarge) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = colors.amberLight,
+                                            selectedLabelColor = colors.inkBold
+                                        ),
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .testTag("voice_include_formulas_chip")
+                                    )
                                 }
 
                                 Text(
                                     text = buildString {
                                         append("${orderedPrompts.size} subject prompts ready")
-                                        if (folderResult.skippedFormulaItems > 0) {
+                                        if (includeFormulas) {
+                                            append(" • Formulas & expressions included")
+                                        } else if (folderResult.skippedFormulaItems > 0) {
                                             append(" • ${folderResult.skippedFormulaItems} formula-heavy items skipped")
                                         } else {
-                                            append(" • Formulas excluded automatically")
+                                            append(" • Formula filter active")
                                         }
                                     },
                                     style = MaterialTheme.typography.bodySmall,
@@ -767,18 +784,20 @@ fun VoicePracticeScreen(
                                         )
                                     }
 
-                                    Text(
+                                    LatexText(
                                         text = currentPrompt.promptQuestion,
-                                        style = MaterialTheme.typography.titleMedium,
+                                        fontSize = MaterialTheme.typography.titleMedium.fontSize,
                                         fontWeight = FontWeight.Bold,
-                                        color = colors.inkBold
+                                        color = colors.inkBold,
+                                        isBold = true
                                     )
 
                                     if (practiceMode == VoicePracticeMode.READ_ALOUD) {
                                         HorizontalDivider(color = colors.borderLight)
-                                        Text(
+                                        VoicePromptFormulaAndOptionsBlock(prompt = currentPrompt)
+                                        LatexText(
                                             text = currentPrompt.referenceSummary,
-                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontSize = MaterialTheme.typography.bodyLarge.fontSize,
                                             color = colors.ink
                                         )
                                     } else if (practiceMode == VoicePracticeMode.EXPLAIN_FROM_MEMORY) {
@@ -811,11 +830,14 @@ fun VoicePracticeScreen(
                                             }
                                         }
                                         AnimatedVisibility(visible = revealReference) {
-                                            Text(
-                                                text = currentPrompt.referenceSummary,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = colors.ink
-                                            )
+                                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                VoicePromptFormulaAndOptionsBlock(prompt = currentPrompt)
+                                                LatexText(
+                                                    text = currentPrompt.referenceSummary,
+                                                    fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                                                    color = colors.ink
+                                                )
+                                            }
                                         }
                                     }
 
@@ -1194,6 +1216,83 @@ private fun LiveVoiceWaveformBar(
                     size = Size(barW, h),
                     cornerRadius = CornerRadius(barW / 2f, barW / 2f)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoicePromptFormulaAndOptionsBlock(prompt: VoicePromptItem) {
+    val colors = ExamTheme.colors
+    if (prompt.formulaExpressions.isEmpty() && prompt.optionExpressions.isEmpty()) return
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (prompt.formulaExpressions.isNotEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.amberLight.copy(alpha = if (colors.isDark) 0.22f else 0.55f),
+                border = BorderStroke(0.9.dp, colors.amber.copy(alpha = 0.45f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("voice_formula_box")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "FORMULAS & EXPRESSIONS",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.amber
+                    )
+                    prompt.formulaExpressions.forEach { expr ->
+                        LatexText(
+                            text = expr,
+                            fontSize = MaterialTheme.typography.bodyMedium.fontSize,
+                            color = colors.inkBold,
+                            fontWeight = FontWeight.SemiBold,
+                            isBold = true
+                        )
+                    }
+                }
+            }
+        }
+
+        if (prompt.optionExpressions.isNotEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.surfaceVariant,
+                border = BorderStroke(0.8.dp, colors.border),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("voice_options_box")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "OPTIONS & EXPRESSIONS",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.inkMuted
+                    )
+                    prompt.optionExpressions.forEach { opt ->
+                        LatexText(
+                            text = opt,
+                            fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                            color = colors.ink
+                        )
+                    }
+                }
             }
         }
     }

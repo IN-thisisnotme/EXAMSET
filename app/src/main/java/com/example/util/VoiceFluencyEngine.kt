@@ -80,15 +80,20 @@ object VoiceFluencyEngine {
     }
 
     /**
-     * Builds subject-grounded speaking prompts strictly from the user's selected Parent/Child folder tree,
-     * stripping or skipping any scientific/math formulas so prompts stay natural for speaking.
+     * Builds subject-grounded speaking prompts strictly from the user's selected Parent/Child folder tree.
+     *
+     * By default (`includeFormulas = true`), mathematical/chemical formulas, LaTeX equations,
+     * `MultiLinerCard.formula`, `McqQuestion.formula`, and multi-expression options/tables are
+     * preserved for speaking practice.
      */
+    // [DEPRECATED 2026-11-26] Reason: Unconditional formula/expression exclusion is replaced by inclusive default (`includeFormulas = true`) so users can practice formulas and multiple expressions aloud. Restore if: reverting default to `includeFormulas = false`.
     fun buildPromptsForFolder(
         selectedFolderId: String?,
         folders: List<FolderItem>,
         studyNotes: List<StudyNoteEntity>,
         papers: List<PaperEntity>,
-        sourceFilter: VoiceSourceFilter = VoiceSourceFilter.ALL
+        sourceFilter: VoiceSourceFilter = VoiceSourceFilter.ALL,
+        includeFormulas: Boolean = true
     ): VoiceFolderPromptResult {
         val targetFolderIds = collectDescendantFolderIds(selectedFolderId, folders)
         val folderPathsById = folders.associate { folder ->
@@ -121,6 +126,9 @@ object VoiceFluencyEngine {
             return false
         }
 
+        fun cleanSegment(raw: String): String =
+            if (includeFormulas) cleanPreserveExpressions(raw) else sanitizeNoFormulas(raw)
+
         val prompts = mutableListOf<VoicePromptItem>()
         var skippedFormulaItems = 0
 
@@ -137,13 +145,13 @@ object VoiceFluencyEngine {
                 for (block in blocks) {
                     when (block) {
                         is StudyNoteBlock.OneLiner -> {
-                            val cleanLead = sanitizeNoFormulas(block.leadTerm)
-                            val cleanDetail = sanitizeNoFormulas(block.detail)
+                            val cleanLead = cleanSegment(block.leadTerm)
+                            val cleanDetail = cleanSegment(block.detail)
                             if (cleanLead.isBlank() && cleanDetail.isBlank()) {
                                 skippedFormulaItems++
                                 continue
                             }
-                            if (isFormulaHeavyText(block.leadTerm) && isFormulaHeavyText(block.detail)) {
+                            if (!includeFormulas && isFormulaHeavyText(block.leadTerm) && isFormulaHeavyText(block.detail)) {
                                 skippedFormulaItems++
                                 continue
                             }
@@ -153,7 +161,14 @@ object VoiceFluencyEngine {
                                 "Summarize this concept clearly."
                             }
                             val ref = listOf(cleanLead, cleanDetail).filter { it.isNotBlank() }.joinToString(" — ")
-                            if (ref.split(Regex("\\s+")).size >= 3) {
+                            val expressions = if (includeFormulas) {
+                                extractFormulaExpressions(block.leadTerm, block.detail)
+                            } else {
+                                emptyList()
+                            }
+                            val hasEnoughContent = ref.split(Regex("\\s+")).size >= 3 ||
+                                (includeFormulas && (expressions.isNotEmpty() || containsExpressionMarkers(ref)))
+                            if (hasEnoughContent) {
                                 prompts.add(
                                     VoicePromptItem(
                                         id = "note_${note.id}_${block.blockIndex}",
@@ -163,30 +178,49 @@ object VoiceFluencyEngine {
                                         sourceLabel = "Note • ${note.title}",
                                         folderId = note.folderId,
                                         folderPath = noteFolderPath,
-                                        language = language
+                                        language = language,
+                                        formulaExpressions = expressions
                                     )
                                 )
                             }
                         }
 
                         is StudyNoteBlock.MultiLinerCard -> {
-                            val cleanTitle = sanitizeNoFormulas(block.title)
+                            val cleanTitle = cleanSegment(block.title)
+                            val cleanFormula = if (includeFormulas) cleanPreserveExpressions(block.formula) else ""
                             val rawSections = buildList {
                                 addAll(block.paragraphs)
                                 addAll(block.nestedBullets.map { it.second })
+                                if (includeFormulas && cleanFormula.isNotBlank()) add("Formula: $cleanFormula")
                                 if (block.correctAnswer.isNotBlank()) add(block.correctAnswer)
                                 if (block.keyTakeaway.isNotBlank()) add(block.keyTakeaway)
                             }
-                            // Intentionally ignore block.formula ("sath mein aaya formula")
                             val cleanBody = rawSections
-                                .map { sanitizeNoFormulas(it) }
+                                .map { cleanSegment(it) }
                                 .filter { it.isNotBlank() }
-                                .joinToString(" ")
+                                .joinToString("\n")
                             if (cleanBody.isBlank()) {
                                 if (block.formula.isNotBlank() || rawSections.any { it.isNotBlank() }) {
                                     skippedFormulaItems++
                                 }
                                 continue
+                            }
+                            val expressions = if (includeFormulas) {
+                                extractFormulaExpressions(
+                                    cleanFormula,
+                                    *block.paragraphs.toTypedArray(),
+                                    *block.nestedBullets.map { it.second }.toTypedArray(),
+                                    block.keyTakeaway
+                                )
+                            } else {
+                                emptyList()
+                            }
+                            val options = if (includeFormulas) {
+                                block.optionsList
+                                    .filter { it.second.isNotBlank() }
+                                    .map { "(${it.first}) ${cleanPreserveExpressions(it.second)}" }
+                            } else {
+                                emptyList()
                             }
                             val promptQ = if (cleanTitle.isNotBlank()) {
                                 "Speak clearly about: $cleanTitle"
@@ -202,17 +236,24 @@ object VoiceFluencyEngine {
                                     sourceLabel = "Note • ${note.title}",
                                     folderId = note.folderId,
                                     folderPath = noteFolderPath,
-                                    language = language
+                                    language = language,
+                                    formulaExpressions = expressions,
+                                    optionExpressions = options
                                 )
                             )
                         }
 
                         is StudyNoteBlock.Callout -> {
-                            val cleanLabel = sanitizeNoFormulas(block.label)
-                            val cleanBody = sanitizeNoFormulas(block.body)
+                            val cleanLabel = cleanSegment(block.label)
+                            val cleanBody = cleanSegment(block.body)
                             if (cleanBody.isBlank()) {
                                 skippedFormulaItems++
                                 continue
+                            }
+                            val expressions = if (includeFormulas) {
+                                extractFormulaExpressions(block.label, block.body)
+                            } else {
+                                emptyList()
                             }
                             prompts.add(
                                 VoicePromptItem(
@@ -227,18 +268,26 @@ object VoiceFluencyEngine {
                                     sourceLabel = "Note • ${note.title}",
                                     folderId = note.folderId,
                                     folderPath = noteFolderPath,
-                                    language = language
+                                    language = language,
+                                    formulaExpressions = expressions
                                 )
                             )
                         }
 
                         is StudyNoteBlock.Paragraph -> {
-                            val cleanText = sanitizeNoFormulas(block.text)
-                            if (cleanText.split(Regex("\\s+")).size < 6) {
-                                if (block.text.isNotBlank()) skippedFormulaItems++
+                            val cleanText = cleanSegment(block.text)
+                            val expressions = if (includeFormulas) {
+                                extractFormulaExpressions(block.text)
+                            } else {
+                                emptyList()
+                            }
+                            val wordCount = cleanText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                            val isSubstantial = wordCount >= 6 || (includeFormulas && (expressions.isNotEmpty() || containsExpressionMarkers(cleanText)) && wordCount >= 2)
+                            if (!isSubstantial) {
+                                if (block.text.isNotBlank() && !includeFormulas) skippedFormulaItems++
                                 continue
                             }
-                            val firstPhrase = cleanText.split(Regex("[.!?]")).firstOrNull()?.trim().orEmpty().take(72)
+                            val firstPhrase = cleanText.split(Regex("[.!?\n]")).firstOrNull()?.trim().orEmpty().take(90)
                             prompts.add(
                                 VoicePromptItem(
                                     id = "note_${note.id}_${block.blockIndex}",
@@ -252,12 +301,45 @@ object VoiceFluencyEngine {
                                     sourceLabel = "Note • ${note.title}",
                                     folderId = note.folderId,
                                     folderPath = noteFolderPath,
-                                    language = language
+                                    language = language,
+                                    formulaExpressions = expressions
                                 )
                             )
                         }
 
-                        is StudyNoteBlock.Heading, is StudyNoteBlock.Table -> Unit
+                        is StudyNoteBlock.Table -> {
+                            if (includeFormulas && block.rows.isNotEmpty()) {
+                                val rowSummaries = block.rows.take(8).mapNotNull { row ->
+                                    val paired = row.mapIndexedNotNull { idx, cell ->
+                                        val cleanCell = cleanPreserveExpressions(cell)
+                                        if (cleanCell.isBlank()) null
+                                        else {
+                                            val header = block.headers.getOrNull(idx)?.let(::cleanPreserveExpressions).orEmpty()
+                                            if (header.isNotBlank()) "$header: $cleanCell" else cleanCell
+                                        }
+                                    }.joinToString(" | ")
+                                    paired.takeIf { it.isNotBlank() }
+                                }
+                                if (rowSummaries.isNotEmpty()) {
+                                    val combined = rowSummaries.joinToString("\n")
+                                    prompts.add(
+                                        VoicePromptItem(
+                                            id = "note_${note.id}_${block.blockIndex}",
+                                            title = note.title,
+                                            promptQuestion = "Explain the key points and expressions from this ${note.title} table.",
+                                            referenceSummary = combined,
+                                            sourceLabel = "Note Table • ${note.title}",
+                                            folderId = note.folderId,
+                                            folderPath = noteFolderPath,
+                                            language = language,
+                                            formulaExpressions = extractFormulaExpressions(combined)
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        is StudyNoteBlock.Heading -> Unit
                     }
                 }
             }
@@ -272,19 +354,40 @@ object VoiceFluencyEngine {
                     ?: FolderPathHelper.formatDisplayPath(paperEntity.subject).ifBlank { "Exam Papers" }
 
                 for (q in parsed.questions) {
-                    val cleanQ = sanitizeNoFormulas(q.question)
-                    if (cleanQ.isBlank() || isFormulaHeavyText(q.question)) {
+                    val cleanQ = cleanSegment(q.question)
+                    if (cleanQ.isBlank() || (!includeFormulas && isFormulaHeavyText(q.question))) {
                         skippedFormulaItems++
                         continue
                     }
                     val answerLetter = q.correctAnswer?.trim()?.uppercase(Locale.ROOT).orEmpty()
                     val answerText = answerLetter.firstOrNull()?.let { q.options[it.toString()] }.orEmpty()
-                    val cleanAnswer = sanitizeNoFormulas(answerText)
-                    val cleanExplanation = sanitizeNoFormulas(q.explanation.orEmpty())
+                    val cleanAnswer = cleanSegment(answerText)
+                    val cleanFormula = if (includeFormulas) cleanPreserveExpressions(q.formula.orEmpty()) else ""
+                    val cleanExplanation = cleanSegment(q.explanation.orEmpty())
+
+                    val optionLines = if (includeFormulas) {
+                        q.options.asList
+                            .filter { it.second.isNotBlank() }
+                            .map { (letter, opt) -> "($letter) ${cleanPreserveExpressions(opt)}" }
+                    } else {
+                        emptyList()
+                    }
+                    val expressions = if (includeFormulas) {
+                        extractFormulaExpressions(
+                            cleanFormula,
+                            q.question,
+                            answerText,
+                            q.explanation.orEmpty(),
+                            *q.options.asList.map { it.second }.toTypedArray()
+                        )
+                    } else {
+                        emptyList()
+                    }
                     val reference = listOf(
+                        if (cleanFormula.isNotBlank()) "Formula: $cleanFormula" else "",
                         if (cleanAnswer.isNotBlank()) "Key answer: $cleanAnswer." else "",
                         cleanExplanation
-                    ).filter { it.isNotBlank() }.joinToString(" ").ifBlank { cleanQ }
+                    ).filter { it.isNotBlank() }.joinToString("\n").ifBlank { cleanQ }
 
                     prompts.add(
                         VoicePromptItem(
@@ -295,7 +398,9 @@ object VoiceFluencyEngine {
                             sourceLabel = "MCQ • ${paperEntity.title}",
                             folderId = paperEntity.folderId,
                             folderPath = paperFolderPath,
-                            language = "English"
+                            language = "English",
+                            formulaExpressions = expressions,
+                            optionExpressions = optionLines
                         )
                     )
                 }
@@ -307,6 +412,72 @@ object VoiceFluencyEngine {
             skippedFormulaItems = skippedFormulaItems,
             matchedFolderCount = targetFolderIds.size
         )
+    }
+
+    /**
+     * Normalizes markdown list/heading clutter while preserving scientific/math formulas,
+     * LaTeX expressions ($...$, $$...$$, \(...\), \[...\]), chemical reactions, and multiple expressions.
+     */
+    fun cleanPreserveExpressions(rawText: String): String {
+        if (rawText.isBlank()) return ""
+        val lines = rawText.replace("\r\n", "\n").lines().mapNotNull { line ->
+            val cleaned = line
+                .trim()
+                .replace(Regex("^#{1,6}\\s+"), "")
+                .replace(Regex("^[-*•+]\\s+"), "")
+                .replace(Regex("^>+\\s*"), "")
+                .replace(Regex("\\[([^\\]]+)]\\([^)]+\\)"), "$1")
+                .replace("**", "")
+                .replace("__", "")
+                .trim()
+            cleaned.takeIf { it.isNotBlank() && it != "```" }
+        }
+        return lines.joinToString("\n").trim()
+    }
+
+    fun extractFormulaExpressions(vararg texts: String): List<String> {
+        val found = linkedSetOf<String>()
+        val inlineMathRegex = Regex("""\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\[[\s\S]+?\\]|\\\([^)]+\\\)""")
+
+        for (raw in texts) {
+            if (raw.isBlank()) continue
+            val normalized = raw.replace("\r\n", "\n")
+
+            inlineMathRegex.findAll(normalized).forEach { m ->
+                val expr = m.value.trim()
+                if (expr.isNotBlank()) found.add(expr)
+            }
+
+            for (line in normalized.lines()) {
+                val trimmed = line.trim()
+                    .replace(Regex("^[-*•+]\\s+"), "")
+                    .replace("**", "")
+                    .trim()
+                if (trimmed.isBlank()) continue
+
+                val prefixedMatch = Regex("""^(?:chemical\s+)?(?:formula|equation|reaction)\s*[:=\-]\s*(.+)$""", RegexOption.IGNORE_CASE).find(trimmed)
+                if (prefixedMatch != null) {
+                    val body = prefixedMatch.groupValues[1].trim()
+                    if (body.isNotBlank()) found.add(body)
+                    continue
+                }
+
+                if (isFormulaHeavyText(trimmed) && !inlineMathRegex.matches(trimmed)) {
+                    found.add(trimmed)
+                }
+            }
+        }
+        return found.toList()
+    }
+
+    private fun containsExpressionMarkers(text: String): Boolean {
+        return text.contains('$') ||
+            text.contains("\\frac") ||
+            text.contains("\\sqrt") ||
+            text.contains('=') ||
+            text.contains('→') ||
+            text.contains("->") ||
+            isFormulaHeavyText(text)
     }
 
     /**
@@ -489,17 +660,21 @@ object VoiceFluencyEngine {
         transcript: String,
         referenceSummary: String
     ): Int? {
-        val refKeywords = referenceSummary
+        val verbalizedRef = verbalizeSymbolsForKeywords(referenceSummary)
+        val refKeywords = verbalizedRef
             .lowercase(Locale.ROOT)
             .split(Regex("[^a-z0-9]+"))
-            .filter { it.length >= 4 && it !in stopWords }
+            .filter { token ->
+                (token.length >= 4 && token !in stopWords) ||
+                    token in spokenMathKeywordWhitelist
+            }
             .distinct()
         if (refKeywords.isEmpty()) return null
 
-        val spokenWords = transcript
+        val spokenWords = verbalizeSymbolsForKeywords(transcript)
             .lowercase(Locale.ROOT)
             .split(Regex("[^a-z0-9]+"))
-            .filter { it.length >= 3 }
+            .filter { it.length >= 2 }
             .toSet()
         if (spokenWords.isEmpty()) return 0
 
@@ -507,6 +682,38 @@ object VoiceFluencyEngine {
         return ((matched.toDouble() / refKeywords.size.toDouble()) * 100.0)
             .roundToInt()
             .coerceIn(0, 100)
+    }
+
+    private val spokenMathKeywordWhitelist = setOf(
+        "pi", "sin", "cos", "tan", "log", "ln", "sum", "add", "sub", "mul", "div", "net", "rms"
+    )
+
+    private fun verbalizeSymbolsForKeywords(text: String): String {
+        return text
+            .replace("\\frac", " fraction ")
+            .replace("\\sqrt", " square root ")
+            .replace("\\pi", " pi ")
+            .replace("π", " pi ")
+            .replace("\\alpha", " alpha ")
+            .replace("α", " alpha ")
+            .replace("\\beta", " beta ")
+            .replace("β", " beta ")
+            .replace("\\gamma", " gamma ")
+            .replace("γ", " gamma ")
+            .replace("\\theta", " theta ")
+            .replace("θ", " theta ")
+            .replace("\\Delta", " delta ")
+            .replace("Δ", " delta ")
+            .replace("²", " squared ")
+            .replace("^2", " squared ")
+            .replace("³", " cubed ")
+            .replace("^3", " cubed ")
+            .replace("->", " leads ")
+            .replace("→", " leads ")
+            .replace("=", " equals ")
+            .replace("+", " plus ")
+            .replace("×", " times ")
+            .replace("÷", " divided ")
     }
 
     fun computeMetrics(
