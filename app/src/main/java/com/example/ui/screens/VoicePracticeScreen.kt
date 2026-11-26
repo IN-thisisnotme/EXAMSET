@@ -14,9 +14,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,15 +40,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
@@ -70,6 +68,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,16 +76,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -101,7 +96,6 @@ import com.example.data.AppFontScaleMode
 import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
 import com.example.model.FolderItem
-import com.example.model.VoiceAnalysisResult
 import com.example.model.VoiceAnalysisUiState
 import com.example.model.VoicePracticeMode
 import com.example.model.VoicePromptItem
@@ -109,11 +103,9 @@ import com.example.model.VoiceSourceFilter
 import com.example.ui.components.FontSizeSelectorDialog
 import com.example.ui.components.LatexText
 import com.example.ui.theme.ExamTheme
-import com.example.util.FirebaseVoiceAiAnalyzer
 import com.example.util.FolderPathHelper
 import com.example.util.VoiceFluencyEngine
-import com.example.util.rememberVoiceCaptureController
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -131,10 +123,10 @@ fun VoicePracticeScreen(
     val colors = ExamTheme.colors
     val context = LocalContext.current
     val view = LocalView.current
-    val scope = rememberCoroutineScope()
 
-    val captureController = rememberVoiceCaptureController()
-    val aiAnalyzer = remember { FirebaseVoiceAiAnalyzer() }
+    // [DEPRECATED 2026-11-26] Reason: Sound recording/playback (VoiceCaptureController) and online Gemini AI analysis (FirebaseVoiceAiAnalyzer) were excluded to make Speak to Test 100% offline, sound-free, and non-AI. Restore if: re-enabling WAV recording, audio playback, or cloud Gemini vocal-filler analysis.
+    // val captureController = rememberVoiceCaptureController()
+    // val aiAnalyzer = remember { FirebaseVoiceAiAnalyzer() }
 
     var selectedFolderId by remember(initialFolderId) {
         mutableStateOf(
@@ -147,12 +139,13 @@ fun VoicePracticeScreen(
     }
     var sourceFilter by remember { mutableStateOf(VoiceSourceFilter.ALL) }
     var includeFormulas by remember { mutableStateOf(true) }
-    var practiceMode by remember { mutableStateOf(VoicePracticeMode.EXPLAIN_FROM_MEMORY) }
+    var practiceMode by remember { mutableStateOf(VoicePracticeMode.READ_ALOUD) }
     var promptIndex by remember { mutableIntStateOf(0) }
     var shuffleNonce by remember { mutableIntStateOf(0) }
     var revealReference by remember { mutableStateOf(false) }
     var showFolderDropdown by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
+
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -162,16 +155,21 @@ fun VoicePracticeScreen(
     var micPermissionDenied by remember { mutableStateOf(false) }
     var analysisState by remember { mutableStateOf<VoiceAnalysisUiState>(VoiceAnalysisUiState.Idle) }
 
-    // Optional offline SpeechRecognizer quick check (never runs concurrently with AudioRecord)
+    // 100% offline on-device Speech-to-Text + manual/keyboard dictation fallback
     var isOfflineSttListening by remember { mutableStateOf(false) }
     var offlineLiveTranscript by remember { mutableStateOf("") }
-    var offlineSttStartMs by remember { mutableStateOf(0L) }
-    val sttSupported = remember(context) { SpeechRecognizer.isRecognitionAvailable(context) }
+    var offlineSttStartMs by remember { mutableLongStateOf(0L) }
+    var elapsedListeningMs by remember { mutableLongStateOf(0L) }
+    var showManualInput by remember { mutableStateOf(false) }
+    var manualSpokenText by remember { mutableStateOf("") }
 
+    val sttSupported = remember(context) { SpeechRecognizer.isRecognitionAvailable(context) }
     val speechRecognizer = remember(context) {
         if (sttSupported) {
             runCatching { SpeechRecognizer.createSpeechRecognizer(context) }.getOrNull()
-        } else null
+        } else {
+            null
+        }
     }
 
     DisposableEffect(speechRecognizer) {
@@ -183,10 +181,19 @@ fun VoicePracticeScreen(
         }
     }
 
-    DisposableEffect(view, captureController.isRecording, isOfflineSttListening) {
-        view.keepScreenOn = captureController.isRecording || isOfflineSttListening
+    DisposableEffect(view, isOfflineSttListening) {
+        view.keepScreenOn = isOfflineSttListening
         onDispose {
             view.keepScreenOn = false
+        }
+    }
+
+    LaunchedEffect(isOfflineSttListening) {
+        if (isOfflineSttListening) {
+            while (isOfflineSttListening) {
+                elapsedListeningMs = (System.currentTimeMillis() - offlineSttStartMs).coerceAtLeast(0L)
+                delay(200L)
+            }
         }
     }
 
@@ -223,15 +230,37 @@ fun VoicePracticeScreen(
         promptIndex.coerceIn(0, (orderedPrompts.size - 1).coerceAtLeast(0))
     )
 
+    fun evaluateSpokenText(transcript: String, durationMs: Long, engineLabel: String) {
+        val prompt = currentPrompt ?: return
+        val cleaned = transcript.trim()
+        if (cleaned.isBlank()) {
+            analysisState = VoiceAnalysisUiState.Error(
+                "No spoken words were detected. Try speaking clearly or type your text below to compare offline."
+            )
+            return
+        }
+        if (durationMs >= 1000L) {
+            onLogStudySeconds((durationMs / 1000L).coerceAtLeast(1L))
+        }
+        analysisState = VoiceAnalysisUiState.Success(
+            VoiceFluencyEngine.evaluateOfflineSpeechCheck(
+                spokenTranscript = cleaned,
+                prompt = prompt,
+                durationMs = durationMs,
+                mode = practiceMode,
+                engineLabel = engineLabel
+            )
+        )
+    }
+
     LaunchedEffect(currentPrompt?.id, selectedFolderId, sourceFilter, includeFormulas) {
         if (isOfflineSttListening) {
-            runCatching { speechRecognizer?.stopListening() }
+            runCatching { speechRecognizer?.cancel() }
             isOfflineSttListening = false
         }
         offlineLiveTranscript = ""
-        if (captureController.isRecording || captureController.hasRecording()) {
-            captureController.clearRecording()
-        }
+        elapsedListeningMs = 0L
+        manualSpokenText = ""
         if (analysisState != VoiceAnalysisUiState.Idle) {
             analysisState = VoiceAnalysisUiState.Idle
         }
@@ -246,73 +275,33 @@ fun VoicePracticeScreen(
         }
     }
 
-    fun stopOfflineStt() {
-        if (isOfflineSttListening) {
-            runCatching { speechRecognizer?.stopListening() }
-            isOfflineSttListening = false
-        }
-    }
-
-    fun startRecordingAttempt() {
-        stopOfflineStt()
-        offlineLiveTranscript = ""
-        if (captureController.startRecording()) {
-            analysisState = VoiceAnalysisUiState.Recording
-        } else {
-            analysisState = VoiceAnalysisUiState.Error(
-                captureController.lastError ?: "Could not access microphone."
+    fun stopOfflineStt(evaluatePartialIfAny: Boolean = true) {
+        if (!isOfflineSttListening) return
+        runCatching { speechRecognizer?.stopListening() }
+        isOfflineSttListening = false
+        val dur = (System.currentTimeMillis() - offlineSttStartMs).coerceAtLeast(1000L)
+        elapsedListeningMs = dur
+        if (evaluatePartialIfAny && offlineLiveTranscript.isNotBlank()) {
+            manualSpokenText = offlineLiveTranscript
+            evaluateSpokenText(
+                transcript = offlineLiveTranscript,
+                durationMs = dur,
+                engineLabel = "Offline Speech-to-Text Match"
             )
         }
     }
 
-    fun stopRecordingAttempt() {
-        val file = captureController.stopRecording()
-        val duration = captureController.elapsedMs
-        if (duration >= 1000L) {
-            onLogStudySeconds((duration / 1000L).coerceAtLeast(1L))
-        }
-        analysisState = if (file != null) {
-            VoiceAnalysisUiState.RecordedReady(duration)
-        } else {
-            VoiceAnalysisUiState.Error("Recording was too short. Please speak for at least 1 second.")
-        }
-    }
-
-    fun runAiAudioAnalysis() {
-        val prompt = currentPrompt ?: return
-        val audioBytes = captureController.readRecordedAudioBytes()
-        if (audioBytes == null || audioBytes.size <= 44) {
-            analysisState = VoiceAnalysisUiState.Error("No recorded audio found. Tap Record and speak first.")
+    fun startOfflineSpeechCheck() {
+        val recognizer = speechRecognizer
+        if (recognizer == null) {
+            showManualInput = true
+            analysisState = VoiceAnalysisUiState.Error(
+                "On-device Speech Recognizer is unavailable on this device. Use the offline text/keyboard-mic box below instead."
+            )
             return
         }
-        val durationMs = captureController.elapsedMs.coerceAtLeast(1000L)
-        val rmsSnapshot = captureController.rmsHistory.toList()
-        analysisState = VoiceAnalysisUiState.Analyzing
-
-        scope.launch {
-            val outcome = aiAnalyzer.analyzeAudio(
-                audioBytes = audioBytes,
-                durationMs = durationMs,
-                rmsSamples = rmsSnapshot,
-                prompt = prompt,
-                mode = practiceMode
-            )
-            analysisState = outcome.fold(
-                onSuccess = { VoiceAnalysisUiState.Success(it) },
-                onFailure = { err ->
-                    VoiceAnalysisUiState.Error(
-                        err.message ?: "Unable to analyze audio. You can still replay your recording or use Offline Quick Check."
-                    )
-                }
-            )
-        }
-    }
-
-    fun startOfflineQuickStt() {
-        val prompt = currentPrompt ?: return
-        val recognizer = speechRecognizer ?: return
-        captureController.clearRecording()
         offlineLiveTranscript = ""
+        elapsedListeningMs = 0L
         offlineSttStartMs = System.currentTimeMillis()
         isOfflineSttListening = true
         analysisState = VoiceAnalysisUiState.Recording
@@ -328,30 +317,19 @@ fun VoicePracticeScreen(
 
             override fun onError(error: Int) {
                 isOfflineSttListening = false
+                val dur = (System.currentTimeMillis() - offlineSttStartMs).coerceAtLeast(1000L)
+                elapsedListeningMs = dur
                 if (offlineLiveTranscript.isNotBlank()) {
-                    val dur = (System.currentTimeMillis() - offlineSttStartMs).coerceAtLeast(1000L)
-                    val metrics = VoiceFluencyEngine.computeMetrics(
-                        durationMs = dur,
-                        rmsSamples = emptyList(),
+                    manualSpokenText = offlineLiveTranscript
+                    evaluateSpokenText(
                         transcript = offlineLiveTranscript,
-                        referenceSummary = prompt.referenceSummary,
-                        mode = practiceMode
-                    )
-                    analysisState = VoiceAnalysisUiState.Success(
-                        VoiceAnalysisResult(
-                            verbatimTranscript = offlineLiveTranscript,
-                            annotatedSegments = VoiceFluencyEngine.tokenizeTranscriptForHighlight(offlineLiveTranscript),
-                            metrics = metrics,
-                            topicAccuracyPercent = metrics.keywordCoveragePercent,
-                            strengths = listOf("Captured offline using device speech recognition."),
-                            coachingTips = listOf("Note: Android's offline speech recognizer may skip short 'em'/'um' sounds—use Record + Analyze for verbatim filler detection."),
-                            usedAiAudioAnalysis = false,
-                            engineLabel = "Offline Device Speech-to-Text"
-                        )
+                        durationMs = dur,
+                        engineLabel = "Offline Speech-to-Text Match"
                     )
                 } else {
+                    showManualInput = true
                     analysisState = VoiceAnalysisUiState.Error(
-                        "Offline speech recognizer returned no text (code $error). Try Record + Analyze instead."
+                        "Offline Speech-to-Text did not capture words (code $error). Check your device's offline language pack or use Type / Dictate Check below."
                     )
                 }
             }
@@ -361,27 +339,12 @@ fun VoicePracticeScreen(
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 val finalTranscript = text.ifBlank { offlineLiveTranscript }.trim()
                 val dur = (System.currentTimeMillis() - offlineSttStartMs).coerceAtLeast(1000L)
-                if (dur >= 1000L) {
-                    onLogStudySeconds((dur / 1000L).coerceAtLeast(1L))
-                }
-                val metrics = VoiceFluencyEngine.computeMetrics(
-                    durationMs = dur,
-                    rmsSamples = emptyList(),
+                elapsedListeningMs = dur
+                manualSpokenText = finalTranscript
+                evaluateSpokenText(
                     transcript = finalTranscript,
-                    referenceSummary = prompt.referenceSummary,
-                    mode = practiceMode
-                )
-                analysisState = VoiceAnalysisUiState.Success(
-                    VoiceAnalysisResult(
-                        verbatimTranscript = finalTranscript,
-                        annotatedSegments = VoiceFluencyEngine.tokenizeTranscriptForHighlight(finalTranscript),
-                        metrics = metrics,
-                        topicAccuracyPercent = metrics.keywordCoveragePercent,
-                        strengths = listOf("Offline quick speech check completed."),
-                        coachingTips = listOf("For full verbatim 'em', 'um', and pause tracking, use Record & Analyze."),
-                        usedAiAudioAnalysis = false,
-                        engineLabel = "Offline Device Speech-to-Text"
-                    )
+                    durationMs = dur,
+                    engineLabel = "Offline Speech-to-Text Match"
                 )
             }
 
@@ -398,12 +361,16 @@ fun VoicePracticeScreen(
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
         }
         runCatching { recognizer.startListening(intent) }
             .onFailure {
                 isOfflineSttListening = false
-                analysisState = VoiceAnalysisUiState.Error("Offline Speech-to-Text could not start.")
+                showManualInput = true
+                analysisState = VoiceAnalysisUiState.Error(
+                    "Could not start on-device Speech-to-Text. Use the offline text/keyboard-mic box below."
+                )
             }
     }
 
@@ -415,6 +382,8 @@ fun VoicePracticeScreen(
         micPermissionDenied = !granted
         if (granted) {
             pendingActionAfterPermission?.invoke()
+        } else {
+            showManualInput = true
         }
         pendingActionAfterPermission = null
     }
@@ -432,8 +401,7 @@ fun VoicePracticeScreen(
         if (showFontDialog) {
             showFontDialog = false
         } else {
-            stopOfflineStt()
-            captureController.shutdown()
+            stopOfflineStt(evaluatePartialIfAny = false)
             onDismiss()
         }
     }
@@ -455,7 +423,7 @@ fun VoicePracticeScreen(
         color = colors.background
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top Bar
+            // Top Bar (fully responsive to system font size)
             Surface(color = colors.surface, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
@@ -465,8 +433,7 @@ fun VoicePracticeScreen(
                 ) {
                     IconButton(
                         onClick = {
-                            stopOfflineStt()
-                            captureController.shutdown()
+                            stopOfflineStt(evaluatePartialIfAny = false)
                             onDismiss()
                         },
                         modifier = Modifier
@@ -483,20 +450,36 @@ fun VoicePracticeScreen(
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 4.dp)
+                            .padding(horizontal = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Text(
-                            text = "Speak to Test",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = colors.inkBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Speak to Test",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = colors.inkBold
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = colors.tealLight
+                            ) {
+                                Text(
+                                    text = "Offline Check",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.tealDark,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = selectedFolderLabel,
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.tealDark,
+                            color = colors.inkMuted,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -526,7 +509,7 @@ fun VoicePracticeScreen(
 
                 val folderAndPromptPane: @Composable () -> Unit = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Parent > Child > Sub-Child Folder & Source Card
+                        // Parent > Child > Sub-Child Folder & Filters Card
                         Card(
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = colors.surface),
@@ -588,7 +571,7 @@ fun VoicePracticeScreen(
                                     DropdownMenu(
                                         expanded = showFolderDropdown,
                                         onDismissRequest = { showFolderDropdown = false },
-                                        modifier = Modifier.widthIn(min = 240.dp, max = 360.dp)
+                                        modifier = Modifier.widthIn(min = 240.dp, max = 380.dp)
                                     ) {
                                         DropdownMenuItem(
                                             text = {
@@ -632,7 +615,7 @@ fun VoicePracticeScreen(
                                     }
                                 }
 
-                                // Source & Formula Filter Chips (wraps safely at large font sizes)
+                                // Source & Formula Filter Chips
                                 FlowRow(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -680,7 +663,7 @@ fun VoicePracticeScreen(
                             }
                         }
 
-                        // Practice Mode Chips
+                        // Practice Mode Selector
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -729,7 +712,7 @@ fun VoicePracticeScreen(
                                         textAlign = TextAlign.Center
                                     )
                                     Text(
-                                        text = "Add Study Notes or MCQs to this folder (or select a Parent folder or All Subject Folders) to practice speaking from your material.",
+                                        text = "Add Study Notes or MCQs to this folder (or select a Parent folder or All Subject Folders) to practice speaking and checking against your material.",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = colors.inkMuted,
                                         textAlign = TextAlign.Center
@@ -759,10 +742,10 @@ fun VoicePracticeScreen(
                                         .padding(16.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Row(
+                                    FlowRow(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Surface(shape = RoundedCornerShape(8.dp), color = colors.tealLight) {
                                             Text(
@@ -776,11 +759,7 @@ fun VoicePracticeScreen(
                                         Text(
                                             text = currentPrompt.sourceLabel,
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = colors.inkMuted,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f).padding(start = 8.dp),
-                                            textAlign = TextAlign.End
+                                            color = colors.inkMuted
                                         )
                                     }
 
@@ -841,11 +820,11 @@ fun VoicePracticeScreen(
                                         }
                                     }
 
-                                    // Prompt Navigation Strip
-                                    Row(
+                                    // Prompt Navigation Strip (wraps safely on large system fonts)
+                                    FlowRow(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         OutlinedButton(
                                             onClick = {
@@ -856,9 +835,8 @@ fun VoicePracticeScreen(
                                             },
                                             enabled = promptIndex > 0,
                                             shape = RoundedCornerShape(10.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 48.dp)
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                            modifier = Modifier.heightIn(min = 48.dp)
                                         ) {
                                             Icon(Icons.Default.ChevronLeft, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
@@ -872,9 +850,12 @@ fun VoicePracticeScreen(
                                                 revealReference = false
                                             },
                                             shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                                             modifier = Modifier.heightIn(min = 48.dp)
                                         ) {
                                             Icon(Icons.Default.Shuffle, contentDescription = "Shuffle Prompts", modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Shuffle", style = MaterialTheme.typography.labelLarge)
                                         }
 
                                         OutlinedButton(
@@ -886,9 +867,8 @@ fun VoicePracticeScreen(
                                             },
                                             enabled = promptIndex < orderedPrompts.lastIndex,
                                             shape = RoundedCornerShape(10.dp),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .heightIn(min = 48.dp)
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                            modifier = Modifier.heightIn(min = 48.dp)
                                         ) {
                                             Text("Next", style = MaterialTheme.typography.labelLarge)
                                             Spacer(modifier = Modifier.width(4.dp))
@@ -901,15 +881,15 @@ fun VoicePracticeScreen(
                     }
                 }
 
-                val recorderAndResultsPane: @Composable () -> Unit = {
+                val checkAndResultsPane: @Composable () -> Unit = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Microphone Recorder & Live Waveform Card
+                        // Offline Speech-to-Text & Manual Comparison Card (Sound-free, No AI)
                         Card(
                             shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(containerColor = colors.surface),
                             border = BorderStroke(
                                 1.dp,
-                                if (captureController.isRecording || isOfflineSttListening) colors.red else colors.border
+                                if (isOfflineSttListening) colors.red else colors.border
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -922,83 +902,78 @@ fun VoicePracticeScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Row(
+                                FlowRow(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.OfflinePin,
+                                            contentDescription = null,
+                                            tint = if (isOfflineSttListening) colors.red else colors.teal,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = if (isOfflineSttListening) "Listening Offline..." else "On-Device Speech Check",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isOfflineSttListening) colors.red else colors.inkBold
+                                        )
+                                    }
                                     Text(
-                                        text = when {
-                                            captureController.isRecording -> "Listening & Recording..."
-                                            isOfflineSttListening -> "Offline Speech-to-Text..."
-                                            captureController.hasRecording() -> "Recording Ready"
-                                            else -> "Ready to Practice"
-                                        },
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (captureController.isRecording || isOfflineSttListening) colors.red else colors.inkBold
-                                    )
-                                    Text(
-                                        text = formatDurationMs(captureController.elapsedMs),
+                                        text = formatDurationMs(elapsedListeningMs),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = colors.tealDark
                                     )
                                 }
 
-                                // Live Waveform Canvas
-                                LiveVoiceWaveformBar(
-                                    samples = captureController.rmsHistory,
-                                    liveLevel = captureController.liveRmsLevel,
-                                    isRecording = captureController.isRecording,
-                                    activeColor = if (captureController.isRecording) colors.red else colors.teal,
-                                    trackColor = colors.surfaceVariant
-                                )
-
-                                if (isOfflineSttListening && offlineLiveTranscript.isNotBlank()) {
+                                if (isOfflineSttListening) {
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         color = colors.surfaceVariant,
+                                        border = BorderStroke(0.8.dp, colors.border),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text = offlineLiveTranscript,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = colors.inkBold,
-                                            modifier = Modifier.padding(10.dp)
+                                            text = offlineLiveTranscript.ifBlank { "Speak the displayed text clearly..." },
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = if (offlineLiveTranscript.isBlank()) colors.inkMuted else colors.inkBold,
+                                            modifier = Modifier.padding(12.dp)
                                         )
                                     }
                                 }
 
                                 if (micPermissionDenied) {
                                     Text(
-                                        text = "Microphone permission was denied. Tap Record to allow access so you can test your speaking.",
+                                        text = "Microphone permission was denied. You can grant access anytime or use the offline text input below.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = colors.red,
                                         textAlign = TextAlign.Center
                                     )
                                 }
 
-                                // Main Record / Stop Button
                                 val micScale by animateFloatAsState(
-                                    targetValue = if (captureController.isRecording) 1.06f else 1f,
+                                    targetValue = if (isOfflineSttListening) 1.06f else 1f,
                                     animationSpec = spring(),
-                                    label = "mic_pulse"
+                                    label = "stt_mic_pulse"
                                 )
                                 Button(
                                     onClick = {
-                                        if (captureController.isRecording) {
-                                            stopRecordingAttempt()
-                                        } else if (isOfflineSttListening) {
-                                            stopOfflineStt()
+                                        if (isOfflineSttListening) {
+                                            stopOfflineStt(evaluatePartialIfAny = true)
                                         } else {
-                                            runWithMicPermission { startRecordingAttempt() }
+                                            runWithMicPermission { startOfflineSpeechCheck() }
                                         }
                                     },
-                                    enabled = currentPrompt != null && analysisState != VoiceAnalysisUiState.Analyzing,
+                                    enabled = currentPrompt != null && sttSupported,
                                     shape = CircleShape,
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (captureController.isRecording || isOfflineSttListening) colors.red else colors.teal,
+                                        containerColor = if (isOfflineSttListening) colors.red else colors.teal,
                                         contentColor = Color.White
                                     ),
                                     contentPadding = PaddingValues(0.dp),
@@ -1007,115 +982,137 @@ fun VoicePracticeScreen(
                                         .testTag("voice_record_toggle_btn")
                                 ) {
                                     Icon(
-                                        imageVector = if (captureController.isRecording || isOfflineSttListening) Icons.Default.Stop else Icons.Default.Mic,
-                                        contentDescription = if (captureController.isRecording) "Stop Recording" else "Start Recording",
+                                        imageVector = if (isOfflineSttListening) Icons.Default.Stop else Icons.Default.Mic,
+                                        contentDescription = if (isOfflineSttListening) "Stop Listening" else "Speak Now",
                                         modifier = Modifier.size(34.dp)
                                     )
                                 }
 
                                 Text(
-                                    text = if (captureController.isRecording) {
-                                        "Tap Stop when finished"
-                                    } else {
-                                        "Tap Mic to speak naturally (includes em, um & pauses)"
+                                    text = when {
+                                        !sttSupported -> "Device Speech Recognizer unavailable — use Type / Dictate Check below."
+                                        isOfflineSttListening -> "Tap Stop when finished to check matches & mistakes"
+                                        else -> "Tap Mic to speak aloud (100% offline, no sound saved)"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.inkMuted,
                                     textAlign = TextAlign.Center
                                 )
 
-                                // Playback & Analysis Action Row
-                                if (!captureController.isRecording && !isOfflineSttListening) {
-                                    FlowRow(
+                                // Secondary Offline Actions
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showManualInput = !showManualInput },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .testTag("voice_manual_toggle_btn")
+                                    ) {
+                                        Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (showManualInput) "Hide Text Input" else "Type / Dictate Check",
+                                            style = MaterialTheme.typography.labelLarge
+                                        )
+                                    }
+
+                                    if (analysisState != VoiceAnalysisUiState.Idle) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                offlineLiveTranscript = ""
+                                                manualSpokenText = ""
+                                                elapsedListeningMs = 0L
+                                                analysisState = VoiceAnalysisUiState.Idle
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.heightIn(min = 48.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Reset", style = MaterialTheme.typography.labelLarge)
+                                        }
+                                    }
+                                }
+
+                                AnimatedVisibility(visible = showManualInput) {
+                                    Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        if (captureController.hasRecording()) {
-                                            OutlinedButton(
-                                                onClick = { captureController.togglePlayback() },
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier
-                                                    .heightIn(min = 48.dp)
-                                                    .testTag("voice_playback_btn")
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (captureController.isPlayingBack) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
+                                        OutlinedTextField(
+                                            value = manualSpokenText,
+                                            onValueChange = { manualSpokenText = it },
+                                            label = {
                                                 Text(
-                                                    text = if (captureController.isPlayingBack) "Stop Audio" else "Play My Voice",
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.Bold
+                                                    "Spoken / Dictated Text",
+                                                    style = MaterialTheme.typography.labelMedium
                                                 )
-                                            }
-
-                                            Button(
-                                                onClick = { runAiAudioAnalysis() },
-                                                enabled = currentPrompt != null && analysisState != VoiceAnalysisUiState.Analyzing,
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = colors.navyBanner,
-                                                    contentColor = colors.navyBannerText
-                                                ),
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier
-                                                    .heightIn(min = 48.dp)
-                                                    .testTag("voice_analyze_btn")
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.AutoAwesome,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
+                                            },
+                                            placeholder = {
                                                 Text(
-                                                    text = "Analyze em / um & Clarity",
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.Bold
+                                                    "Use keyboard mic or type what you recited...",
+                                                    style = MaterialTheme.typography.bodyMedium
                                                 )
-                                            }
-
-                                            IconButton(
-                                                onClick = {
-                                                    captureController.clearRecording()
-                                                    analysisState = VoiceAnalysisUiState.Idle
-                                                },
-                                                modifier = Modifier.size(48.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Refresh,
-                                                    contentDescription = "Clear Recording",
-                                                    tint = colors.inkMuted
+                                            },
+                                            minLines = 3,
+                                            maxLines = 6,
+                                            textStyle = MaterialTheme.typography.bodyLarge,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("voice_manual_input")
+                                        )
+                                        Button(
+                                            onClick = {
+                                                evaluateSpokenText(
+                                                    transcript = manualSpokenText,
+                                                    durationMs = elapsedListeningMs,
+                                                    engineLabel = "Offline Text Comparison"
                                                 )
-                                            }
-                                        }
-
-                                        if (sttSupported && !captureController.hasRecording()) {
-                                            OutlinedButton(
-                                                onClick = { runWithMicPermission { startOfflineQuickStt() } },
-                                                enabled = currentPrompt != null,
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier
-                                                    .heightIn(min = 48.dp)
-                                                    .testTag("voice_offline_stt_btn")
-                                            ) {
-                                                Text(
-                                                    text = "Offline Speech-to-Text Check",
-                                                    style = MaterialTheme.typography.labelLarge
-                                                )
-                                            }
+                                            },
+                                            enabled = currentPrompt != null && manualSpokenText.isNotBlank(),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = colors.navyBanner,
+                                                contentColor = colors.navyBannerText
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
+                                                .testTag("voice_manual_check_btn")
+                                        ) {
+                                            Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Compare Against Shown Text",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Results Section
                         VoicePracticeResultsSection(
                             uiState = analysisState,
-                            onRetryAnalyze = { runAiAudioAnalysis() }
+                            onRetryAnalyze = {
+                                val retrySource = manualSpokenText.ifBlank { offlineLiveTranscript }
+                                if (retrySource.isNotBlank()) {
+                                    evaluateSpokenText(
+                                        transcript = retrySource,
+                                        durationMs = elapsedListeningMs,
+                                        engineLabel = "Offline Text Comparison"
+                                    )
+                                } else if (sttSupported) {
+                                    runWithMicPermission { startOfflineSpeechCheck() }
+                                } else {
+                                    showManualInput = true
+                                }
+                            }
                         )
                     }
                 }
@@ -1139,7 +1136,7 @@ fun VoicePracticeScreen(
                                 .weight(1f)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            recorderAndResultsPane()
+                            checkAndResultsPane()
                         }
                     }
                 } else {
@@ -1157,65 +1154,11 @@ fun VoicePracticeScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             folderAndPromptPane()
-                            recorderAndResultsPane()
+                            checkAndResultsPane()
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveVoiceWaveformBar(
-    samples: List<Float>,
-    liveLevel: Float,
-    isRecording: Boolean,
-    activeColor: Color,
-    trackColor: Color
-) {
-    val barCount = 36
-    val displaySamples = remember(samples.size, liveLevel) {
-        if (samples.isEmpty()) {
-            List(barCount) { 0.08f }
-        } else {
-            val tail = samples.takeLast(barCount)
-            val pad = List((barCount - tail.size).coerceAtLeast(0)) { 0.08f }
-            pad + tail.mapIndexed { idx, v ->
-                val boosted = if (isRecording && idx == tail.lastIndex) maxOf(v * 3.2f, liveLevel) else v * 3.2f
-                boosted.coerceIn(0.08f, 1f)
-            }
-        }
-    }
-
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = trackColor,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-    ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 10.dp, vertical = 8.dp)
-        ) {
-            val count = displaySamples.size.coerceAtLeast(1)
-            val slotW = size.width / count
-            val barW = (slotW * 0.56f).coerceAtLeast(2f)
-            val centerY = size.height / 2f
-
-            displaySamples.forEachIndexed { idx, amp ->
-                val h = (amp * size.height).coerceIn(4f, size.height)
-                val x = idx * slotW + (slotW - barW) / 2f
-                val y = centerY - h / 2f
-                drawRoundRect(
-                    color = activeColor.copy(alpha = if (amp > 0.14f) 0.95f else 0.35f),
-                    topLeft = Offset(x, y),
-                    size = Size(barW, h),
-                    cornerRadius = CornerRadius(barW / 2f, barW / 2f)
-                )
             }
         }
     }

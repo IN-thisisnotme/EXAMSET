@@ -4,17 +4,17 @@ enum class VoicePracticeMode(
     val label: String,
     val description: String
 ) {
+    READ_ALOUD(
+        label = "Read Aloud Check",
+        description = "Read the shown text aloud and compare every matched, missed, extra, and mistaken word offline."
+    ),
     EXPLAIN_FROM_MEMORY(
         label = "Explain from Memory",
-        description = "See only the topic or question, speak your explanation aloud, then check recall & fillers."
-    ),
-    READ_ALOUD(
-        label = "Read Aloud Fluency",
-        description = "Read the clean, formula-free study text aloud to track pace, pauses, and filler habits."
+        description = "See only the topic or question, speak your answer aloud, then compare against the reference notes."
     ),
     FREE_SUBJECT_SPEAK(
         label = "Subject Free-Speak",
-        description = "Speak freely on the folder's subject prompt to measure clear delivery without 'em' or 'um'."
+        description = "Speak freely on the folder's subject prompt and inspect pace, repetitions, and keyword coverage."
     )
 }
 
@@ -28,6 +28,25 @@ enum class VoiceFillerCategory(val label: String) {
     VOCAL_DISFLUENCY("Vocal Hesitation (em/um/uh)"),
     LEXICAL_FILLER("Filler Phrase")
 }
+
+enum class VoiceWordMatchStatus {
+    MATCHED,
+    MISTAKE,
+    MISSED,
+    EXTRA,
+    REPEATED
+}
+
+data class VoiceAlignmentToken(
+    val expectedWord: String? = null,
+    val spokenWord: String? = null,
+    val status: VoiceWordMatchStatus
+)
+
+data class VoiceMistakePair(
+    val expected: String,
+    val spoken: String
+)
 
 data class VoicePromptItem(
     val id: String,
@@ -66,6 +85,24 @@ data class VoiceTranscriptSegment(
     val category: VoiceFillerCategory? = null
 )
 
+data class VoiceComparisonStats(
+    val totalReferenceWords: Int,
+    val totalSpokenWords: Int,
+    val matchedCount: Int,
+    val matchPercent: Int,
+    val netAccuracyPercent: Int,
+    val mistakeCount: Int,
+    val missedCount: Int,
+    val extraCount: Int,
+    val repetitionCount: Int,
+    val paceLabel: String,
+    val alignmentTokens: List<VoiceAlignmentToken>,
+    val mistakePairs: List<VoiceMistakePair>,
+    val missedWords: List<String>,
+    val extraWords: List<String>,
+    val repeatedWords: List<String>
+)
+
 data class VoiceFluencyMetrics(
     val durationMs: Long,
     val speakingMs: Long,
@@ -76,7 +113,8 @@ data class VoiceFluencyMetrics(
     val verbatimFillerCount: Int,
     val fillerRatePerMinute: Double,
     val fillerBreakdown: List<VoiceFillerOccurrence>,
-    val keywordCoveragePercent: Int? = null
+    val keywordCoveragePercent: Int? = null,
+    val comparison: VoiceComparisonStats? = null
 )
 
 data class VoiceAnalysisResult(

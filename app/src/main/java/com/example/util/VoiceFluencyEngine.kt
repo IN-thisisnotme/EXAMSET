@@ -4,15 +4,20 @@ import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
 import com.example.data.toQuestionPaper
 import com.example.model.FolderItem
+import com.example.model.VoiceAlignmentToken
+import com.example.model.VoiceAnalysisResult
+import com.example.model.VoiceComparisonStats
 import com.example.model.VoiceFillerCategory
 import com.example.model.VoiceFillerOccurrence
 import com.example.model.VoiceFluencyMetrics
 import com.example.model.VoiceFolderPromptResult
 import com.example.model.VoiceHesitationGap
+import com.example.model.VoiceMistakePair
 import com.example.model.VoicePracticeMode
 import com.example.model.VoicePromptItem
 import com.example.model.VoiceSourceFilter
 import com.example.model.VoiceTranscriptSegment
+import com.example.model.VoiceWordMatchStatus
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -725,17 +730,22 @@ object VoiceFluencyEngine {
         explicitFillerOverrides: List<VoiceFillerOccurrence>? = null,
         sampleIntervalMs: Long = 100L
     ): VoiceFluencyMetrics {
-        val safeDurationMs = durationMs.coerceAtLeast(1000L)
+        val isTimed = durationMs >= 1000L
+        val safeDurationMs = durationMs.coerceAtLeast(0L)
         val gaps = detectHesitationGaps(rmsSamples, sampleIntervalMs = sampleIntervalMs)
         val silenceMs = gaps.sumOf { it.durationMs }.coerceAtMost(safeDurationMs)
         val speakingMs = (safeDurationMs - silenceMs).coerceAtLeast(0L)
-        val hesitationRatio = ((silenceMs.toDouble() / safeDurationMs.toDouble()) * 100.0)
-            .roundToInt()
-            .coerceIn(0, 100)
+        val hesitationRatio = if (safeDurationMs > 0L) {
+            ((silenceMs.toDouble() / safeDurationMs.toDouble()) * 100.0)
+                .roundToInt()
+                .coerceIn(0, 100)
+        } else {
+            0
+        }
 
         val words = transcript.trim().split(Regex("\\s+")).filter { normalizeToken(it).isNotBlank() }
         val minutes = safeDurationMs / 60_000.0
-        val wpm = if (minutes > 0.0 && words.isNotEmpty()) {
+        val wpm = if (isTimed && minutes > 0.0 && words.isNotEmpty()) {
             (words.size / minutes).roundToInt().coerceIn(0, 320)
         } else {
             0
@@ -744,7 +754,7 @@ object VoiceFluencyEngine {
         val breakdown = (explicitFillerOverrides?.takeIf { it.isNotEmpty() }
             ?: extractFillersFromTranscript(transcript))
         val totalFillers = breakdown.sumOf { it.count }
-        val fillerRate = if (minutes > 0.0) {
+        val fillerRate = if (isTimed && minutes > 0.0) {
             ((totalFillers / minutes) * 10.0).roundToInt() / 10.0
         } else {
             0.0
@@ -754,6 +764,16 @@ object VoiceFluencyEngine {
             null
         } else {
             computeKeywordCoveragePercent(transcript, referenceSummary)
+        }
+
+        val comparison = if (referenceSummary.isNotBlank() && mode != VoicePracticeMode.FREE_SUBJECT_SPEAK) {
+            alignSpokenToReference(
+                referenceText = referenceSummary,
+                spokenText = transcript,
+                estimatedWpm = wpm
+            )
+        } else {
+            null
         }
 
         return VoiceFluencyMetrics(
@@ -766,8 +786,456 @@ object VoiceFluencyEngine {
             verbatimFillerCount = totalFillers,
             fillerRatePerMinute = fillerRate,
             fillerBreakdown = breakdown,
-            keywordCoveragePercent = coverage
+            keywordCoveragePercent = coverage,
+            comparison = comparison
         )
+    }
+
+    /**
+     * 100% offline, deterministic speech-to-text comparison against the shown subject text.
+     * Computes exact matched words, wrong/mispronounced substitutions, skipped omissions,
+     * extra pronounced words, consecutive repetitions, pace rating, and actionable tips.
+     */
+    fun evaluateOfflineSpeechCheck(
+        spokenTranscript: String,
+        prompt: VoicePromptItem,
+        durationMs: Long,
+        mode: VoicePracticeMode,
+        engineLabel: String = "Offline On-Device Text Comparison"
+    ): VoiceAnalysisResult {
+        val targetReference = when (mode) {
+            VoicePracticeMode.READ_ALOUD -> {
+                val base = prompt.referenceSummary.ifBlank { prompt.promptQuestion }
+                val missingFormulas = prompt.formulaExpressions.filter { expr ->
+                    expr.isNotBlank() && !base.contains(expr, ignoreCase = true)
+                }
+                if (missingFormulas.isEmpty()) base else "$base\n${missingFormulas.joinToString("\n")}"
+            }
+            VoicePracticeMode.EXPLAIN_FROM_MEMORY -> prompt.referenceSummary.ifBlank { prompt.promptQuestion }
+            VoicePracticeMode.FREE_SUBJECT_SPEAK -> prompt.referenceSummary.ifBlank { prompt.promptQuestion }
+        }
+
+        val metrics = computeMetrics(
+            durationMs = durationMs,
+            rmsSamples = emptyList(),
+            transcript = spokenTranscript,
+            referenceSummary = targetReference,
+            mode = mode
+        )
+
+        val comp = metrics.comparison ?: alignSpokenToReference(
+            referenceText = targetReference,
+            spokenText = spokenTranscript,
+            estimatedWpm = metrics.estimatedWpm
+        )
+
+        val strengths = buildList {
+            if (comp.matchPercent >= 85) {
+                add("Strong alignment: ${comp.matchedCount} of ${comp.totalReferenceWords} reference words matched (${comp.matchPercent}%).")
+            } else if (comp.matchedCount > 0) {
+                add("Matched ${comp.matchedCount} of ${comp.totalReferenceWords} reference words (${comp.matchPercent}%).")
+            }
+            if (comp.mistakeCount == 0 && comp.totalSpokenWords > 0) {
+                add("Zero word substitutions detected.")
+            }
+            if (comp.repetitionCount == 0 && comp.totalSpokenWords > 0) {
+                add("No consecutive word repetitions.")
+            }
+            if (metrics.estimatedWpm in 100..160) {
+                add("Steady speaking pace (${metrics.estimatedWpm} WPM).")
+            }
+        }
+
+        val tips = buildList {
+            if (comp.mistakePairs.isNotEmpty()) {
+                val sampleMistakes = comp.mistakePairs.take(4).joinToString(", ") {
+                    "\"${it.expected}\" → \"${it.spoken}\""
+                }
+                add("Review ${comp.mistakeCount} mistaken word(s): $sampleMistakes.")
+            }
+            if (comp.missedCount > 0) {
+                val sampleMissed = comp.missedWords.take(5).joinToString(", ")
+                add("Skipped ${comp.missedCount} word(s) from the text ($sampleMissed).")
+            }
+            if (comp.extraCount > 0) {
+                val repeatNote = if (comp.repetitionCount > 0) " including ${comp.repetitionCount} repetition(s)" else ""
+                val sampleExtra = comp.extraWords.take(5).joinToString(", ")
+                add("Pronounced ${comp.extraCount} extra word(s)$repeatNote ($sampleExtra).")
+            }
+            if (metrics.estimatedWpm > 165) {
+                add("Pace was fast (${metrics.estimatedWpm} WPM) — slow down slightly on key terms and formulas.")
+            } else if (metrics.estimatedWpm in 1..85) {
+                add("Pace was slow (${metrics.estimatedWpm} WPM) — practice reading the full phrase smoothly.")
+            }
+            if (isEmpty() && comp.totalSpokenWords > 0) {
+                add("Excellent offline match! Try the next prompt or switch to Explain from Memory.")
+            }
+        }
+
+        val effectiveMetrics = if (metrics.comparison != null) metrics else metrics.copy(comparison = comp)
+        val primaryScore = when (mode) {
+            VoicePracticeMode.READ_ALOUD -> comp.netAccuracyPercent
+            VoicePracticeMode.EXPLAIN_FROM_MEMORY -> metrics.keywordCoveragePercent ?: comp.matchPercent
+            VoicePracticeMode.FREE_SUBJECT_SPEAK -> metrics.keywordCoveragePercent ?: comp.matchPercent
+        }
+
+        return VoiceAnalysisResult(
+            verbatimTranscript = spokenTranscript.trim(),
+            annotatedSegments = tokenizeTranscriptForHighlight(spokenTranscript),
+            metrics = effectiveMetrics,
+            topicAccuracyPercent = primaryScore,
+            strengths = strengths,
+            coachingTips = tips,
+            usedAiAudioAnalysis = false,
+            engineLabel = engineLabel
+        )
+    }
+
+    private data class AlignmentWord(
+        val display: String,
+        val key: String
+    )
+
+    /**
+     * Deterministic Needleman-Wunsch / Levenshtein word alignment between the shown reference text
+     * and the user's spoken transcript. Guarantees exact counts for Matched, Mistakes (substitutions),
+     * Missed (omissions), Extra pronounced words, and Consecutive Repetitions.
+     */
+    fun alignSpokenToReference(
+        referenceText: String,
+        spokenText: String,
+        estimatedWpm: Int = 0
+    ): VoiceComparisonStats {
+        val refWords = tokenizeForComparison(prepareReferenceForAlignment(referenceText)).take(260)
+        val spokenWords = tokenizeForComparison(spokenText).take(260)
+
+        val n = refWords.size
+        val m = spokenWords.size
+        val paceLabel = when {
+            estimatedWpm <= 0 -> "Not Timed"
+            estimatedWpm < 100 -> "Slow (<100 WPM)"
+            estimatedWpm <= 160 -> "Steady (100–160 WPM)"
+            else -> "Fast (>160 WPM)"
+        }
+
+        if (n == 0 && m == 0) {
+            return VoiceComparisonStats(
+                totalReferenceWords = 0,
+                totalSpokenWords = 0,
+                matchedCount = 0,
+                matchPercent = 0,
+                netAccuracyPercent = 0,
+                mistakeCount = 0,
+                missedCount = 0,
+                extraCount = 0,
+                repetitionCount = 0,
+                paceLabel = paceLabel,
+                alignmentTokens = emptyList(),
+                mistakePairs = emptyList(),
+                missedWords = emptyList(),
+                extraWords = emptyList(),
+                repeatedWords = emptyList()
+            )
+        }
+
+        // Exact LCS edit cost (match=0, delete=1, insert=1) guarantees maximum word matches;
+        // balanced gaps between matched anchors are classified as 1-to-1 MISTAKEs in the pass below.
+        val dp = Array(n + 1) { IntArray(m + 1) }
+        for (i in 0..n) dp[i][0] = i
+        for (j in 0..m) dp[0][j] = j
+
+        for (i in 1..n) {
+            for (j in 1..m) {
+                dp[i][j] = if (refWords[i - 1].key == spokenWords[j - 1].key) {
+                    dp[i - 1][j - 1]
+                } else {
+                    minOf(dp[i - 1][j] + 1, dp[i][j - 1] + 1)
+                }
+            }
+        }
+
+        val reversedOps = mutableListOf<VoiceAlignmentToken>()
+        var i = n
+        var j = m
+        while (i > 0 || j > 0) {
+            when {
+                i > 0 && j > 0 && refWords[i - 1].key == spokenWords[j - 1].key -> {
+                    val isConsecutiveDuplicate = j >= 2 && spokenWords[j - 1].key == spokenWords[j - 2].key
+                    if (isConsecutiveDuplicate && dp[i][j] == dp[i][j - 1] + 1) {
+                        reversedOps.add(
+                            VoiceAlignmentToken(
+                                expectedWord = null,
+                                spokenWord = spokenWords[j - 1].display,
+                                status = VoiceWordMatchStatus.EXTRA
+                            )
+                        )
+                        j--
+                    } else {
+                        reversedOps.add(
+                            VoiceAlignmentToken(
+                                expectedWord = refWords[i - 1].display,
+                                spokenWord = spokenWords[j - 1].display,
+                                status = VoiceWordMatchStatus.MATCHED
+                            )
+                        )
+                        i--
+                        j--
+                    }
+                }
+                i > 0 && (j == 0 || dp[i][j] == dp[i - 1][j] + 1) -> {
+                    reversedOps.add(
+                        VoiceAlignmentToken(
+                            expectedWord = refWords[i - 1].display,
+                            spokenWord = null,
+                            status = VoiceWordMatchStatus.MISSED
+                        )
+                    )
+                    i--
+                }
+                else -> {
+                    reversedOps.add(
+                        VoiceAlignmentToken(
+                            expectedWord = null,
+                            spokenWord = spokenWords[j - 1].display,
+                            status = VoiceWordMatchStatus.EXTRA
+                        )
+                    )
+                    j--
+                }
+            }
+        }
+
+        val rawAlignment = reversedOps.asReversed()
+        val finalAlignment = mutableListOf<VoiceAlignmentToken>()
+        var lastSpokenKey: String? = null
+
+        var matchedCount = 0
+        var mistakeCount = 0
+        var missedCount = 0
+        var extraCount = 0
+        var repetitionCount = 0
+        val mistakePairs = mutableListOf<VoiceMistakePair>()
+        val missedWords = mutableListOf<String>()
+        val extraWords = mutableListOf<String>()
+        val repeatedWords = mutableListOf<String>()
+
+        val missedBuffer = mutableListOf<String>()
+        val extraBuffer = mutableListOf<String>()
+
+        fun emitExtraOrRepeat(word: String) {
+            val key = canonicalKey(word)
+            val isRepeat = key.isNotEmpty() && key == lastSpokenKey
+            extraCount++
+            if (isRepeat) {
+                repetitionCount++
+                repeatedWords.add(word)
+                finalAlignment.add(
+                    VoiceAlignmentToken(
+                        expectedWord = null,
+                        spokenWord = word,
+                        status = VoiceWordMatchStatus.REPEATED
+                    )
+                )
+            } else {
+                finalAlignment.add(
+                    VoiceAlignmentToken(
+                        expectedWord = null,
+                        spokenWord = word,
+                        status = VoiceWordMatchStatus.EXTRA
+                    )
+                )
+            }
+            extraWords.add(word)
+            if (key.isNotEmpty()) lastSpokenKey = key
+        }
+
+        fun flushGap() {
+            while (extraBuffer.isNotEmpty()) {
+                val firstKey = canonicalKey(extraBuffer.first())
+                if (firstKey.isNotEmpty() && firstKey == lastSpokenKey) {
+                    emitExtraOrRepeat(extraBuffer.removeAt(0))
+                } else {
+                    break
+                }
+            }
+
+            if (missedBuffer.isNotEmpty() && extraBuffer.isNotEmpty()) {
+                if (missedBuffer.size == extraBuffer.size) {
+                    for (idx in missedBuffer.indices) {
+                        val expected = missedBuffer[idx]
+                        val spoken = extraBuffer[idx]
+                        mistakeCount++
+                        mistakePairs.add(VoiceMistakePair(expected = expected, spoken = spoken))
+                        finalAlignment.add(
+                            VoiceAlignmentToken(
+                                expectedWord = expected,
+                                spokenWord = spoken,
+                                status = VoiceWordMatchStatus.MISTAKE
+                            )
+                        )
+                        val key = canonicalKey(spoken)
+                        if (key.isNotEmpty()) lastSpokenKey = key
+                    }
+                    missedBuffer.clear()
+                    extraBuffer.clear()
+                    return
+                }
+
+                // Collapse consecutive duplicates within extraBuffer to see if distinct slots match missedBuffer
+                val grouped = mutableListOf<Pair<String, MutableList<String>>>()
+                for (word in extraBuffer) {
+                    val key = canonicalKey(word)
+                    val last = grouped.lastOrNull()
+                    if (last != null && key.isNotEmpty() && canonicalKey(last.first) == key) {
+                        last.second.add(word)
+                    } else {
+                        grouped.add(word to mutableListOf())
+                    }
+                }
+                if (grouped.size == missedBuffer.size) {
+                    for (idx in missedBuffer.indices) {
+                        val expected = missedBuffer[idx]
+                        val (spoken, dups) = grouped[idx]
+                        mistakeCount++
+                        mistakePairs.add(VoiceMistakePair(expected = expected, spoken = spoken))
+                        finalAlignment.add(
+                            VoiceAlignmentToken(
+                                expectedWord = expected,
+                                spokenWord = spoken,
+                                status = VoiceWordMatchStatus.MISTAKE
+                            )
+                        )
+                        val key = canonicalKey(spoken)
+                        if (key.isNotEmpty()) lastSpokenKey = key
+                        for (dup in dups) {
+                            emitExtraOrRepeat(dup)
+                        }
+                    }
+                    missedBuffer.clear()
+                    extraBuffer.clear()
+                    return
+                }
+            }
+
+            for (expected in missedBuffer) {
+                missedCount++
+                missedWords.add(expected)
+                finalAlignment.add(
+                    VoiceAlignmentToken(
+                        expectedWord = expected,
+                        spokenWord = null,
+                        status = VoiceWordMatchStatus.MISSED
+                    )
+                )
+            }
+            for (spoken in extraBuffer) {
+                emitExtraOrRepeat(spoken)
+            }
+            missedBuffer.clear()
+            extraBuffer.clear()
+        }
+
+        for (token in rawAlignment) {
+            when (token.status) {
+                VoiceWordMatchStatus.MATCHED -> {
+                    flushGap()
+                    matchedCount++
+                    lastSpokenKey = token.spokenWord?.let(::canonicalKey)
+                    finalAlignment.add(token)
+                }
+                VoiceWordMatchStatus.MISSED -> {
+                    token.expectedWord?.let(missedBuffer::add)
+                }
+                VoiceWordMatchStatus.EXTRA, VoiceWordMatchStatus.REPEATED -> {
+                    token.spokenWord?.let(extraBuffer::add)
+                }
+                VoiceWordMatchStatus.MISTAKE -> {
+                    flushGap()
+                    mistakeCount++
+                    mistakePairs.add(
+                        VoiceMistakePair(
+                            expected = token.expectedWord.orEmpty(),
+                            spoken = token.spokenWord.orEmpty()
+                        )
+                    )
+                    lastSpokenKey = token.spokenWord?.let(::canonicalKey)
+                    finalAlignment.add(token)
+                }
+            }
+        }
+        flushGap()
+
+        val matchPercent = if (n > 0) {
+            ((matchedCount.toDouble() / n.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+        } else {
+            0
+        }
+        val netAccuracyPercent = if (n > 0) {
+            (((matchedCount - extraCount).coerceAtLeast(0).toDouble() / n.toDouble()) * 100.0)
+                .roundToInt()
+                .coerceIn(0, 100)
+        } else {
+            0
+        }
+
+        return VoiceComparisonStats(
+            totalReferenceWords = n,
+            totalSpokenWords = m,
+            matchedCount = matchedCount,
+            matchPercent = matchPercent,
+            netAccuracyPercent = netAccuracyPercent,
+            mistakeCount = mistakeCount,
+            missedCount = missedCount,
+            extraCount = extraCount,
+            repetitionCount = repetitionCount,
+            paceLabel = paceLabel,
+            alignmentTokens = finalAlignment,
+            mistakePairs = mistakePairs,
+            missedWords = missedWords,
+            extraWords = extraWords,
+            repeatedWords = repeatedWords
+        )
+    }
+
+    private fun prepareReferenceForAlignment(raw: String): String {
+        return raw.lines().joinToString(" ") { line ->
+            line.trim()
+                .replace(Regex("""^(?:Formula|Key answer)\s*:\s*""", RegexOption.IGNORE_CASE), "")
+        }
+    }
+
+    private fun tokenizeForComparison(raw: String): List<AlignmentWord> {
+        if (raw.isBlank()) return emptyList()
+        val expanded = verbalizeSymbolsForKeywords(
+            raw
+                .replace(Regex("""\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}"""), " $1 over $2 ")
+                .replace("$$", " ")
+                .replace("$", " ")
+                .replace("\\(", " ")
+                .replace("\\)", " ")
+                .replace("\\[", " ")
+                .replace("\\]", " ")
+                .replace("{", " ")
+                .replace("}", " ")
+                .replace("%", " percent ")
+                .replace("—", " ")
+                .replace("–", " ")
+        )
+        return expanded
+            .split(Regex("\\s+"))
+            .mapNotNull { piece ->
+                val cleanDisplay = piece.trim('[', ']', '(', ')', ',', '.', ';', ':', '!', '?', '"', '\'', '—', '–')
+                val key = canonicalKey(cleanDisplay)
+                if (cleanDisplay.isNotBlank() && key.isNotBlank()) {
+                    AlignmentWord(display = cleanDisplay, key = key)
+                } else {
+                    null
+                }
+            }
+    }
+
+    private fun canonicalKey(raw: String): String {
+        return raw.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
     }
 
     private fun normalizeToken(raw: String): String {

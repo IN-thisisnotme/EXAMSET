@@ -214,4 +214,55 @@ class VoiceFluencyEngineTest {
         )
         assertTrue((coverage ?: 0) >= 75)
     }
+
+    @Test
+    fun alignSpokenToReference_reportsMatchedMistakesMissedExtraAndRepetitions() {
+        val reference = "The Speaker of Lok Sabha certifies a Money Bill."
+        val spoken = "The the department of Lok Sabha certifies very important Money"
+
+        val stats = VoiceFluencyEngine.alignSpokenToReference(
+            referenceText = reference,
+            spokenText = spoken,
+            estimatedWpm = 120
+        )
+
+        // Matched: The, of, Lok, Sabha, certifies, Money = 6 / 9
+        assertEquals(9, stats.totalReferenceWords)
+        assertEquals(6, stats.matchedCount)
+        assertEquals(1, stats.mistakeCount) // Speaker -> department
+        assertEquals("Speaker", stats.mistakePairs.first().expected)
+        assertEquals("department", stats.mistakePairs.first().spoken)
+        assertEquals(2, stats.missedCount) // "a", "Bill"
+        assertTrue(stats.extraCount >= 2) // repeated "the" + "very" + "important"
+        assertEquals(1, stats.repetitionCount)
+        assertTrue(stats.repeatedWords.any { it.equals("the", ignoreCase = true) })
+        assertTrue(stats.extraWords.contains("very"))
+    }
+
+    @Test
+    fun evaluateOfflineSpeechCheck_alignsFormulasAndLeavesUntimedManualCheckAtZeroWpm() {
+        val prompt = com.example.model.VoicePromptItem(
+            id = "p1",
+            title = "Newton's Second Law",
+            promptQuestion = "State Newton's Second Law.",
+            referenceSummary = "Force equals mass times acceleration\nFormula: \$F = m \\times a\$",
+            sourceLabel = "Note • Physics",
+            folderId = "f-other",
+            folderPath = "Physics"
+        )
+
+        val result = VoiceFluencyEngine.evaluateOfflineSpeechCheck(
+            spokenTranscript = "Force equals mass times acceleration F equals m times a",
+            prompt = prompt,
+            durationMs = 0L,
+            mode = VoicePracticeMode.READ_ALOUD
+        )
+
+        val comp = result.metrics.comparison!!
+        assertEquals(100, comp.matchPercent)
+        assertEquals(0, comp.mistakeCount)
+        assertEquals(0, comp.missedCount)
+        assertEquals(0, result.metrics.estimatedWpm)
+        assertFalse(result.usedAiAudioAnalysis)
+    }
 }
