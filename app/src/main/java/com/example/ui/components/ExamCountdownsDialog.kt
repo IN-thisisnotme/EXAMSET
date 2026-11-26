@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -42,9 +44,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,10 +62,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.model.ExamCountdownTarget
 import com.example.model.StudyDateUtils
 import com.example.ui.theme.ExamTheme
 import com.example.ui.theme.parseHexColorSafe
+import kotlinx.coroutines.delay
+import java.util.Locale
 
 @Composable
 fun PinnedExamCountdownsStrip(
@@ -69,10 +79,23 @@ fun PinnedExamCountdownsStrip(
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
-    val pinned = remember(countdowns, nowMillis) {
+    var liveNowMillis by remember(nowMillis) { mutableLongStateOf(nowMillis) }
+    val hasTimedTarget = remember(countdowns) {
+        countdowns.any { it.hasExplicitTime() || (it.targetUtcMillis ?: 0L) > 0L }
+    }
+    LaunchedEffect(hasTimedTarget, nowMillis) {
+        if (!hasTimedTarget) return@LaunchedEffect
+        val startElapsed = System.currentTimeMillis()
+        while (true) {
+            delay(1000L)
+            liveNowMillis = nowMillis + (System.currentTimeMillis() - startElapsed)
+        }
+    }
+
+    val pinned = remember(countdowns, liveNowMillis) {
         countdowns
             .filter { it.isPinned }
-            .sortedBy { it.daysRemaining(nowMillis) ?: Long.MAX_VALUE }
+            .sortedBy { it.remainingMillis(liveNowMillis) ?: Long.MAX_VALUE }
             .take(2)
     }
 
@@ -86,7 +109,7 @@ fun PinnedExamCountdownsStrip(
         verticalAlignment = Alignment.CenterVertically
     ) {
         pinned.forEach { target ->
-            val days = target.daysRemaining(nowMillis) ?: 0L
+            val days = target.daysRemaining(liveNowMillis) ?: 0L
             val accent = when {
                 days in 0L..7L -> colors.red
                 days in 8L..21L -> colors.amber
@@ -97,10 +120,12 @@ fun PinnedExamCountdownsStrip(
                 shape = RoundedCornerShape(10.dp),
                 color = accent.copy(alpha = 0.12f),
                 border = BorderStroke(0.9.dp, accent.copy(alpha = 0.45f)),
-                modifier = Modifier.testTag("pinned_countdown_${target.id}")
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("pinned_countdown_${target.id}")
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -111,7 +136,7 @@ fun PinnedExamCountdownsStrip(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = target.formattedBadgeLabel(nowMillis),
+                        text = target.formattedBadgeLabel(liveNowMillis),
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = colors.inkBold,
@@ -127,10 +152,12 @@ fun PinnedExamCountdownsStrip(
             shape = RoundedCornerShape(10.dp),
             color = colors.surfaceVariant,
             border = BorderStroke(0.8.dp, colors.border),
-            modifier = Modifier.testTag("manage_exam_countdowns_button")
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .testTag("manage_exam_countdowns_button")
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -160,6 +187,8 @@ fun ExamCountdownsDialog(
         id: String?,
         title: String,
         targetDateStr: String,
+        targetTimeStr: String,
+        timezoneMode: String,
         subject: String,
         colorHex: String,
         isPinned: Boolean
@@ -169,17 +198,51 @@ fun ExamCountdownsDialog(
     onDismiss: () -> Unit
 ) {
     val colors = ExamTheme.colors
+    var liveNowMillis by remember(nowMillis) { mutableLongStateOf(nowMillis) }
+    val hasTimedTarget = remember(countdowns) {
+        countdowns.any { it.hasExplicitTime() || (it.targetUtcMillis ?: 0L) > 0L }
+    }
+    LaunchedEffect(hasTimedTarget, nowMillis) {
+        if (!hasTimedTarget) return@LaunchedEffect
+        val startElapsed = System.currentTimeMillis()
+        while (true) {
+            delay(1000L)
+            liveNowMillis = nowMillis + (System.currentTimeMillis() - startElapsed)
+        }
+    }
+
     var editingId by remember { mutableStateOf<String?>(null) }
     var titleInput by remember { mutableStateOf("") }
     var subjectInput by remember { mutableStateOf("") }
     var dateInput by remember { mutableStateOf(StudyDateUtils.addDaysToDateString(nowMillis, 30)) }
+    var timeInput by remember { mutableStateOf("00:00") }
+    var tzModeInput by remember { mutableStateOf("LOCAL") }
     var isPinnedInput by remember { mutableStateOf(true) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
     var pendingDeleteTarget by remember { mutableStateOf<ExamCountdownTarget?>(null) }
 
-    val sortedCountdowns = remember(countdowns, nowMillis) {
-        countdowns.sortedBy { it.daysRemaining(nowMillis) ?: Long.MAX_VALUE }
+    val localTzLabel = remember(liveNowMillis) {
+        StudyDateUtils.localTimezoneShortLabel(liveNowMillis)
     }
+
+    val sortedCountdowns = remember(countdowns, liveNowMillis) {
+        countdowns.sortedBy { it.remainingMillis(liveNowMillis) ?: Long.MAX_VALUE }
+    }
+
+    val effectiveTimeForPreview = timeInput.trim().ifBlank { "00:00" }
+    val previewTargetMillis = remember(dateInput, effectiveTimeForPreview, tzModeInput) {
+        StudyDateUtils.parseDateTimeMillis(
+            dateStr = dateInput,
+            timeStr = effectiveTimeForPreview,
+            useGmt = tzModeInput == "GMT"
+        )
+    }
+
+    val isTimeFieldValid = timeInput.trim().isBlank() || StudyDateUtils.isValidTimeHm(timeInput)
+    val canSave = titleInput.trim().isNotBlank() &&
+        StudyDateUtils.parseDateToStartOfDayMillis(dateInput) != null &&
+        isTimeFieldValid
 
     pendingDeleteTarget?.let { targetToDelete ->
         AlertDialog(
@@ -190,7 +253,7 @@ fun ExamCountdownsDialog(
             title = { Text("Delete Exam Countdown?", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Remove \"${targetToDelete.title}\" (${StudyDateUtils.formatHumanDate(targetToDelete.targetDateStr)}) from your countdown targets?"
+                    "Remove \"${targetToDelete.title}\" (${targetToDelete.formattedTargetSchedule()}) from your countdown targets?"
                 )
             },
             confirmButton = {
@@ -201,6 +264,8 @@ fun ExamCountdownsDialog(
                             editingId = null
                             titleInput = ""
                             subjectInput = ""
+                            timeInput = "00:00"
+                            tzModeInput = "LOCAL"
                         }
                         pendingDeleteTarget = null
                     },
@@ -223,7 +288,8 @@ fun ExamCountdownsDialog(
 
     if (showDatePicker) {
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = StudyDateUtils.parseDateToStartOfDayMillis(dateInput) ?: nowMillis
+            initialSelectedDateMillis = StudyDateUtils.parseDateTimeMillis(dateInput, "00:00", useGmt = true)
+                ?: nowMillis
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -231,16 +297,20 @@ fun ExamCountdownsDialog(
                 TextButton(
                     onClick = {
                         pickerState.selectedDateMillis?.let { picked ->
-                            dateInput = StudyDateUtils.formatDateString(picked)
+                            dateInput = StudyDateUtils.formatDateStringGmt(picked)
                         }
                         showDatePicker = false
-                    }
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text("Select", fontWeight = FontWeight.Bold, color = colors.teal)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
+                TextButton(
+                    onClick = { showDatePicker = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
                     Text("Cancel", color = colors.muted)
                 }
             }
@@ -249,245 +319,519 @@ fun ExamCountdownsDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Exam-Day Countdowns", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = colors.inkBold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close Countdowns", tint = colors.muted)
+    if (showTimePicker) {
+        val parsedHour = timeInput.trim().split(":").getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 0
+        val parsedMinute = timeInput.trim().split(":").getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val timePickerState = rememberTimePickerState(
+            initialHour = parsedHour,
+            initialMinute = parsedMinute,
+            is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            title = {
+                Text(
+                    text = "Select Target Time (24h)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        timeInput = String.format(
+                            Locale.US,
+                            "%02d:%02d",
+                            timePickerState.hour,
+                            timePickerState.minute
+                        )
+                        showTimePicker = false
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Select", fontWeight = FontWeight.Bold, color = colors.teal)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showTimePicker = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancel", color = colors.muted)
                 }
             }
-        },
-        text = {
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = colors.surface,
+            border = BorderStroke(1.dp, colors.border),
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 520.dp)
+                .heightIn(max = 760.dp)
+                .testTag("exam_countdowns_dialog")
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                // Add / Edit Form
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = colors.surfaceVariant,
-                    border = BorderStroke(0.8.dp, colors.border)
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (editingId == null) "Add Exam Target" else "Edit Exam Target",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.inkBold
-                        )
-                        OutlinedTextField(
-                            value = titleInput,
-                            onValueChange = { titleInput = it },
-                            label = { Text("Target / Milestone Name") },
-                            placeholder = { Text("e.g., Term-End Exam / Finals / Assignment 2026") },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("countdown_title_input")
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = dateInput,
-                                onValueChange = { dateInput = it },
-                                label = { Text("YYYY-MM-DD") },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("countdown_date_input")
-                            )
-                            OutlinedButton(
-                                onClick = { showDatePicker = true },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                                modifier = Modifier.heightIn(min = 48.dp)
-                            ) {
-                                Icon(Icons.Default.Event, contentDescription = "Pick Date", tint = colors.teal)
-                            }
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            listOf(7, 15, 30, 60, 90).forEach { offsetDays ->
-                                val offsetDate = StudyDateUtils.addDaysToDateString(nowMillis, offsetDays)
-                                val isChosen = dateInput == offsetDate
-                                Surface(
-                                    onClick = { dateInput = offsetDate },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isChosen) colors.tealLight else colors.surface,
-                                    border = BorderStroke(0.7.dp, if (isChosen) colors.teal else colors.border)
-                                ) {
-                                    Text(
-                                        text = "+${offsetDays}d",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isChosen) colors.tealDark else colors.ink,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                    )
-                                }
-                            }
-                        }
-                        OutlinedTextField(
-                            value = subjectInput,
-                            onValueChange = { subjectInput = it },
-                            label = { Text("Course / Subject Focus (Optional)") },
-                            placeholder = { Text("e.g., Course-101, Paper II, Organic Chemistry") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Switch(
-                                    checked = isPinnedInput,
-                                    onCheckedChange = { isPinnedInput = it },
-                                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = colors.teal)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Pin to Library Strip", fontSize = 12.sp, color = colors.inkBold)
-                            }
-                            Button(
-                                onClick = {
-                                    val saved = onSaveCountdown(
-                                        editingId,
-                                        titleInput,
-                                        dateInput,
-                                        subjectInput,
-                                        "#0D9488",
-                                        isPinnedInput
-                                    )
-                                    if (saved) {
-                                        editingId = null
-                                        titleInput = ""
-                                        subjectInput = ""
-                                        isPinnedInput = true
-                                    }
-                                },
-                                enabled = titleInput.trim().isNotBlank() &&
-                                    StudyDateUtils.parseDateToStartOfDayMillis(dateInput) != null,
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .testTag("save_countdown_button")
-                            ) {
-                                Text(if (editingId == null) "Add" else "Update", fontWeight = FontWeight.Bold)
-                            }
-                        }
+                    Text(
+                        text = "Exam-Day Countdowns",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = colors.inkBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Countdowns", tint = colors.muted)
                     }
                 }
 
-                HorizontalDivider(color = colors.borderLight)
+                Spacer(modifier = Modifier.height(6.dp))
 
-                if (sortedCountdowns.isEmpty()) {
-                    Text(
-                        text = "No exam countdowns added yet.",
-                        fontSize = 12.sp,
-                        color = colors.muted
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 220.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
+                // Unified scrollable content (prevents clipped lists & nested-scroll crashes)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item(key = "countdown_form") {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = colors.surfaceVariant,
+                            border = BorderStroke(0.8.dp, colors.border)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = if (editingId == null) "Add Exam Target" else "Edit Exam Target",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.inkBold
+                                )
+
+                                OutlinedTextField(
+                                    value = titleInput,
+                                    onValueChange = { titleInput = it },
+                                    label = { Text("Target / Milestone Name") },
+                                    placeholder = { Text("e.g., Term-End Exam / Finals") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("countdown_title_input")
+                                )
+
+                                // Date Input + Calendar Button
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = dateInput,
+                                        onValueChange = { dateInput = it },
+                                        label = { Text("Date (YYYY-MM-DD)") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("countdown_date_input")
+                                    )
+                                    OutlinedButton(
+                                        onClick = { showDatePicker = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                        modifier = Modifier.heightIn(min = 48.dp)
+                                    ) {
+                                        Icon(Icons.Default.Event, contentDescription = "Pick Date", tint = colors.teal)
+                                    }
+                                }
+
+                                // [DEPRECATED 2026-11-25] Reason: Quick date offset chips (+7d/+15d/+30d/+60d/+90d) removed per user request ("no quick thing in it"). Restore if: Quick preset date shortcuts are requested again.
+
+                                // Time Input (HH:mm, default 00:00) + Clock Button
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = timeInput,
+                                        onValueChange = { timeInput = it },
+                                        label = { Text("Time (HH:mm)") },
+                                        placeholder = { Text("00:00") },
+                                        isError = !isTimeFieldValid,
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("countdown_time_input")
+                                    )
+                                    OutlinedButton(
+                                        onClick = { showTimePicker = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                        modifier = Modifier.heightIn(min = 48.dp)
+                                    ) {
+                                        Icon(Icons.Default.AccessTime, contentDescription = "Pick Time", tint = colors.teal)
+                                    }
+                                }
+
+                                // Timezone Toggle: Local (<TZ>) vs GMT (UTC)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Zone:",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.muted
+                                    )
+                                    Surface(
+                                        onClick = { tzModeInput = "LOCAL" },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (tzModeInput == "LOCAL") colors.tealLight else colors.surface,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (tzModeInput == "LOCAL") colors.teal else colors.border
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("countdown_tz_local")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Local ($localTzLabel)",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (tzModeInput == "LOCAL") FontWeight.Bold else FontWeight.Medium,
+                                                color = if (tzModeInput == "LOCAL") colors.tealDark else colors.ink,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        onClick = { tzModeInput = "GMT" },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (tzModeInput == "GMT") colors.tealLight else colors.surface,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (tzModeInput == "GMT") colors.teal else colors.border
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("countdown_tz_gmt")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "GMT (UTC)",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (tzModeInput == "GMT") FontWeight.Bold else FontWeight.Medium,
+                                                color = if (tzModeInput == "GMT") colors.tealDark else colors.ink,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (previewTargetMillis != null) {
+                                    val localPreview = StudyDateUtils.formatHumanDateTimeLocal(previewTargetMillis)
+                                    val previewText = if (
+                                        tzModeInput == "GMT" &&
+                                        !localTzLabel.equals("GMT", ignoreCase = true) &&
+                                        !localTzLabel.equals("UTC", ignoreCase = true)
+                                    ) {
+                                        "Targets $localPreview ($effectiveTimeForPreview GMT)"
+                                    } else {
+                                        "Targets $localPreview"
+                                    }
+                                    Text(
+                                        text = previewText,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = colors.tealDark,
+                                        modifier = Modifier.testTag("countdown_preview_label")
+                                    )
+                                }
+
+                                OutlinedTextField(
+                                    value = subjectInput,
+                                    onValueChange = { subjectInput = it },
+                                    label = { Text("Course / Subject Focus (Optional)") },
+                                    placeholder = { Text("e.g., Course-101, Paper II, Organic Chemistry") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Switch(
+                                            checked = isPinnedInput,
+                                            onCheckedChange = { isPinnedInput = it },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = colors.teal
+                                            )
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Pin to Library Strip",
+                                            fontSize = 12.5.sp,
+                                            color = colors.inkBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Button(
+                                        onClick = {
+                                            val normalizedTime = timeInput.trim().ifBlank { "00:00" }
+                                            val saved = onSaveCountdown(
+                                                editingId,
+                                                titleInput,
+                                                dateInput,
+                                                normalizedTime,
+                                                tzModeInput,
+                                                subjectInput,
+                                                "#0D9488",
+                                                isPinnedInput
+                                            )
+                                            if (saved) {
+                                                editingId = null
+                                                titleInput = ""
+                                                subjectInput = ""
+                                                dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
+                                                timeInput = "00:00"
+                                                tzModeInput = "LOCAL"
+                                                isPinnedInput = true
+                                            }
+                                        },
+                                        enabled = canSave,
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = colors.teal,
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .testTag("save_countdown_button")
+                                    ) {
+                                        Text(
+                                            text = if (editingId == null) "Add" else "Update",
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item(key = "countdown_divider") {
+                        HorizontalDivider(color = colors.borderLight)
+                    }
+
+                    if (sortedCountdowns.isEmpty()) {
+                        item(key = "countdown_empty") {
+                            Text(
+                                text = "No exam countdowns added yet.",
+                                fontSize = 12.5.sp,
+                                color = colors.muted,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    } else {
                         items(sortedCountdowns, key = { it.id }) { target ->
+                            val daysLeft = target.daysRemaining(liveNowMillis)
+                            val remMs = target.remainingMillis(liveNowMillis)
+                            val pillColor = when {
+                                remMs != null && remMs < 0L -> colors.muted
+                                daysLeft != null && daysLeft in 0L..7L -> colors.red
+                                daysLeft != null && daysLeft in 8L..21L -> colors.amber
+                                else -> parseHexColorSafe(target.colorHex, colors.teal)
+                            }
                             Card(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = colors.surface),
                                 border = BorderStroke(1.dp, if (target.isPinned) colors.teal else colors.border)
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    // Row 1: Title + Live Remaining Pill
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Text(
                                             text = target.title,
-                                            fontSize = 13.sp,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = colors.inkBold
+                                            color = colors.inkBold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = "${target.formattedDaysShort(nowMillis)} • ${StudyDateUtils.formatHumanDate(target.targetDateStr)}",
-                                            fontSize = 11.sp,
-                                            color = colors.teal
-                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(999.dp),
+                                            color = pillColor.copy(alpha = 0.14f),
+                                            border = BorderStroke(0.8.dp, pillColor.copy(alpha = 0.45f))
+                                        ) {
+                                            Text(
+                                                text = target.formattedCountdownDetailed(liveNowMillis),
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = pillColor,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
                                     }
-                                    IconButton(
-                                        onClick = { onTogglePin(target.id) },
-                                        modifier = Modifier.size(48.dp)
+
+                                    // Row 2: Schedule & Subject on left + Action Icons on right
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PushPin,
-                                            contentDescription = "Pin Countdown",
-                                            tint = if (target.isPinned) colors.teal else colors.muted,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            editingId = target.id
-                                            titleInput = target.title
-                                            dateInput = target.targetDateStr
-                                            subjectInput = target.subject
-                                            isPinnedInput = target.isPinned
-                                        },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Edit,
-                                            contentDescription = "Edit Countdown",
-                                            tint = colors.inkBold,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { pendingDeleteTarget = target },
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete Countdown",
-                                            tint = colors.red,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = target.formattedTargetSchedule(),
+                                                fontSize = 11.5.sp,
+                                                color = colors.ink
+                                            )
+                                            if (target.subject.isNotBlank()) {
+                                                Text(
+                                                    text = target.subject,
+                                                    fontSize = 11.sp,
+                                                    color = colors.muted,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { onTogglePin(target.id) },
+                                                modifier = Modifier.size(48.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PushPin,
+                                                    contentDescription = "Pin Countdown",
+                                                    tint = if (target.isPinned) colors.teal else colors.muted,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    editingId = target.id
+                                                    titleInput = target.title
+                                                    dateInput = target.targetDateStr
+                                                    timeInput = target.targetTimeStr.ifBlank { "00:00" }
+                                                    tzModeInput = if (target.isGmtAnchored()) "GMT" else "LOCAL"
+                                                    subjectInput = target.subject
+                                                    isPinnedInput = target.isPinned
+                                                },
+                                                modifier = Modifier.size(48.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Edit,
+                                                    contentDescription = "Edit Countdown",
+                                                    tint = colors.inkBold,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { pendingDeleteTarget = target },
+                                                modifier = Modifier.size(48.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete Countdown",
+                                                    tint = colors.red,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Footer
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Done", fontWeight = FontWeight.Bold, color = colors.teal)
+                    }
+                }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Done", fontWeight = FontWeight.Bold, color = colors.teal)
-            }
-        },
-        modifier = Modifier.testTag("exam_countdowns_dialog")
-    )
+        }
+    }
 }
+

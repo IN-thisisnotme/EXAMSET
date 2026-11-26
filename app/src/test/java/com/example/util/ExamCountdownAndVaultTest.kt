@@ -92,6 +92,21 @@ class ExamCountdownAndVaultTest {
         assertEquals("UPSC Prelims • 14d left", targetFuture.formattedBadgeLabel(baseNow))
         assertEquals("Today!", targetToday.formattedDaysShort(baseNow))
         assertEquals("3d ago", targetPast.formattedDaysShort(baseNow))
+
+        // Timed GMT countdown anchored to 2026-11-24 00:00 GMT vs 2026-11-23 18:30:15 GMT (e.g., 2026-11-24 00:00:15 IST)
+        val gmtNow = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("GMT")).apply {
+            clear()
+            set(2026, java.util.Calendar.NOVEMBER, 23, 18, 30, 15)
+        }.timeInMillis
+        val timedGmt = ExamCountdownTarget(
+            id = "c_gmt",
+            title = "Midnight GMT Milestone",
+            targetDateStr = "2026-11-24",
+            targetTimeStr = "00:00",
+            timezoneMode = "GMT"
+        )
+        assertEquals("5h 29m left", timedGmt.formattedDaysShort(gmtNow))
+        assertEquals("5h 29m 45s left", timedGmt.formattedCountdownDetailed(gmtNow))
     }
 
     @Test
@@ -103,7 +118,10 @@ class ExamCountdownAndVaultTest {
                 targetDateStr = "2027-02-07",
                 subject = "Computer Science",
                 colorHex = "#DC2626",
-                isPinned = true
+                isPinned = true,
+                targetTimeStr = "00:00",
+                timezoneMode = "GMT",
+                targetUtcMillis = StudyDateUtils.parseDateTimeMillis("2027-02-07", "00:00", useGmt = true)
             ),
             ExamCountdownTarget(
                 id = "cd_2",
@@ -111,14 +129,20 @@ class ExamCountdownAndVaultTest {
                 targetDateStr = "2027-01-18",
                 subject = "Quant & English",
                 colorHex = "#0D9488",
-                isPinned = false
+                isPinned = false,
+                targetTimeStr = "09:30",
+                timezoneMode = "LOCAL"
             )
         )
         val decodedCountdowns = ExamCountdownTarget.deserializeList(ExamCountdownTarget.serializeList(countdowns))
         assertEquals(2, decodedCountdowns.size)
         assertEquals("GATE CS", decodedCountdowns[0].title)
         assertEquals(true, decodedCountdowns[0].isPinned)
+        assertEquals("00:00", decodedCountdowns[0].targetTimeStr)
+        assertEquals("GMT", decodedCountdowns[0].timezoneMode)
         assertEquals(false, decodedCountdowns[1].isPinned)
+        assertEquals("09:30", decodedCountdowns[1].targetTimeStr)
+        assertEquals("LOCAL", decodedCountdowns[1].timezoneMode)
 
         val todos = listOf(
             StudyTodoItem(

@@ -1908,13 +1908,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         targetDateStr: String,
         subject: String = "",
         colorHex: String = "#0D9488",
-        isPinned: Boolean = true
+        isPinned: Boolean = true,
+        targetTimeStr: String = "",
+        timezoneMode: String = "LOCAL"
     ): Boolean {
         val cleanTitle = title.trim()
         val cleanDate = targetDateStr.trim()
+        val cleanTime = targetTimeStr.trim()
+        val normalizedTzMode = if (timezoneMode.equals("GMT", ignoreCase = true)) "GMT" else "LOCAL"
         if (cleanTitle.isBlank() || StudyDateUtils.parseDateToStartOfDayMillis(cleanDate) == null) {
             _statusMessage.value = "Enter a title and valid YYYY-MM-DD date"
             return false
+        }
+        if (cleanTime.isNotBlank() && !StudyDateUtils.isValidTimeHm(cleanTime)) {
+            _statusMessage.value = "Enter a valid 24-hour time (HH:mm)"
+            return false
+        }
+        val resolvedUtcMillis = if (cleanTime.isNotBlank()) {
+            StudyDateUtils.parseDateTimeMillis(
+                dateStr = cleanDate,
+                timeStr = cleanTime,
+                useGmt = normalizedTzMode == "GMT"
+            )
+        } else {
+            null
         }
         val now = TrustedTimeManager.getTrustedTimeMillis()
         val list = _examCountdowns.value.toMutableList()
@@ -1926,7 +1943,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 subject = subject.trim(),
                 colorHex = colorHex,
                 isPinned = isPinned,
-                updatedAt = now
+                updatedAt = now,
+                targetTimeStr = cleanTime,
+                timezoneMode = normalizedTzMode,
+                targetUtcMillis = resolvedUtcMillis
             )
         } else {
             list.add(
@@ -1937,7 +1957,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     colorHex = colorHex,
                     isPinned = isPinned,
                     createdAt = now,
-                    updatedAt = now
+                    updatedAt = now,
+                    targetTimeStr = cleanTime,
+                    timezoneMode = normalizedTzMode,
+                    targetUtcMillis = resolvedUtcMillis
                 )
             )
         }

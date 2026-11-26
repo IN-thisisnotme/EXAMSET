@@ -1801,14 +1801,16 @@ fun HomeScreen(
         ExamCountdownsDialog(
             countdowns = examCountdowns,
             nowMillis = countdownNowMillis,
-            onSaveCountdown = { id, title, dateStr, subject, colorHex, isPinned ->
+            onSaveCountdown = { id, title, dateStr, timeStr, tzMode, subject, colorHex, isPinned ->
                 viewModel.addOrUpdateExamCountdown(
                     id = id,
                     title = title,
                     targetDateStr = dateStr,
                     subject = subject,
                     colorHex = colorHex,
-                    isPinned = isPinned
+                    isPinned = isPinned,
+                    targetTimeStr = timeStr,
+                    timezoneMode = tzMode
                 )
             },
             onTogglePin = { viewModel.togglePinExamCountdown(it) },

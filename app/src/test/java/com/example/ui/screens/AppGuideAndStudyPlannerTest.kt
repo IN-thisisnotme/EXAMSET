@@ -18,6 +18,7 @@ import com.example.model.StudyDateUtils
 import com.example.model.StudyDueSuggestion
 import com.example.model.StudyTodoItem
 import com.example.model.TodoPriority
+import com.example.ui.components.ExamCountdownsDialog
 import com.example.ui.components.PerQuestionPacingCard
 import com.example.ui.components.PinnedExamCountdownsStrip
 import com.example.ui.theme.ExamSetTheme
@@ -254,5 +255,63 @@ class AppGuideAndStudyPlannerTest {
         composeTestRule.onNodeWithTag("per_question_pacing_card").assertIsDisplayed()
         composeTestRule.onNodeWithText("12 Qs tracked").assertIsDisplayed()
         composeTestRule.onNodeWithText("Q7").assertIsDisplayed()
+    }
+
+    @Test
+    fun examCountdownsDialog_supportsTimeAndGmtToggle_withoutQuickChips() {
+        val nowMs = Calendar.getInstance().apply {
+            clear()
+            set(Calendar.YEAR, 2026)
+            set(Calendar.MONTH, Calendar.NOVEMBER)
+            set(Calendar.DAY_OF_MONTH, 10)
+            set(Calendar.HOUR_OF_DAY, 12)
+        }.timeInMillis
+
+        var savedTitle = ""
+        var savedTime = ""
+        var savedTzMode = ""
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = false) {
+                ExamCountdownsDialog(
+                    countdowns = listOf(
+                        ExamCountdownTarget(
+                            id = "c1",
+                            title = "Disaster Management",
+                            targetDateStr = "2026-12-02",
+                            targetTimeStr = "00:00",
+                            timezoneMode = "GMT",
+                            targetUtcMillis = StudyDateUtils.parseDateTimeMillis("2026-12-02", "00:00", useGmt = true)
+                        )
+                    ),
+                    nowMillis = nowMs,
+                    onSaveCountdown = { _, title, _, timeStr, tzMode, _, _, _ ->
+                        savedTitle = title
+                        savedTime = timeStr
+                        savedTzMode = tzMode
+                        true
+                    },
+                    onTogglePin = {},
+                    onDelete = {},
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("exam_countdowns_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_time_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_tz_local").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_tz_gmt").assertIsDisplayed()
+        composeTestRule.onNodeWithText("+7d").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Disaster Management").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("countdown_title_input").performTextInput("Term-End Paper I")
+        composeTestRule.onNodeWithTag("countdown_tz_gmt").performClick()
+        composeTestRule.onNodeWithTag("save_countdown_button").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Term-End Paper I", savedTitle)
+        assertEquals("00:00", savedTime)
+        assertEquals("GMT", savedTzMode)
     }
 }
