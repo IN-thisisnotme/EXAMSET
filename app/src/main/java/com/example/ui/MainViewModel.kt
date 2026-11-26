@@ -1775,6 +1775,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /**
+     * Thread-safe, cache-backed QuestionPaper parser for background prompt builders (e.g. Speak to Test).
+     * Call from a background dispatcher (Dispatchers.Default); avoids Room DB queries per item.
+     */
+    fun parsePaperForVoicePractice(entity: PaperEntity): QuestionPaper {
+        val result = parsePaperWithCache(entity)
+        val savedDuration = if (entity.durationMinutes > 0) entity.durationMinutes else 60
+        val savedPositive = if (entity.positiveMarks > 0.0) entity.positiveMarks else 4.0
+        val savedNegative = if (entity.negativeMarks >= 0.0) entity.negativeMarks else 1.0
+        val savedUnattended = if (entity.unattendedMarks >= 0.0) entity.unattendedMarks else 0.0
+        return result.paper.copy(
+            id = entity.id,
+            metadata = PaperMetadata(
+                id = "paper-${entity.id}",
+                title = entity.title,
+                subject = entity.subject,
+                topic = entity.topic,
+                setNumber = entity.setNumber.ifBlank { "Set 1" },
+                exam = entity.exam,
+                folderId = entity.folderId,
+                manualCategory = entity.manualCategory,
+                rollNumber = entity.rollNumber,
+                bookletNumber = entity.bookletNumber,
+                durationMinutes = savedDuration,
+                positiveMarks = savedPositive,
+                negativeMarks = savedNegative,
+                unattendedMarks = savedUnattended,
+                msqScoringPolicy = appPreferences.getPaperMsqPolicy(entity.id),
+                createdAt = entity.createdAt
+            )
+        )
+    }
+
     private val _isLoadingPaper = MutableStateFlow(false)
     val isLoadingPaper: StateFlow<Boolean> = _isLoadingPaper.asStateFlow()
 
@@ -2125,36 +2158,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // 1. Due SM-2 Flashcards
         srsInputs.notes.forEach { note ->
-            val rule = note.parsedFormatRule()
-            val blocks = StudyNoteParser.parseBlocks(note.rawContent, rule)
-            val cards = blocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
-            if (cards.isNotEmpty()) {
-                val stats = SpacedRepetitionEngine.computeDeckStats(
-                    allCards = cards,
-                    srsMap = srsInputs.flashcardSrs[note.id].orEmpty(),
-                    nowMillis = now
-                )
-                val isFlashcardDeck = note.resolvedCollectionType() == KnowledgeCollectionType.FLASHCARDS
-                val dueOrReady = if (isFlashcardDeck) stats.actionableCount else stats.dueCount
-                if (stats.dueCount > 0 || (isFlashcardDeck && dueOrReady > 0)) {
-                    val count = if (stats.dueCount > 0) stats.dueCount else dueOrReady
-                    val subtitle = buildString {
-                        if (stats.dueCount > 0) append("${stats.dueCount} due")
-                        if (stats.dueCount > 0 && stats.newCount > 0) append(" • ")
-                        if (stats.newCount > 0) append("${stats.newCount} new")
-                        if (note.subject.isNotBlank()) append(" • ${note.subject}")
-                    }
-                    suggestions.add(
-                        StudyDueSuggestion(
-                            id = "fc-${note.id}",
-                            category = DueSuggestionCategory.FLASHCARDS,
-                            title = note.title.ifBlank { "Flashcard Deck" },
-                            subtitle = subtitle,
-                            count = count,
-                            noteId = note.id
-                        )
+            try {
+                val rule = note.parsedFormatRule()
+                val blocks = StudyNoteParser.parseBlocks(note.rawContent, rule)
+                val cards = blocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
+                if (cards.isNotEmpty()) {
+                    val stats = SpacedRepetitionEngine.computeDeckStats(
+                        allCards = cards,
+                        srsMap = srsInputs.flashcardSrs[note.id].orEmpty(),
+                        nowMillis = now
                     )
+                    val isFlashcardDeck = note.resolvedCollectionType() == KnowledgeCollectionType.FLASHCARDS
+                    val dueOrReady = if (isFlashcardDeck) stats.actionableCount else stats.dueCount
+                    if (stats.dueCount > 0 || (isFlashcardDeck && dueOrReady > 0)) {
+                        val count = if (stats.dueCount > 0) stats.dueCount else dueOrReady
+                        val subtitle = buildString {
+                            if (stats.dueCount > 0) append("${stats.dueCount} due")
+                            if (stats.dueCount > 0 && stats.newCount > 0) append(" • ")
+                            if (stats.newCount > 0) append("${stats.newCount} new")
+                            if (note.subject.isNotBlank()) append(" • ${note.subject}")
+                        }
+                        suggestions.add(
+                            StudyDueSuggestion(
+                                id = "fc-${note.id}",
+                                category = DueSuggestionCategory.FLASHCARDS,
+                                title = note.title.ifBlank { "Flashcard Deck" },
+                                subtitle = subtitle,
+                                count = count,
+                                noteId = note.id
+                            )
+                        )
+                    }
                 }
+            } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+                throw ce
+            } catch (_: Throwable) {
+                // Skip corrupted note instead of dropping all due suggestions
             }
         }
 

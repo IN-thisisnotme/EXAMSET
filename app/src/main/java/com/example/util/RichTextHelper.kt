@@ -40,6 +40,47 @@ object RichTextHelper {
         return result
     }
 
+    private fun convertPairedDoubleUnderscoreBold(input: String): String {
+        if (!input.contains("__")) return input
+        val sb = StringBuilder(input.length)
+        var i = 0
+        while (i < input.length) {
+            val isOpen = i + 2 < input.length &&
+                input[i] == '_' &&
+                input[i + 1] == '_' &&
+                (i == 0 || input[i - 1] != '_') &&
+                !input[i + 2].isWhitespace() &&
+                input[i + 2] != '_'
+            if (isOpen) {
+                var closeIdx = -1
+                var scan = i + 2
+                val scanLimit = minOf(input.length - 1, i + 2000)
+                while (scan < scanLimit) {
+                    if (input[scan] == '_' &&
+                        input[scan + 1] == '_' &&
+                        !input[scan - 1].isWhitespace() &&
+                        input[scan - 1] != '_' &&
+                        (scan + 2 >= input.length || input[scan + 2] != '_')
+                    ) {
+                        closeIdx = scan
+                        break
+                    }
+                    scan++
+                }
+                if (closeIdx != -1) {
+                    sb.append("<b>")
+                    sb.append(input, i + 2, closeIdx)
+                    sb.append("</b>")
+                    i = closeIdx + 2
+                    continue
+                }
+            }
+            sb.append(input[i])
+            i++
+        }
+        return sb.toString()
+    }
+
     /**
      * Builds a Jetpack Compose AnnotatedString supporting:
      * - Unicode subscripts (₀-₉) and superscripts (⁰-⁹)
@@ -54,72 +95,72 @@ object RichTextHelper {
     ): AnnotatedString {
         if (text.isEmpty()) return AnnotatedString("")
 
-        // Pre-normalize escaped markdown characters (\*\* -> **, \* -> *, \_\_ -> __, \| -> |)
-        var prepared = text
-            .replace("""\*\*""", "**")
-            .replace("""\_\_""", "__")
-            .replace(Regex("""(?<!\\)\\\*(?!\*)"""), "*")
-            .replace("""\|""", "|")
-            .replace(Regex("""(?m)^\|\s*([A-Za-z\u0900-\u097F\s&:\-]+?)\s*\|$""")) {
-                "**${it.groupValues[1]}**"
-            }
-            .replace(Regex("""(?<!\\),\s*\\+(?![a-zA-Z])\s*"""), ", ")
+        return try {
+            // Pre-normalize escaped markdown characters (\*\* -> **, \* -> *, \_\_ -> __, \| -> |)
+            val prepared = text
+                .replace("""\*\*""", "**")
+                .replace("""\_\_""", "__")
+                .replace(Regex("""(?<!\\)\\\*(?!\*)"""), "*")
+                .replace("""\|""", "|")
+                .replace(Regex("""(?m)^\|\s*([A-Za-z\u0900-\u097F\s&:\-]+?)\s*\|$""")) {
+                    "**${it.groupValues[1]}**"
+                }
+                .replace(Regex("""(?<!\\),\s*\\+(?![a-zA-Z])\s*"""), ", ")
 
-        // First convert raw Unicode sub/sup into standard tags so tokenizer can parse them uniformly
-        var tagged = sanitizeSubSuper(prepared)
+            // First convert raw Unicode sub/sup into standard tags so tokenizer can parse them uniformly
+            val tagged = convertPairedDoubleUnderscoreBold(sanitizeSubSuper(prepared))
 
-        // Convert paired markdown bold (__bold__) to <b>bold</b> so that fill-in-the-blank patterns
-        // like ______ or ___ are not mistakenly consumed by the bold tokenizer.
-        tagged = tagged.replace(Regex("""(?<!_)__([^\s_](?:[\s\S]*?[^\s_])?)__(?!_)"""), "<b>$1</b>")
+            buildAnnotatedString {
+                // Tokenize by HTML tags and Markdown delimiters (**bold**, *italic*, `code`)
+                val tokenRegex = Regex("""(<b>|</b>|<i>|</i>|<sub>|</sub>|<sup>|</sup>|\*\*|\*|`)""", RegexOption.IGNORE_CASE)
+                val tokens = tokenRegex.split(tagged)
+                val matches = tokenRegex.findAll(tagged).toList()
 
-        return buildAnnotatedString {
-            // Tokenize by HTML tags and Markdown delimiters (**bold**, *italic*, `code`)
-            val tokenRegex = Regex("""(<b>|</b>|<i>|</i>|<sub>|</sub>|<sup>|</sup>|\*\*|\*|`)""", RegexOption.IGNORE_CASE)
-            val tokens = tokenRegex.split(tagged)
-            val matches = tokenRegex.findAll(tagged).toList()
+                var currentBold = isBold
+                var currentItalic = false
+                var currentSub = false
+                var currentSup = false
 
-            var currentBold = isBold
-            var currentItalic = false
-            var currentSub = false
-            var currentSup = false
+                fun applyCurrentSpan(content: String) {
+                    if (content.isEmpty()) return
+                    val start = length
+                    append(content)
+                    val end = length
 
-            fun applyCurrentSpan(content: String) {
-                if (content.isEmpty()) return
-                val start = length
-                append(content)
-                val end = length
+                    val style = SpanStyle(
+                        color = baseColor,
+                        fontWeight = if (currentBold) FontWeight.Bold else FontWeight.Normal,
+                        fontStyle = if (currentItalic) FontStyle.Italic else FontStyle.Normal,
+                        fontSize = if (currentSub || currentSup) (baseFontSize.value * 0.72f).sp else baseFontSize,
+                        baselineShift = when {
+                            currentSub -> BaselineShift(-0.22f)
+                            currentSup -> BaselineShift(0.35f)
+                            else -> BaselineShift.None
+                        }
+                    )
+                    addStyle(style, start, end)
+                }
 
-                val style = SpanStyle(
-                    color = baseColor,
-                    fontWeight = if (currentBold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (currentItalic) FontStyle.Italic else FontStyle.Normal,
-                    fontSize = if (currentSub || currentSup) (baseFontSize.value * 0.72f).sp else baseFontSize,
-                    baselineShift = when {
-                        currentSub -> BaselineShift(-0.22f)
-                        currentSup -> BaselineShift(0.35f)
-                        else -> BaselineShift.None
-                    }
-                )
-                addStyle(style, start, end)
-            }
+                for (i in tokens.indices) {
+                    applyCurrentSpan(tokens[i])
 
-            for (i in tokens.indices) {
-                applyCurrentSpan(tokens[i])
-
-                if (i < matches.size) {
-                    val tag = matches[i].value.lowercase()
-                    when (tag) {
-                        "<b>", "**" -> currentBold = !currentBold
-                        "</b>" -> currentBold = isBold
-                        "<i>", "*" -> currentItalic = !currentItalic
-                        "</i>" -> currentItalic = false
-                        "<sub>" -> currentSub = true
-                        "</sub>" -> currentSub = false
-                        "<sup>" -> currentSup = true
-                        "</sup>" -> currentSup = false
+                    if (i < matches.size) {
+                        val tag = matches[i].value.lowercase()
+                        when (tag) {
+                            "<b>", "**" -> currentBold = !currentBold
+                            "</b>" -> currentBold = isBold
+                            "<i>", "*" -> currentItalic = !currentItalic
+                            "</i>" -> currentItalic = false
+                            "<sub>" -> currentSub = true
+                            "</sub>" -> currentSub = false
+                            "<sup>" -> currentSup = true
+                            "</sup>" -> currentSup = false
+                        }
                     }
                 }
             }
+        } catch (_: Throwable) {
+            AnnotatedString(text)
         }
     }
 }

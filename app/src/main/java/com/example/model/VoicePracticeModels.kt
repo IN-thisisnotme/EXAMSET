@@ -64,7 +64,9 @@ data class VoicePromptItem(
 data class VoiceFolderPromptResult(
     val prompts: List<VoicePromptItem>,
     val skippedFormulaItems: Int,
-    val matchedFolderCount: Int
+    val matchedFolderCount: Int,
+    val isTruncated: Boolean = false,
+    val totalMatchingSources: Int = 0
 )
 
 data class VoiceFillerOccurrence(

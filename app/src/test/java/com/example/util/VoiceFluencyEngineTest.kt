@@ -311,4 +311,77 @@ class VoiceFluencyEngineTest {
         assertEquals(0, stats.missedCount)
         assertEquals(0, stats.extraCount)
     }
+
+    @Test
+    fun unclosedAndMassiveMathDelimiters_doNotStackOverflowOrHang() {
+        val massiveFiller = "alpha beta gamma delta ".repeat(2500) // ~57 KB
+        val maliciousInput = """
+            ```
+            $massiveFiller
+            $$ $massiveFiller
+            \[ $massiveFiller
+            \( $massiveFiller
+            Newton's third law states every action has an equal and opposite reaction.
+        """.trimIndent()
+
+        val expressions = VoiceFluencyEngine.extractFormulaExpressions(maliciousInput)
+        val unclosedNoDollar = VoiceFluencyEngine.extractFormulaExpressions("```$massiveFiller\n\\[$massiveFiller\n\\($massiveFiller")
+        val sanitized = VoiceFluencyEngine.sanitizeNoFormulas(maliciousInput)
+
+        assertTrue(unclosedNoDollar.isEmpty())
+        assertFalse(expressions.any { it.contains("Newton's third law") })
+        assertTrue(sanitized.contains("Newton's third law"))
+    }
+
+    @Test
+    fun buildPromptsForFolder_capsLargeLibraryBalancedAndIsolatesCorruptPaper() {
+        val manyNotes = (1..25).map { idx ->
+            StudyNoteEntity(
+                id = idx.toLong(),
+                folderId = "f-parent",
+                title = "Note $idx",
+                subject = "Polity",
+                rawContent = "1. **Concept $idx** -> Detailed explanation of constitutional provision $idx in Parliament."
+            )
+        }
+        val manyPapers = (1..25).map { idx ->
+            PaperEntity(
+                id = idx.toLong(),
+                folderId = "f-parent",
+                title = if (idx == 1) "Corrupt Paper" else "Quiz $idx",
+                subject = "Polity",
+                questionCount = 1,
+                answerKeyCount = 1,
+                explanationCount = 1,
+                rawText = """
+                    Q1. Question number $idx on Parliament procedure?
+                    A) Option A
+                    B) Option B
+                    Answer: A
+                """.trimIndent()
+            )
+        }
+
+        val result = VoiceFluencyEngine.buildPromptsForFolder(
+            selectedFolderId = "all",
+            folders = folders,
+            studyNotes = manyNotes,
+            papers = manyPapers,
+            sourceFilter = VoiceSourceFilter.ALL,
+            maxTotalPrompts = 10,
+            maxPromptsPerPaper = 5,
+            maxPromptsPerNote = 5,
+            paperParser = { entity ->
+                if (entity.id == 1L) throw IllegalStateException("Simulated malformed paper")
+                com.example.util.McqParser.parse(entity.rawText)
+            }
+        )
+
+        assertEquals(10, result.prompts.size)
+        assertTrue(result.isTruncated)
+        assertEquals(50, result.totalMatchingSources)
+        assertTrue(result.prompts.any { it.id.startsWith("note_") })
+        assertTrue(result.prompts.any { it.id.startsWith("paper_") })
+        assertFalse(result.prompts.any { it.id.startsWith("paper_1_") })
+    }
 }

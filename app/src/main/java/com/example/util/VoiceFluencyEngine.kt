@@ -4,6 +4,7 @@ import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
 import com.example.data.toQuestionPaper
 import com.example.model.FolderItem
+import com.example.model.QuestionPaper
 import com.example.model.VoiceAlignmentToken
 import com.example.model.VoiceAnalysisResult
 import com.example.model.VoiceComparisonStats
@@ -19,6 +20,7 @@ import com.example.model.VoiceSourceFilter
 import com.example.model.VoiceTranscriptSegment
 import com.example.model.VoiceWordMatchStatus
 import java.util.Locale
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 
 /**
@@ -98,7 +100,12 @@ object VoiceFluencyEngine {
         studyNotes: List<StudyNoteEntity>,
         papers: List<PaperEntity>,
         sourceFilter: VoiceSourceFilter = VoiceSourceFilter.ALL,
-        includeFormulas: Boolean = true
+        includeFormulas: Boolean = true,
+        maxTotalPrompts: Int = Int.MAX_VALUE,
+        maxPromptsPerPaper: Int = Int.MAX_VALUE,
+        maxPromptsPerNote: Int = Int.MAX_VALUE,
+        paperParser: (PaperEntity) -> QuestionPaper = { it.toQuestionPaper() },
+        onItemProcessed: () -> Unit = {}
     ): VoiceFolderPromptResult {
         val targetFolderIds = collectDescendantFolderIds(selectedFolderId, folders)
         val folderPathsById = folders.associate { folder ->
@@ -134,288 +141,380 @@ object VoiceFluencyEngine {
         fun cleanSegment(raw: String): String =
             if (includeFormulas) cleanPreserveExpressions(raw) else sanitizeNoFormulas(raw)
 
-        val prompts = mutableListOf<VoicePromptItem>()
-        var skippedFormulaItems = 0
+        val totalCap = maxTotalPrompts.coerceAtLeast(1)
+        val perPaperCap = maxPromptsPerPaper.coerceAtLeast(1)
+        val perNoteCap = maxPromptsPerNote.coerceAtLeast(1)
 
-        if (sourceFilter == VoiceSourceFilter.ALL || sourceFilter == VoiceSourceFilter.NOTES_ONLY) {
-            val matchingNotes = studyNotes.filter { matchesSelection(it.folderId, it.subject) }
-            for (note in matchingNotes) {
-                val rule = note.parsedFormatRule()
-                val noteFolderPath = folderPathsById[note.folderId.orEmpty()]
-                    ?.ifBlank { FolderPathHelper.formatDisplayPath(note.subject) }
-                    ?: FolderPathHelper.formatDisplayPath(note.subject).ifBlank { "General Notes" }
-                val language = rule.language.ifBlank { "English" }
-                val blocks = StudyNoteParser.parseBlocks(note.rawContent, rule)
+        val includeNotes = sourceFilter == VoiceSourceFilter.ALL || sourceFilter == VoiceSourceFilter.NOTES_ONLY
+        val includePapers = sourceFilter == VoiceSourceFilter.ALL || sourceFilter == VoiceSourceFilter.PAPERS_ONLY
 
-                for (block in blocks) {
-                    when (block) {
-                        is StudyNoteBlock.OneLiner -> {
-                            val cleanLead = cleanSegment(block.leadTerm)
-                            val cleanDetail = cleanSegment(block.detail)
-                            if (cleanLead.isBlank() && cleanDetail.isBlank()) {
-                                skippedFormulaItems++
-                                continue
-                            }
-                            if (!includeFormulas && isFormulaHeavyText(block.leadTerm) && isFormulaHeavyText(block.detail)) {
-                                skippedFormulaItems++
-                                continue
-                            }
-                            val promptQ = if (cleanLead.isNotBlank()) {
-                                "Explain \"$cleanLead\" in your own words."
-                            } else {
-                                "Summarize this concept clearly."
-                            }
-                            val ref = listOf(cleanLead, cleanDetail).filter { it.isNotBlank() }.joinToString(" — ")
-                            val expressions = if (includeFormulas) {
-                                extractFormulaExpressions(block.leadTerm, block.detail)
-                            } else {
-                                emptyList()
-                            }
-                            val hasEnoughContent = ref.split(Regex("\\s+")).size >= 3 ||
-                                (includeFormulas && (expressions.isNotEmpty() || containsExpressionMarkers(ref)))
-                            if (hasEnoughContent) {
-                                prompts.add(
-                                    VoicePromptItem(
-                                        id = "note_${note.id}_${block.blockIndex}",
-                                        title = cleanLead.ifBlank { note.title },
-                                        promptQuestion = promptQ,
-                                        referenceSummary = ref,
-                                        sourceLabel = "Note • ${note.title}",
-                                        folderId = note.folderId,
-                                        folderPath = noteFolderPath,
-                                        language = language,
-                                        formulaExpressions = expressions
-                                    )
-                                )
-                            }
-                        }
-
-                        is StudyNoteBlock.MultiLinerCard -> {
-                            val cleanTitle = cleanSegment(block.title)
-                            val cleanFormula = if (includeFormulas) cleanPreserveExpressions(block.formula) else ""
-                            val rawSections = buildList {
-                                addAll(block.paragraphs)
-                                addAll(block.nestedBullets.map { it.second })
-                                if (includeFormulas && cleanFormula.isNotBlank()) add("Formula: $cleanFormula")
-                                if (block.correctAnswer.isNotBlank()) add(block.correctAnswer)
-                                if (block.keyTakeaway.isNotBlank()) add(block.keyTakeaway)
-                            }
-                            val cleanBody = rawSections
-                                .map { cleanSegment(it) }
-                                .filter { it.isNotBlank() }
-                                .joinToString("\n")
-                            if (cleanBody.isBlank()) {
-                                if (block.formula.isNotBlank() || rawSections.any { it.isNotBlank() }) {
-                                    skippedFormulaItems++
-                                }
-                                continue
-                            }
-                            val expressions = if (includeFormulas) {
-                                extractFormulaExpressions(
-                                    cleanFormula,
-                                    *block.paragraphs.toTypedArray(),
-                                    *block.nestedBullets.map { it.second }.toTypedArray(),
-                                    block.keyTakeaway
-                                )
-                            } else {
-                                emptyList()
-                            }
-                            val options = if (includeFormulas) {
-                                block.optionsList
-                                    .filter { it.second.isNotBlank() }
-                                    .map { "(${it.first}) ${cleanPreserveExpressions(it.second)}" }
-                            } else {
-                                emptyList()
-                            }
-                            val promptQ = if (cleanTitle.isNotBlank()) {
-                                "Speak clearly about: $cleanTitle"
-                            } else {
-                                "Explain this topic from ${note.title} in your own words."
-                            }
-                            prompts.add(
-                                VoicePromptItem(
-                                    id = "note_${note.id}_${block.blockIndex}",
-                                    title = cleanTitle.ifBlank { note.title },
-                                    promptQuestion = promptQ,
-                                    referenceSummary = cleanBody,
-                                    sourceLabel = "Note • ${note.title}",
-                                    folderId = note.folderId,
-                                    folderPath = noteFolderPath,
-                                    language = language,
-                                    formulaExpressions = expressions,
-                                    optionExpressions = options
-                                )
-                            )
-                        }
-
-                        is StudyNoteBlock.Callout -> {
-                            val cleanLabel = cleanSegment(block.label)
-                            val cleanBody = cleanSegment(block.body)
-                            if (cleanBody.isBlank()) {
-                                skippedFormulaItems++
-                                continue
-                            }
-                            val expressions = if (includeFormulas) {
-                                extractFormulaExpressions(block.label, block.body)
-                            } else {
-                                emptyList()
-                            }
-                            prompts.add(
-                                VoicePromptItem(
-                                    id = "note_${note.id}_${block.blockIndex}",
-                                    title = cleanLabel.ifBlank { note.title },
-                                    promptQuestion = if (cleanLabel.isNotBlank()) {
-                                        "Explain the key takeaway for \"$cleanLabel\"."
-                                    } else {
-                                        "Summarize this key note clearly."
-                                    },
-                                    referenceSummary = cleanBody,
-                                    sourceLabel = "Note • ${note.title}",
-                                    folderId = note.folderId,
-                                    folderPath = noteFolderPath,
-                                    language = language,
-                                    formulaExpressions = expressions
-                                )
-                            )
-                        }
-
-                        is StudyNoteBlock.Paragraph -> {
-                            val cleanText = cleanSegment(block.text)
-                            val expressions = if (includeFormulas) {
-                                extractFormulaExpressions(block.text)
-                            } else {
-                                emptyList()
-                            }
-                            val wordCount = cleanText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
-                            val isSubstantial = wordCount >= 6 || (includeFormulas && (expressions.isNotEmpty() || containsExpressionMarkers(cleanText)) && wordCount >= 2)
-                            if (!isSubstantial) {
-                                if (block.text.isNotBlank() && !includeFormulas) skippedFormulaItems++
-                                continue
-                            }
-                            val firstPhrase = cleanText.split(Regex("[.!?\n]")).firstOrNull()?.trim().orEmpty().take(90)
-                            prompts.add(
-                                VoicePromptItem(
-                                    id = "note_${note.id}_${block.blockIndex}",
-                                    title = note.title,
-                                    promptQuestion = if (firstPhrase.isNotBlank()) {
-                                        "Discuss: $firstPhrase"
-                                    } else {
-                                        "Explain the main idea of ${note.title}."
-                                    },
-                                    referenceSummary = cleanText,
-                                    sourceLabel = "Note • ${note.title}",
-                                    folderId = note.folderId,
-                                    folderPath = noteFolderPath,
-                                    language = language,
-                                    formulaExpressions = expressions
-                                )
-                            )
-                        }
-
-                        is StudyNoteBlock.Table -> {
-                            if (includeFormulas && block.rows.isNotEmpty()) {
-                                val rowSummaries = block.rows.take(8).mapNotNull { row ->
-                                    val paired = row.mapIndexedNotNull { idx, cell ->
-                                        val cleanCell = cleanPreserveExpressions(cell)
-                                        if (cleanCell.isBlank()) null
-                                        else {
-                                            val header = block.headers.getOrNull(idx)?.let(::cleanPreserveExpressions).orEmpty()
-                                            if (header.isNotBlank()) "$header: $cleanCell" else cleanCell
-                                        }
-                                    }.joinToString(" | ")
-                                    paired.takeIf { it.isNotBlank() }
-                                }
-                                if (rowSummaries.isNotEmpty()) {
-                                    val combined = rowSummaries.joinToString("\n")
-                                    prompts.add(
-                                        VoicePromptItem(
-                                            id = "note_${note.id}_${block.blockIndex}",
-                                            title = note.title,
-                                            promptQuestion = "Explain the key points and expressions from this ${note.title} table.",
-                                            referenceSummary = combined,
-                                            sourceLabel = "Note Table • ${note.title}",
-                                            folderId = note.folderId,
-                                            folderPath = noteFolderPath,
-                                            language = language,
-                                            formulaExpressions = extractFormulaExpressions(combined)
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        is StudyNoteBlock.Heading -> Unit
-                    }
-                }
-            }
+        val matchingNotes = if (includeNotes) {
+            studyNotes.filter { matchesSelection(it.folderId, it.subject) }
+        } else {
+            emptyList()
+        }
+        val matchingPapers = if (includePapers) {
+            papers.filter { matchesSelection(it.folderId, it.subject) }
+        } else {
+            emptyList()
         }
 
-        if (sourceFilter == VoiceSourceFilter.ALL || sourceFilter == VoiceSourceFilter.PAPERS_ONLY) {
-            val matchingPapers = papers.filter { matchesSelection(it.folderId, it.subject) }
-            for (paperEntity in matchingPapers) {
-                val parsed = paperEntity.toQuestionPaper()
-                val paperFolderPath = folderPathsById[paperEntity.folderId.orEmpty()]
-                    ?.ifBlank { FolderPathHelper.formatDisplayPath(paperEntity.subject) }
-                    ?: FolderPathHelper.formatDisplayPath(paperEntity.subject).ifBlank { "Exam Papers" }
+        val prompts = mutableListOf<VoicePromptItem>()
+        var skippedFormulaItems = 0
+        var isTruncated = false
 
-                for (q in parsed.questions) {
-                    val cleanQ = cleanSegment(q.question)
-                    if (cleanQ.isBlank() || (!includeFormulas && isFormulaHeavyText(q.question))) {
+        fun extractNoteBlockPrompt(
+            note: StudyNoteEntity,
+            noteFolderPath: String,
+            language: String,
+            block: StudyNoteBlock
+        ): VoicePromptItem? {
+            return when (block) {
+                is StudyNoteBlock.OneLiner -> {
+                    val cleanLead = cleanSegment(block.leadTerm)
+                    val cleanDetail = cleanSegment(block.detail)
+                    if (cleanLead.isBlank() && cleanDetail.isBlank()) {
                         skippedFormulaItems++
-                        continue
+                        return null
                     }
-                    val answerLetter = q.correctAnswer?.trim()?.uppercase(Locale.ROOT).orEmpty()
-                    val answerText = answerLetter.firstOrNull()?.let { q.options[it.toString()] }.orEmpty()
-                    val cleanAnswer = cleanSegment(answerText)
-                    val cleanFormula = if (includeFormulas) cleanPreserveExpressions(q.formula.orEmpty()) else ""
-                    val cleanExplanation = cleanSegment(q.explanation.orEmpty())
-
-                    val optionLines = if (includeFormulas) {
-                        q.options.asList
-                            .filter { it.second.isNotBlank() }
-                            .map { (letter, opt) -> "($letter) ${cleanPreserveExpressions(opt)}" }
+                    if (!includeFormulas && isFormulaHeavyText(block.leadTerm) && isFormulaHeavyText(block.detail)) {
+                        skippedFormulaItems++
+                        return null
+                    }
+                    val promptQ = if (cleanLead.isNotBlank()) {
+                        "Explain \"$cleanLead\" in your own words."
+                    } else {
+                        "Summarize this concept clearly."
+                    }
+                    val ref = listOf(cleanLead, cleanDetail).filter { it.isNotBlank() }.joinToString(" — ")
+                    val expressions = if (includeFormulas) {
+                        extractFormulaExpressions(block.leadTerm, block.detail)
                     } else {
                         emptyList()
+                    }
+                    val hasEnoughContent = ref.split(Regex("\\s+")).size >= 3 ||
+                        (includeFormulas && (expressions.isNotEmpty() || containsExpressionMarkers(ref)))
+                    if (!hasEnoughContent) return null
+                    VoicePromptItem(
+                        id = "note_${note.id}_${block.blockIndex}",
+                        title = cleanLead.ifBlank { note.title },
+                        promptQuestion = promptQ,
+                        referenceSummary = ref,
+                        sourceLabel = "Note • ${note.title}",
+                        folderId = note.folderId,
+                        folderPath = noteFolderPath,
+                        language = language,
+                        formulaExpressions = expressions
+                    )
+                }
+
+                is StudyNoteBlock.MultiLinerCard -> {
+                    val cleanTitle = cleanSegment(block.title)
+                    val cleanFormula = if (includeFormulas) cleanPreserveExpressions(block.formula) else ""
+                    val rawSections = buildList {
+                        addAll(block.paragraphs)
+                        addAll(block.nestedBullets.map { it.second })
+                        if (includeFormulas && cleanFormula.isNotBlank()) add("Formula: $cleanFormula")
+                        if (block.correctAnswer.isNotBlank()) add(block.correctAnswer)
+                        if (block.keyTakeaway.isNotBlank()) add(block.keyTakeaway)
+                    }
+                    val cleanBody = rawSections
+                        .map { cleanSegment(it) }
+                        .filter { it.isNotBlank() }
+                        .joinToString("\n")
+                    if (cleanBody.isBlank()) {
+                        if (block.formula.isNotBlank() || rawSections.any { it.isNotBlank() }) {
+                            skippedFormulaItems++
+                        }
+                        return null
                     }
                     val expressions = if (includeFormulas) {
                         extractFormulaExpressions(
                             cleanFormula,
-                            q.question,
-                            answerText,
-                            q.explanation.orEmpty(),
-                            *q.options.asList.map { it.second }.toTypedArray()
+                            *block.paragraphs.toTypedArray(),
+                            *block.nestedBullets.map { it.second }.toTypedArray(),
+                            block.keyTakeaway
                         )
                     } else {
                         emptyList()
                     }
-                    val reference = listOf(
-                        if (cleanFormula.isNotBlank()) "Formula: $cleanFormula" else "",
-                        if (cleanAnswer.isNotBlank()) "Key answer: $cleanAnswer." else "",
-                        cleanExplanation
-                    ).filter { it.isNotBlank() }.joinToString("\n").ifBlank { cleanQ }
-
-                    prompts.add(
-                        VoicePromptItem(
-                            id = "paper_${paperEntity.id}_q${q.num}",
-                            title = "${paperEntity.title} • Q${q.num}",
-                            promptQuestion = cleanQ,
-                            referenceSummary = reference,
-                            sourceLabel = "MCQ • ${paperEntity.title}",
-                            folderId = paperEntity.folderId,
-                            folderPath = paperFolderPath,
-                            language = "English",
-                            formulaExpressions = expressions,
-                            optionExpressions = optionLines
-                        )
+                    val options = if (includeFormulas) {
+                        block.optionsList
+                            .filter { it.second.isNotBlank() }
+                            .map { "(${it.first}) ${cleanPreserveExpressions(it.second)}" }
+                    } else {
+                        emptyList()
+                    }
+                    val promptQ = if (cleanTitle.isNotBlank()) {
+                        "Speak clearly about: $cleanTitle"
+                    } else {
+                        "Explain this topic from ${note.title} in your own words."
+                    }
+                    VoicePromptItem(
+                        id = "note_${note.id}_${block.blockIndex}",
+                        title = cleanTitle.ifBlank { note.title },
+                        promptQuestion = promptQ,
+                        referenceSummary = cleanBody,
+                        sourceLabel = "Note • ${note.title}",
+                        folderId = note.folderId,
+                        folderPath = noteFolderPath,
+                        language = language,
+                        formulaExpressions = expressions,
+                        optionExpressions = options
                     )
                 }
+
+                is StudyNoteBlock.Callout -> {
+                    val cleanLabel = cleanSegment(block.label)
+                    val cleanBody = cleanSegment(block.body)
+                    if (cleanBody.isBlank()) {
+                        skippedFormulaItems++
+                        return null
+                    }
+                    val expressions = if (includeFormulas) {
+                        extractFormulaExpressions(block.label, block.body)
+                    } else {
+                        emptyList()
+                    }
+                    VoicePromptItem(
+                        id = "note_${note.id}_${block.blockIndex}",
+                        title = cleanLabel.ifBlank { note.title },
+                        promptQuestion = if (cleanLabel.isNotBlank()) {
+                            "Explain the key takeaway for \"$cleanLabel\"."
+                        } else {
+                            "Summarize this key note clearly."
+                        },
+                        referenceSummary = cleanBody,
+                        sourceLabel = "Note • ${note.title}",
+                        folderId = note.folderId,
+                        folderPath = noteFolderPath,
+                        language = language,
+                        formulaExpressions = expressions
+                    )
+                }
+
+                is StudyNoteBlock.Paragraph -> {
+                    val cleanText = cleanSegment(block.text)
+                    val expressions = if (includeFormulas) {
+                        extractFormulaExpressions(block.text)
+                    } else {
+                        emptyList()
+                    }
+                    val wordCount = cleanText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                    val isSubstantial = wordCount >= 6 || (includeFormulas && (expressions.isNotEmpty() || containsExpressionMarkers(cleanText)) && wordCount >= 2)
+                    if (!isSubstantial) {
+                        if (block.text.isNotBlank() && !includeFormulas) skippedFormulaItems++
+                        return null
+                    }
+                    val firstPhrase = cleanText.split(Regex("[.!?\n]")).firstOrNull()?.trim().orEmpty().take(90)
+                    VoicePromptItem(
+                        id = "note_${note.id}_${block.blockIndex}",
+                        title = note.title,
+                        promptQuestion = if (firstPhrase.isNotBlank()) {
+                            "Discuss: $firstPhrase"
+                        } else {
+                            "Explain the main idea of ${note.title}."
+                        },
+                        referenceSummary = cleanText,
+                        sourceLabel = "Note • ${note.title}",
+                        folderId = note.folderId,
+                        folderPath = noteFolderPath,
+                        language = language,
+                        formulaExpressions = expressions
+                    )
+                }
+
+                is StudyNoteBlock.Table -> {
+                    if (!includeFormulas || block.rows.isEmpty()) return null
+                    val rowSummaries = block.rows.take(8).mapNotNull { row ->
+                        val paired = row.mapIndexedNotNull { idx, cell ->
+                            val cleanCell = cleanPreserveExpressions(cell)
+                            if (cleanCell.isBlank()) null
+                            else {
+                                val header = block.headers.getOrNull(idx)?.let(::cleanPreserveExpressions).orEmpty()
+                                if (header.isNotBlank()) "$header: $cleanCell" else cleanCell
+                            }
+                        }.joinToString(" | ")
+                        paired.takeIf { it.isNotBlank() }
+                    }
+                    if (rowSummaries.isEmpty()) return null
+                    val combined = rowSummaries.joinToString("\n")
+                    VoicePromptItem(
+                        id = "note_${note.id}_${block.blockIndex}",
+                        title = note.title,
+                        promptQuestion = "Explain the key points and expressions from this ${note.title} table.",
+                        referenceSummary = combined,
+                        sourceLabel = "Note Table • ${note.title}",
+                        folderId = note.folderId,
+                        folderPath = noteFolderPath,
+                        language = language,
+                        formulaExpressions = extractFormulaExpressions(combined)
+                    )
+                }
+
+                is StudyNoteBlock.Heading -> null
+            }
+        }
+
+        fun processNotesRange(startIdx: Int, capLimit: Int): Pair<Int, Boolean> {
+            var idx = startIdx
+            while (idx < matchingNotes.size) {
+                if (prompts.size >= capLimit) {
+                    return idx to true
+                }
+                val note = matchingNotes[idx]
+                try {
+                    onItemProcessed()
+                    val rule = note.parsedFormatRule()
+                    val noteFolderPath = folderPathsById[note.folderId.orEmpty()]
+                        ?.ifBlank { FolderPathHelper.formatDisplayPath(note.subject) }
+                        ?: FolderPathHelper.formatDisplayPath(note.subject).ifBlank { "General Notes" }
+                    val language = rule.language.ifBlank { "English" }
+                    val blocks = StudyNoteParser.parseBlocks(note.rawContent, rule)
+                    var addedForNote = 0
+                    for (block in blocks) {
+                        if (prompts.size >= capLimit) {
+                            return idx to true
+                        }
+                        if (addedForNote >= perNoteCap) {
+                            isTruncated = true
+                            break
+                        }
+                        val item = extractNoteBlockPrompt(note, noteFolderPath, language, block)
+                        if (item != null) {
+                            prompts.add(item)
+                            addedForNote++
+                        }
+                    }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Throwable) {
+                    // Skip malformed note safely instead of crashing VoicePracticeScreen
+                }
+                idx++
+            }
+            return idx to false
+        }
+
+        fun processPapers(capLimit: Int) {
+            for (paperEntity in matchingPapers) {
+                if (prompts.size >= capLimit) {
+                    isTruncated = true
+                    break
+                }
+                try {
+                    onItemProcessed()
+                    val parsed = paperParser(paperEntity)
+                    val paperFolderPath = folderPathsById[paperEntity.folderId.orEmpty()]
+                        ?.ifBlank { FolderPathHelper.formatDisplayPath(paperEntity.subject) }
+                        ?: FolderPathHelper.formatDisplayPath(paperEntity.subject).ifBlank { "Exam Papers" }
+
+                    var addedForPaper = 0
+                    for (q in parsed.questions) {
+                        if (prompts.size >= capLimit) {
+                            isTruncated = true
+                            return
+                        }
+                        if (addedForPaper >= perPaperCap) {
+                            isTruncated = true
+                            break
+                        }
+                        val cleanQ = cleanSegment(q.question)
+                        if (cleanQ.isBlank() || (!includeFormulas && isFormulaHeavyText(q.question))) {
+                            skippedFormulaItems++
+                            continue
+                        }
+                        val answerLetter = q.correctAnswer?.trim()?.uppercase(Locale.ROOT).orEmpty()
+                        val answerText = answerLetter.firstOrNull()?.let { q.options[it.toString()] }.orEmpty()
+                        val cleanAnswer = cleanSegment(answerText)
+                        val cleanFormula = if (includeFormulas) cleanPreserveExpressions(q.formula.orEmpty()) else ""
+                        val cleanExplanation = cleanSegment(q.explanation.orEmpty())
+
+                        val optionLines = if (includeFormulas) {
+                            q.options.asList
+                                .filter { it.second.isNotBlank() }
+                                .map { (letter, opt) -> "($letter) ${cleanPreserveExpressions(opt)}" }
+                        } else {
+                            emptyList()
+                        }
+                        val expressions = if (includeFormulas) {
+                            extractFormulaExpressions(
+                                cleanFormula,
+                                q.question,
+                                answerText,
+                                q.explanation.orEmpty(),
+                                *q.options.asList.map { it.second }.toTypedArray()
+                            )
+                        } else {
+                            emptyList()
+                        }
+                        val reference = listOf(
+                            if (cleanFormula.isNotBlank()) "Formula: $cleanFormula" else "",
+                            if (cleanAnswer.isNotBlank()) "Key answer: $cleanAnswer." else "",
+                            cleanExplanation
+                        ).filter { it.isNotBlank() }.joinToString("\n").ifBlank { cleanQ }
+
+                        prompts.add(
+                            VoicePromptItem(
+                                id = "paper_${paperEntity.id}_q${q.num}",
+                                title = "${paperEntity.title} • Q${q.num}",
+                                promptQuestion = cleanQ,
+                                referenceSummary = reference,
+                                sourceLabel = "MCQ • ${paperEntity.title}",
+                                folderId = paperEntity.folderId,
+                                folderPath = paperFolderPath,
+                                language = "English",
+                                formulaExpressions = expressions,
+                                optionExpressions = optionLines
+                            )
+                        )
+                        addedForPaper++
+                    }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Throwable) {
+                    // Skip malformed paper safely instead of crashing VoicePracticeScreen
+                }
+            }
+        }
+
+        val initialNotesCap = if (includePapers && matchingPapers.isNotEmpty() && totalCap < Int.MAX_VALUE) {
+            (totalCap / 2).coerceAtLeast(1)
+        } else {
+            totalCap
+        }
+
+        val (pausedNoteIdx, notesHitInitialCap) = if (includeNotes) {
+            processNotesRange(startIdx = 0, capLimit = initialNotesCap)
+        } else {
+            0 to false
+        }
+
+        if (includePapers) {
+            processPapers(capLimit = totalCap)
+        }
+
+        // Backfill remaining note capacity if papers didn't exhaust totalCap
+        if (includeNotes && notesHitInitialCap) {
+            if (prompts.size < totalCap && pausedNoteIdx < matchingNotes.size) {
+                val resumeIdx = if (pausedNoteIdx + 1 < matchingNotes.size) pausedNoteIdx + 1 else pausedNoteIdx
+                if (resumeIdx > pausedNoteIdx || prompts.none { it.id.startsWith("note_${matchingNotes[pausedNoteIdx].id}_") }) {
+                    val (_, stillHitCap) = processNotesRange(startIdx = resumeIdx, capLimit = totalCap)
+                    if (stillHitCap) isTruncated = true
+                } else {
+                    isTruncated = true
+                }
+            } else {
+                isTruncated = true
             }
         }
 
         return VoiceFolderPromptResult(
             prompts = prompts,
             skippedFormulaItems = skippedFormulaItems,
-            matchedFolderCount = targetFolderIds.size
+            matchedFolderCount = targetFolderIds.size,
+            isTruncated = isTruncated,
+            totalMatchingSources = matchingNotes.size + matchingPapers.size
         )
     }
 
@@ -440,18 +539,83 @@ object VoiceFluencyEngine {
         return lines.joinToString("\n").trim()
     }
 
+    /**
+     * O(N) non-backtracking scanner for delimited segments (`openDelim`..`closeDelim`).
+     * Prevents StackOverflowError and catastrophic backtracking on long or unclosed inputs.
+     */
+    private fun collectDelimitedExpressions(
+        text: String,
+        openDelim: String,
+        closeDelim: String,
+        allowNewline: Boolean,
+        maxLength: Int = 1500,
+        out: MutableSet<String>
+    ) {
+        var idx = 0
+        while (idx < text.length) {
+            val start = text.indexOf(openDelim, idx)
+            if (start == -1) break
+            val contentStart = start + openDelim.length
+            if (openDelim == "$" && contentStart < text.length && text[contentStart] == '$') {
+                // Skip `$$` here so display math is parsed cleanly as `$$...$$`
+                idx = contentStart + 1
+                continue
+            }
+            val end = text.indexOf(closeDelim, contentStart)
+            if (end == -1) break
+            if (end - contentStart > maxLength) {
+                idx = contentStart
+                continue
+            }
+            val inner = text.substring(contentStart, end)
+            if (inner.isNotBlank() && (allowNewline || !inner.contains('\n'))) {
+                out.add(text.substring(start, end + closeDelim.length).trim())
+            }
+            idx = end + closeDelim.length
+        }
+    }
+
+    private fun stripDelimitedSegments(
+        text: String,
+        openDelim: String,
+        closeDelim: String,
+        allowNewline: Boolean,
+        maxLength: Int = 4000
+    ): String {
+        if (!text.contains(openDelim)) return text
+        val sb = StringBuilder(text.length)
+        var idx = 0
+        while (idx < text.length) {
+            val start = text.indexOf(openDelim, idx)
+            if (start == -1) {
+                sb.append(text, idx, text.length)
+                break
+            }
+            sb.append(text, idx, start)
+            val contentStart = start + openDelim.length
+            val end = text.indexOf(closeDelim, contentStart)
+            if (end == -1 || (!allowNewline && text.indexOf('\n', contentStart).let { it != -1 && it < end }) || end - contentStart > maxLength) {
+                sb.append(openDelim)
+                idx = contentStart
+            } else {
+                sb.append(' ')
+                idx = end + closeDelim.length
+            }
+        }
+        return sb.toString()
+    }
+
     fun extractFormulaExpressions(vararg texts: String): List<String> {
         val found = linkedSetOf<String>()
-        val inlineMathRegex = Regex("""\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\[[\s\S]+?\\]|\\\([^)]+\\\)""")
 
         for (raw in texts) {
             if (raw.isBlank()) continue
             val normalized = raw.replace("\r\n", "\n")
 
-            inlineMathRegex.findAll(normalized).forEach { m ->
-                val expr = m.value.trim()
-                if (expr.isNotBlank()) found.add(expr)
-            }
+            collectDelimitedExpressions(normalized, "$$", "$$", allowNewline = true, out = found)
+            collectDelimitedExpressions(normalized, "\\[", "\\]", allowNewline = true, out = found)
+            collectDelimitedExpressions(normalized, "$", "$", allowNewline = false, out = found)
+            collectDelimitedExpressions(normalized, "\\(", "\\)", allowNewline = false, out = found)
 
             for (line in normalized.lines()) {
                 val trimmed = line.trim()
@@ -467,7 +631,11 @@ object VoiceFluencyEngine {
                     continue
                 }
 
-                if (isFormulaHeavyText(trimmed) && !inlineMathRegex.matches(trimmed)) {
+                val isPureDelimited = (trimmed.startsWith("$$") && trimmed.endsWith("$$")) ||
+                    (trimmed.startsWith("$") && trimmed.endsWith("$")) ||
+                    (trimmed.startsWith("\\[") && trimmed.endsWith("\\]")) ||
+                    (trimmed.startsWith("\\(") && trimmed.endsWith("\\)"))
+                if (isFormulaHeavyText(trimmed) && !isPureDelimited) {
                     found.add(trimmed)
                 }
             }
@@ -493,12 +661,12 @@ object VoiceFluencyEngine {
         if (rawText.isBlank()) return ""
         var text = rawText.replace("\r\n", "\n")
 
-        // Remove code blocks and LaTeX display/inline math expressions completely
-        text = text.replace(Regex("```[\\s\\S]*?```"), " ")
-        text = text.replace(Regex("\\$\\$[\\s\\S]*?\\$\\$"), " ")
-        text = text.replace(Regex("\\$[^$\n]+\\$"), " ")
-        text = text.replace(Regex("\\\\\\[[\\s\\S]*?\\\\]"), " ")
-        text = text.replace(Regex("\\\\\\([^)]*\\\\\\)"), " ")
+        // Remove code blocks and LaTeX display/inline math expressions in O(N) without backtracking regex
+        text = stripDelimitedSegments(text, "```", "```", allowNewline = true)
+        text = stripDelimitedSegments(text, "$$", "$$", allowNewline = true)
+        text = stripDelimitedSegments(text, "$", "$", allowNewline = false)
+        text = stripDelimitedSegments(text, "\\[", "\\]", allowNewline = true)
+        text = stripDelimitedSegments(text, "\\(", "\\)", allowNewline = false)
         text = text.replace(Regex("\\\\(?:frac|sum|int|sqrt|alpha|beta|gamma|theta|lambda|pi|Delta)\\b[^\\s.,;]*"), " ")
 
         val cleanLines = text.lines().mapNotNull { line ->

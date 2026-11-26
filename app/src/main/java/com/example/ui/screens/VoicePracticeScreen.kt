@@ -2,8 +2,12 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,6 +59,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -62,6 +67,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -80,7 +86,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,17 +101,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.R
 import com.example.data.AppFontScaleMode
 import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
+import com.example.data.toQuestionPaper
 import com.example.model.FolderItem
+import com.example.model.QuestionPaper
 import com.example.model.VoiceAnalysisUiState
+import com.example.model.VoiceFolderPromptResult
 import com.example.model.VoicePracticeMode
 import com.example.model.VoicePromptItem
 import com.example.model.VoiceSourceFilter
@@ -117,6 +134,26 @@ import com.example.util.VoiceSpeechEngineMode
 import com.example.util.rememberVoiceSpeechSessionController
 import java.util.Locale
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+
+private data class VoicePromptLoadState(
+    val isLoading: Boolean = true,
+    val result: VoiceFolderPromptResult = VoiceFolderPromptResult(
+        prompts = emptyList(),
+        skippedFormulaItems = 0,
+        matchedFolderCount = 0
+    )
+)
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 @Composable
 fun VoicePracticeScreen(
@@ -127,10 +164,12 @@ fun VoicePracticeScreen(
     fontScaleMode: AppFontScaleMode,
     onSelectFontScaleMode: (AppFontScaleMode) -> Unit,
     onLogStudySeconds: (Long) -> Unit = {},
+    onParsePaper: (PaperEntity) -> QuestionPaper = { it.toQuestionPaper() },
     onDismiss: () -> Unit
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val view = LocalView.current
 
     // [DEPRECATED 2026-11-26] Reason: Sound recording/playback (VoiceCaptureController) and online Gemini AI analysis (FirebaseVoiceAiAnalyzer) were excluded to make Speak to Test 100% sound-free and non-AI. Restore if: re-enabling WAV recording, audio playback, or cloud Gemini vocal-filler analysis.
@@ -159,10 +198,35 @@ fun VoicePracticeScreen(
     var showFolderDropdown by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
 
+    fun checkMicGranted(): Boolean = runCatching {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+    }.getOrDefault(false)
+
+    var hasMicPermission by remember { mutableStateOf(checkMicGranted()) }
     var micPermissionDenied by remember { mutableStateOf(false) }
+    var micPermanentlyDenied by remember { mutableStateOf(false) }
+    var autoPromptedMicOnce by rememberSaveable { mutableStateOf(false) }
     var analysisState by remember { mutableStateOf<VoiceAnalysisUiState>(VoiceAnalysisUiState.Idle) }
     var showManualInput by remember { mutableStateOf(false) }
     var manualSpokenText by remember { mutableStateOf("") }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val nowGranted = checkMicGranted()
+                hasMicPermission = nowGranted
+                if (nowGranted) {
+                    micPermissionDenied = false
+                    micPermanentlyDenied = false
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     DisposableEffect(view, speechController.status) {
         view.keepScreenOn = speechController.isSessionActive
@@ -189,16 +253,43 @@ fun VoicePracticeScreen(
         }
     }
 
-    val folderResult = remember(selectedFolderId, folders, studyNotes, papers, sourceFilter, includeFormulas) {
-        VoiceFluencyEngine.buildPromptsForFolder(
-            selectedFolderId = selectedFolderId,
-            folders = folders,
-            studyNotes = studyNotes,
-            papers = papers,
-            sourceFilter = sourceFilter,
-            includeFormulas = includeFormulas
-        )
+    val promptLoadState by produceState(
+        initialValue = VoicePromptLoadState(isLoading = true),
+        selectedFolderId, folders, studyNotes, papers, sourceFilter, includeFormulas
+    ) {
+        value = value.copy(isLoading = true)
+        val built = try {
+            withContext(Dispatchers.Default) {
+                val buildContext = currentCoroutineContext()
+                val promptCap = if (selectedFolderId == "all") 300 else 600
+                VoiceFluencyEngine.buildPromptsForFolder(
+                    selectedFolderId = selectedFolderId,
+                    folders = folders,
+                    studyNotes = studyNotes,
+                    papers = papers,
+                    sourceFilter = sourceFilter,
+                    includeFormulas = includeFormulas,
+                    maxTotalPrompts = promptCap,
+                    maxPromptsPerPaper = 80,
+                    maxPromptsPerNote = 100,
+                    paperParser = onParsePaper,
+                    onItemProcessed = { buildContext.ensureActive() }
+                )
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            VoiceFolderPromptResult(
+                prompts = emptyList(),
+                skippedFormulaItems = 0,
+                matchedFolderCount = 0
+            )
+        }
+        value = VoicePromptLoadState(isLoading = false, result = built)
     }
+
+    val isBuildingPrompts = promptLoadState.isLoading
+    val folderResult = promptLoadState.result
 
     val orderedPrompts = remember(folderResult.prompts, shuffleNonce) {
         if (shuffleNonce == 0) folderResult.prompts else folderResult.prompts.shuffled()
@@ -210,9 +301,8 @@ fun VoicePracticeScreen(
         showReadContextDrawer = false
     }
 
-    val currentPrompt: VoicePromptItem? = orderedPrompts.getOrNull(
-        promptIndex.coerceIn(0, (orderedPrompts.size - 1).coerceAtLeast(0))
-    )
+    val safePromptIndex = promptIndex.coerceIn(0, (orderedPrompts.size - 1).coerceAtLeast(0))
+    val currentPrompt: VoicePromptItem? = orderedPrompts.getOrNull(safePromptIndex)
 
     val readAloudScript = remember(currentPrompt?.id, currentPrompt?.referenceSummary, currentPrompt?.formulaExpressions) {
         currentPrompt?.let { VoiceFluencyEngine.resolveReadAloudPassage(it) }.orEmpty()
@@ -221,6 +311,7 @@ fun VoicePracticeScreen(
         if (readAloudScript.isBlank()) 0 else VoiceFluencyEngine.countAlignmentWords(readAloudScript)
     }
 
+    val analysisErrorFallback = stringResource(R.string.voice_analysis_error)
     fun evaluateSpokenText(transcript: String, durationMs: Long, engineLabel: String) {
         val prompt = currentPrompt ?: return
         val cleaned = transcript.trim()
@@ -233,7 +324,7 @@ fun VoicePracticeScreen(
         if (durationMs >= 1000L) {
             onLogStudySeconds((durationMs / 1000L).coerceAtLeast(1L))
         }
-        analysisState = VoiceAnalysisUiState.Success(
+        runCatching {
             VoiceFluencyEngine.evaluateOfflineSpeechCheck(
                 spokenTranscript = cleaned,
                 prompt = prompt,
@@ -241,7 +332,11 @@ fun VoicePracticeScreen(
                 mode = practiceMode,
                 engineLabel = engineLabel
             )
-        )
+        }.onSuccess { result ->
+            analysisState = VoiceAnalysisUiState.Success(result)
+        }.onFailure {
+            analysisState = VoiceAnalysisUiState.Error(analysisErrorFallback)
+        }
     }
 
     LaunchedEffect(currentPrompt?.id, selectedFolderId, sourceFilter, includeFormulas) {
@@ -338,28 +433,70 @@ fun VoicePracticeScreen(
             }
     }
 
+    val settingsErrorFallback = stringResource(R.string.voice_mic_settings_error)
+    fun openAppSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", context.packageName, null)
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
+            .onFailure {
+                analysisState = VoiceAnalysisUiState.Error(settingsErrorFallback)
+            }
+    }
+
     var pendingActionAfterPermission by remember { mutableStateOf<(() -> Unit)?>(null) }
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        micPermissionDenied = !granted
-        if (granted) {
+        val actuallyGranted = granted || checkMicGranted()
+        hasMicPermission = actuallyGranted
+        micPermissionDenied = !actuallyGranted
+        if (actuallyGranted) {
+            micPermanentlyDenied = false
             pendingActionAfterPermission?.invoke()
         } else {
+            val activity = context.findActivity()
+            val canShowRationale = activity != null &&
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.RECORD_AUDIO)
+            micPermanentlyDenied = !canShowRationale
             showManualInput = true
         }
         pendingActionAfterPermission = null
     }
 
+    // Prompt once on opening Speak to Test if microphone permission is not yet granted
+    LaunchedEffect(Unit) {
+        if (!checkMicGranted() && !autoPromptedMicOnce) {
+            autoPromptedMicOnce = true
+            runCatching {
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }.onFailure {
+                micPermissionDenied = true
+                showManualInput = true
+            }
+        }
+    }
+
     fun runWithMicPermission(action: () -> Unit) {
-        val grantedNow = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+        val grantedNow = checkMicGranted()
+        hasMicPermission = grantedNow
         if (grantedNow) {
             micPermissionDenied = false
+            micPermanentlyDenied = false
             action()
         } else {
             pendingActionAfterPermission = action
-            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            runCatching {
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }.onFailure {
+                pendingActionAfterPermission = null
+                micPermissionDenied = true
+                micPermanentlyDenied = true
+                showManualInput = true
+            }
         }
     }
 
@@ -510,7 +647,11 @@ fun VoicePracticeScreen(
                                         color = colors.inkMuted
                                     )
                                     Text(
-                                        text = "${orderedPrompts.size} prompts ready",
+                                        text = when {
+                                            isBuildingPrompts -> stringResource(R.string.voice_prompts_loading_short)
+                                            folderResult.isTruncated -> "${orderedPrompts.size}+ prompts ready"
+                                            else -> "${orderedPrompts.size} prompts ready"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.tealDark,
@@ -654,6 +795,14 @@ fun VoicePracticeScreen(
                                             .testTag("voice_include_formulas_chip")
                                     )
                                 }
+
+                                if (folderResult.isTruncated && !isBuildingPrompts) {
+                                    Text(
+                                        text = stringResource(R.string.voice_prompts_truncated_notice, orderedPrompts.size),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.inkMuted
+                                    )
+                                }
                             }
                         }
 
@@ -689,7 +838,42 @@ fun VoicePracticeScreen(
                         }
 
                         // Active Prompt & Unambiguous "What to Read / Speak" Card
-                        if (currentPrompt == null) {
+                        if (isBuildingPrompts) {
+                            Card(
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                                border = BorderStroke(0.9.dp, colors.border),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("voice_prompts_loading_card")
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = colors.teal,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.voice_prompts_loading_title),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.inkBold,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.voice_prompts_loading_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.inkMuted,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else if (currentPrompt == null) {
                             Card(
                                 shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(containerColor = colors.surface),
@@ -749,7 +933,7 @@ fun VoicePracticeScreen(
                                     ) {
                                         Surface(shape = RoundedCornerShape(8.dp), color = colors.tealLight) {
                                             Text(
-                                                text = "ITEM ${promptIndex + 1} OF ${orderedPrompts.size}",
+                                                text = "ITEM ${safePromptIndex + 1} OF ${orderedPrompts.size}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = colors.tealDark,
@@ -1104,12 +1288,12 @@ fun VoicePracticeScreen(
                                     ) {
                                         OutlinedButton(
                                             onClick = {
-                                                if (promptIndex > 0) {
-                                                    promptIndex--
+                                                if (safePromptIndex > 0) {
+                                                    promptIndex = safePromptIndex - 1
                                                     revealReference = false
                                                 }
                                             },
-                                            enabled = promptIndex > 0,
+                                            enabled = safePromptIndex > 0,
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                                             modifier = Modifier.heightIn(min = 48.dp)
@@ -1136,12 +1320,12 @@ fun VoicePracticeScreen(
 
                                         OutlinedButton(
                                             onClick = {
-                                                if (promptIndex < orderedPrompts.lastIndex) {
-                                                    promptIndex++
+                                                if (safePromptIndex < orderedPrompts.lastIndex) {
+                                                    promptIndex = safePromptIndex + 1
                                                     revealReference = false
                                                 }
                                             },
-                                            enabled = promptIndex < orderedPrompts.lastIndex,
+                                            enabled = safePromptIndex < orderedPrompts.lastIndex,
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                                             modifier = Modifier.heightIn(min = 48.dp)
@@ -1384,13 +1568,84 @@ fun VoicePracticeScreen(
                                     }
                                 }
 
-                                if (micPermissionDenied) {
-                                    Text(
-                                        text = "Microphone permission was denied. Allow Microphone permission to speak, or use Type / Dictate Check below.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = colors.red,
-                                        textAlign = TextAlign.Center
-                                    )
+                                if (!hasMicPermission) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (micPermissionDenied) colors.redLight.copy(alpha = 0.65f) else colors.amberLight.copy(alpha = 0.65f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (micPermissionDenied) colors.red.copy(alpha = 0.45f) else colors.amber.copy(alpha = 0.45f)
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("voice_mic_permission_banner")
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = if (micPermanentlyDenied) {
+                                                    stringResource(R.string.voice_mic_permission_settings_needed)
+                                                } else {
+                                                    stringResource(R.string.voice_mic_permission_needed)
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (micPermissionDenied) colors.red else colors.inkBold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (!micPermanentlyDenied) {
+                                                    Button(
+                                                        onClick = { runWithMicPermission {} },
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = colors.teal,
+                                                            contentColor = Color.White
+                                                        ),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        modifier = Modifier
+                                                            .heightIn(min = 48.dp)
+                                                            .testTag("voice_grant_mic_btn")
+                                                    ) {
+                                                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = stringResource(R.string.voice_mic_allow_btn),
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                                OutlinedButton(
+                                                    onClick = { openAppSettings() },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    modifier = Modifier
+                                                        .heightIn(min = 48.dp)
+                                                        .testTag("voice_open_settings_btn")
+                                                ) {
+                                                    Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = stringResource(R.string.voice_mic_open_settings_btn),
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
                                 // Primary Studio Controls

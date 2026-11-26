@@ -40,13 +40,17 @@ object MathFormulaParser {
 
     fun has2DMath(text: String): Boolean {
         if (text.isBlank()) return false
-        val normalized = LatexHelper.normalizeLatexAndMarkdown(text)
-        return normalized.contains("\\frac") ||
+        return try {
+            val normalized = LatexHelper.normalizeLatexAndMarkdown(text)
+            normalized.contains("\\frac") ||
                 normalized.contains("\\dfrac") ||
                 normalized.contains("\\sqrt") ||
                 normalized.contains("\\begin{") ||
                 Regex("""[A-Za-z0-9_\^]+\s*/\s*\([^\)]+\)""").containsMatchIn(normalized) ||
                 Regex("""(?m)(?:=|\b(?:is\s+given\s+by|equals|formula\s*[:\-])\b)\s*\[?\s*[^=\n/\[\]]+/[^=\n/\[\]]+""").containsMatchIn(normalized)
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun parseBalancedBraces(text: String, startIdx: Int): Pair<String, Int>? {
@@ -89,9 +93,14 @@ object MathFormulaParser {
         return null
     }
 
-    private fun parseSlashFractions(text: String): List<MathNode> {
+    private fun parseSlashFractions(text: String, depth: Int = 0): List<MathNode> {
+        if (depth >= 10 || text.length > 1200) {
+            return listOf(MathNode.TextNode(text))
+        }
+        val trimmed = text.trim()
+
         // 1. Bracketed ratio equation: e.g. "Population growth rate (%) = [(Population at end - Population at beginning) / Population at beginning] * 100"
-        val bracketEqMatch = Regex("""(?i)^([\s\S]*?=\s*)\[\s*\(?([^\[\]/]+?)\)?\s*/\s*\(?([^\[\]/]+?)\)?\s*\]([\s\S]*)$""").find(text.trim())
+        val bracketEqMatch = Regex("""(?is)^([^=\n]{0,200}?=\s*)\[\s*\(?([^\[\]/]+?)\)?\s*/\s*\(?([^\[\]/]+?)\)?\s*\](.{0,300})$""").find(trimmed)
         if (bracketEqMatch != null) {
             val lhs = bracketEqMatch.groupValues[1]
             val num = bracketEqMatch.groupValues[2].trim()
@@ -105,18 +114,18 @@ object MathFormulaParser {
                     close = "]",
                     inner = listOf(
                         MathNode.FractionNode(
-                            numerator = parseMathNodes(num),
-                            denominator = parseMathNodes(den)
+                            numerator = parseMathNodes(num, depth + 1),
+                            denominator = parseMathNodes(den, depth + 1)
                         )
                     )
                 )
             )
-            if (trailing.isNotEmpty()) result.addAll(parseSlashFractions(trailing))
+            if (trailing.isNotEmpty()) result.addAll(parseSlashFractions(trailing, depth + 1))
             return result
         }
 
         // 2. Simple equation fraction: e.g. "Population density = Total population / Total land area"
-        val simpleEqMatch = Regex("""(?i)^([\s\S]*?=\s*)([^=\n/]+?)\s*/\s*([^=\n/]+?)$""").find(text.trim())
+        val simpleEqMatch = Regex("""(?i)^([^=\n]{0,200}?=\s*)([^=\n/]+?)\s*/\s*([^=\n/]+?)$""").find(trimmed)
         if (simpleEqMatch != null) {
             val lhs = simpleEqMatch.groupValues[1]
             val num = simpleEqMatch.groupValues[2].trim()
@@ -125,8 +134,8 @@ object MathFormulaParser {
             if (lhs.isNotEmpty()) result.add(MathNode.TextNode(lhs))
             result.add(
                 MathNode.FractionNode(
-                    numerator = parseMathNodes(num),
-                    denominator = parseMathNodes(den)
+                    numerator = parseMathNodes(num, depth + 1),
+                    denominator = parseMathNodes(den, depth + 1)
                 )
             )
             return result
@@ -149,8 +158,8 @@ object MathFormulaParser {
             val denStr = match.groupValues[2]
             result.add(
                 MathNode.FractionNode(
-                    numerator = parseMathNodes(numStr),
-                    denominator = parseMathNodes(denStr)
+                    numerator = parseMathNodes(numStr, depth + 1),
+                    denominator = parseMathNodes(denStr, depth + 1)
                 )
             )
             lastIdx = match.range.last + 1
@@ -161,7 +170,8 @@ object MathFormulaParser {
         return result
     }
 
-    fun parseMathNodes(rawText: String): List<MathNode> {
+    fun parseMathNodes(rawText: String, depth: Int = 0): List<MathNode> {
+        if (depth >= 10) return listOf(MathNode.TextNode(rawText))
         val clean = LatexHelper.normalizeLatexAndMarkdown(rawText).trim()
             .removePrefix("\\[").removeSuffix("\\]")
             .removePrefix("$$").removeSuffix("$$")
@@ -176,7 +186,7 @@ object MathFormulaParser {
         fun flushText() {
             if (textBuffer.isNotEmpty()) {
                 val s = textBuffer.toString()
-                nodes.addAll(parseSlashFractions(s))
+                nodes.addAll(parseSlashFractions(s, depth + 1))
                 textBuffer.clear()
             }
         }
@@ -189,8 +199,8 @@ object MathFormulaParser {
                     val denRes = parseBalancedBraces(clean, numRes.second)
                     if (denRes != null) {
                         flushText()
-                        val numNodes = parseMathNodes(numRes.first)
-                        val denNodes = parseMathNodes(denRes.first)
+                        val numNodes = parseMathNodes(numRes.first, depth + 1)
+                        val denNodes = parseMathNodes(denRes.first, depth + 1)
                         nodes.add(MathNode.FractionNode(numNodes, denNodes))
                         i = denRes.second
                         continue
@@ -210,7 +220,7 @@ object MathFormulaParser {
                 val radicandRes = parseBalancedBraces(clean, afterCmd)
                 if (radicandRes != null) {
                     flushText()
-                    val radNodes = parseMathNodes(radicandRes.first)
+                    val radNodes = parseMathNodes(radicandRes.first, depth + 1)
                     nodes.add(MathNode.RootNode(degree, radNodes))
                     i = radicandRes.second
                     continue
@@ -228,7 +238,7 @@ object MathFormulaParser {
                         val body = clean.substring(i + envMatch.value.length, endIdx).trim()
                         val rows = body.split(Regex("""\\\\|\\cr\b""")).map { rowStr ->
                             rowStr.split("&").map { cellStr ->
-                                parseMathNodes(cellStr.trim())
+                                parseMathNodes(cellStr.trim(), depth + 1)
                             }.filter { it.isNotEmpty() }
                         }.filter { it.isNotEmpty() }
                         nodes.add(MathNode.MatrixNode(env, rows))
@@ -454,7 +464,11 @@ fun MathFormulaView(
     scrollable: Boolean = true
 ) {
     val nodes = remember(formula) {
-        MathFormulaParser.parseMathNodes(formula)
+        try {
+            MathFormulaParser.parseMathNodes(formula)
+        } catch (_: Throwable) {
+            listOf(MathNode.TextNode(formula))
+        }
     }
 
     val scrollState = rememberScrollState()

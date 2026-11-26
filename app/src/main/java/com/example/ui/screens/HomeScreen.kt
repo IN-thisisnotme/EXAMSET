@@ -2003,6 +2003,7 @@ fun HomeScreen(
             fontScaleMode = fontScaleMode,
             onSelectFontScaleMode = { mode -> viewModel.setFontScaleMode(mode) },
             onLogStudySeconds = { secs -> viewModel.recordStudySeconds(secs) },
+            onParsePaper = { entity -> viewModel.parsePaperForVoicePractice(entity) },
             onDismiss = { viewModel.closeVoicePractice() }
         )
     }

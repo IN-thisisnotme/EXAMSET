@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">ExamSet</string>
+    <string name="voice_prompts_loading_short">Loading prompts…</string>
+    <string name="voice_prompts_loading_title">Preparing speaking prompts…</string>
+    <string name="voice_prompts_loading_subtitle">Scanning your selected study notes and question sets cleanly in the background.</string>
+    <string name="voice_prompts_truncated_notice">Showing the latest %1$d prompts from your large library. Choose a specific folder above to focus.</string>
+    <string name="voice_mic_permission_needed">Allow Microphone permission to speak your answer live, or use Type / Dictate Check below.</string>
+    <string name="voice_mic_permission_settings_needed">Microphone permission is disabled in Android Settings. Enable Microphone under App Settings to speak, or use Type / Dictate Check below.</string>
+    <string name="voice_mic_allow_btn">Allow Microphone</string>
+    <string name="voice_mic_open_settings_btn">Open App Settings</string>
+    <string name="voice_mic_settings_error">Could not open App Settings automatically. Open Android Settings > Apps > ExamSet > Permissions > Microphone.</string>
+    <string name="voice_analysis_error">Could not analyze this speech snippet. Try again or tap Reset.</string>
 </resources>

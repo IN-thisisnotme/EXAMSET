@@ -40,7 +40,7 @@ fun LatexText(
     val style = LocalTextStyle.current
     val targetFontSize = if (fontSize != TextUnit.Unspecified) fontSize else style.fontSize
     val cleanText = remember(text) {
-        LatexHelper.normalizeLatexAndMarkdown(text)
+        runCatching { LatexHelper.normalizeLatexAndMarkdown(text) }.getOrDefault(text)
     }
     val trimmed = cleanText.trim()
     val isPureDisplayMath = (trimmed.startsWith("\\[") && trimmed.endsWith("\\]")) ||
@@ -53,7 +53,11 @@ fun LatexText(
         else -> 23.sp
     }
 
-    if (isPureDisplayMath && MathFormulaParser.has2DMath(trimmed)) {
+    val render2DMath = remember(trimmed, isPureDisplayMath) {
+        isPureDisplayMath && runCatching { MathFormulaParser.has2DMath(trimmed) }.getOrDefault(false)
+    }
+
+    if (render2DMath) {
         MathFormulaView(
             formula = trimmed,
             color = color,
@@ -78,7 +82,7 @@ fun LatexText(
                         isBold = isBold
                     )
                 }
-            } catch (e: Exception) {
+            } catch (_: Throwable) {
                 RichTextHelper.buildRichText(
                     text = cleanText,
                     baseColor = color,
