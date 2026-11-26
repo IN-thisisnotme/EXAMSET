@@ -3,6 +3,7 @@ package com.example.util
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.Environment
@@ -12,16 +13,15 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintManager
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.example.model.ExamConfig
 import com.example.model.OmrBubblingMode
 import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
-import com.example.util.ExamNumberGenerator
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -30,6 +30,31 @@ import java.util.Date
 import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
+
+enum class ExamExportFormat(val label: String, val mimeType: String) {
+    PDF(label = "ISO A4 PDF", mimeType = "application/pdf"),
+    CBT_HTML(label = "Interactive CBT (HTML)", mimeType = "text/html")
+}
+
+data class ExamExportDestination(
+    val format: ExamExportFormat,
+    val rootDirectory: String,
+    val yearFolder: String,
+    val monthNumberFolder: String,
+    val monthDisplayName: String,
+    val monthFolderLabel: String,
+    val subjectFolder: String,
+    val relativeSubDir: String,
+    val fileName: String,
+    val fullRelativePath: String
+)
+
+data class SavedExamExportResult(
+    val displayPath: String,
+    val contentUriString: String?,
+    val actualFileName: String,
+    val mimeType: String
+)
 
 object PrintDocumentHelper {
 
@@ -59,6 +84,41 @@ object PrintDocumentHelper {
         )
 
         return "${subjectClean}_${rollClean}_${bookletClean}.pdf"
+    }
+
+    /**
+     * Resolves the exact device export folder hierarchy and filename for either PDF or CBT HTML
+     * using invariant [Locale.US] ASCII digits for year/month folder names.
+     */
+    fun resolveExportDestination(
+        paper: QuestionPaper,
+        config: ExamConfig,
+        format: ExamExportFormat,
+        date: Date = Date()
+    ): ExamExportDestination {
+        val yearStr = SimpleDateFormat("yyyy", Locale.US).format(date)
+        val monthNumStr = SimpleDateFormat("MM", Locale.US).format(date)
+        val monthNameStr = SimpleDateFormat("MMMM", Locale.US).format(date)
+        val subjectClean = sanitizeForFileName(
+            paper.metadata.subject.ifBlank { config.subject.ifBlank { "General" } }
+        )
+        val fileName = when (format) {
+            ExamExportFormat.PDF -> getExamPdfFileName(paper, config)
+            ExamExportFormat.CBT_HTML -> getExamCbtHtmlFileName(paper, config)
+        }
+        val relativeSubDir = "exam_set/$yearStr/$monthNumStr/$subjectClean"
+        return ExamExportDestination(
+            format = format,
+            rootDirectory = "Documents/exam_set/",
+            yearFolder = yearStr,
+            monthNumberFolder = monthNumStr,
+            monthDisplayName = monthNameStr,
+            monthFolderLabel = "$monthNumStr ($monthNameStr)",
+            subjectFolder = subjectClean,
+            relativeSubDir = relativeSubDir,
+            fileName = fileName,
+            fullRelativePath = "Documents/$relativeSubDir/$fileName"
+        )
     }
 
     internal fun escapeJsonForInlineScript(json: String): String {
@@ -171,7 +231,7 @@ object PrintDocumentHelper {
 
     /**
      * Saves the question paper directly as a PDF file into the device file manager
-     * under: Documents/Exam_Set/{YYYY}/{MM}/{Subject}/
+     * under: Documents/exam_set/{YYYY}/{MM}/{Subject}/
      * File name: {Subject}_{RollNo}_{BookletNo}.pdf
      * Without opening or relying on the Android Print Spooler.
      */
@@ -180,18 +240,13 @@ object PrintDocumentHelper {
         paper: QuestionPaper,
         config: ExamConfig,
         onSuccess: (savedPath: String) -> Unit,
-        onError: (errorMessage: String) -> Unit
+        onError: (errorMessage: String) -> Unit,
+        onSuccessResult: ((SavedExamExportResult) -> Unit)? = null
     ) {
-        val fileName = getExamPdfFileName(paper, config)
+        val destination = resolveExportDestination(paper, config, ExamExportFormat.PDF)
+        val fileName = destination.fileName
+        val relativeSubDir = destination.relativeSubDir
         val html = generatePrintHtml(paper, config)
-
-        val yearStr = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
-        val monthStr = SimpleDateFormat("MM", Locale.getDefault()).format(Date())
-        val subjectClean = sanitizeForFileName(
-            paper.metadata.subject.ifBlank { config.subject.ifBlank { "General" } }
-        )
-
-        val relativeSubDir = "exam_set/$yearStr/$monthStr/$subjectClean"
 
         val webView = WebView(context)
         webView.settings.apply {
@@ -231,19 +286,112 @@ object PrintDocumentHelper {
                         destinationFile = tempPdfFile,
                         onSuccess = {
                             try {
-                                val finalPath = exportTempFileToExamSetDirectory(
+                                val result = exportTempFileWithResult(
                                     context = context,
                                     tempFile = tempPdfFile,
                                     relativeSubDir = relativeSubDir,
-                                    fileName = fileName
+                                    fileName = fileName,
+                                    mimeType = ExamExportFormat.PDF.mimeType
                                 )
                                 runCatching { tempPdfFile.delete() }
                                 destroyWebView()
-                                onSuccess(finalPath)
+                                onSuccess(result.displayPath)
+                                onSuccessResult?.invoke(result)
                             } catch (e: Exception) {
                                 runCatching { tempPdfFile.delete() }
                                 destroyWebView()
                                 onError("Failed to export PDF: ${e.localizedMessage ?: "Unknown error"}")
+                            }
+                        },
+                        onError = { error ->
+                            runCatching { tempPdfFile.delete() }
+                            destroyWebView()
+                            onError("Failed to render PDF: $error")
+                        }
+                    )
+                } catch (e: Exception) {
+                    destroyWebView()
+                    onError("Failed to initiate PDF generator: ${e.localizedMessage ?: "Unknown error"}")
+                }
+            }
+        }
+
+        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    }
+
+    /**
+     * Renders the question paper PDF and writes it directly to a user-selected Storage Access
+     * Framework [targetUri].
+     */
+    fun writePdfToUri(
+        context: Context,
+        paper: QuestionPaper,
+        config: ExamConfig,
+        targetUri: Uri,
+        onSuccess: (SavedExamExportResult) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val suggestedName = getExamPdfFileName(paper, config)
+        val html = generatePrintHtml(paper, config)
+        val webView = WebView(context)
+        webView.settings.apply {
+            javaScriptEnabled = false
+            loadWithOverviewMode = true
+            useWideViewPort = true
+        }
+
+        fun destroyWebView() {
+            webView.post {
+                runCatching {
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+            }
+        }
+
+        webView.webViewClient = object : WebViewClient() {
+            private var renderStarted = false
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                if (renderStarted) return
+                renderStarted = true
+                try {
+                    val adapter = webView.createPrintDocumentAdapter(suggestedName.removeSuffix(".pdf"))
+                    val attributes = PrintAttributes.Builder()
+                        .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                        .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                        .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
+                        .build()
+
+                    val tempPdfFile = File(context.cacheDir, "temp_saf_render_${System.currentTimeMillis()}.pdf")
+
+                    android.print.PdfPrintHelper.printAdapterToFile(
+                        adapter = adapter,
+                        attributes = attributes,
+                        destinationFile = tempPdfFile,
+                        onSuccess = {
+                            try {
+                                context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
+                                    FileInputStream(tempPdfFile).use { inputStream ->
+                                        inputStream.copyTo(outputStream)
+                                    }
+                                } ?: throw IllegalStateException("Could not open chosen folder destination for writing")
+
+                                val actualName = queryDisplayName(context, targetUri, suggestedName)
+                                runCatching { tempPdfFile.delete() }
+                                destroyWebView()
+                                onSuccess(
+                                    SavedExamExportResult(
+                                        displayPath = "Selected Folder/$actualName",
+                                        contentUriString = targetUri.toString(),
+                                        actualFileName = actualName,
+                                        mimeType = ExamExportFormat.PDF.mimeType
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                runCatching { tempPdfFile.delete() }
+                                destroyWebView()
+                                onError("Failed to save PDF to chosen folder: ${e.localizedMessage ?: "Unknown error"}")
                             }
                         },
                         onError = { error ->
@@ -289,48 +437,117 @@ object PrintDocumentHelper {
         paper: QuestionPaper,
         config: ExamConfig,
         onSuccess: (savedPath: String) -> Unit,
-        onError: (errorMessage: String) -> Unit
+        onError: (errorMessage: String) -> Unit,
+        onSuccessResult: ((SavedExamExportResult) -> Unit)? = null
     ) {
         try {
-            val fileName = getExamCbtHtmlFileName(paper, config)
+            val destination = resolveExportDestination(paper, config, ExamExportFormat.CBT_HTML)
             val html = generateInteractiveExamHtml(paper, config)
-
-            val yearStr = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
-            val monthStr = SimpleDateFormat("MM", Locale.getDefault()).format(Date())
-            val subjectClean = sanitizeForFileName(
-                paper.metadata.subject.ifBlank { config.subject.ifBlank { "General" } }
-            )
-
-            val relativeSubDir = "exam_set/$yearStr/$monthStr/$subjectClean"
 
             val tempFile = File(context.cacheDir, "temp_cbt_${System.currentTimeMillis()}.html")
             tempFile.writeText(html, Charsets.UTF_8)
 
-            val finalPath = exportTempFileToExamSetDirectory(
+            val result = exportTempFileWithResult(
                 context = context,
                 tempFile = tempFile,
-                relativeSubDir = relativeSubDir,
-                fileName = fileName,
-                mimeType = "text/html"
+                relativeSubDir = destination.relativeSubDir,
+                fileName = destination.fileName,
+                mimeType = ExamExportFormat.CBT_HTML.mimeType
             )
-            tempFile.delete()
-            onSuccess(finalPath)
+            runCatching { tempFile.delete() }
+            onSuccess(result.displayPath)
+            onSuccessResult?.invoke(result)
         } catch (e: Exception) {
             onError("Failed to save CBT HTML: ${e.localizedMessage ?: "Unknown error"}")
         }
+    }
+
+    /**
+     * Writes the interactive CBT HTML directly to a user-selected Storage Access Framework [targetUri].
+     */
+    fun writeInteractiveHtmlToUri(
+        context: Context,
+        paper: QuestionPaper,
+        config: ExamConfig,
+        targetUri: Uri,
+        onSuccess: (SavedExamExportResult) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        try {
+            val suggestedName = getExamCbtHtmlFileName(paper, config)
+            val html = generateInteractiveExamHtml(paper, config)
+            context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                output.write(html.toByteArray(Charsets.UTF_8))
+                output.flush()
+            } ?: throw IllegalStateException("Could not open chosen folder destination for writing")
+
+            val actualName = queryDisplayName(context, targetUri, suggestedName)
+            onSuccess(
+                SavedExamExportResult(
+                    displayPath = "Selected Folder/$actualName",
+                    contentUriString = targetUri.toString(),
+                    actualFileName = actualName,
+                    mimeType = ExamExportFormat.CBT_HTML.mimeType
+                )
+            )
+        } catch (e: Exception) {
+            onError("Failed to save CBT HTML to chosen folder: ${e.localizedMessage ?: "Unknown error"}")
+        }
+    }
+
+    fun openSavedDocument(context: Context, result: SavedExamExportResult): Boolean {
+        val uriStr = result.contentUriString ?: return false
+        val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: return false
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, result.mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return runCatching {
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
+    }
+
+    fun shareSavedDocument(context: Context, result: SavedExamExportResult): Boolean {
+        val uriStr = result.contentUriString ?: return false
+        val uri = runCatching { Uri.parse(uriStr) }.getOrNull() ?: return false
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = result.mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, result.actualFileName)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(sendIntent, "Share ${result.actualFileName}").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return runCatching {
+            context.startActivity(chooser)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun queryDisplayName(context: Context, uri: Uri, fallback: String): String {
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) cursor.getString(idx)?.takeIf { it.isNotBlank() } else null
+                } else null
+            }
+        }.getOrNull() ?: fallback
     }
 
     private fun normalizeAnswerLetter(ans: String?): String {
         return AnswerKeyMatcher.normalizeKey(ans)
     }
 
-    private fun exportTempFileToExamSetDirectory(
+    private fun exportTempFileWithResult(
         context: Context,
         tempFile: File,
         relativeSubDir: String,
         fileName: String,
         mimeType: String = "application/pdf"
-    ): String {
+    ): SavedExamExportResult {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -348,7 +565,13 @@ object PrintDocumentHelper {
                 }
             } ?: throw IllegalStateException("Could not write to MediaStore output stream")
 
-            "Documents/$relativeSubDir/$fileName"
+            val actualName = queryDisplayName(context, uri, fileName)
+            SavedExamExportResult(
+                displayPath = "Documents/$relativeSubDir/$actualName",
+                contentUriString = uri.toString(),
+                actualFileName = actualName,
+                mimeType = mimeType
+            )
         } else {
             val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
             val targetDir = File(docsDir, relativeSubDir)
@@ -361,9 +584,26 @@ object PrintDocumentHelper {
                     input.copyTo(output)
                 }
             }
-            targetFile.absolutePath
+            val providerUri = runCatching {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", targetFile).toString()
+            }.getOrNull()
+            SavedExamExportResult(
+                displayPath = targetFile.absolutePath,
+                contentUriString = providerUri,
+                actualFileName = targetFile.name,
+                mimeType = mimeType
+            )
         }
     }
+
+    // [DEPRECATED 2026-11-26] Reason: Replaced by exportTempFileWithResult returning actual MediaStore DISPLAY_NAME and shareable content URI. Restore if: callers only expect a raw String path without URI metadata.
+    // private fun exportTempFileToExamSetDirectory(
+    //     context: Context,
+    //     tempFile: File,
+    //     relativeSubDir: String,
+    //     fileName: String,
+    //     mimeType: String = "application/pdf"
+    // ): String = exportTempFileWithResult(context, tempFile, relativeSubDir, fileName, mimeType).displayPath
 
     /**
      * Generates a fully interactive, self-contained Computer-Based Test (CBT) HTML application

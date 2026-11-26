@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -63,6 +64,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -120,6 +123,7 @@ import com.example.data.toQuestionPaper
 import com.example.model.FolderItem
 import com.example.model.QuestionPaper
 import com.example.model.VoiceAnalysisUiState
+import com.example.model.VoiceComparisonTolerance
 import com.example.model.VoiceFolderPromptResult
 import com.example.model.VoicePracticeMode
 import com.example.model.VoicePromptItem
@@ -210,6 +214,7 @@ fun VoicePracticeScreen(
     var analysisState by remember { mutableStateOf<VoiceAnalysisUiState>(VoiceAnalysisUiState.Idle) }
     var showManualInput by remember { mutableStateOf(false) }
     var manualSpokenText by remember { mutableStateOf("") }
+    var comparisonTolerance by remember { mutableStateOf(VoiceComparisonTolerance.SMART_STT_TOLERANT) }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -311,13 +316,29 @@ fun VoicePracticeScreen(
         if (readAloudScript.isBlank()) 0 else VoiceFluencyEngine.countAlignmentWords(readAloudScript)
     }
 
+    val biasingVocabulary = remember(currentPrompt?.id) {
+        currentPrompt?.let { VoiceFluencyEngine.extractBiasingVocabulary(it) }.orEmpty()
+    }
+    val rerankingReferenceText = remember(currentPrompt?.id, readAloudScript, practiceMode) {
+        if (practiceMode == VoicePracticeMode.READ_ALOUD) {
+            readAloudScript
+        } else {
+            currentPrompt?.referenceSummary?.ifBlank { readAloudScript }.orEmpty()
+        }
+    }
+
     val analysisErrorFallback = stringResource(R.string.voice_analysis_error)
-    fun evaluateSpokenText(transcript: String, durationMs: Long, engineLabel: String) {
+    fun evaluateSpokenText(
+        transcript: String,
+        durationMs: Long,
+        engineLabel: String,
+        toleranceOverride: VoiceComparisonTolerance = comparisonTolerance
+    ) {
         val prompt = currentPrompt ?: return
         val cleaned = transcript.trim()
         if (cleaned.isBlank()) {
             analysisState = VoiceAnalysisUiState.Error(
-                "No spoken words were detected yet. Tap Start Speaking, use System Voice Mic, or enter text below."
+                "No spoken words were detected yet. Tap Start Speaking, use System Dialog, or enter text below."
             )
             return
         }
@@ -330,7 +351,8 @@ fun VoicePracticeScreen(
                 prompt = prompt,
                 durationMs = durationMs,
                 mode = practiceMode,
-                engineLabel = engineLabel
+                engineLabel = engineLabel,
+                tolerance = toleranceOverride
             )
         }.onSuccess { result ->
             analysisState = VoiceAnalysisUiState.Success(result)
@@ -361,6 +383,8 @@ fun VoicePracticeScreen(
         analysisState = VoiceAnalysisUiState.Recording
         speechController.startSession(
             initialSeedText = seedExistingText,
+            biasingVocabulary = biasingVocabulary,
+            referenceTextForReranking = rerankingReferenceText,
             onAutoFinishOnSilence = { transcript, durMs, engine ->
                 manualSpokenText = transcript
                 evaluateSpokenText(transcript, durMs, engine)
@@ -422,6 +446,14 @@ fun VoicePracticeScreen(
             )
             if (speechController.engineMode == VoiceSpeechEngineMode.STRICT_OFFLINE) {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                biasingVocabulary.isNotEmpty()
+            ) {
+                putStringArrayListExtra(
+                    RecognizerIntent.EXTRA_BIASING_STRINGS,
+                    ArrayList(biasingVocabulary.take(96))
+                )
             }
         }
         runCatching { systemSpeechLauncher.launch(intent) }
@@ -1448,7 +1480,7 @@ fun VoicePracticeScreen(
                                     idleColor = colors.border
                                 )
 
-                                // Engine Recognition Mode Strip (horizontally scrollable)
+                                // Engine Recognition Mode & Silent Mic Strip (horizontally scrollable)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1474,6 +1506,81 @@ fun VoicePracticeScreen(
                                                 selectedLabelColor = colors.tealDark
                                             ),
                                             modifier = Modifier.heightIn(min = 48.dp)
+                                        )
+                                    }
+                                    FilterChip(
+                                        selected = speechController.suppressSystemBeeps,
+                                        onClick = {
+                                            speechController.suppressSystemBeeps = !speechController.suppressSystemBeeps
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (speechController.suppressSystemBeeps) {
+                                                    Icons.Default.VolumeOff
+                                                } else {
+                                                    Icons.Default.VolumeUp
+                                                },
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = "Silent Mic (No Beeps)",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = colors.greenLight,
+                                            selectedLabelColor = colors.green
+                                        ),
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .testTag("voice_silent_mic_chip")
+                                    )
+                                }
+
+                                // Word-Comparison Tolerance Selector (protects against recognizer homophones/misspellings)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    VoiceComparisonTolerance.entries.forEach { tol ->
+                                        FilterChip(
+                                            selected = comparisonTolerance == tol,
+                                            onClick = {
+                                                comparisonTolerance = tol
+                                                val currentSuccess = analysisState as? VoiceAnalysisUiState.Success
+                                                val textToRecheck = manualSpokenText.ifBlank { speechController.liveTranscript }
+                                                if (currentSuccess != null && textToRecheck.isNotBlank()) {
+                                                    evaluateSpokenText(
+                                                        transcript = textToRecheck,
+                                                        durationMs = currentSuccess.result.metrics.durationMs,
+                                                        engineLabel = currentSuccess.result.engineLabel,
+                                                        toleranceOverride = tol
+                                                    )
+                                                }
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = tol.label,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = colors.tealLight,
+                                                selectedLabelColor = colors.tealDark
+                                            ),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("voice_tolerance_${tol.name.lowercase(Locale.ROOT)}")
                                         )
                                     }
                                 }
@@ -1544,21 +1651,60 @@ fun VoicePracticeScreen(
                                                     fontWeight = FontWeight.Bold,
                                                     color = colors.tealDark
                                                 )
-                                                Text(
-                                                    text = "$liveWordCount words",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = colors.inkMuted,
-                                                    maxLines = 1,
-                                                    softWrap = false
-                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "$liveWordCount words",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colors.inkMuted,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                    if (liveText.isNotBlank() && !speechController.isListening) {
+                                                        Surface(
+                                                            onClick = {
+                                                                manualSpokenText = liveText
+                                                                showManualInput = true
+                                                            },
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = colors.tealLight,
+                                                            modifier = Modifier
+                                                                .heightIn(min = 48.dp)
+                                                                .testTag("voice_edit_captured_words_btn")
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Edit,
+                                                                    contentDescription = "Edit captured words",
+                                                                    tint = colors.tealDark,
+                                                                    modifier = Modifier.size(14.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "Edit Words",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = colors.tealDark,
+                                                                    maxLines = 1,
+                                                                    softWrap = false
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                             Text(
                                                 text = liveText.ifBlank {
                                                     if (speechController.isPaused) {
                                                         "Session paused before any words were captured. Tap Resume Mic to continue."
                                                     } else {
-                                                        "Speak clearly — short natural pauses will NOT stop the microphone."
+                                                        "Speak clearly — short natural pauses stay silent without beeping or clipping."
                                                     }
                                                 },
                                                 style = MaterialTheme.typography.bodyLarge,
@@ -1684,9 +1830,9 @@ fun VoicePracticeScreen(
 
                                         Text(
                                             text = if (sttSupported) {
-                                                "Tap Mic to speak • Pause anytime manually • 30s silence safety stop"
+                                                "Continuous silent mic • Natural pauses won't beep or clip words • 30s silence safety stop"
                                             } else {
-                                                "Tap Mic for System Voice Dictation or use Type Check below"
+                                                "Tap Mic for System Dialog or use Type Check below"
                                             },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = colors.inkMuted,
@@ -1808,7 +1954,7 @@ fun VoicePracticeScreen(
                                         Icon(Icons.Default.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "System Voice Mic",
+                                            text = "System Dialog (May Beep)",
                                             style = MaterialTheme.typography.labelLarge,
                                             maxLines = 1,
                                             softWrap = false

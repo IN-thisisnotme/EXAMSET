@@ -29,8 +29,23 @@ enum class VoiceFillerCategory(val label: String) {
     LEXICAL_FILLER("Filler Phrase")
 }
 
+enum class VoiceComparisonTolerance(
+    val label: String,
+    val description: String
+) {
+    SMART_STT_TOLERANT(
+        label = "Smart STT-Tolerant",
+        description = "Accepts phonetically close voice-recognizer slips (e.g. bave ~ brave) and common homophones while flagging them transparently."
+    ),
+    STRICT_EXACT(
+        label = "Strict Exact",
+        description = "Requires exact word-for-word spelling match without phonetic or homophone tolerance."
+    )
+}
+
 enum class VoiceWordMatchStatus {
     MATCHED,
+    NEAR_MATCH,
     MISTAKE,
     MISSED,
     EXTRA,
@@ -102,7 +117,9 @@ data class VoiceComparisonStats(
     val mistakePairs: List<VoiceMistakePair>,
     val missedWords: List<String>,
     val extraWords: List<String>,
-    val repeatedWords: List<String>
+    val repeatedWords: List<String>,
+    val nearMatchCount: Int = 0,
+    val nearMatchPairs: List<VoiceMistakePair> = emptyList()
 )
 
 data class VoiceFluencyMetrics(

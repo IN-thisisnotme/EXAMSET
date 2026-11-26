@@ -1,12 +1,13 @@
 package com.example.ui.components
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,16 +19,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Print
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -52,9 +52,10 @@ import com.example.model.ExamConfig
 import com.example.model.OmrBubblingMode
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
-import com.example.util.ExamNumberGenerator
-import com.example.util.PrintDocumentHelper
 import com.example.ui.theme.ExamTheme
+import com.example.util.ExamExportFormat
+import com.example.util.PrintDocumentHelper
+import com.example.util.SavedExamExportResult
 
 @Composable
 fun PrintConfigDialog(
@@ -66,6 +67,39 @@ fun PrintConfigDialog(
     val context = LocalContext.current
     val colors = ExamTheme.colors
     var config by remember { mutableStateOf(initialConfig) }
+    var isSavingPdf by remember { mutableStateOf(false) }
+    var savedResult by remember { mutableStateOf<SavedExamExportResult?>(null) }
+
+    val pdfDestination = remember(paper, config) {
+        PrintDocumentHelper.resolveExportDestination(paper, config, ExamExportFormat.PDF)
+    }
+
+    val savePdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) {
+            isSavingPdf = true
+            onPrintTriggered(config)
+            PrintDocumentHelper.writePdfToUri(
+                context = context,
+                paper = paper,
+                config = config,
+                targetUri = uri,
+                onSuccess = { res ->
+                    isSavingPdf = false
+                    savedResult = res
+                },
+                onError = { errorMsg ->
+                    isSavingPdf = false
+                    android.widget.Toast.makeText(
+                        context,
+                        errorMsg,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            )
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -313,9 +347,69 @@ fun PrintConfigDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Unified Action Buttons: Save PDF to File Manager and Print via System Spooler
+                ExportDestinationPreviewCard(
+                    destination = pdfDestination,
+                    printMode = config.printMode
+                )
+
+                savedResult?.let { result ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SavedExportResultBanner(
+                        result = result,
+                        onOpen = {
+                            if (!PrintDocumentHelper.openSavedDocument(context, result)) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "No PDF viewer app installed. Saved at ${result.displayPath}",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        },
+                        onShare = {
+                            if (!PrintDocumentHelper.shareSavedDocument(context, result)) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Unable to share ${result.actualFileName}",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onDismiss = { savedResult = null }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedButton(
+                    onClick = { savePdfPickerLauncher.launch(pdfDestination.fileName) },
+                    enabled = !isSavingPdf,
+                    border = BorderStroke(1.dp, colors.border),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("choose_folder_dialog_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = "Choose folder for PDF",
+                        modifier = Modifier.size(18.dp),
+                        tint = colors.teal
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Choose Another Folder…",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.inkBold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Unified Action Buttons: Save PDF to Documents and Print via System Spooler
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -323,12 +417,14 @@ fun PrintConfigDialog(
                     // Direct Save PDF Button
                     OutlinedButton(
                         onClick = {
+                            isSavingPdf = true
                             onPrintTriggered(config)
                             PrintDocumentHelper.savePdfDirectly(
                                 context = context,
                                 paper = paper,
                                 config = config,
                                 onSuccess = { savedPath ->
+                                    isSavingPdf = false
                                     android.widget.Toast.makeText(
                                         context,
                                         "Saved to $savedPath",
@@ -336,15 +432,19 @@ fun PrintConfigDialog(
                                     ).show()
                                 },
                                 onError = { errorMsg ->
+                                    isSavingPdf = false
                                     android.widget.Toast.makeText(
                                         context,
                                         errorMsg,
                                         android.widget.Toast.LENGTH_LONG
                                     ).show()
+                                },
+                                onSuccessResult = { res ->
+                                    savedResult = res
                                 }
                             )
-                            onDismiss()
                         },
+                        enabled = !isSavingPdf,
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = colors.inkBold
                         ),
@@ -363,7 +463,7 @@ fun PrintConfigDialog(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Save PDF",
+                            text = if (isSavingPdf) "Saving…" else "Save PDF",
                             fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkBold

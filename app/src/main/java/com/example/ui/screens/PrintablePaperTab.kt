@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,11 +72,15 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import com.example.ui.components.AuthenticOmrSheetView
+import com.example.ui.components.ExportDestinationPreviewCard
+import com.example.ui.components.SavedExportResultBanner
 import com.example.model.ExamConfig
 import com.example.model.OmrGeometry
 import com.example.model.PrintMode
 import com.example.model.QuestionPaper
+import com.example.util.ExamExportFormat
 import com.example.util.PrintDocumentHelper
+import com.example.util.SavedExamExportResult
 import com.example.util.ExamNumberGenerator
 import com.example.ui.theme.ExamTheme
 import com.example.util.McqParser
@@ -103,9 +109,68 @@ fun PrintablePaperTab(
 
     var showConfirmSavePdfDialog by remember { mutableStateOf(false) }
     var showConfirmSaveHtmlDialog by remember { mutableStateOf(false) }
+    var lastSavedExport by remember { mutableStateOf<SavedExamExportResult?>(null) }
+
+    val savePdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) {
+            PrintDocumentHelper.writePdfToUri(
+                context = context,
+                paper = paper,
+                config = config,
+                targetUri = uri,
+                onSuccess = { result ->
+                    lastSavedExport = result
+                    android.widget.Toast.makeText(
+                        context,
+                        "Saved PDF: ${result.actualFileName}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                },
+                onError = { errorMsg ->
+                    android.widget.Toast.makeText(
+                        context,
+                        errorMsg,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            )
+        }
+    }
+
+    val saveHtmlPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/html")
+    ) { uri ->
+        if (uri != null) {
+            PrintDocumentHelper.writeInteractiveHtmlToUri(
+                context = context,
+                paper = paper,
+                config = config,
+                targetUri = uri,
+                onSuccess = { result ->
+                    lastSavedExport = result
+                    android.widget.Toast.makeText(
+                        context,
+                        "Saved CBT HTML: ${result.actualFileName}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                },
+                onError = { errorMsg ->
+                    android.widget.Toast.makeText(
+                        context,
+                        errorMsg,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            )
+        }
+    }
 
     if (showConfirmSavePdfDialog) {
-        val pdfFileName = PrintDocumentHelper.getExamPdfFileName(paper, config)
+        val pdfDestination = remember(paper, config) {
+            PrintDocumentHelper.resolveExportDestination(paper, config, ExamExportFormat.PDF)
+        }
         AlertDialog(
             onDismissRequest = { showConfirmSavePdfDialog = false },
             title = {
@@ -116,23 +181,18 @@ fun PrintablePaperTab(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
-                        text = "Are you sure you want to export this question paper as a printable ISO A4 PDF?",
+                        text = "Your printable ISO A4 PDF will be organized automatically in Documents using the exact path below:",
                         fontSize = 13.sp,
                         color = colors.ink
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "• File: $pdfFileName",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.teal
-                    )
-                    Text(
-                        text = "• Destination: Documents/exam_set/{YYYY}/{MM}/{Subject}/",
-                        fontSize = 11.sp,
-                        color = colors.muted
+                    ExportDestinationPreviewCard(
+                        destination = pdfDestination,
+                        printMode = config.printMode
                     )
                 }
             },
@@ -157,24 +217,52 @@ fun PrintablePaperTab(
                                     errorMsg,
                                     android.widget.Toast.LENGTH_LONG
                                 ).show()
+                            },
+                            onSuccessResult = { result ->
+                                lastSavedExport = result
                             }
                         )
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primaryButtonBg)
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primaryButtonBg),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("confirm_save_pdf_documents_btn")
                 ) {
-                    Text("Save PDF", color = colors.primaryButtonText)
+                    Text("Save to Documents", color = colors.primaryButtonText)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmSavePdfDialog = false }) {
-                    Text("Cancel", color = colors.muted)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            showConfirmSavePdfDialog = false
+                            savePdfPickerLauncher.launch(pdfDestination.fileName)
+                        },
+                        border = BorderStroke(1.dp, colors.teal),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("choose_pdf_folder_btn")
+                    ) {
+                        Text("Choose Folder…", color = colors.tealDark, fontSize = 12.sp)
+                    }
+                    TextButton(
+                        onClick = { showConfirmSavePdfDialog = false },
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Cancel", color = colors.muted)
+                    }
                 }
             }
         )
     }
 
     if (showConfirmSaveHtmlDialog) {
-        val htmlFileName = PrintDocumentHelper.getExamCbtHtmlFileName(paper, config)
+        val htmlDestination = remember(paper, config) {
+            PrintDocumentHelper.resolveExportDestination(paper, config, ExamExportFormat.CBT_HTML)
+        }
         AlertDialog(
             onDismissRequest = { showConfirmSaveHtmlDialog = false },
             title = {
@@ -185,28 +273,17 @@ fun PrintablePaperTab(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
-                        text = "Are you sure you want to export this test as a standalone Computer-Based Test (CBT) HTML application?",
+                        text = "Exports a standalone interactive Computer-Based Test (roll login, slim header, palette, scoring & solutions) to:",
                         fontSize = 13.sp,
                         color = colors.ink
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "• File: $htmlFileName",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.teal
-                    )
-                    Text(
-                        text = "• Features: Roll number login, slim header, palette, scoring & solutions",
-                        fontSize = 11.5.sp,
-                        color = colors.inkBold
-                    )
-                    Text(
-                        text = "• Destination: Documents/exam_set/{YYYY}/{MM}/{Subject}/",
-                        fontSize = 11.sp,
-                        color = colors.muted
+                    ExportDestinationPreviewCard(
+                        destination = htmlDestination
                     )
                 }
             },
@@ -231,17 +308,43 @@ fun PrintablePaperTab(
                                     errorMsg,
                                     android.widget.Toast.LENGTH_LONG
                                 ).show()
+                            },
+                            onSuccessResult = { result ->
+                                lastSavedExport = result
                             }
                         )
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal)
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("confirm_save_html_documents_btn")
                 ) {
-                    Text("Export CBT HTML", color = Color.White)
+                    Text("Save to Documents", color = Color.White)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmSaveHtmlDialog = false }) {
-                    Text("Cancel", color = colors.muted)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            showConfirmSaveHtmlDialog = false
+                            saveHtmlPickerLauncher.launch(htmlDestination.fileName)
+                        },
+                        border = BorderStroke(1.dp, colors.teal),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("choose_html_folder_btn")
+                    ) {
+                        Text("Choose Folder…", color = colors.tealDark, fontSize = 12.sp)
+                    }
+                    TextButton(
+                        onClick = { showConfirmSaveHtmlDialog = false },
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Cancel", color = colors.muted)
+                    }
                 }
             }
         )
@@ -439,6 +542,32 @@ fun PrintablePaperTab(
                     }
                 }
             }
+        }
+
+        lastSavedExport?.let { savedResult ->
+            SavedExportResultBanner(
+                result = savedResult,
+                onOpen = {
+                    if (!PrintDocumentHelper.openSavedDocument(context, savedResult)) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "No viewer app installed for this file type. Find it at ${savedResult.displayPath}",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                onShare = {
+                    if (!PrintDocumentHelper.shareSavedDocument(context, savedResult)) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Unable to share ${savedResult.actualFileName}",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                onDismiss = { lastSavedExport = null },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
         }
 
         // Preview Mode Selector Bar

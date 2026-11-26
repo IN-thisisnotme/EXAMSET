@@ -4,4 +4,5 @@
     <external-cache-path name="external_camera_photos" path="." />
     <files-path name="vault_backups" path="vault_backups/" />
     <cache-path name="vault_exports" path="vault_exports/" />
+    <external-path name="external_documents" path="Documents/" />
 </paths>

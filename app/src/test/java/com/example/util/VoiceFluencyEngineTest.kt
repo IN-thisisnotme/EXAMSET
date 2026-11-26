@@ -384,4 +384,72 @@ class VoiceFluencyEngineTest {
         assertTrue(result.prompts.any { it.id.startsWith("paper_") })
         assertFalse(result.prompts.any { it.id.startsWith("paper_1_") })
     }
+
+    @Test
+    fun alignSpokenToReference_smartTolerantAcceptsPhoneticSlipsHomophonesAndCompounds() {
+        val reference = "There is a boy in a tree and in between there is bave"
+        val sttHeard = "Their is a boy in a tree and inbetween there is brave"
+
+        val tolerant = VoiceFluencyEngine.alignSpokenToReference(
+            referenceText = reference,
+            spokenText = sttHeard,
+            estimatedWpm = 120,
+            tolerance = com.example.model.VoiceComparisonTolerance.SMART_STT_TOLERANT
+        )
+
+        assertEquals(0, tolerant.mistakeCount)
+        assertEquals(100, tolerant.matchPercent)
+        assertTrue(tolerant.nearMatchCount >= 3)
+        assertTrue(tolerant.nearMatchPairs.any { it.expected.equals("bave", ignoreCase = true) && it.spoken.equals("brave", ignoreCase = true) })
+
+        val strict = VoiceFluencyEngine.alignSpokenToReference(
+            referenceText = reference,
+            spokenText = sttHeard,
+            estimatedWpm = 120,
+            tolerance = com.example.model.VoiceComparisonTolerance.STRICT_EXACT
+        )
+
+        assertEquals(0, strict.nearMatchCount)
+        assertTrue(strict.mistakeCount >= 2)
+        assertTrue(strict.matchPercent < 100)
+    }
+
+    @Test
+    fun selectBestRecognitionHypothesis_andBiasingAndOverlapMerging_workAsExpected() {
+        val reference = "There is a boy in a tree and in between there is bave"
+        val prompt = com.example.model.VoicePromptItem(
+            id = "p-bave",
+            title = "Forest Scene",
+            promptQuestion = reference,
+            referenceSummary = reference,
+            sourceLabel = "Note • English",
+            folderId = "f-other",
+            folderPath = "English"
+        )
+
+        val biasing = VoiceFluencyEngine.extractBiasingVocabulary(prompt, maxTerms = 20)
+        assertTrue(biasing.any { it.equals("bave", ignoreCase = true) })
+        assertTrue(biasing.size <= 20)
+
+        val chosen = VoiceFluencyEngine.selectBestRecognitionHypothesis(
+            candidates = listOf(
+                "there is a boy in a tree and in between there is wave",
+                "there is a boy in a tree and in between there is bave"
+            ),
+            referenceText = reference
+        )
+        assertTrue(chosen.endsWith("bave"))
+
+        val mergedOverlap = VoiceFluencyEngine.mergeTranscriptSegments(
+            committed = "There is a boy in a tree",
+            incomingSegment = "in a tree and in between there is bave"
+        )
+        assertEquals("There is a boy in a tree and in between there is bave", mergedOverlap)
+
+        val singleWordRepeat = VoiceFluencyEngine.mergeTranscriptSegments(
+            committed = "The",
+            incomingSegment = "the Speaker"
+        )
+        assertEquals("The the Speaker", singleWordRepeat)
+    }
 }

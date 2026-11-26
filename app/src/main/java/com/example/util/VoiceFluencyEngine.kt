@@ -8,6 +8,7 @@ import com.example.model.QuestionPaper
 import com.example.model.VoiceAlignmentToken
 import com.example.model.VoiceAnalysisResult
 import com.example.model.VoiceComparisonStats
+import com.example.model.VoiceComparisonTolerance
 import com.example.model.VoiceFillerCategory
 import com.example.model.VoiceFillerOccurrence
 import com.example.model.VoiceFluencyMetrics
@@ -21,6 +22,7 @@ import com.example.model.VoiceTranscriptSegment
 import com.example.model.VoiceWordMatchStatus
 import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -907,7 +909,8 @@ object VoiceFluencyEngine {
         referenceSummary: String,
         mode: VoicePracticeMode,
         explicitFillerOverrides: List<VoiceFillerOccurrence>? = null,
-        sampleIntervalMs: Long = 100L
+        sampleIntervalMs: Long = 100L,
+        tolerance: VoiceComparisonTolerance = VoiceComparisonTolerance.SMART_STT_TOLERANT
     ): VoiceFluencyMetrics {
         val isTimed = durationMs >= 1000L
         val safeDurationMs = durationMs.coerceAtLeast(0L)
@@ -949,7 +952,8 @@ object VoiceFluencyEngine {
             alignSpokenToReference(
                 referenceText = referenceSummary,
                 spokenText = transcript,
-                estimatedWpm = wpm
+                estimatedWpm = wpm,
+                tolerance = tolerance
             )
         } else {
             null
@@ -992,6 +996,76 @@ object VoiceFluencyEngine {
     }
 
     /**
+     * Extracts up to [maxTerms] unique prompt vocabulary terms (including rare/out-of-vocabulary
+     * words) for Android 13+ `RecognizerIntent.EXTRA_BIASING_STRINGS`.
+     */
+    fun extractBiasingVocabulary(prompt: VoicePromptItem, maxTerms: Int = 96): List<String> {
+        val combined = listOf(
+            prompt.title,
+            prompt.promptQuestion,
+            resolveReadAloudPassage(prompt)
+        ).filter { it.isNotBlank() }.joinToString(" ")
+        if (combined.isBlank()) return emptyList()
+
+        val seen = linkedSetOf<String>()
+        val tokens = tokenizeForComparison(prepareReferenceForAlignment(combined))
+        for (token in tokens) {
+            val clean = token.display.trim()
+            val key = token.key
+            if (clean.length >= 3 && key !in stopWords) {
+                seen.add(clean)
+                if (seen.size >= maxTerms) break
+            }
+        }
+        return seen.toList()
+    }
+
+    /**
+     * Selects the highest-fidelity hypothesis from SpeechRecognizer's N-best `RESULTS_RECOGNITION`
+     * list using the active passage/reference vocabulary as context. Only switches away from
+     * candidate[0] when another candidate actually produced by the recognizer scores strictly higher
+     * on exact or phonetic alignment with [referenceText].
+     */
+    fun selectBestRecognitionHypothesis(
+        candidates: List<String>,
+        referenceText: String
+    ): String {
+        val cleaned = candidates.map { it.trim() }.filter { it.isNotBlank() }
+        if (cleaned.isEmpty()) return ""
+        if (cleaned.size == 1 || referenceText.isBlank()) return cleaned.first()
+
+        val refTokens = tokenizeForComparison(prepareReferenceForAlignment(referenceText)).take(260)
+        if (refTokens.isEmpty()) return cleaned.first()
+        val refKeys = refTokens.map { it.key }.toSet()
+
+        var bestCandidate = cleaned.first()
+        var bestScore = Double.NEGATIVE_INFINITY
+
+        cleaned.forEachIndexed { rankIdx, candidate ->
+            val candTokens = tokenizeForComparison(candidate)
+            if (candTokens.isNotEmpty()) {
+                var exactHits = 0
+                var nearHits = 0
+                for (ct in candTokens) {
+                    if (ct.key in refKeys) {
+                        exactHits++
+                    } else if (refKeys.any { rk -> isSttNearMatch(rk, ct.key) }) {
+                        nearHits++
+                    }
+                }
+                // Mild rank prior so candidate[0] wins on ties or when no candidate aligns better
+                val rankPrior = (cleaned.size - rankIdx) * 0.05
+                val score = (exactHits * 2.0) + (nearHits * 0.85) + rankPrior
+                if (score > bestScore) {
+                    bestScore = score
+                    bestCandidate = candidate
+                }
+            }
+        }
+        return bestCandidate
+    }
+
+    /**
      * Returns the exact count of alignable words in [text] using the same tokenizer as scoring.
      */
     fun countAlignmentWords(text: String): Int =
@@ -999,29 +1073,58 @@ object VoiceFluencyEngine {
 
     /**
      * Cleanly appends a new speech-recognition segment onto an existing transcript without
-     * losing words or creating duplicate whitespace across user pauses / engine restarts.
+     * losing words, creating duplicate whitespace, or repeating multi-word boundary overlaps
+     * across recognizer restarts. Intentional single-word repetitions inside speech are preserved.
      */
     fun mergeTranscriptSegments(committed: String, incomingSegment: String): String {
         val left = committed.trim()
         val right = incomingSegment.trim()
-        return when {
-            left.isEmpty() -> right
-            right.isEmpty() -> left
-            else -> "$left $right"
+        if (left.isEmpty()) return right
+        if (right.isEmpty()) return left
+
+        val leftWords = left.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val rightWords = right.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val maxOverlap = minOf(leftWords.size, rightWords.size, 8)
+        var overlapCount = 0
+
+        if (maxOverlap >= 2) {
+            for (k in maxOverlap downTo 2) {
+                var allEqual = true
+                for (idx in 0 until k) {
+                    val lw = canonicalKey(leftWords[leftWords.size - k + idx])
+                    val rw = canonicalKey(rightWords[idx])
+                    if (lw.isEmpty() || lw != rw) {
+                        allEqual = false
+                        break
+                    }
+                }
+                if (allEqual) {
+                    overlapCount = k
+                    break
+                }
+            }
         }
+
+        val trimmedRight = if (overlapCount > 0) {
+            rightWords.drop(overlapCount).joinToString(" ")
+        } else {
+            right
+        }
+        return if (trimmedRight.isBlank()) left else "$left $trimmedRight"
     }
 
     /**
      * 100% offline, deterministic speech-to-text comparison against the shown subject text.
-     * Computes exact matched words, wrong/mispronounced substitutions, skipped omissions,
-     * extra pronounced words, consecutive repetitions, pace rating, and actionable tips.
+     * Computes exact matched words, STT near-matches, wrong/mispronounced substitutions,
+     * skipped omissions, extra pronounced words, consecutive repetitions, pace rating, and actionable tips.
      */
     fun evaluateOfflineSpeechCheck(
         spokenTranscript: String,
         prompt: VoicePromptItem,
         durationMs: Long,
         mode: VoicePracticeMode,
-        engineLabel: String = "Offline On-Device Text Comparison"
+        engineLabel: String = "Offline On-Device Text Comparison",
+        tolerance: VoiceComparisonTolerance = VoiceComparisonTolerance.SMART_STT_TOLERANT
     ): VoiceAnalysisResult {
         val targetReference = when (mode) {
             VoicePracticeMode.READ_ALOUD -> resolveReadAloudPassage(prompt)
@@ -1034,13 +1137,15 @@ object VoiceFluencyEngine {
             rmsSamples = emptyList(),
             transcript = spokenTranscript,
             referenceSummary = targetReference,
-            mode = mode
+            mode = mode,
+            tolerance = tolerance
         )
 
         val comp = metrics.comparison ?: alignSpokenToReference(
             referenceText = targetReference,
             spokenText = spokenTranscript,
-            estimatedWpm = metrics.estimatedWpm
+            estimatedWpm = metrics.estimatedWpm,
+            tolerance = tolerance
         )
 
         val strengths = buildList {
@@ -1048,6 +1153,9 @@ object VoiceFluencyEngine {
                 add("Strong alignment: ${comp.matchedCount} of ${comp.totalReferenceWords} reference words matched (${comp.matchPercent}%).")
             } else if (comp.matchedCount > 0) {
                 add("Matched ${comp.matchedCount} of ${comp.totalReferenceWords} reference words (${comp.matchPercent}%).")
+            }
+            if (comp.nearMatchCount > 0) {
+                add("Auto-tolerated ${comp.nearMatchCount} probable mic phonetic slip(s) without penalizing your score.")
             }
             if (comp.mistakeCount == 0 && comp.totalSpokenWords > 0) {
                 add("Zero word substitutions detected.")
@@ -1112,13 +1220,14 @@ object VoiceFluencyEngine {
 
     /**
      * Deterministic Needleman-Wunsch / Levenshtein word alignment between the shown reference text
-     * and the user's spoken transcript. Guarantees exact counts for Matched, Mistakes (substitutions),
-     * Missed (omissions), Extra pronounced words, and Consecutive Repetitions.
+     * and the user's spoken transcript. Guarantees exact counts for Matched, Near-Matches,
+     * Mistakes (substitutions), Missed (omissions), Extra pronounced words, and Consecutive Repetitions.
      */
     fun alignSpokenToReference(
         referenceText: String,
         spokenText: String,
-        estimatedWpm: Int = 0
+        estimatedWpm: Int = 0,
+        tolerance: VoiceComparisonTolerance = VoiceComparisonTolerance.SMART_STT_TOLERANT
     ): VoiceComparisonStats {
         val refWords = tokenizeForComparison(prepareReferenceForAlignment(referenceText)).take(260)
         val spokenWords = tokenizeForComparison(spokenText).take(260)
@@ -1224,10 +1333,12 @@ object VoiceFluencyEngine {
         var lastSpokenKey: String? = null
 
         var matchedCount = 0
+        var nearMatchCount = 0
         var mistakeCount = 0
         var missedCount = 0
         var extraCount = 0
         var repetitionCount = 0
+        val nearMatchPairs = mutableListOf<VoiceMistakePair>()
         val mistakePairs = mutableListOf<VoiceMistakePair>()
         val missedWords = mutableListOf<String>()
         val extraWords = mutableListOf<String>()
@@ -1263,6 +1374,36 @@ object VoiceFluencyEngine {
             if (key.isNotEmpty()) lastSpokenKey = key
         }
 
+        fun emitSubstitutionOrNearMatch(expected: String, spoken: String) {
+            val expKey = canonicalKey(expected)
+            val spkKey = canonicalKey(spoken)
+            if (tolerance == VoiceComparisonTolerance.SMART_STT_TOLERANT &&
+                isSttNearMatch(expKey, spkKey)
+            ) {
+                matchedCount++
+                nearMatchCount++
+                nearMatchPairs.add(VoiceMistakePair(expected = expected, spoken = spoken))
+                finalAlignment.add(
+                    VoiceAlignmentToken(
+                        expectedWord = expected,
+                        spokenWord = spoken,
+                        status = VoiceWordMatchStatus.NEAR_MATCH
+                    )
+                )
+            } else {
+                mistakeCount++
+                mistakePairs.add(VoiceMistakePair(expected = expected, spoken = spoken))
+                finalAlignment.add(
+                    VoiceAlignmentToken(
+                        expectedWord = expected,
+                        spokenWord = spoken,
+                        status = VoiceWordMatchStatus.MISTAKE
+                    )
+                )
+            }
+            if (spkKey.isNotEmpty()) lastSpokenKey = spkKey
+        }
+
         fun flushGap() {
             while (extraBuffer.isNotEmpty()) {
                 val firstKey = canonicalKey(extraBuffer.first())
@@ -1274,21 +1415,41 @@ object VoiceFluencyEngine {
             }
 
             if (missedBuffer.isNotEmpty() && extraBuffer.isNotEmpty()) {
+                // Handle split/joined compound words (e.g., "in between" <-> "inbetween", "cannot" <-> "can not")
+                if (tolerance == VoiceComparisonTolerance.SMART_STT_TOLERANT) {
+                    val joinedExpected = missedBuffer.joinToString("") { canonicalKey(it) }
+                    val joinedSpoken = extraBuffer.joinToString("") { canonicalKey(it) }
+                    if (joinedExpected.isNotEmpty() && (joinedExpected == joinedSpoken || isSttNearMatch(joinedExpected, joinedSpoken))) {
+                        val combinedSpokenDisplay = extraBuffer.joinToString(" ")
+                        missedBuffer.forEachIndexed { idx, expected ->
+                            matchedCount++
+                            nearMatchCount++
+                            if (idx == 0) {
+                                nearMatchPairs.add(
+                                    VoiceMistakePair(
+                                        expected = missedBuffer.joinToString(" "),
+                                        spoken = combinedSpokenDisplay
+                                    )
+                                )
+                            }
+                            finalAlignment.add(
+                                VoiceAlignmentToken(
+                                    expectedWord = expected,
+                                    spokenWord = if (idx == 0) combinedSpokenDisplay else expected,
+                                    status = VoiceWordMatchStatus.NEAR_MATCH
+                                )
+                            )
+                        }
+                        extraBuffer.lastOrNull()?.let { lastSpokenKey = canonicalKey(it) }
+                        missedBuffer.clear()
+                        extraBuffer.clear()
+                        return
+                    }
+                }
+
                 if (missedBuffer.size == extraBuffer.size) {
                     for (idx in missedBuffer.indices) {
-                        val expected = missedBuffer[idx]
-                        val spoken = extraBuffer[idx]
-                        mistakeCount++
-                        mistakePairs.add(VoiceMistakePair(expected = expected, spoken = spoken))
-                        finalAlignment.add(
-                            VoiceAlignmentToken(
-                                expectedWord = expected,
-                                spokenWord = spoken,
-                                status = VoiceWordMatchStatus.MISTAKE
-                            )
-                        )
-                        val key = canonicalKey(spoken)
-                        if (key.isNotEmpty()) lastSpokenKey = key
+                        emitSubstitutionOrNearMatch(missedBuffer[idx], extraBuffer[idx])
                     }
                     missedBuffer.clear()
                     extraBuffer.clear()
@@ -1310,17 +1471,7 @@ object VoiceFluencyEngine {
                     for (idx in missedBuffer.indices) {
                         val expected = missedBuffer[idx]
                         val (spoken, dups) = grouped[idx]
-                        mistakeCount++
-                        mistakePairs.add(VoiceMistakePair(expected = expected, spoken = spoken))
-                        finalAlignment.add(
-                            VoiceAlignmentToken(
-                                expectedWord = expected,
-                                spokenWord = spoken,
-                                status = VoiceWordMatchStatus.MISTAKE
-                            )
-                        )
-                        val key = canonicalKey(spoken)
-                        if (key.isNotEmpty()) lastSpokenKey = key
+                        emitSubstitutionOrNearMatch(expected, spoken)
                         for (dup in dups) {
                             emitExtraOrRepeat(dup)
                         }
@@ -1357,6 +1508,19 @@ object VoiceFluencyEngine {
                     lastSpokenKey = token.spokenWord?.let(::canonicalKey)
                     finalAlignment.add(token)
                 }
+                VoiceWordMatchStatus.NEAR_MATCH -> {
+                    flushGap()
+                    matchedCount++
+                    nearMatchCount++
+                    nearMatchPairs.add(
+                        VoiceMistakePair(
+                            expected = token.expectedWord.orEmpty(),
+                            spoken = token.spokenWord.orEmpty()
+                        )
+                    )
+                    lastSpokenKey = token.spokenWord?.let(::canonicalKey)
+                    finalAlignment.add(token)
+                }
                 VoiceWordMatchStatus.MISSED -> {
                     token.expectedWord?.let(missedBuffer::add)
                 }
@@ -1365,15 +1529,7 @@ object VoiceFluencyEngine {
                 }
                 VoiceWordMatchStatus.MISTAKE -> {
                     flushGap()
-                    mistakeCount++
-                    mistakePairs.add(
-                        VoiceMistakePair(
-                            expected = token.expectedWord.orEmpty(),
-                            spoken = token.spokenWord.orEmpty()
-                        )
-                    )
-                    lastSpokenKey = token.spokenWord?.let(::canonicalKey)
-                    finalAlignment.add(token)
+                    emitSubstitutionOrNearMatch(token.expectedWord.orEmpty(), token.spokenWord.orEmpty())
                 }
             }
         }
@@ -1407,7 +1563,9 @@ object VoiceFluencyEngine {
             mistakePairs = mistakePairs,
             missedWords = missedWords,
             extraWords = extraWords,
-            repeatedWords = repeatedWords
+            repeatedWords = repeatedWords,
+            nearMatchCount = nearMatchCount,
+            nearMatchPairs = nearMatchPairs
         )
     }
 
@@ -1481,6 +1639,122 @@ object VoiceFluencyEngine {
         "ninety" to "90",
         "hundred" to "100"
     )
+
+    private val sttHomophoneGroupId: Map<String, Int> by lazy {
+        val groups = listOf(
+            listOf("there", "their", "theyre"),
+            listOf("to", "too", "two", "2"),
+            listOf("for", "four", "4"),
+            listOf("one", "won", "1"),
+            listOf("no", "know"),
+            listOf("here", "hear"),
+            listOf("see", "sea"),
+            listOf("by", "buy", "bye"),
+            listOf("right", "write"),
+            listOf("new", "knew"),
+            listOf("its", "its"),
+            listOf("your", "youre"),
+            listOf("weak", "week"),
+            listOf("brake", "break"),
+            listOf("peace", "piece"),
+            listOf("whole", "hole"),
+            listOf("stationary", "stationery"),
+            listOf("affect", "effect"),
+            listOf("principle", "principal"),
+            listOf("bear", "bare"),
+            listOf("fair", "fare"),
+            listOf("plain", "plane"),
+            listOf("wait", "weight"),
+            listOf("weather", "whether"),
+            listOf("son", "sun"),
+            listOf("flour", "flower"),
+            listOf("meet", "meat"),
+            listOf("pair", "pear"),
+            listOf("steal", "steel"),
+            listOf("wood", "would")
+        )
+        buildMap {
+            groups.forEachIndexed { idx, words ->
+                words.forEach { w -> put(w, idx) }
+            }
+        }
+    }
+
+    /**
+     * Checks whether [expectedKey] and [spokenKey] represent a plausible speech-recognizer
+     * phonetic / homophone slip (e.g., "bave" <-> "brave"/"wave", "there" <-> "their")
+     * without accepting completely different words (e.g., "speaker" <-> "department").
+     */
+    fun isSttNearMatch(expectedKey: String, spokenKey: String): Boolean {
+        if (expectedKey.isBlank() || spokenKey.isBlank()) return false
+        if (expectedKey == spokenKey) return true
+        val g1 = sttHomophoneGroupId[expectedKey]
+        val g2 = sttHomophoneGroupId[spokenKey]
+        if (g1 != null && g1 == g2) return true
+
+        if (expectedKey.any { it.isDigit() } || spokenKey.any { it.isDigit() }) return false
+        val minLen = minOf(expectedKey.length, spokenKey.length)
+        if (minLen < 3 || abs(expectedKey.length - spokenKey.length) > 2) return false
+
+        val dist = levenshteinDistance(expectedKey, spokenKey)
+        val skelA = phoneticSkeleton(expectedKey)
+        val skelB = phoneticSkeleton(spokenKey)
+        if (skelA.isNotEmpty() && skelA == skelB && dist <= 2) return true
+
+        if (minLen >= 4 && dist == 1) return true
+        if (minLen >= 6 && dist <= 2 && expectedKey.first() == spokenKey.first()) return true
+        return false
+    }
+
+    private fun phoneticSkeleton(word: String): String {
+        val sb = StringBuilder(word.length)
+        var prev = '\u0000'
+        val normalized = word
+            .replace("ph", "f")
+            .replace("gh", "")
+            .replace("kn", "n")
+            .replace("wr", "r")
+            .replace("ck", "k")
+            .replace("qu", "k")
+        for ((idx, ch) in normalized.withIndex()) {
+            val mapped = when (ch) {
+                'a', 'e', 'i', 'o', 'u', 'y', 'h', 'w' -> if (idx == 0) ch else continue
+                'b', 'p', 'v', 'f' -> 'b'
+                'c', 'k', 'q' -> 'k'
+                'd', 't' -> 't'
+                'g', 'j' -> 'g'
+                's', 'z' -> 's'
+                else -> ch
+            }
+            if (mapped != prev) {
+                sb.append(mapped)
+                prev = mapped
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun levenshteinDistance(a: String, b: String): Int {
+        val m = a.length
+        val n = b.length
+        var prev = IntArray(n + 1) { it }
+        var curr = IntArray(n + 1)
+        for (i in 1..m) {
+            curr[0] = i
+            for (j in 1..n) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                curr[j] = minOf(
+                    curr[j - 1] + 1,
+                    prev[j] + 1,
+                    prev[j - 1] + cost
+                )
+            }
+            val tmp = prev
+            prev = curr
+            curr = tmp
+        }
+        return prev[n]
+    }
 
     private fun canonicalKey(raw: String): String {
         val stripped = raw.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")

@@ -355,6 +355,14 @@ private fun VoiceSuccessBreakdownCard(
                             fg = colors.green,
                             bg = colors.greenLight
                         )
+                        if (comp.nearMatchCount > 0) {
+                            VoiceMetricChip(
+                                label = "Mic Near-Match",
+                                value = "${comp.nearMatchCount} (accepted)",
+                                fg = colors.tealDark,
+                                bg = colors.tealLight
+                            )
+                        }
                         VoiceMetricChip(
                             label = "Mistakes (Wrong)",
                             value = "${comp.mistakeCount}",
@@ -403,8 +411,8 @@ private fun VoiceSuccessBreakdownCard(
             VoiceAlignmentComparisonCard(comp = comp)
         }
 
-        // 3. Detailed Mistakes, Extra Pronounced & Skipped Strips (Horizontally Scrollable)
-        if (comp != null && (comp.mistakePairs.isNotEmpty() || comp.extraWords.isNotEmpty() || comp.missedWords.isNotEmpty())) {
+        // 3. Detailed Mistakes, Near-Matches, Extra Pronounced & Skipped Strips (Horizontally Scrollable)
+        if (comp != null && (comp.mistakePairs.isNotEmpty() || comp.nearMatchPairs.isNotEmpty() || comp.extraWords.isNotEmpty() || comp.missedWords.isNotEmpty())) {
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surface),
@@ -419,6 +427,39 @@ private fun VoiceSuccessBreakdownCard(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (comp.nearMatchPairs.isNotEmpty()) {
+                        Text(
+                            text = "MIC NEAR-MATCHES (ACCEPTED PHONETIC / HOMOPHONE)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.tealDark
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            comp.nearMatchPairs.take(24).forEach { pair ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = colors.tealLight,
+                                    border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.45f))
+                                ) {
+                                    Text(
+                                        text = "\"${pair.expected}\" ~ \"${pair.spoken}\"",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colors.tealDark,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                        if (comp.mistakePairs.isNotEmpty()) HorizontalDivider(color = colors.borderLight)
+                    }
                     if (comp.mistakePairs.isNotEmpty()) {
                         Text(
                             text = "MISTAKES MADE (EXPECTED → SPOKEN)",
@@ -679,6 +720,17 @@ private fun VoiceAlignmentComparisonCard(comp: VoiceComparisonStats) {
                             append(token.expectedWord.orEmpty())
                         }
                     }
+                    VoiceWordMatchStatus.NEAR_MATCH -> {
+                        withStyle(
+                            SpanStyle(
+                                background = colors.tealLight,
+                                color = colors.tealDark,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        ) {
+                            append(" ${token.expectedWord.orEmpty()}(~${token.spokenWord.orEmpty()}) ")
+                        }
+                    }
                     VoiceWordMatchStatus.MISTAKE -> {
                         withStyle(
                             SpanStyle(
@@ -768,6 +820,9 @@ private fun VoiceAlignmentComparisonCard(comp: VoiceComparisonStats) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LegendPill(dotColor = colors.green, label = "Matched")
+                if (comp.nearMatchCount > 0) {
+                    LegendPill(dotColor = colors.teal, label = "Near-Match (accepted)")
+                }
                 LegendPill(dotColor = colors.red, label = "Mistake (expected→spoken)")
                 LegendPill(dotColor = colors.inkMuted, label = "Missed (crossed)")
                 LegendPill(dotColor = colors.amber, label = "+Extra / ↻Repeat")
