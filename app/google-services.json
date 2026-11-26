@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "139816832746",
+    "project_id": "gen-lang-client-0888651242",
+    "storage_bucket": "gen-lang-client-0888651242.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:139816832746:android:17e31a76770579fc3e1193",
+        "android_client_info": {
+          "package_name": "com.aistudio.examset.ipejho"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjqXs7P8HVuyDsvRcihOVZPOFWi0B3CuE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -321,6 +321,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var brainLabInitialActivity by mutableStateOf<com.example.model.BrainLabActivity?>(null)
         private set
+    var showVoicePractice by mutableStateOf(false)
+        private set
 
     fun openVocabularyHub(languageFilter: String? = null) {
         val cleanLang = languageFilter?.trim()?.ifBlank { null }?.takeUnless { it.equals("All", ignoreCase = true) }
@@ -367,6 +369,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun closeBrainLab() {
         showBrainLab = false
         brainLabInitialActivity = null
+    }
+
+    fun openVoicePractice() {
+        showVoicePractice = true
+    }
+
+    fun closeVoicePractice() {
+        showVoicePractice = false
     }
 
     fun setVocabularyReminderEnabled(enabled: Boolean) {

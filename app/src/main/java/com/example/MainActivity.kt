@@ -17,12 +17,14 @@ import com.example.data.ThemeMode
 import com.example.ui.MainViewModel
 import com.example.ui.screens.HomeScreen
 import com.example.ui.theme.ExamSetTheme
+import com.example.util.configureAppCheck
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureAppCheck(this, intent)
         enableEdgeToEdge()
         handleOAuthIntent(intent)
         setContent {

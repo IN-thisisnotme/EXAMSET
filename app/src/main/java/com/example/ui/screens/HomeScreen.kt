@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Science
@@ -247,6 +248,9 @@ fun HomeScreen(
             viewModel.showAppGuide -> {
                 viewModel.closeAppGuide()
             }
+            viewModel.showVoicePractice -> {
+                viewModel.closeVoicePractice()
+            }
             viewModel.showBrainLab -> {
                 viewModel.closeBrainLab()
             }
@@ -332,7 +336,7 @@ fun HomeScreen(
     Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showBrainLab && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showBrainLab && !viewModel.showVoicePractice && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -624,6 +628,18 @@ fun HomeScreen(
                         },
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_brain_lab")
+                    )
+
+                    NavigationDrawerItem(
+                        label = { Text("Speak to Test (Voice)", fontWeight = FontWeight.Medium) },
+                        icon = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = colors.teal) },
+                        selected = viewModel.showVoicePractice,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            viewModel.openVoicePractice()
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp).testTag("drawer_voice_practice")
                     )
 
                     NavigationDrawerItem(
@@ -1971,6 +1987,19 @@ fun HomeScreen(
             viewModel = viewModel,
             initialActivity = viewModel.brainLabInitialActivity,
             onDismiss = { viewModel.closeBrainLab() }
+        )
+    }
+
+    if (viewModel.showVoicePractice) {
+        VoicePracticeScreen(
+            folders = folders,
+            studyNotes = studyNotes,
+            papers = savedPapers,
+            initialFolderId = lastActiveFolderId,
+            fontScaleMode = fontScaleMode,
+            onSelectFontScaleMode = { mode -> viewModel.setFontScaleMode(mode) },
+            onLogStudySeconds = { secs -> viewModel.recordStudySeconds(secs) },
+            onDismiss = { viewModel.closeVoicePractice() }
         )
     }
     }
