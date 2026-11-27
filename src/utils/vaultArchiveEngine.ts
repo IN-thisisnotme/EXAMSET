@@ -1,5 +1,6 @@
 import type { AppFontScaleMode, ColorSchemePreset, ThemeMode } from '../theme/colors';
 import type {
+  ActiveExamSession,
   AttemptRecord,
   ExamCountdownTarget,
   FolderItem,
@@ -33,10 +34,14 @@ import {
 } from '../types/phase5';
 import { mergeBrainLabStats } from './brainLabEngines';
 
+export const MAX_TEXT_BACKUP_BYTES = 32 * 1024 * 1024;
+export const MAX_ZIP_BACKUP_BYTES = 64 * 1024 * 1024;
+
 export interface WorkspaceBackupState {
   papers: QuestionPaper[];
   folders: FolderItem[];
   attempts: AttemptRecord[];
+  activeSessions?: Record<string, ActiveExamSession>;
   countdowns: ExamCountdownTarget[];
   studyNotes: StudyNoteRecord[];
   knowledgeCourses?: KnowledgeCoursesMap;
@@ -83,6 +88,7 @@ export interface VaultArchiveDocument {
       studyTodos: StudyTodoItem[];
       pomodoroConfig: PomodoroConfig;
       dailyAnalytics: Record<string, DailyStudyAnalytics>;
+      activeSessions?: Record<string, ActiveExamSession>;
     };
     brainAndPreferences: {
       brainLabStats: BrainLabStats;
@@ -141,8 +147,16 @@ function encodeUtf8Bytes(input: string): number[] {
 }
 
 export function sha256HexSync(input: string): string {
-  const msg = encodeUtf8Bytes(input);
-  const bitLen = msg.length * 8;
+  return sha256HexBytesSync(encodeUtf8Bytes(input));
+}
+
+export function sha256HexBytesSync(bytes: Uint8Array | number[]): string {
+  const rawLen = bytes.length;
+  const msg = new Array<number>(rawLen);
+  for (let i = 0; i < rawLen; i++) {
+    msg[i] = bytes[i] & 0xff;
+  }
+  const bitLen = rawLen * 8;
   msg.push(0x80);
   while ((msg.length % 64) !== 56) {
     msg.push(0);
@@ -325,6 +339,7 @@ export function buildVaultArchive(
       studyTodos: state.studyTodos,
       pomodoroConfig: state.pomodoroConfig,
       dailyAnalytics: state.dailyAnalytics,
+      activeSessions: state.activeSessions || {},
     },
     brainAndPreferences: {
       brainLabStats: state.brainLabStats,
@@ -534,6 +549,92 @@ function mergeSrsEntry(
   return b.lastReviewedAtMillis >= a.lastReviewedAtMillis ? b : a;
 }
 
+const VALID_THEME_MODES = new Set<ThemeMode>(['LIGHT', 'DARK', 'SYSTEM']);
+const VALID_COLOR_PRESETS = new Set<ColorSchemePreset>([
+  'NORDIC_SLATE',
+  'WARM_PAPER',
+  'FOREST_SAGE',
+  'ROYAL_INDIGO',
+  'OLED_OBSIDIAN',
+]);
+const VALID_FONT_SCALE_MODES = new Set<AppFontScaleMode>([
+  'COMPACT',
+  'STANDARD_FIXED',
+  'LARGE',
+  'EXTRA_LARGE',
+  'FOLLOW_SYSTEM',
+]);
+
+function canonicalVocabBucketKey(deck: VocabularyDeck): string {
+  const lang = (deck.language || 'English').trim().toLowerCase() || 'english';
+  const level = (deck.levelCode || 'CUSTOM').trim().toUpperCase();
+  const custom = level === 'CUSTOM' ? (deck.customLevelLabel || '').trim().toLowerCase() : '';
+  return `${lang}|${level}|${custom}`;
+}
+
+function normalizedVocabWordKey(entry: VocabularyDeck['entries'][number]): string {
+  const word = (entry.word || '').trim().toLowerCase();
+  const pos = (entry.partOfSpeech || '').trim().toLowerCase();
+  return word ? `${word}|${pos}` : entry.id;
+}
+
+function mergeVocabEntryForRestore(
+  existing: VocabularyDeck['entries'][number],
+  incoming: VocabularyDeck['entries'][number]
+): VocabularyDeck['entries'][number] {
+  const preferIncoming = (incoming.updatedAt || 0) > (existing.updatedAt || 0);
+
+  const seenExamples = new Set<string>();
+  const mergedExamples: VocabularyDeck['entries'][number]['examples'] = [];
+  for (const ex of [...(existing.examples || []), ...(incoming.examples || [])]) {
+    const sent = (ex.sentence || '').trim();
+    const key = sent.toLowerCase();
+    if (sent && !seenExamples.has(key)) {
+      seenExamples.add(key);
+      mergedExamples.push(ex);
+    }
+  }
+
+  const dedupStrings = (a: string[] = [], b: string[] = []): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of [...a, ...b]) {
+      const trimmed = String(raw || '').trim();
+      const k = trimmed.toLowerCase();
+      if (trimmed && !seen.has(k)) {
+        seen.add(k);
+        out.push(trimmed);
+      }
+    }
+    return out;
+  };
+
+  const pickScalar = (incVal: string | undefined, exVal: string | undefined): string => {
+    const incClean = (incVal || '').trim();
+    const exClean = (exVal || '').trim();
+    if (preferIncoming && incClean) return incVal || '';
+    return exClean ? exVal || '' : incVal || '';
+  };
+
+  return {
+    ...existing,
+    pronunciation: pickScalar(incoming.pronunciation, existing.pronunciation),
+    partOfSpeech: pickScalar(incoming.partOfSpeech, existing.partOfSpeech),
+    meaning: pickScalar(incoming.meaning, existing.meaning),
+    translation: pickScalar(incoming.translation, existing.translation),
+    translationLanguage: (existing.translationLanguage || '').trim()
+      ? existing.translationLanguage
+      : incoming.translationLanguage || '',
+    usageNote: pickScalar(incoming.usageNote, existing.usageNote),
+    examples: mergedExamples,
+    synonyms: dedupStrings(existing.synonyms, incoming.synonyms),
+    antonyms: dedupStrings(existing.antonyms, incoming.antonyms),
+    collocations: dedupStrings(existing.collocations, incoming.collocations),
+    isBookmarked: Boolean(existing.isBookmarked || incoming.isBookmarked),
+    updatedAt: Math.max(existing.updatedAt || 0, incoming.updatedAt || 0),
+  };
+}
+
 export function applyVaultRestoreToState(
   current: WorkspaceBackupState,
   preview: RestorePreview,
@@ -586,13 +687,28 @@ export function applyVaultRestoreToState(
         folderId: p.metadata.folderId && folderIds.has(p.metadata.folderId) ? p.metadata.folderId : 'default',
       },
     }));
+    const studyNotes = (Array.isArray(s.studyNotes) ? s.studyNotes : []).map((n) =>
+      normalizeStudyNoteForBackup({
+        ...n,
+        folderId: n.folderId && folderIds.has(n.folderId) ? n.folderId : 'default',
+      })
+    );
+    const rawSessions = s.plannerAndAnalytics?.activeSessions;
+    const activeSessions: Record<string, ActiveExamSession> =
+      rawSessions && typeof rawSessions === 'object' && !Array.isArray(rawSessions)
+        ? { ...rawSessions }
+        : {};
+    const incTheme = s.brainAndPreferences?.themeMode;
+    const incPreset = s.brainAndPreferences?.colorPreset;
+    const incFontScale = s.brainAndPreferences?.fontScaleMode;
 
     return {
       papers,
       folders,
       attempts: Array.isArray(s.attempts) ? s.attempts : [],
+      activeSessions,
       countdowns: Array.isArray(s.countdowns) ? s.countdowns : [],
-      studyNotes: (Array.isArray(s.studyNotes) ? s.studyNotes : []).map(normalizeStudyNoteForBackup),
+      studyNotes,
       knowledgeCourses: normalizeCourseMapForBackup(s.brainAndPreferences?.knowledgeCourses || {}),
       vocabDecks: s.vocabulary?.decks || [],
       vocabSrs: s.vocabulary?.srs || {},
@@ -608,9 +724,24 @@ export function applyVaultRestoreToState(
       brainLabStats: { ...EMPTY_BRAIN_LAB_STATS, ...(s.brainAndPreferences?.brainLabStats || {}) },
       brainLabSettings: { ...DEFAULT_BRAIN_LAB_SETTINGS, ...(s.brainAndPreferences?.brainLabSettings || {}) },
       dismissedTips: s.brainAndPreferences?.dismissedTips || [],
-      themeMode: s.brainAndPreferences?.themeMode || current.themeMode,
-      colorPreset: s.brainAndPreferences?.colorPreset || current.colorPreset,
-      fontScaleMode: s.brainAndPreferences?.fontScaleMode || current.fontScaleMode,
+      themeMode:
+        incTheme && VALID_THEME_MODES.has(incTheme)
+          ? incTheme
+          : VALID_THEME_MODES.has(current.themeMode)
+            ? current.themeMode
+            : 'LIGHT',
+      colorPreset:
+        incPreset && VALID_COLOR_PRESETS.has(incPreset)
+          ? incPreset
+          : VALID_COLOR_PRESETS.has(current.colorPreset)
+            ? current.colorPreset
+            : 'NORDIC_SLATE',
+      fontScaleMode:
+        incFontScale && VALID_FONT_SCALE_MODES.has(incFontScale)
+          ? incFontScale
+          : VALID_FONT_SCALE_MODES.has(current.fontScaleMode)
+            ? current.fontScaleMode
+            : 'STANDARD_FIXED',
     };
   }
 
@@ -654,6 +785,23 @@ export function applyVaultRestoreToState(
   for (const a of s.attempts || []) addAttempt(a);
   const mergedAttempts = Array.from(attemptByKey.values()).sort((a, b) => b.submittedAt - a.submittedAt);
 
+  // Active exam sessions merge (per paperId, preserve local or take incoming with more progress)
+  const mergedActiveSessions: Record<string, ActiveExamSession> = {
+    ...(current.activeSessions || {}),
+  };
+  for (const [paperId, incSess] of Object.entries(s.plannerAndAnalytics?.activeSessions || {})) {
+    if (!incSess || typeof incSess !== 'object') continue;
+    const exSess = mergedActiveSessions[paperId];
+    if (
+      !exSess ||
+      (incSess.startedAt || 0) > (exSess.startedAt || 0) ||
+      ((incSess.startedAt || 0) === (exSess.startedAt || 0) &&
+        (incSess.elapsedSeconds || 0) > (exSess.elapsedSeconds || 0))
+    ) {
+      mergedActiveSessions[paperId] = incSess;
+    }
+  }
+
   // Countdowns union by title+date+time+timezoneMode
   const countdownMap = new Map<string, ExamCountdownTarget>();
   for (const cd of current.countdowns) {
@@ -667,11 +815,22 @@ export function applyVaultRestoreToState(
     if (!countdownMap.has(k)) countdownMap.set(k, cd);
   }
 
-  // Study Notes merge (taking newer rawContent + unioning bookmarks/mastery + merging SRS + preserving course)
+  // Study Notes merge (taking newer rawContent + unioning bookmarks/mastery + merging SRS + preserving course + validating folderId)
   const noteMap = new Map<string, StudyNoteRecord>();
-  for (const n of current.studyNotes) noteMap.set(n.id, normalizeStudyNoteForBackup(n));
+  for (const n of current.studyNotes) {
+    noteMap.set(
+      n.id,
+      normalizeStudyNoteForBackup({
+        ...n,
+        folderId: n.folderId && validFolderIds.has(n.folderId) ? n.folderId : 'default',
+      })
+    );
+  }
   for (const rawInc of s.studyNotes || []) {
-    const inc = normalizeStudyNoteForBackup(rawInc);
+    const inc = normalizeStudyNoteForBackup({
+      ...rawInc,
+      folderId: rawInc.folderId && validFolderIds.has(rawInc.folderId) ? rawInc.folderId : 'default',
+    });
     const ex = noteMap.get(inc.id);
     if (!ex) {
       noteMap.set(inc.id, inc);
@@ -705,26 +864,73 @@ export function applyVaultRestoreToState(
     normalizeCourseMapForBackup(s.brainAndPreferences?.knowledgeCourses || {})
   );
 
-  // Vocab Decks & SRS union
-  const deckMap = new Map<string, VocabularyDeck>();
-  for (const d of current.vocabDecks) deckMap.set(d.id, d);
+  // [DEPRECATED 2026-11-27] Reason: Matching vocabulary decks only by id and skipping existing word|partOfSpeech entries causes cross-device duplicate decks and drops entry edits/examples/bookmarks. Restore if: Strict deck-ID-only non-overwriting merge is explicitly needed.
+  // const deckMap = new Map<string, VocabularyDeck>();
+  // for (const d of current.vocabDecks) deckMap.set(d.id, d);
+  // for (const incDeck of s.vocabulary?.decks || []) { ... }
+  // const mergedVocabSrs: Record<string, Record<string, FlashcardSrsState>> = {};
+  // for (const [deckId, incMap] of Object.entries(s.vocabulary?.srs || {})) { ... }
+
+  // Canonical Vocab Decks (matching by id OR language|levelCode|customLevelLabel) & SRS remap
+  const mergedDecks = current.vocabDecks.map((d) => ({ ...d, entries: [...(d.entries || [])] }));
+  const deckIdRemap = new Map<string, string>();
+  const entryIdRemap = new Map<string, string>();
+
   for (const incDeck of s.vocabulary?.decks || []) {
-    const ex = deckMap.get(incDeck.id);
-    if (!ex) {
-      deckMap.set(incDeck.id, incDeck);
+    const incBucket = canonicalVocabBucketKey(incDeck);
+    const matchIdx = mergedDecks.findIndex(
+      (ex) => ex.id === incDeck.id || canonicalVocabBucketKey(ex) === incBucket
+    );
+    if (matchIdx < 0) {
+      mergedDecks.push({ ...incDeck, entries: [...(incDeck.entries || [])] });
+      deckIdRemap.set(incDeck.id, incDeck.id);
     } else {
-      const wordMap = new Map<string, VocabularyDeck['entries'][number]>();
-      for (const e of ex.entries) {
-        wordMap.set(`${e.word.trim().toLowerCase()}|${e.partOfSpeech.trim().toLowerCase()}`, e);
-      }
-      for (const e of incDeck.entries || []) {
-        const key = `${e.word.trim().toLowerCase()}|${e.partOfSpeech.trim().toLowerCase()}`;
-        if (!wordMap.has(key)) wordMap.set(key, e);
-      }
-      deckMap.set(incDeck.id, {
-        ...(incDeck.updatedAt > ex.updatedAt ? incDeck : ex),
-        entries: Array.from(wordMap.values()),
+      const exDeck = mergedDecks[matchIdx];
+      deckIdRemap.set(incDeck.id, exDeck.id);
+      const entries = [...(exDeck.entries || [])];
+      const idxByWordKey = new Map<string, number>();
+      entries.forEach((entry, idx) => {
+        const key = normalizedVocabWordKey(entry);
+        if (!idxByWordKey.has(key)) idxByWordKey.set(key, idx);
       });
+
+      for (const incEntry of incDeck.entries || []) {
+        const key = normalizedVocabWordKey(incEntry);
+        let existingEntryIdx = idxByWordKey.get(key);
+        if (existingEntryIdx === undefined) {
+          const byIdIdx = entries.findIndex((e) => e.id === incEntry.id);
+          if (byIdIdx >= 0) existingEntryIdx = byIdIdx;
+        }
+        if (existingEntryIdx === undefined) {
+          entries.push(incEntry);
+          idxByWordKey.set(key, entries.length - 1);
+        } else {
+          const curEntry = entries[existingEntryIdx];
+          entryIdRemap.set(incEntry.id, curEntry.id);
+          entries[existingEntryIdx] = mergeVocabEntryForRestore(curEntry, incEntry);
+        }
+      }
+
+      entries.sort((a, b) => {
+        const wCmp = (a.word || '').trim().toLowerCase().localeCompare((b.word || '').trim().toLowerCase());
+        if (wCmp !== 0) return wCmp;
+        const pCmp = (a.partOfSpeech || '').trim().toLowerCase().localeCompare((b.partOfSpeech || '').trim().toLowerCase());
+        if (pCmp !== 0) return pCmp;
+        return (a.createdAt || 0) - (b.createdAt || 0);
+      });
+
+      mergedDecks[matchIdx] = {
+        ...exDeck,
+        translationLanguage: exDeck.translationLanguage?.trim()
+          ? exDeck.translationLanguage
+          : incDeck.translationLanguage || '',
+        languageVariant: exDeck.languageVariant?.trim()
+          ? exDeck.languageVariant
+          : incDeck.languageVariant || '',
+        domain: exDeck.domain?.trim() ? exDeck.domain : incDeck.domain || '',
+        entries,
+        updatedAt: Math.max(exDeck.updatedAt || 0, incDeck.updatedAt || 0),
+      };
     }
   }
 
@@ -732,13 +938,15 @@ export function applyVaultRestoreToState(
   for (const [deckId, map] of Object.entries(current.vocabSrs)) {
     mergedVocabSrs[deckId] = { ...map };
   }
-  for (const [deckId, incMap] of Object.entries(s.vocabulary?.srs || {})) {
-    const target = mergedVocabSrs[deckId] || {};
-    for (const [wordId, st] of Object.entries(incMap)) {
-      const best = mergeSrsEntry(target[wordId], st);
-      if (best) target[wordId] = best;
+  for (const [rawDeckId, incMap] of Object.entries(s.vocabulary?.srs || {})) {
+    const resolvedDeckId = deckIdRemap.get(rawDeckId) || rawDeckId;
+    const target = mergedVocabSrs[resolvedDeckId] || {};
+    for (const [rawWordId, st] of Object.entries(incMap)) {
+      const resolvedWordId = entryIdRemap.get(rawWordId) || rawWordId;
+      const best = mergeSrsEntry(target[resolvedWordId], st);
+      if (best) target[resolvedWordId] = best;
     }
-    mergedVocabSrs[deckId] = target;
+    mergedVocabSrs[resolvedDeckId] = target;
   }
 
   // Headword Inbox union
@@ -790,10 +998,11 @@ export function applyVaultRestoreToState(
     papers: Array.from(paperMap.values()),
     folders: mergedFolders,
     attempts: mergedAttempts,
+    activeSessions: mergedActiveSessions,
     countdowns: Array.from(countdownMap.values()),
     studyNotes: Array.from(noteMap.values()).sort((a, b) => b.updatedAt - a.updatedAt),
     knowledgeCourses: mergedKnowledgeCourses,
-    vocabDecks: Array.from(deckMap.values()),
+    vocabDecks: mergedDecks,
     vocabSrs: mergedVocabSrs,
     englishVariant: current.englishVariant || s.vocabulary?.englishVariant || 'UK',
     headwordInbox: Array.from(inboxMap.values()),

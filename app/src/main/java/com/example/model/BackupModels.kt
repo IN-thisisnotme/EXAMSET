@@ -33,6 +33,7 @@ enum class RestoreMode(val label: String, val subtitle: String) {
 data class BackupCounts(
     val papersCount: Int = 0,
     val notesCount: Int = 0,
+    val knowledgeCoursesCount: Int = 0,
     val foldersCount: Int = 0,
     val attemptsCount: Int = 0,
     val analyticsDaysCount: Int = 0,
@@ -70,7 +71,8 @@ data class RestorePreview(
     val checksumDetails: String,
     val manifest: BackupManifest,
     val tempFile: File?,
-    val legacyJsonContent: String? = null
+    val legacyJsonContent: String? = null,
+    val isWebVaultJson: Boolean = false
 )
 
 data class LinkedCloudFileStatus(

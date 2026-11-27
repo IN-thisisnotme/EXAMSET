@@ -631,6 +631,7 @@ const ExamSetWorkspace: React.FC = () => {
       papers,
       folders,
       attempts,
+      activeSessions: ExamStore.getAllActiveSessions(),
       countdowns,
       studyNotes,
       knowledgeCourses,
@@ -799,14 +800,18 @@ const ExamSetWorkspace: React.FC = () => {
     showToast('Deleted local vault snapshot');
   };
 
-  const handleExecuteRestore = (preview: RestorePreview, mode: RestoreMode) => {
+  const handleExecuteRestore = async (preview: RestorePreview, mode: RestoreMode) => {
+    const latestState: WorkspaceBackupState = {
+      ...workspaceBackupState,
+      activeSessions: ExamStore.getAllActiveSessions(),
+    };
     if (mode === 'FULL_REPLACE') {
-      const preArchive = buildVaultArchive(workspaceBackupState, 'Pre-Replace Safety Guard');
-      void handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
+      const preArchive = buildVaultArchive(latestState, 'Pre-Replace Safety Guard');
+      await handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
     }
 
     const merged = applyVaultRestoreToState(
-      workspaceBackupState,
+      latestState,
       preview,
       mode,
       DEFAULT_ROOT_FOLDER
@@ -826,7 +831,10 @@ const ExamSetWorkspace: React.FC = () => {
     ExamStore.saveFolders(merged.folders);
 
     setAttempts(merged.attempts);
-    localStorage.setItem('examset_attempts_v2', JSON.stringify(merged.attempts));
+    // [DEPRECATED 2026-11-27] Reason: Bypassed ExamStore guarded writer when persisting restored attempts. Restore if: Direct localStorage key access is required.
+    // localStorage.setItem('examset_attempts_v2', JSON.stringify(merged.attempts));
+    ExamStore.saveAttempts(merged.attempts);
+    ExamStore.saveAllActiveSessions(merged.activeSessions || {});
 
     setCountdowns(merged.countdowns);
     ExamStore.saveCountdowns(merged.countdowns);

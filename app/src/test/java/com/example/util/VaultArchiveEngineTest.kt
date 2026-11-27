@@ -883,7 +883,7 @@ class VaultArchiveEngineTest {
 
     @Test
     fun `pruneExportCacheDir removes expired files while keeping excluded and fresh files`() {
-        val exportDir = File(context.cacheDir, "vault_export_cache").apply { mkdirs() }
+        val exportDir = File(context.cacheDir, "vault_exports").apply { mkdirs() }
         val staleFile = File(exportDir, "inspect_old.tmp").apply {
             writeText("stale")
             setLastModified(System.currentTimeMillis() - 120_000L)

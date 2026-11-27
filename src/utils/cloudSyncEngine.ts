@@ -6,6 +6,7 @@ import type {
   TokenStoragePreference,
   TrustedTimeStatus,
 } from '../types/phase5';
+import { MAX_TEXT_BACKUP_BYTES, MAX_ZIP_BACKUP_BYTES } from './vaultArchiveEngine';
 
 const STORAGE_KEYS = {
   GOOGLE_CLIENT_ID: 'examset_sync_google_client_id_v1',
@@ -326,6 +327,11 @@ export const CloudSyncEngine = {
     return typeof win.showSaveFilePicker === 'function' && typeof win.showOpenFilePicker === 'function';
   },
 
+  isFileProtocolOrigin(): boolean {
+    if (typeof window === 'undefined') return false;
+    return window.location.protocol === 'file:' || window.location.origin === 'null';
+  },
+
   isEmbeddedCrossOriginFrame(): boolean {
     if (typeof window === 'undefined') return false;
     try {
@@ -459,6 +465,11 @@ export const CloudSyncEngine = {
       if (!handle) return null;
       const file = await handle.getFile?.();
       if (!file) throw new Error('Could not read selected file.');
+      if (file.size > MAX_TEXT_BACKUP_BYTES) {
+        throw new Error(
+          `Selected disk file exceeds the ${MAX_TEXT_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
+        );
+      }
       const rawJson = await file.text();
       await saveDiskFileHandle(handle);
       const fileName = handle.name || file.name || 'ExamSet_Live_Sync.examset.json';
@@ -534,6 +545,11 @@ export const CloudSyncEngine = {
     }
     const file = await handle.getFile?.();
     if (!file) throw new Error('Unable to read linked file.');
+    if (file.size > MAX_TEXT_BACKUP_BYTES) {
+      throw new Error(
+        `Linked disk file exceeds the ${MAX_TEXT_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
+      );
+    }
     const rawJson = await file.text();
     const fileName = handle.name || file.name || 'Linked Disk Archive';
     return {
@@ -765,6 +781,11 @@ export const CloudSyncEngine = {
   async startCloudOAuth(provider: CloudProviderType): Promise<CloudAccountStatus> {
     if (typeof window === 'undefined') {
       throw new Error('OAuth requires a browser window.');
+    }
+    if (this.isFileProtocolOrigin()) {
+      throw new Error(
+        'OAuth2 popups cannot redirect to a local file:// standalone HTML page. Use Quick Disk Sync or Download/Import .examset.json instead.'
+      );
     }
     const clientId = this.getClientId(provider);
     if (!clientId) {
@@ -1185,7 +1206,9 @@ export const CloudSyncEngine = {
 
       if (provider === 'GOOGLE_DRIVE') {
         const folderId = await this.ensureGoogleDriveFolder(token);
-        const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+        const q = encodeURIComponent(
+          `'${folderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`
+        );
         const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=15&fields=files(id,name,size,modifiedTime)`;
         const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const json = (await resp.json()) as {
@@ -1235,8 +1258,19 @@ export const CloudSyncEngine = {
     }
   },
 
-  async downloadCloudBackupText(remote: RemoteCloudBackupFile): Promise<string> {
+  async downloadCloudBackupPayload(
+    remote: RemoteCloudBackupFile
+  ): Promise<{ bytes: Uint8Array; isZip: boolean }> {
     const token = await this.ensureValidAccessToken(remote.provider);
+    const maxBytes = remote.name.toLowerCase().endsWith('.zip')
+      ? MAX_ZIP_BACKUP_BYTES
+      : MAX_TEXT_BACKUP_BYTES;
+    if (remote.sizeBytes > maxBytes) {
+      throw new Error(
+        `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
+      );
+    }
+
     const url =
       remote.provider === 'GOOGLE_DRIVE'
         ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(remote.remoteId)}?alt=media`
@@ -1248,6 +1282,80 @@ export const CloudSyncEngine = {
     if (!resp.ok) {
       throw new Error(`Failed to download remote archive (${resp.status}).`);
     }
-    return await resp.text();
+
+    const headerLen = Number(resp.headers?.get?.('content-length') || 0);
+    if (Number.isFinite(headerLen) && headerLen > maxBytes) {
+      throw new Error(
+        `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
+      );
+    }
+
+    let bytes: Uint8Array;
+    if (resp.body && typeof resp.body.getReader === 'function') {
+      const reader = resp.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            total += value.byteLength;
+            if (total > maxBytes) {
+              await reader.cancel();
+              throw new Error(
+                `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
+              );
+            }
+            chunks.push(value);
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      bytes = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        bytes.set(c, off);
+        off += c.byteLength;
+      }
+    } else {
+      const buf = await resp.arrayBuffer();
+      if (buf.byteLength > maxBytes) {
+        throw new Error(
+          `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
+        );
+      }
+      bytes = new Uint8Array(buf);
+    }
+
+    const isZip =
+      (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) ||
+      remote.name.toLowerCase().endsWith('.zip');
+    return { bytes, isZip };
+  },
+
+  async downloadCloudBackupText(remote: RemoteCloudBackupFile): Promise<string> {
+    const { bytes, isZip } = await this.downloadCloudBackupPayload(remote);
+    if (isZip) {
+      throw new Error('Remote file is a compressed .zip archive; use downloadCloudBackupPayload instead.');
+    }
+    return new TextDecoder('utf-8').decode(bytes);
+  },
+
+  async deleteCloudBackup(remote: RemoteCloudBackupFile): Promise<void> {
+    const token = await this.ensureValidAccessToken(remote.provider);
+    const url =
+      remote.provider === 'GOOGLE_DRIVE'
+        ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(remote.remoteId)}`
+        : `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(remote.remoteId)}`;
+
+    const resp = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok && resp.status !== 204) {
+      throw new Error(`Failed to delete remote archive (HTTP ${resp.status}).`);
+    }
   },
 };

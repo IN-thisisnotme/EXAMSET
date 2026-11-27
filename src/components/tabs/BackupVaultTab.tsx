@@ -43,8 +43,11 @@ import {
   buildVaultArchive,
   computeBackupCounts,
   inspectVaultArchiveText,
+  MAX_TEXT_BACKUP_BYTES,
+  MAX_ZIP_BACKUP_BYTES,
   type WorkspaceBackupState,
 } from '../../utils/vaultArchiveEngine';
+import { inspectAndroidZipArchive, isZipMagicBytes } from '../../utils/zipVaultReader';
 
 interface BackupVaultTabProps {
   workspaceState: WorkspaceBackupState;
@@ -54,7 +57,7 @@ interface BackupVaultTabProps {
   onChangeAutoBackupSchedule: (schedule: AutoBackupSchedule) => void;
   onCreateSnapshot: (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => void | Promise<void>;
   onDeleteSnapshot: (snapshotId: string) => void | Promise<void>;
-  onExecuteRestore: (preview: RestorePreview, mode: RestoreMode) => void;
+  onExecuteRestore: (preview: RestorePreview, mode: RestoreMode) => void | Promise<void>;
   onNotify: (msg: string) => void;
 }
 
@@ -112,14 +115,18 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
   const [opBusyLabel, setOpBusyLabel] = useState<string | null>(null);
   const [opFeedback, setOpFeedback] = useState<{ ok: boolean; message: string } | null>(null);
 
-  // Client ID Setup Modal State
+  // Client ID Setup Modal & Safety Confirmation States
   const [configProvider, setConfigProvider] = useState<CloudProviderType | null>(null);
   const [clientIdDraft, setClientIdDraft] = useState('');
   const [tokenPrefDraft, setTokenPrefDraft] = useState<TokenStoragePreference>('SESSION');
   const [copiedUri, setCopiedUri] = useState<string | null>(null);
+  const [pendingDeleteSnapshot, setPendingDeleteSnapshot] = useState<VaultSnapshotRecord | null>(null);
+  const [pendingDeleteRemote, setPendingDeleteRemote] = useState<RemoteCloudBackupFile | null>(null);
+  const [unverifiedConfirmOpen, setUnverifiedConfirmOpen] = useState(false);
 
   const liveCounts = useMemo(() => computeBackupCounts(workspaceState), [workspaceState]);
   const isEmbeddedFrame = useMemo(() => CloudSyncEngine.isEmbeddedCrossOriginFrame(), []);
+  const isStandaloneFileOrigin = useMemo(() => CloudSyncEngine.isFileProtocolOrigin(), []);
   const activeOrigin = useMemo(
     () => (typeof window !== 'undefined' ? window.location.origin : ''),
     []
@@ -160,19 +167,30 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     onNotify('Downloaded SHA-256 verified Backup Vault archive');
   };
 
-  const handleSaveLocalCheckpoint = () => {
+  const handleSaveLocalCheckpoint = async () => {
     const { document, rawJson } = buildVaultArchive(workspaceState, 'Browser Local Vault');
     const label =
       customSnapshotLabel.trim() ||
       `Checkpoint (${document.manifest.counts.papersCount} Sets, ${document.manifest.counts.notesCount} Notes, ${document.manifest.counts.vocabWordsCount} Words)`;
-    onCreateSnapshot(label, 'manual', rawJson);
-    setCustomSnapshotLabel('');
-    onNotify('Saved verified snapshot to Browser Local Vault');
+    try {
+      await onCreateSnapshot(label, 'manual', rawJson);
+      setCustomSnapshotLabel('');
+      onNotify('Saved verified snapshot to Browser Local Vault');
+    } catch (err) {
+      onNotify(err instanceof Error ? err.message : 'Unable to save local snapshot.');
+    }
   };
 
   const handleInspectRaw = (rawText: string, sourceLabel: string) => {
     setInspectError(null);
+    setUnverifiedConfirmOpen(false);
     try {
+      const byteEstimate = new TextEncoder().encode(rawText || '').byteLength;
+      if (byteEstimate > MAX_TEXT_BACKUP_BYTES) {
+        throw new Error(
+          `Backup text exceeds the ${MAX_TEXT_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
+        );
+      }
       const preview = inspectVaultArchiveText(rawText, sourceLabel);
       setRestorePreview(preview);
     } catch (err) {
@@ -181,16 +199,42 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      handleInspectRaw(text, file.name);
-    };
-    reader.readAsText(file);
     e.target.value = '';
+    if (!file) return;
+
+    setInspectError(null);
+    setUnverifiedConfirmOpen(false);
+    const isLikelyZipName = file.name.toLowerCase().endsWith('.zip');
+    const maxBytes = isLikelyZipName ? MAX_ZIP_BACKUP_BYTES : MAX_TEXT_BACKUP_BYTES;
+    if (file.size > maxBytes) {
+      setRestorePreview(null);
+      setInspectError(
+        `Selected file (${formatBytes(file.size)}) exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
+      );
+      return;
+    }
+
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      if (isZipMagicBytes(bytes) || isLikelyZipName) {
+        if (bytes.byteLength > MAX_ZIP_BACKUP_BYTES) {
+          throw new Error(
+            `ZIP archive exceeds the ${MAX_ZIP_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
+          );
+        }
+        const preview = await inspectAndroidZipArchive(bytes, file.name);
+        setRestorePreview(preview);
+      } else {
+        const text = new TextDecoder('utf-8').decode(bytes);
+        handleInspectRaw(text, file.name);
+      }
+    } catch (err) {
+      setRestorePreview(null);
+      setInspectError(err instanceof Error ? err.message : 'Unable to inspect selected archive.');
+    }
   };
 
   const handleRestoreSnapshot = async (snap: VaultSnapshotRecord) => {
@@ -217,12 +261,28 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     }
   };
 
-  const confirmRestore = () => {
+  const executeConfirmedRestore = async () => {
     if (!restorePreview) return;
-    onExecuteRestore(restorePreview, restoreMode);
-    setRestorePreview(null);
-    setRawPasteText('');
-    setPasteMode(false);
+    setUnverifiedConfirmOpen(false);
+    try {
+      await onExecuteRestore(restorePreview, restoreMode);
+      setRestorePreview(null);
+      setRawPasteText('');
+      setPasteMode(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Restore failed cleanly without data loss.';
+      setInspectError(msg);
+      onNotify(msg);
+    }
+  };
+
+  const handleRestoreButtonClick = () => {
+    if (!restorePreview) return;
+    if (!restorePreview.checksumVerified) {
+      setUnverifiedConfirmOpen(true);
+      return;
+    }
+    void executeConfirmedRestore();
   };
 
   // --- Computer Disk & Cloud-Synced Folder Handlers ---
@@ -397,16 +457,45 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
 
   const handleRestoreRemoteBackup = async (remote: RemoteCloudBackupFile) => {
     setOpFeedback(null);
+    setInspectError(null);
+    setUnverifiedConfirmOpen(false);
     setOpBusyLabel(`Downloading "${remote.name}"…`);
+    const label = `${remote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'OneDrive'}: ${remote.name}`;
     try {
-      const rawJson = await CloudSyncEngine.downloadCloudBackupText(remote);
-      handleInspectRaw(rawJson, `${remote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'OneDrive'}: ${remote.name}`);
+      const { bytes, isZip } = await CloudSyncEngine.downloadCloudBackupPayload(remote);
+      if (isZip) {
+        const preview = await inspectAndroidZipArchive(bytes, label);
+        setRestorePreview(preview);
+      } else {
+        const rawJson = new TextDecoder('utf-8').decode(bytes);
+        handleInspectRaw(rawJson, label);
+      }
       setOpFeedback({
         ok: true,
         message: `Downloaded "${remote.name}" — verify checksum & select restore mode.`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Download failed.';
+      setOpFeedback({ ok: false, message: msg });
+    } finally {
+      setOpBusyLabel(null);
+    }
+  };
+
+  const handleDeleteRemoteBackup = async (remote: RemoteCloudBackupFile) => {
+    setPendingDeleteRemote(null);
+    setOpFeedback(null);
+    setOpBusyLabel(`Deleting "${remote.name}"…`);
+    try {
+      await CloudSyncEngine.deleteCloudBackup(remote);
+      setRemoteBackups((prev) =>
+        prev.filter((r) => !(r.provider === remote.provider && r.remoteId === remote.remoteId))
+      );
+      const msg = `Deleted remote archive "${remote.name}".`;
+      setOpFeedback({ ok: true, message: msg });
+      onNotify(msg);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete remote archive.';
       setOpFeedback({ ok: false, message: msg });
     } finally {
       setOpBusyLabel(null);
@@ -498,7 +587,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={() => openProviderConfigModal(status.provider)}
-                className="min-h-[40px] px-3 py-1.5 rounded-lg border text-xs font-bold"
+                className="min-h-[44px] px-3 py-1.5 rounded-lg border text-xs font-bold"
                 style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
               >
                 Client ID Setup
@@ -510,8 +599,13 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     ? void handleConnectProvider(status.provider)
                     : openProviderConfigModal(status.provider)
                 }
-                disabled={Boolean(opBusyLabel)}
-                className="min-h-[40px] px-3.5 py-1.5 rounded-lg text-xs font-black text-white disabled:opacity-50"
+                disabled={Boolean(opBusyLabel) || isStandaloneFileOrigin}
+                title={
+                  isStandaloneFileOrigin
+                    ? 'OAuth redirects are unsupported from file:// pages; use Quick Disk Sync instead.'
+                    : undefined
+                }
+                className="min-h-[44px] px-3.5 py-1.5 rounded-lg text-xs font-black text-white disabled:opacity-50"
                 style={{ backgroundColor: accent }}
               >
                 {status.hasClientIdConfigured ? 'Connect Account' : 'Setup & Connect'}
@@ -576,7 +670,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={handleSaveLocalCheckpoint}
+            onClick={() => void handleSaveLocalCheckpoint()}
             className="min-h-[44px] flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black shadow-sm"
             style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
           >
@@ -603,14 +697,14 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
             }}
           >
             <Upload className="w-4 h-4" style={{ color: colors.teal }} />
-            Import &amp; Inspect
+            Import (.json / Android .zip)
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json,.examset.json"
+            accept=".json,.examset.json,.zip,.examset.zip"
             className="hidden"
-            onChange={handleFileChange}
+            onChange={(ev) => void handleFileChange(ev)}
           />
         </div>
       </div>
@@ -807,6 +901,21 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
           <div className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
             Direct OAuth2 Cloud Drive Sync (BYO Web Client ID)
           </div>
+          {isStandaloneFileOrigin && (
+            <div
+              className="p-3 rounded-xl border flex items-start gap-2.5 text-xs font-semibold"
+              style={{
+                backgroundColor: colors.amberLight,
+                borderColor: colors.amber,
+                color: colors.inkBold,
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: colors.amber }} />
+              <span>
+                Running from a local <code className="font-mono">file://</code> standalone HTML page: Google &amp; Microsoft OAuth popups cannot redirect to a <code className="font-mono">null</code> origin. Use <strong>Quick Disk Sync</strong> or Download/Import <code className="font-mono">.examset.json</code> / Android <code className="font-mono">.examset.zip</code> above instead.
+              </span>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {renderCloudProviderCard(driveStatus)}
             {renderCloudProviderCard(oneDriveStatus)}
@@ -848,18 +957,36 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                         : ''}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleRestoreRemoteBackup(remote)}
-                    className="min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-bold flex-shrink-0"
-                    style={{
-                      backgroundColor: colors.surface,
-                      borderColor: colors.teal,
-                      color: colors.tealDark,
-                    }}
-                  >
-                    Inspect &amp; Restore
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => void handleRestoreRemoteBackup(remote)}
+                      disabled={Boolean(opBusyLabel)}
+                      className="min-h-[44px] px-3 py-1.5 rounded-lg border text-xs font-bold disabled:opacity-50"
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderColor: colors.teal,
+                        color: colors.tealDark,
+                      }}
+                    >
+                      Inspect &amp; Restore
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDeleteRemote(remote)}
+                      disabled={Boolean(opBusyLabel)}
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border disabled:opacity-50"
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderColor: colors.border,
+                        color: colors.red,
+                      }}
+                      aria-label={`Delete remote backup ${remote.name}`}
+                      title={`Delete ${remote.name} from cloud`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -942,8 +1069,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               />
               <button
                 type="button"
-                onClick={handleSaveLocalCheckpoint}
-                className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black flex-shrink-0"
+                onClick={() => void handleSaveLocalCheckpoint()}
+                className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black flex-shrink-0"
                 style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 Save Snapshot
@@ -1108,12 +1235,23 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
 
               <button
                 type="button"
-                onClick={confirmRestore}
+                onClick={handleRestoreButtonClick}
                 className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2"
-                style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
+                style={{
+                  backgroundColor: restorePreview.checksumVerified ? colors.teal : colors.amber,
+                  color: colors.onAccentText,
+                }}
               >
-                <CheckCircle2 className="w-4 h-4" />
-                {restoreMode === 'SMART_MERGE' ? 'Apply Smart Merge' : 'Save Safety Snapshot & Clean Replace'}
+                {restorePreview.checksumVerified ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4" />
+                )}
+                {!restorePreview.checksumVerified
+                  ? 'Review Integrity Warning & Restore…'
+                  : restoreMode === 'SMART_MERGE'
+                  ? 'Apply Smart Merge'
+                  : 'Save Safety Snapshot & Clean Replace'}
               </button>
             </div>
           )}
@@ -1176,7 +1314,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       <button
                         type="button"
                         onClick={() => void handleRestoreSnapshot(snap)}
-                        className="min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold"
+                        className="min-h-[44px] px-3 py-1.5 rounded-lg text-xs font-bold"
                         style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                       >
                         Restore
@@ -1184,22 +1322,23 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       <button
                         type="button"
                         onClick={() => void handleDownloadSnapshot(snap)}
-                        className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg border"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border"
                         style={{
                           backgroundColor: colors.surface,
                           borderColor: colors.border,
                           color: colors.inkBold,
                         }}
                         title="Download this snapshot JSON"
+                        aria-label={`Download snapshot ${snap.label}`}
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => void onDeleteSnapshot(snap.id)}
-                        className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg"
+                        onClick={() => setPendingDeleteSnapshot(snap)}
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg"
                         style={{ color: colors.red }}
-                        aria-label="Delete snapshot"
+                        aria-label={`Delete snapshot ${snap.label}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1354,6 +1493,141 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               >
                 Save Client Config
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unverified Archive Secondary Confirmation Modal */}
+      {unverifiedConfirmOpen && restorePreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
+          onClick={() => setUnverifiedConfirmOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: colors.red }} />
+                <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
+                  Restore Unverified Archive?
+                </h3>
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: colors.muted }}>
+                {restorePreview.checksumDetails} Restoring an incomplete or modified backup can corrupt your workspace. Continue with{' '}
+                <strong>{restoreMode === 'FULL_REPLACE' ? 'Clean Replace' : 'Smart Merge'}</strong>?
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUnverifiedConfirmOpen(false)}
+                  className="min-h-[44px] px-4 py-2 rounded-lg border text-xs font-bold"
+                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void executeConfirmedRestore()}
+                  className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black text-white"
+                  style={{ backgroundColor: colors.red }}
+                >
+                  Restore Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Local Snapshot Delete Confirmation Modal */}
+      {pendingDeleteSnapshot && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
+          onClick={() => setPendingDeleteSnapshot(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 space-y-3">
+              <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
+                Delete Local Snapshot?
+              </h3>
+              <p className="text-xs leading-relaxed" style={{ color: colors.muted }}>
+                Remove <strong>{pendingDeleteSnapshot.label}</strong> from browser storage? This cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteSnapshot(null)}
+                  className="min-h-[44px] px-4 py-2 rounded-lg border text-xs font-bold"
+                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetId = pendingDeleteSnapshot.id;
+                    setPendingDeleteSnapshot(null);
+                    void onDeleteSnapshot(targetId);
+                  }}
+                  className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black text-white"
+                  style={{ backgroundColor: colors.red }}
+                >
+                  Delete Snapshot
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remote Cloud Backup Delete Confirmation Modal */}
+      {pendingDeleteRemote && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
+          onClick={() => setPendingDeleteRemote(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 space-y-3">
+              <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
+                Delete Cloud Backup?
+              </h3>
+              <p className="text-xs leading-relaxed" style={{ color: colors.muted }}>
+                Permanently delete <strong>{pendingDeleteRemote.name}</strong> from{' '}
+                {pendingDeleteRemote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Microsoft OneDrive'}? Your local workspace stays untouched.
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteRemote(null)}
+                  className="min-h-[44px] px-4 py-2 rounded-lg border text-xs font-bold"
+                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteRemoteBackup(pendingDeleteRemote)}
+                  className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black text-white"
+                  style={{ backgroundColor: colors.red }}
+                >
+                  Delete from Cloud
+                </button>
+              </div>
             </div>
           </div>
         </div>

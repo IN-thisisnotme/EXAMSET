@@ -303,6 +303,10 @@ export const ExamStore = {
     return next;
   },
 
+  saveAttempts(attempts: AttemptRecord[]): void {
+    safeWriteJson(KEYS.ATTEMPTS, Array.isArray(attempts) ? attempts : []);
+  },
+
   deleteAttempt(attemptId: string): AttemptRecord[] {
     const next = this.loadAttempts().filter((a) => a.id !== attemptId);
     safeWriteJson(KEYS.ATTEMPTS, next);
@@ -326,6 +330,10 @@ export const ExamStore = {
       map[paperId] = session;
     }
     safeWriteJson(KEYS.SESSIONS, map);
+  },
+
+  saveAllActiveSessions(sessions: Record<string, ActiveExamSession>): void {
+    safeWriteJson(KEYS.SESSIONS, sessions && typeof sessions === 'object' ? sessions : {});
   },
 
   loadCountdowns(): ExamCountdownTarget[] {

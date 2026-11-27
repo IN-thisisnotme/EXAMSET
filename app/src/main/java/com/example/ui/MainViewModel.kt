@@ -5431,6 +5431,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun exportWebVaultJsonToUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Building Web .examset.json vault…", 0.35f)
+            try {
+                val app = getApplication<Application>()
+                val rawJson = com.example.util.WebVaultJsonAdapter.createWebVaultJson(
+                    context = app,
+                    db = db,
+                    appPrefs = appPreferences,
+                    themePrefs = themePreferences
+                )
+                val out = app.contentResolver.openOutputStream(uri, "wt")
+                    ?: app.contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Unable to open destination file for writing.")
+                out.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    writer.write(rawJson)
+                    writer.flush()
+                }
+                val bytes = rawJson.toByteArray(Charsets.UTF_8)
+                val sha = VaultArchiveEngine.computeSha256Hex(bytes)
+                val fileName = resolveDocumentDisplayName(uri).let {
+                    if (it.endsWith(".json", ignoreCase = true)) it else "examset_web_vault.examset.json"
+                }
+                val paperCount = paperDao.getAllPapersOnce().size
+                val noteCount = studyNoteDao.getAllStudyNotesOnce().size
+                backupSnapshotDao.insertSnapshot(
+                    BackupSnapshotEntity(
+                        provider = "SAF_WEB_JSON",
+                        fileName = fileName,
+                        localPath = "",
+                        checksumSha256 = sha,
+                        papersCount = paperCount,
+                        notesCount = noteCount,
+                        foldersCount = appPreferences.getCustomFolders().size,
+                        attemptsCount = paperDao.getAllAttemptsOnce().size,
+                        sizeBytes = bytes.size.toLong(),
+                        status = "VERIFIED",
+                        details = "$paperCount sets • $noteCount knowledge • Web .examset.json"
+                    )
+                )
+                _backupOpState.value = BackupOperationState.Success(
+                    "Exported Web Vault (.examset.json) with SHA-256 verification!"
+                )
+            } catch (e: Exception) {
+                _backupOpState.value = BackupOperationState.Error("Web JSON export failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
     private fun launchShareFileIntent(
         context: Context,
         file: File,
@@ -5818,9 +5867,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val refreshedShuffle = appPreferences.getShuffleOptions()
                 val refreshedDismissedTips = appPreferences.getDismissedFormatTips()
+                val refreshedKnowledgeCourses = appPreferences.getKnowledgeCoursesMap()
                 withContext(Dispatchers.Main) {
                     _folders.value = refreshedFolders
                     _lastActiveFolderId.value = refreshedActiveFolderId
+                    _knowledgeCoursesMap.value = refreshedKnowledgeCourses
                     _promptPresets.value = refreshedPresets
                     activeQuestionPresetId = refreshedQPresetId
                     activeKnowledgePresetId = refreshedKPresetId
@@ -6135,6 +6186,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }.onFailure { err ->
                 _backupOpState.value = BackupOperationState.Error(err.localizedMessage ?: "Cloud download failed")
+            }
+        }
+    }
+
+    fun deleteRemoteBackup(remoteFile: RemoteCloudBackupFile) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOpState.value = BackupOperationState.Running("Deleting ${remoteFile.name} from ${remoteFile.provider.displayName}…", 0.5f)
+            val res = CloudBackupClients.deleteRemoteBackup(getApplication(), remoteFile, cloudAuthStore)
+            refreshCloudAccountStatuses()
+            res.onSuccess {
+                _remoteCloudBackups.value = _remoteCloudBackups.value.filterNot {
+                    it.remoteId == remoteFile.remoteId && it.provider == remoteFile.provider
+                }
+                _backupOpState.value = BackupOperationState.Success(
+                    "Deleted \"${remoteFile.name}\" from ${remoteFile.provider.displayName}."
+                )
+            }.onFailure { err ->
+                _backupOpState.value = BackupOperationState.Error(
+                    err.localizedMessage ?: "Unable to delete remote backup"
+                )
             }
         }
     }
