@@ -96,7 +96,7 @@ class AppDatabaseMigrationTest {
             )
         }
 
-        // Step 2: Run migrations sequentially: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->8, 8->9, 9->10, 10->11
+        // Step 2: Run migrations sequentially: 1->2 ... 10->11, 11->12
         MIGRATION_1_2.migrate(rawDb)
         MIGRATION_2_3.migrate(rawDb)
         MIGRATION_3_4.migrate(rawDb)
@@ -107,6 +107,7 @@ class AppDatabaseMigrationTest {
         MIGRATION_8_9.migrate(rawDb)
         MIGRATION_9_10.migrate(rawDb)
         MIGRATION_10_11.migrate(rawDb)
+        MIGRATION_11_12.migrate(rawDb)
 
         val indexCursor = rawDb.query(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (" +
@@ -135,7 +136,7 @@ class AppDatabaseMigrationTest {
         )
         rawDb.close()
 
-        // Step 3: Open migrated database with Room at Version 11 (triggers RoomOpenDelegate.onValidateSchema)
+        // Step 3: Open migrated database with Room at Version 12 (triggers RoomOpenDelegate.onValidateSchema)
         val roomDb = Room.databaseBuilder(context, AppDatabase::class.java, testDbName)
             .addMigrations(
                 MIGRATION_1_2,
@@ -147,7 +148,8 @@ class AppDatabaseMigrationTest {
                 MIGRATION_7_8,
                 MIGRATION_8_9,
                 MIGRATION_9_10,
-                MIGRATION_10_11
+                MIGRATION_10_11,
+                MIGRATION_11_12
             )
             .build()
 
@@ -187,6 +189,8 @@ class AppDatabaseMigrationTest {
                 StudyNoteEntity(
                     folderId = null,
                     title = "Polity One-Liners",
+                    subject = "Polity",
+                    course = "UPSC CSE",
                     sourceAi = "Gemini",
                     rawContent = "1. **Article 356** -> President's Rule",
                     collectionType = "MULTI_LINER",
@@ -200,6 +204,7 @@ class AppDatabaseMigrationTest {
             val savedNote = noteDao.getStudyNoteById(insertedNoteId)
             assertNotNull("StudyNoteEntity must be queryable after migration", savedNote)
             assertEquals("Polity One-Liners", savedNote?.title)
+            assertEquals("UPSC CSE", savedNote?.course)
             assertEquals("MULTI_LINER", savedNote?.collectionType)
             assertEquals("Constitutional Codex", savedNote?.customLabel)
             assertEquals(101L, savedNote?.linkedPaperId)

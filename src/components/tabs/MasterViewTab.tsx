@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Award,
@@ -29,6 +29,7 @@ interface MasterViewTabProps {
   onUpdatePaper: (paper: QuestionPaper, silent?: boolean) => void;
   onOpenEditMetadata?: () => void;
   onOpenAuditModal?: () => void;
+  registerBackHandler?: (handler: (() => boolean) | null) => void;
 }
 
 type MasterFilter = 'all' | 'missing-key' | 'missing-exp' | 'missing-option' | 'msq' | 'flagged';
@@ -38,6 +39,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   onUpdatePaper,
   onOpenEditMetadata,
   onOpenAuditModal,
+  registerBackHandler,
 }) => {
   const { colors, scalePx } = useTheme();
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -126,6 +128,36 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
     setIsEditMode(false);
     setSnapshotQuestions(null);
   };
+
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    const hasSubBack = Boolean(showReviewModal || showBulkModal || isEditMode);
+    if (!hasSubBack) {
+      registerBackHandler(null);
+      return;
+    }
+    registerBackHandler(() => {
+      if (showReviewModal) {
+        setShowReviewModal(false);
+        return true;
+      }
+      if (showBulkModal) {
+        setShowBulkModal(false);
+        return true;
+      }
+      if (isEditMode) {
+        if (diffs.length === 0 || window.confirm(`Discard ${diffs.length} unsaved edit(s) and exit Edit Mode?`)) {
+          if (snapshotQuestions) setDraftQuestions(snapshotQuestions);
+          setShowReviewModal(false);
+          setIsEditMode(false);
+          setSnapshotQuestions(null);
+        }
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [registerBackHandler, showReviewModal, showBulkModal, isEditMode, diffs.length, snapshotQuestions]);
 
   const updateDraftQ = (qNum: number, updater: (q: QuestionItem) => QuestionItem) => {
     setDraftQuestions((prev) => prev.map((q) => (q.num === qNum ? updater(q) : q)));

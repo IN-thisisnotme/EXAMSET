@@ -129,6 +129,7 @@ class VaultArchiveEngineTest {
                 folderId = folder.id,
                 title = "Kinematics Multi-Liners",
                 subject = "Physics",
+                course = "JEE Physics",
                 sourceAi = "ChatGPT",
                 rawContent = "1. **Projectile Range** -> Maximum at 45 degrees.\n  - Formula: ${'$'}R = u^2 \\sin(2\\theta)/g${'$'}",
                 collectionType = "MULTI_LINER",
@@ -288,6 +289,7 @@ class VaultArchiveEngineTest {
         assertEquals(0.25, restoredPapers.first().unattendedMarks, 0.001)
         assertEquals(1, restoredNotes.size)
         assertEquals("Formula Codex", restoredNotes.first().customLabel)
+        assertEquals("JEE Physics", restoredNotes.first().course)
         assertEquals(restoredPapers.first().id, restoredNotes.first().linkedPaperId)
         assertEquals(1, restoredAttempts.size)
         assertEquals(restoredPapers.first().id, restoredAttempts.first().paperId)
@@ -904,5 +906,54 @@ class VaultArchiveEngineTest {
         assertFalse("Expired cache file should be pruned", staleFile.exists())
         assertTrue("Excluded file must be preserved", excludedFile.exists())
         assertTrue("Fresh cache file must be preserved", freshFile.exists())
+    }
+
+    @Test
+    fun `vault archive round-trips knowledgeCoursesJson across Clean Replace and Smart Merge`() = runBlocking {
+        appPrefs.saveKnowledgeCoursesMap(
+            mapOf(
+                "UPSC Prelims" to listOf("Polity", "Economy"),
+                "CAT Quant" to listOf("Geometry")
+            )
+        )
+
+        val archiveFile = File(tempDir, "courses_vault.examset.zip")
+        VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+        val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
+        assertTrue(preview.checksumVerified)
+
+        // Wipe local courses and verify Clean Replace restores exact map
+        appPrefs.saveKnowledgeCoursesMap(emptyMap())
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.FULL_REPLACE
+        )
+        val replaced = appPrefs.getKnowledgeCoursesMap()
+        assertEquals(listOf("Polity", "Economy"), replaced["UPSC Prelims"])
+        assertEquals(listOf("Geometry"), replaced["CAT Quant"])
+
+        // Seed additional local course/subject and verify Smart Merge unions without losing either
+        appPrefs.saveKnowledgeCoursesMap(
+            mapOf(
+                "UPSC Prelims" to listOf("History"),
+                "State PSC" to listOf("Geography")
+            )
+        )
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE
+        )
+        val merged = appPrefs.getKnowledgeCoursesMap()
+        assertEquals(setOf("History", "Polity", "Economy"), merged["UPSC Prelims"]?.toSet())
+        assertEquals(listOf("Geometry"), merged["CAT Quant"])
+        assertEquals(listOf("Geography"), merged["State PSC"])
     }
 }

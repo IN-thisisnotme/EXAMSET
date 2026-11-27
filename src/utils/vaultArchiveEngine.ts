@@ -9,6 +9,7 @@ import type {
   DictationConfig,
   FlashcardSrsState,
   HeadwordQueueItem,
+  KnowledgeCoursesMap,
   LanguageWordOfTheDayState,
   PromptPreset,
   StudyNoteRecord,
@@ -38,6 +39,7 @@ export interface WorkspaceBackupState {
   attempts: AttemptRecord[];
   countdowns: ExamCountdownTarget[];
   studyNotes: StudyNoteRecord[];
+  knowledgeCourses?: KnowledgeCoursesMap;
   vocabDecks: VocabularyDeck[];
   vocabSrs: Record<string, Record<string, FlashcardSrsState>>;
   englishVariant: string;
@@ -86,6 +88,7 @@ export interface VaultArchiveDocument {
       brainLabStats: BrainLabStats;
       brainLabSettings: BrainLabSettings;
       dismissedTips: string[];
+      knowledgeCourses?: KnowledgeCoursesMap;
       themeMode: ThemeMode;
       colorPreset: ColorSchemePreset;
       fontScaleMode: AppFontScaleMode;
@@ -213,10 +216,75 @@ export function sha256HexSync(input: string): string {
     .join('');
 }
 
+export function normalizeCourseMapForBackup(raw: unknown): KnowledgeCoursesMap {
+  const out: KnowledgeCoursesMap = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [cRaw, sRaw] of Object.entries(raw as Record<string, unknown>)) {
+    const course = String(cRaw || '').trim();
+    if (!course) continue;
+    const seen = new Set<string>();
+    const subjects: string[] = [];
+    if (Array.isArray(sRaw)) {
+      for (const s of sRaw) {
+        const sub = String(s || '').trim();
+        const k = sub.toLowerCase();
+        if (sub && !seen.has(k)) {
+          seen.add(k);
+          subjects.push(sub);
+        }
+      }
+    }
+    out[course] = subjects;
+  }
+  return out;
+}
+
+export function mergeCourseMapsForRestore(
+  base: KnowledgeCoursesMap,
+  incoming: KnowledgeCoursesMap
+): KnowledgeCoursesMap {
+  const out: KnowledgeCoursesMap = {};
+  const courseLookup = new Map<string, string>();
+  const add = (cRaw: string, subs: string[]) => {
+    const c = cRaw.trim();
+    if (!c) return;
+    const ck = c.toLowerCase();
+    const canonical = courseLookup.get(ck) || c;
+    courseLookup.set(ck, canonical);
+    const list = out[canonical] || [];
+    const seen = new Set(list.map((s) => s.trim().toLowerCase()));
+    const next = [...list];
+    for (const sRaw of subs || []) {
+      const s = String(sRaw || '').trim();
+      const sk = s.toLowerCase();
+      if (s && !seen.has(sk)) {
+        seen.add(sk);
+        next.push(s);
+      }
+    }
+    out[canonical] = next;
+  };
+  for (const [c, subs] of Object.entries(base || {})) add(c, subs);
+  for (const [c, subs] of Object.entries(incoming || {})) add(c, subs);
+  return out;
+}
+
+export function normalizeStudyNoteForBackup(note: StudyNoteRecord): StudyNoteRecord {
+  return {
+    ...note,
+    course: (note.course || '').trim(),
+    subject: (note.subject || '').trim() || 'General Studies',
+    bookmarkedIndices: Array.isArray(note.bookmarkedIndices) ? note.bookmarkedIndices : [],
+    masteredIndices: Array.isArray(note.masteredIndices) ? note.masteredIndices : [],
+    srsStates: note.srsStates || {},
+  };
+}
+
 export function computeBackupCounts(state: WorkspaceBackupState): BackupCounts {
   return {
     papersCount: state.papers.length,
     notesCount: state.studyNotes.length,
+    knowledgeCoursesCount: Object.keys(normalizeCourseMapForBackup(state.knowledgeCourses || {})).length,
     foldersCount: state.folders.length,
     attemptsCount: state.attempts.length,
     analyticsDaysCount: Object.keys(state.dailyAnalytics).length,
@@ -233,12 +301,14 @@ export function buildVaultArchive(
   deviceName: string = 'ExamSet Web Browser',
   nowMs: number = Date.now()
 ): { document: VaultArchiveDocument; rawJson: string } {
+  const normalizedCourses = normalizeCourseMapForBackup(state.knowledgeCourses || {});
+  const normalizedNotes = state.studyNotes.map(normalizeStudyNoteForBackup);
   const sections: VaultArchiveDocument['sections'] = {
     papers: state.papers,
     folders: state.folders,
     attempts: state.attempts,
     countdowns: state.countdowns,
-    studyNotes: state.studyNotes,
+    studyNotes: normalizedNotes,
     vocabulary: {
       decks: state.vocabDecks,
       srs: state.vocabSrs,
@@ -260,6 +330,7 @@ export function buildVaultArchive(
       brainLabStats: state.brainLabStats,
       brainLabSettings: state.brainLabSettings,
       dismissedTips: state.dismissedTips,
+      knowledgeCourses: normalizedCourses,
       themeMode: state.themeMode,
       colorPreset: state.colorPreset,
       fontScaleMode: state.fontScaleMode,
@@ -373,6 +444,9 @@ export function inspectVaultArchiveText(rawText: string, sourceLabel: string): R
     const recomputedCounts: BackupCounts = {
       papersCount: Array.isArray(doc.sections.papers) ? doc.sections.papers.length : 0,
       notesCount: Array.isArray(doc.sections.studyNotes) ? doc.sections.studyNotes.length : 0,
+      knowledgeCoursesCount: Object.keys(
+        normalizeCourseMapForBackup(doc.sections.brainAndPreferences?.knowledgeCourses || {})
+      ).length,
       foldersCount: Array.isArray(doc.sections.folders) ? doc.sections.folders.length : 0,
       attemptsCount: Array.isArray(doc.sections.attempts) ? doc.sections.attempts.length : 0,
       analyticsDaysCount: doc.sections.plannerAndAnalytics?.dailyAnalytics
@@ -518,7 +592,8 @@ export function applyVaultRestoreToState(
       folders,
       attempts: Array.isArray(s.attempts) ? s.attempts : [],
       countdowns: Array.isArray(s.countdowns) ? s.countdowns : [],
-      studyNotes: Array.isArray(s.studyNotes) ? s.studyNotes : [],
+      studyNotes: (Array.isArray(s.studyNotes) ? s.studyNotes : []).map(normalizeStudyNoteForBackup),
+      knowledgeCourses: normalizeCourseMapForBackup(s.brainAndPreferences?.knowledgeCourses || {}),
       vocabDecks: s.vocabulary?.decks || [],
       vocabSrs: s.vocabulary?.srs || {},
       englishVariant: s.vocabulary?.englishVariant || 'UK',
@@ -592,16 +667,20 @@ export function applyVaultRestoreToState(
     if (!countdownMap.has(k)) countdownMap.set(k, cd);
   }
 
-  // Study Notes merge (taking newer rawContent + unioning bookmarks + taking higher SRS progress)
+  // Study Notes merge (taking newer rawContent + unioning bookmarks/mastery + merging SRS + preserving course)
   const noteMap = new Map<string, StudyNoteRecord>();
-  for (const n of current.studyNotes) noteMap.set(n.id, n);
-  for (const inc of s.studyNotes || []) {
+  for (const n of current.studyNotes) noteMap.set(n.id, normalizeStudyNoteForBackup(n));
+  for (const rawInc of s.studyNotes || []) {
+    const inc = normalizeStudyNoteForBackup(rawInc);
     const ex = noteMap.get(inc.id);
     if (!ex) {
       noteMap.set(inc.id, inc);
     } else {
       const mergedBookmarks = Array.from(
         new Set([...(ex.bookmarkedIndices || []), ...(inc.bookmarkedIndices || [])])
+      );
+      const mergedMastered = Array.from(
+        new Set([...(ex.masteredIndices || []), ...(inc.masteredIndices || [])])
       );
       const mergedSrs: Record<number, FlashcardSrsState> = { ...(ex.srsStates || {}) };
       for (const [kStr, v] of Object.entries(inc.srsStates || {})) {
@@ -612,11 +691,19 @@ export function applyVaultRestoreToState(
       const preferIncoming = (inc.updatedAt || 0) >= (ex.updatedAt || 0);
       noteMap.set(inc.id, {
         ...(preferIncoming ? inc : ex),
+        course: preferIncoming
+          ? (inc.course || ex.course || '')
+          : (ex.course || inc.course || ''),
         bookmarkedIndices: mergedBookmarks,
+        masteredIndices: mergedMastered,
         srsStates: mergedSrs,
       });
     }
   }
+  const mergedKnowledgeCourses = mergeCourseMapsForRestore(
+    current.knowledgeCourses || {},
+    normalizeCourseMapForBackup(s.brainAndPreferences?.knowledgeCourses || {})
+  );
 
   // Vocab Decks & SRS union
   const deckMap = new Map<string, VocabularyDeck>();
@@ -705,6 +792,7 @@ export function applyVaultRestoreToState(
     attempts: mergedAttempts,
     countdowns: Array.from(countdownMap.values()),
     studyNotes: Array.from(noteMap.values()).sort((a, b) => b.updatedAt - a.updatedAt),
+    knowledgeCourses: mergedKnowledgeCourses,
     vocabDecks: Array.from(deckMap.values()),
     vocabSrs: mergedVocabSrs,
     englishVariant: current.englishVariant || s.vocabulary?.englishVariant || 'UK',

@@ -47,6 +47,7 @@ interface StudentPortalTabProps {
   attempts?: AttemptRecord[];
   onSaveAttempt?: (record: AttemptRecord) => void;
   onDeleteAttempt?: (attemptId: string) => void;
+  registerBackHandler?: (handler: (() => boolean) | null) => void;
 }
 
 type PortalStage = 'OVERVIEW' | 'ACTIVE' | 'RESULTS';
@@ -82,6 +83,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   attempts: externalAttempts,
   onSaveAttempt,
   onDeleteAttempt,
+  registerBackHandler,
 }) => {
   const { colors, scalePx } = useTheme();
 
@@ -149,6 +151,47 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
     setSavedSession(ExamStore.getActiveSession(currentPaper.metadata.id));
     setLocalAttempts(ExamStore.loadAttempts(currentPaper.metadata.id));
   }, [currentPaper.metadata.id, currentPaper.questions.length, currentPaper.metadata.durationMinutes]);
+
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    const hasSubBack = Boolean(
+      showHistoryModal || showPsychometricModal || showSubmitModal || paletteOpen || stage !== 'OVERVIEW'
+    );
+    if (!hasSubBack) {
+      registerBackHandler(null);
+      return;
+    }
+    registerBackHandler(() => {
+      if (showHistoryModal) {
+        setShowHistoryModal(false);
+        return true;
+      }
+      if (showPsychometricModal) {
+        setShowPsychometricModal(false);
+        return true;
+      }
+      if (showSubmitModal) {
+        setShowSubmitModal(false);
+        return true;
+      }
+      if (paletteOpen) {
+        setPaletteOpen(false);
+        return true;
+      }
+      if (stage === 'ACTIVE') {
+        if (window.confirm('Pause this active test and return to the Test Overview? Your answers are saved.')) {
+          setStage('OVERVIEW');
+        }
+        return true;
+      }
+      if (stage === 'RESULTS') {
+        setStage('OVERVIEW');
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [registerBackHandler, showHistoryModal, showPsychometricModal, showSubmitModal, paletteOpen, stage]);
 
   const activeQuestions: QuestionItem[] = useMemo(() => {
     if (!activeSubsetNums || activeSubsetNums.length === 0) return currentPaper.questions;

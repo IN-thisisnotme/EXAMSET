@@ -970,6 +970,7 @@ object VaultArchiveEngine {
             if (n.folderId != null) put("folderId", n.folderId) else put("folderId", JSONObject.NULL)
             put("title", n.title)
             put("subject", n.subject)
+            put("course", n.course)
             put("sourceAi", n.sourceAi)
             put("rawContent", n.rawContent)
             put("bookmarkedLinesJson", n.bookmarkedLinesJson)
@@ -990,6 +991,7 @@ object VaultArchiveEngine {
             folderId = if (o.has("folderId") && !o.isNull("folderId")) o.optString("folderId").ifBlank { null } else null,
             title = o.optString("title", "Knowledge Set"),
             subject = o.optString("subject", ""),
+            course = o.optString("course", ""),
             sourceAi = o.optString("sourceAi", "Knowledge Set"),
             rawContent = o.optString("rawContent", ""),
             bookmarkedLinesJson = o.optString("bookmarkedLinesJson", "[]"),
@@ -1169,6 +1171,14 @@ object VaultArchiveEngine {
             put("paperMsqPoliciesJson", appPrefs.getPaperMsqPoliciesRawJson())
             appPrefs.getBrainLabStatsRawJson().takeIf { it.isNotBlank() }?.let { put("brainLabStatsJson", it) }
             appPrefs.getBrainLabSettingsRawJson().takeIf { it.isNotBlank() }?.let { put("brainLabSettingsJson", it) }
+            val coursesJson = JSONObject().apply {
+                appPrefs.getKnowledgeCoursesMap().forEach { (course, subjects) ->
+                    val arr = JSONArray()
+                    subjects.forEach { arr.put(it) }
+                    put(course, arr)
+                }
+            }
+            put("knowledgeCoursesJson", coursesJson.toString())
         }.toString()
     }
 
@@ -1289,6 +1299,53 @@ object VaultArchiveEngine {
             } else if (overwriteAll) {
                 appPrefs.setLastActiveFolderId("all")
             }
+        }
+
+        // Restore registered Knowledge Courses -> Subjects hierarchy map
+        val incomingCoursesRaw = obj.optString("knowledgeCoursesJson", "")
+        if (incomingCoursesRaw.isNotBlank()) {
+            runCatching {
+                val cObj = JSONObject(incomingCoursesRaw)
+                val incomingMap = linkedMapOf<String, List<String>>()
+                val cKeys = cObj.keys()
+                while (cKeys.hasNext()) {
+                    val course = cKeys.next().trim()
+                    if (course.isBlank()) continue
+                    val arr = cObj.optJSONArray(course)
+                    val subs = buildList<String> {
+                        if (arr != null) {
+                            for (i in 0 until arr.length()) {
+                                val s = arr.optString(i).trim()
+                                if (s.isNotBlank() && none { it.equals(s, ignoreCase = true) }) add(s)
+                            }
+                        }
+                    }
+                    incomingMap[course] = subs
+                }
+                if (overwriteAll) {
+                    appPrefs.saveKnowledgeCoursesMap(incomingMap)
+                } else if (incomingMap.isNotEmpty()) {
+                    val merged = linkedMapOf<String, MutableList<String>>()
+                    val canonicalCourseByLower = mutableMapOf<String, String>()
+                    fun absorb(courseRaw: String, subs: List<String>) {
+                        val c = courseRaw.trim()
+                        if (c.isBlank()) return
+                        val canonical = canonicalCourseByLower.getOrPut(c.lowercase(Locale.ROOT)) { c }
+                        val list = merged.getOrPut(canonical) { mutableListOf() }
+                        subs.forEach { sRaw ->
+                            val s = sRaw.trim()
+                            if (s.isNotBlank() && list.none { it.equals(s, ignoreCase = true) }) {
+                                list.add(s)
+                            }
+                        }
+                    }
+                    appPrefs.getKnowledgeCoursesMap().forEach { (c, subs) -> absorb(c, subs) }
+                    incomingMap.forEach { (c, subs) -> absorb(c, subs) }
+                    appPrefs.saveKnowledgeCoursesMap(merged)
+                }
+            }
+        } else if (overwriteAll) {
+            appPrefs.saveKnowledgeCoursesMap(emptyMap())
         }
 
         // Restore Knowledge Set Flashcard SM-2 SRS mapped by syncUid -> local Room noteId

@@ -195,10 +195,23 @@ export type FlashcardPromptStyle =
   | 'CLOZE_SCENARIO'
   | 'FORMULA_TRAP';
 
+export type KnowledgeCoursesMap = Record<string, string[]>;
+
+export interface KnowledgeAppendPreview {
+  combinedContent: string;
+  appendSegment: string;
+  existingUnitCount: number;
+  parsedNewUnitCount: number;
+  addedUnitCount: number;
+  skippedDuplicatesCount: number;
+  structuralBlocksCount: number;
+}
+
 export interface StudyNoteRecord {
   id: string;
   title: string;
   subject: string;
+  course?: string;
   sourceAi: string;
   rawContent: string;
   folderId: string;
@@ -207,6 +220,7 @@ export interface StudyNoteRecord {
   linkedPaperId?: string | null;
   formatRule: KnowledgeFormatRule;
   bookmarkedIndices: number[];
+  masteredIndices?: number[];
   srsStates: Record<number, FlashcardSrsState>;
   createdAt: number;
   updatedAt: number;

@@ -141,6 +141,7 @@ import java.util.Locale
 data class KnowledgeEditorDraft(
     val note: StudyNoteEntity? = null,
     val defaultFolderId: String? = null,
+    val defaultCourse: String = "",
     val defaultSubject: String = "",
     val defaultLinkedPaperId: Long? = null,
     val prefillTitle: String = "",
@@ -1536,6 +1537,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeKnowledgeReaderNoteId = MutableStateFlow<Long?>(null)
     val activeKnowledgeReaderNoteId: StateFlow<Long?> = _activeKnowledgeReaderNoteId.asStateFlow()
 
+    // Root Knowledge Sets Library Hierarchy Browser State (Course -> Subject -> Notes)
+    private val _showRootKnowledgeLibrary = MutableStateFlow(false)
+    val showRootKnowledgeLibrary: StateFlow<Boolean> = _showRootKnowledgeLibrary.asStateFlow()
+
+    private val _selectedKnowledgeCourse = MutableStateFlow<String?>(null)
+    val selectedKnowledgeCourse: StateFlow<String?> = _selectedKnowledgeCourse.asStateFlow()
+
+    private val _selectedKnowledgeSubject = MutableStateFlow<String?>(null)
+    val selectedKnowledgeSubject: StateFlow<String?> = _selectedKnowledgeSubject.asStateFlow()
+
+    private val _knowledgeCoursesMap = MutableStateFlow(appPreferences.getKnowledgeCoursesMap())
+    val knowledgeCoursesMap: StateFlow<Map<String, List<String>>> = _knowledgeCoursesMap.asStateFlow()
+
+    // Remembers source Knowledge Set noteId when user clicks "Draft Quiz" so Back returns smoothly
+    private val _pendingKnowledgeReturnNoteId = MutableStateFlow<Long?>(null)
+    val pendingKnowledgeReturnNoteId: StateFlow<Long?> = _pendingKnowledgeReturnNoteId.asStateFlow()
+
     // Full-screen Edit Metadata & Add Question overlay states (rendered outside Dialog windows so IME/nav insets never clip)
     private val _isEditMetadataOverlayOpen = MutableStateFlow(false)
     val isEditMetadataOverlayOpen: StateFlow<Boolean> = _isEditMetadataOverlayOpen.asStateFlow()
@@ -1692,10 +1710,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.setLastActiveFolderId(folderId)
     }
 
-    // Active Tab:
-    // 0: Creator, 1: Master View, 2: Print & OMR, 3: Student Portal, 4: Folders, 5: AI Prompt, 6: Share
+    // Active Tab & History Stack:
+    // 0: Library, 1: Master View, 2: Student Portal, 3: Print & OMR, 4: Exam Tools, 5: AI Prompt, 6: Share, 7: Dictate
     private val _selectedTab = MutableStateFlow(0)
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
+
+    private val _tabBackStack = MutableStateFlow<List<Int>>(emptyList())
+    val tabBackStack: StateFlow<List<Int>> = _tabBackStack.asStateFlow()
 
     // Attempt tracking
     private val _currentAttemptId = MutableStateFlow<Long?>(null)
@@ -4586,6 +4607,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun openKnowledgeEditor(
         note: StudyNoteEntity? = null,
         defaultFolderId: String? = null,
+        defaultCourse: String = "",
         defaultSubject: String = "",
         defaultLinkedPaperId: Long? = null,
         prefillTitle: String = "",
@@ -4593,9 +4615,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         defaultCollectionType: KnowledgeCollectionType = KnowledgeCollectionType.ONE_LINERS,
         defaultFormatRule: KnowledgeFormatRule? = null
     ) {
+        val resolvedCourse = note?.course?.trim()?.ifBlank {
+            defaultCourse.trim().ifBlank { resolveRootFolderName(note.folderId ?: defaultFolderId) }
+        } ?: defaultCourse.trim().ifBlank {
+            resolveRootFolderName(defaultFolderId)
+        }
         _knowledgeEditorDraft.value = KnowledgeEditorDraft(
             note = note,
             defaultFolderId = defaultFolderId,
+            defaultCourse = resolvedCourse,
             defaultSubject = defaultSubject,
             defaultLinkedPaperId = defaultLinkedPaperId,
             prefillTitle = prefillTitle,
@@ -4615,6 +4643,137 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeKnowledgeReader() {
         _activeKnowledgeReaderNoteId.value = null
+    }
+
+    fun openRootKnowledgeLibrary() {
+        _showRootKnowledgeLibrary.value = true
+    }
+
+    fun closeRootKnowledgeLibrary() {
+        _showRootKnowledgeLibrary.value = false
+    }
+
+    fun selectKnowledgeCourse(course: String?) {
+        _selectedKnowledgeCourse.value = course
+        if (course == null) {
+            _selectedKnowledgeSubject.value = null
+        } else {
+            _selectedKnowledgeSubject.value = null
+        }
+    }
+
+    fun selectKnowledgeSubject(subject: String?) {
+        _selectedKnowledgeSubject.value = subject
+    }
+
+    fun resolveRootFolderName(folderId: String?): String {
+        if (folderId.isNullOrBlank() || folderId == "all") return ""
+        val folderMap = _folders.value.associateBy { it.id }
+        var cur = folderMap[folderId] ?: return ""
+        var guard = 0
+        while (cur.parentId != null && guard < 16) {
+            cur = folderMap[cur.parentId] ?: break
+            guard++
+        }
+        return cur.name.trim()
+    }
+
+    private fun registerCourseSubjectInternal(course: String, subject: String) {
+        val cleanCourse = course.trim()
+        if (cleanCourse.isBlank()) return
+        val cleanSubject = subject.trim()
+        val current = _knowledgeCoursesMap.value.toMutableMap()
+        val existingSubjects = current[cleanCourse].orEmpty().toMutableList()
+        if (cleanSubject.isNotBlank() && existingSubjects.none { it.equals(cleanSubject, ignoreCase = true) }) {
+            existingSubjects.add(cleanSubject)
+        }
+        current[cleanCourse] = existingSubjects
+        _knowledgeCoursesMap.value = current
+        appPreferences.saveKnowledgeCoursesMap(current)
+    }
+
+    fun createKnowledgeCourse(rawCourseName: String): Boolean {
+        val clean = rawCourseName.trim()
+        if (clean.isBlank()) return false
+        val current = _knowledgeCoursesMap.value.toMutableMap()
+        val existingKey = current.keys.firstOrNull { it.equals(clean, ignoreCase = true) }
+        if (existingKey == null) {
+            current[clean] = emptyList()
+            _knowledgeCoursesMap.value = current
+            appPreferences.saveKnowledgeCoursesMap(current)
+            _statusMessage.value = "Created Course: $clean"
+        }
+        _selectedKnowledgeCourse.value = existingKey ?: clean
+        _selectedKnowledgeSubject.value = null
+        return true
+    }
+
+    fun addSubjectToKnowledgeCourse(courseName: String, rawSubjectName: String): Boolean {
+        val cleanCourse = courseName.trim()
+        val cleanSubject = rawSubjectName.trim()
+        if (cleanCourse.isBlank() || cleanSubject.isBlank()) return false
+        registerCourseSubjectInternal(cleanCourse, cleanSubject)
+        _selectedKnowledgeCourse.value = cleanCourse
+        _selectedKnowledgeSubject.value = cleanSubject
+        _statusMessage.value = "Added Subject \"$cleanSubject\" to $cleanCourse"
+        return true
+    }
+
+    fun renameKnowledgeCourse(oldCourse: String, newCourse: String) {
+        val cleanOld = oldCourse.trim()
+        val cleanNew = newCourse.trim()
+        if (cleanOld.isBlank() || cleanNew.isBlank() || cleanOld == cleanNew) return
+        val current = _knowledgeCoursesMap.value.toMutableMap()
+        val oldSubs = current.remove(cleanOld).orEmpty()
+        val mergedSubs = (current[cleanNew].orEmpty() + oldSubs).distinct()
+        current[cleanNew] = mergedSubs
+        _knowledgeCoursesMap.value = current
+        appPreferences.saveKnowledgeCoursesMap(current)
+        if (_selectedKnowledgeCourse.value == cleanOld) {
+            _selectedKnowledgeCourse.value = cleanNew
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            studyNoteDao.renameCourse(cleanOld, cleanNew)
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Renamed Course to \"$cleanNew\""
+            }
+        }
+    }
+
+    fun renameKnowledgeSubject(courseName: String, oldSubject: String, newSubject: String) {
+        val cleanCourse = courseName.trim()
+        val cleanOld = oldSubject.trim()
+        val cleanNew = newSubject.trim()
+        if (cleanCourse.isBlank() || cleanOld.isBlank() || cleanNew.isBlank() || cleanOld == cleanNew) return
+        val current = _knowledgeCoursesMap.value.toMutableMap()
+        val subs = current[cleanCourse].orEmpty().map { if (it == cleanOld) cleanNew else it }.distinct()
+        current[cleanCourse] = subs
+        _knowledgeCoursesMap.value = current
+        appPreferences.saveKnowledgeCoursesMap(current)
+        if (_selectedKnowledgeSubject.value == cleanOld) {
+            _selectedKnowledgeSubject.value = cleanNew
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            studyNoteDao.renameSubjectInCourse(cleanCourse, cleanOld, cleanNew)
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Renamed Subject to \"$cleanNew\""
+            }
+        }
+    }
+
+    fun assignNoteCourseAndSubject(noteId: Long, courseName: String, subjectName: String) {
+        val cleanCourse = courseName.trim()
+        val cleanSubject = subjectName.trim()
+        if (noteId <= 0L || cleanSubject.isBlank()) return
+        if (cleanCourse.isNotBlank()) {
+            registerCourseSubjectInternal(cleanCourse, cleanSubject)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            studyNoteDao.assignCourseAndSubject(noteId, cleanCourse, cleanSubject)
+            withContext(Dispatchers.Main) {
+                _statusMessage.value = "Moved to ${if (cleanCourse.isNotBlank()) "$cleanCourse → " else ""}$cleanSubject"
+            }
+        }
     }
 
     fun openEditMetadataOverlay(onEnterQuestionEditMode: (() -> Unit)? = null) {
@@ -4646,6 +4805,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         customLabel: String = "",
         linkedPaperId: Long? = null,
         formatRule: KnowledgeFormatRule = KnowledgeFormatRule(collectionType = collectionType),
+        course: String = "",
         onSaved: (Long) -> Unit = {}
     ) {
         val cleanContent = rawContent.trim()
@@ -4661,8 +4821,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ?: "Knowledge Set"
         }
         val cleanSource = sourceAi.trim().ifBlank { StudyNoteParser.detectSourceHint(cleanContent) }
-        val cleanSubject = subject.trim().ifBlank {
-            if (!folderId.isNullOrBlank()) getFullFolderPath(folderId) else "General Revision"
+        val cleanCourse = course.trim().ifBlank {
+            if (subject.contains(">")) subject.substringBefore(">").trim()
+            else resolveRootFolderName(folderId)
+        }
+        val cleanSubject = subject.trim().let {
+            if (it.contains(">")) it.substringAfterLast(">").trim() else it
+        }.ifBlank {
+            if (!folderId.isNullOrBlank()) getFullFolderPath(folderId).substringAfterLast(">").trim()
+            else "General Notes"
+        }
+        if (cleanCourse.isNotBlank()) {
+            registerCourseSubjectInternal(cleanCourse, cleanSubject)
         }
         val effectiveRule = formatRule.copy(
             collectionType = collectionType,
@@ -4677,6 +4847,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     existing.copy(
                         title = cleanTitle,
                         subject = cleanSubject,
+                        course = cleanCourse.ifBlank { existing.course },
                         sourceAi = cleanSource,
                         rawContent = cleanContent,
                         folderId = folderId,
@@ -4694,6 +4865,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         folderId = folderId,
                         title = cleanTitle,
                         subject = cleanSubject,
+                        course = cleanCourse,
                         sourceAi = cleanSource,
                         rawContent = cleanContent,
                         collectionType = collectionType.code,
@@ -4708,6 +4880,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) {
                 _statusMessage.value = if (existing != null) "Updated Knowledge Set: $cleanTitle" else "Saved Knowledge Set: $cleanTitle"
                 onSaved(savedId)
+            }
+        }
+    }
+
+    fun appendToStudyNote(
+        noteId: Long,
+        rawAppendText: String,
+        skipDuplicates: Boolean = true,
+        onCompleted: (addedUnits: Int, skippedDuplicates: Int) -> Unit = { _, _ -> }
+    ) {
+        if (noteId <= 0L || rawAppendText.isBlank()) {
+            _statusMessage.value = "Nothing to append"
+            onCompleted(0, 0)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = studyNoteDao.getStudyNoteById(noteId)
+            if (existing == null) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = "Knowledge set not found"
+                    onCompleted(0, 0)
+                }
+                return@launch
+            }
+            val rule = existing.parsedFormatRule()
+            val preview = StudyNoteParser.prepareAppendedContent(
+                existingRaw = existing.rawContent,
+                newRaw = rawAppendText,
+                rule = rule,
+                skipDuplicates = skipDuplicates
+            )
+            if (preview.appendSegment.isBlank()) {
+                withContext(Dispatchers.Main) {
+                    _statusMessage.value = if (preview.skippedDuplicatesCount > 0) {
+                        "All ${preview.skippedDuplicatesCount} item(s) already exist in this set"
+                    } else {
+                        "No valid new items found to append"
+                    }
+                    onCompleted(0, preview.skippedDuplicatesCount)
+                }
+                return@launch
+            }
+            studyNoteDao.updateStudyNote(
+                existing.copy(
+                    rawContent = preview.combinedContent,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            withContext(Dispatchers.Main) {
+                val added = preview.addedUnitCount.coerceAtLeast(if (preview.structuralBlocksCount > 0) 1 else 0)
+                val msg = if (preview.skippedDuplicatesCount > 0) {
+                    "Appended $added item(s) (${preview.skippedDuplicatesCount} duplicate(s) skipped)"
+                } else {
+                    "Appended $added item(s) to ${existing.title}"
+                }
+                _statusMessage.value = msg
+                onCompleted(added, preview.skippedDuplicatesCount)
             }
         }
     }
@@ -4878,6 +5107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         customCollectionLabel = "Weak Areas",
                         preserveNestedBullets = true
                     ),
+                    course = resolveRootFolderName(paper.metadata.folderId),
                     onSaved = { newId ->
                         val action = if (targetId > 0L) "Updated existing" else "Created unique"
                         _statusMessage.value = "$action Weak Areas Knowledge Set: $noteTitle"
@@ -4929,7 +5159,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Compiles a unique, master Active Recall Knowledge Set for a given Subject or Course Folder
      * aggregating all question papers (stems, explanations, formulas, answer keys) and study notes in that course.
      */
-    fun compileActiveRecallSetForSubjectOrFolder(folderId: String?, subjectName: String) {
+    fun compileActiveRecallSetForSubjectOrFolder(
+        folderId: String?,
+        subjectName: String,
+        courseName: String = ""
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             val allPapers = paperDao.getAllPapersOnce()
             val coursePapersEntities = allPapers.filter { p ->
@@ -4943,6 +5177,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val targetFolderId = if (!folderId.isNullOrBlank() && folderId != "all") folderId else null
+            val resolvedCourse = courseName.trim().ifBlank { resolveRootFolderName(targetFolderId) }
             val resolvedSubject = subjectName.trim().ifBlank {
                 coursePapersEntities.firstOrNull()?.subject ?: "General Studies"
             }
@@ -4950,7 +5185,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val courseNotes = if (!targetFolderId.isNullOrBlank()) {
                 studyNoteDao.getNotesForFolderOnce(targetFolderId)
             } else {
-                studyNoteDao.getAllStudyNotesOnce().filter { it.subject.equals(resolvedSubject, ignoreCase = true) }
+                studyNoteDao.getAllStudyNotesOnce().filter {
+                    it.subject.equals(resolvedSubject, ignoreCase = true) &&
+                        (resolvedCourse.isBlank() || it.effectiveCourseLabel().equals(resolvedCourse, ignoreCase = true))
+                }
             }
 
             if (coursePapersEntities.isEmpty() && courseNotes.isEmpty()) {
@@ -4968,14 +5206,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 subjectName = resolvedSubject,
                 papers = parsedPapers,
                 existingNotes = courseNotes,
-                courseOrFolderTitle = resolvedSubject
+                courseOrFolderTitle = if (resolvedCourse.isNotBlank()) "$resolvedCourse • $resolvedSubject" else resolvedSubject
             )
 
             val masterTitle = "Master Active Recall: $resolvedSubject".take(80)
 
             val existingMasterNote = courseNotes.find { note ->
                 note.title.startsWith("Master Active Recall: $resolvedSubject", ignoreCase = true) ||
-                (note.folderId == targetFolderId && note.title.startsWith("Master Active Recall", ignoreCase = true))
+                (targetFolderId != null && note.folderId == targetFolderId && note.title.startsWith("Master Active Recall", ignoreCase = true))
             }
 
             val targetNoteId = existingMasterNote?.id ?: 0L
@@ -4986,6 +5224,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     existingMasterNote.copy(
                         title = masterTitle,
                         subject = resolvedSubject,
+                        course = resolvedCourse.ifBlank { existingMasterNote.course },
                         rawContent = compiledContent,
                         updatedAt = now
                     )
@@ -4997,6 +5236,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         folderId = targetFolderId,
                         title = masterTitle,
                         subject = resolvedSubject,
+                        course = resolvedCourse,
                         sourceAi = "Course Compiler",
                         rawContent = compiledContent,
                         collectionType = KnowledgeCollectionType.MULTI_LINER.code,
@@ -5021,6 +5261,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _statusMessage.value = "Add structured key-value lines or Multi-Liner cards first to generate MCQs."
             return
         }
+        _pendingKnowledgeReturnNoteId.value = note.id
         _activeKnowledgeReaderNoteId.value = null
         _knowledgeEditorDraft.value = null
         _rawInputText.value = draft
@@ -5028,6 +5269,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appPreferences.setDraftRawText(draft)
         selectTab(4)
         _statusMessage.value = "Generated MCQ draft from \"${note.title}\" in Exam Tools"
+    }
+
+    fun returnFromKnowledgeMcqDraft(): Boolean {
+        val noteId = _pendingKnowledgeReturnNoteId.value ?: return false
+        _pendingKnowledgeReturnNoteId.value = null
+        if (!navigateBackTab()) {
+            selectTab(0, pushHistory = false)
+        }
+        _activeKnowledgeReaderNoteId.value = noteId
+        return true
     }
 
     // --- Backup Vault & Cloud Sync (Google Drive / OneDrive / Streaming .examset.zip) ---
@@ -6185,9 +6436,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun selectTab(index: Int) {
+    fun selectTab(index: Int, pushHistory: Boolean = true) {
+        val current = _selectedTab.value
+        if (current == index) return
+        if (pushHistory) {
+            val stack = _tabBackStack.value.toMutableList()
+            if (stack.lastOrNull() != current) {
+                stack.add(current)
+            }
+            if (stack.size > 20) {
+                stack.removeAt(0)
+            }
+            _tabBackStack.value = stack
+        }
+        if (index != 4) {
+            _pendingKnowledgeReturnNoteId.value = null
+        }
         _selectedTab.value = index
         appPreferences.setActiveTabIndex(index)
+    }
+
+    fun navigateBackTab(): Boolean {
+        val stack = _tabBackStack.value.toMutableList()
+        while (stack.isNotEmpty()) {
+            val previous = stack.removeAt(stack.lastIndex)
+            if (previous != _selectedTab.value) {
+                _tabBackStack.value = stack
+                selectTab(previous, pushHistory = false)
+                return true
+            }
+        }
+        _tabBackStack.value = emptyList()
+        return false
     }
 
     // --- Student Test Interactions & Attempt Persistence ---
@@ -6853,6 +7133,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeCurrentPaper() {
         clearCurrentPaper()
+        if (_selectedTab.value in listOf(1, 2, 3)) {
+            if (!navigateBackTab()) {
+                selectTab(0, pushHistory = false)
+            }
+        }
     }
 
     fun clearCurrentPaper() {

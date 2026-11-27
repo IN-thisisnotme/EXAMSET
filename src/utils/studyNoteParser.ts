@@ -3,9 +3,11 @@ import { AnswerKeyMatcher } from './answerKeyMatcher';
 import { LatexHelper } from './latexHelper';
 import { RichTextHelper } from './richTextHelper';
 import {
+  DEFAULT_KNOWLEDGE_RULE,
   type FlashcardPromptConfig,
   type FlashcardPromptStyle,
   KNOWLEDGE_COLLECTION_META,
+  type KnowledgeAppendPreview,
   type KnowledgeCollectionType,
   type KnowledgeDepth,
   type KnowledgeFormatRule,
@@ -377,6 +379,157 @@ export const StudyNoteParser = {
     return this.parseBlocks(rawText, rule).filter(
       (b) => b.kind === 'one_liner' || b.kind === 'multi_liner_card'
     ).length;
+  },
+
+  normalizeUnitSignature(block: StudyNoteBlock): string {
+    const raw =
+      block.kind === 'one_liner'
+        ? block.leadTerm.trim() || block.detail
+        : block.kind === 'multi_liner_card'
+        ? block.title
+        : '';
+    return raw
+      .toLowerCase()
+      .replace(/^(?:q\s*\d+|\d+)\s*[:.)\-]\s*/i, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  },
+
+  prepareAppendedContent(
+    existingRaw: string,
+    newRaw: string,
+    rule: KnowledgeFormatRule = DEFAULT_KNOWLEDGE_RULE,
+    skipDuplicates: boolean = true
+  ): KnowledgeAppendPreview {
+    const trimmedExisting = (existingRaw || '').trimEnd();
+    const trimmedNew = normalizeDelimiters(newRaw || '').trim();
+    const existingBlocks = this.parseBlocks(trimmedExisting, rule);
+    const existingUnits = existingBlocks.filter(
+      (b) => b.kind === 'one_liner' || b.kind === 'multi_liner_card'
+    );
+
+    if (!trimmedNew) {
+      return {
+        combinedContent: existingRaw,
+        appendSegment: '',
+        existingUnitCount: existingUnits.length,
+        parsedNewUnitCount: 0,
+        addedUnitCount: 0,
+        skippedDuplicatesCount: 0,
+        structuralBlocksCount: 0,
+      };
+    }
+
+    const existingKeys = new Set(
+      existingUnits.map((u) => this.normalizeUnitSignature(u)).filter(Boolean)
+    );
+    const candidateBlocks = this.parseBlocks(trimmedNew, rule);
+    const candidateUnits = candidateBlocks.filter(
+      (b) => b.kind === 'one_liner' || b.kind === 'multi_liner_card'
+    );
+    const structuralBlocksCount = candidateBlocks.filter(
+      (b) =>
+        b.kind === 'heading' ||
+        b.kind === 'table' ||
+        b.kind === 'callout' ||
+        b.kind === 'paragraph'
+    ).length;
+
+    let addedUnitCount = 0;
+    let skippedDuplicatesCount = 0;
+    let keptText = '';
+
+    if (!skipDuplicates || existingKeys.size === 0 || candidateUnits.length === 0) {
+      for (const u of candidateUnits) {
+        const sig = this.normalizeUnitSignature(u);
+        if (sig) existingKeys.add(sig);
+      }
+      addedUnitCount = candidateUnits.length;
+      keptText = trimmedNew;
+    } else {
+      const lines = trimmedNew.split('\n');
+      const keptChunks: string[] = [];
+      let currentChunk: string[] = [];
+
+      const flushChunk = () => {
+        if (currentChunk.length === 0) return;
+        const chunkText = currentChunk.join('\n').trim();
+        currentChunk = [];
+        if (!chunkText) return;
+        const chunkBlocks = this.parseBlocks(chunkText, rule);
+        const chunkUnits = chunkBlocks.filter(
+          (b) => b.kind === 'one_liner' || b.kind === 'multi_liner_card'
+        );
+        if (chunkUnits.length === 0) {
+          keptChunks.push(chunkText);
+          return;
+        }
+        const sig = this.normalizeUnitSignature(chunkUnits[0]);
+        if (sig && existingKeys.has(sig)) {
+          skippedDuplicatesCount++;
+        } else {
+          if (sig) existingKeys.add(sig);
+          addedUnitCount += chunkUnits.length;
+          keptChunks.push(chunkText);
+        }
+      };
+
+      for (const rawLine of lines) {
+        const t = rawLine.trim();
+        const indent = leadingSpaces(rawLine);
+        const startsNewTopLevelItem =
+          indent <= 1 &&
+          (/^#{1,4}\s+/.test(t) ||
+            /^(?:Q\d*|Question)\s*[:.\-]\s+/i.test(t) ||
+            /^(?:\d{1,4}[.)]|[-*•‣▪])\s+/.test(t) ||
+            splitDirectKeyValue(t, rule.layerOrder) !== null);
+        if (startsNewTopLevelItem && currentChunk.length > 0) {
+          flushChunk();
+        }
+        currentChunk.push(rawLine);
+      }
+      flushChunk();
+      keptText = keptChunks.join('\n\n').trim();
+    }
+
+    let nextNumber = existingUnits.length + 1;
+    const finalAppendSegment = !keptText
+      ? ''
+      : keptText
+          .split('\n')
+          .map((line) => {
+            const indent = leadingSpaces(line);
+            if (indent <= 1) {
+              const qMatch = /^(\s*)Q(\d+)(\s*[:.\-]\s+.+)$/i.exec(line);
+              if (qMatch) {
+                const n = nextNumber++;
+                return `${qMatch[1]}Q${n}${qMatch[3]}`;
+              }
+              const numMatch = /^(\s*)(\d{1,4})([.)]\s+.+)$/.exec(line);
+              if (numMatch) {
+                const n = nextNumber++;
+                return `${numMatch[1]}${n}${numMatch[3]}`;
+              }
+            }
+            return line;
+          })
+          .join('\n');
+
+    const combinedContent = !finalAppendSegment
+      ? existingRaw
+      : !trimmedExisting
+      ? finalAppendSegment
+      : `${trimmedExisting}\n\n${finalAppendSegment}`;
+
+    return {
+      combinedContent,
+      appendSegment: finalAppendSegment,
+      existingUnitCount: existingUnits.length,
+      parsedNewUnitCount: candidateUnits.length,
+      addedUnitCount,
+      skippedDuplicatesCount,
+      structuralBlocksCount,
+    };
   },
 
   parseBlocks(rawText: string, rule: KnowledgeFormatRule): StudyNoteBlock[] {

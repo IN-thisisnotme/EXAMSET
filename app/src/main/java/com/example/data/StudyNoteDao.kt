@@ -54,4 +54,27 @@ interface StudyNoteDao {
 
     @Query("UPDATE study_notes SET folderId = :folderId, updatedAt = :updatedAt WHERE id = :id")
     suspend fun assignNoteToFolder(id: Long, folderId: String?, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE study_notes SET course = :course, subject = :subject, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun assignCourseAndSubject(
+        id: Long,
+        course: String,
+        subject: String,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE study_notes SET course = :newCourse, updatedAt = :updatedAt WHERE course = :oldCourse")
+    suspend fun renameCourse(
+        oldCourse: String,
+        newCourse: String,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE study_notes SET subject = :newSubject, updatedAt = :updatedAt WHERE course = :course AND subject = :oldSubject")
+    suspend fun renameSubjectInCourse(
+        course: String,
+        oldSubject: String,
+        newSubject: String,
+        updatedAt: Long = System.currentTimeMillis()
+    )
 }

@@ -140,6 +140,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -214,6 +216,11 @@ fun HomeScreen(
     val studyDueSuggestions by viewModel.studyDueSuggestions.collectAsState()
     val dismissedFormatTips by viewModel.dismissedFormatTips.collectAsState()
     val vocabDecks by viewModel.vocabularyDecks.collectAsState()
+    val showRootKnowledgeLibrary by viewModel.showRootKnowledgeLibrary.collectAsState()
+    val selectedKnowledgeCourse by viewModel.selectedKnowledgeCourse.collectAsState()
+    val selectedKnowledgeSubject by viewModel.selectedKnowledgeSubject.collectAsState()
+    val knowledgeCoursesMap by viewModel.knowledgeCoursesMap.collectAsState()
+    val pendingKnowledgeReturnNoteId by viewModel.pendingKnowledgeReturnNoteId.collectAsState()
 
     val isFullScreenTestActive = selectedTab == 2 && isExamStarted && !isExamSubmitted && currentPaper != null
 
@@ -236,6 +243,7 @@ fun HomeScreen(
     var showTopBarOverflowMenu by remember { mutableStateOf(false) }
     var selectedSubjectFolder by remember { mutableStateOf<String?>(null) }
     var showConfirmExitDialog by remember { mutableStateOf(false) }
+    var rootKnowledgeSearchQuery by remember { mutableStateOf("") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
     // Accidental Back Navigation Prevention
@@ -299,11 +307,17 @@ fun HomeScreen(
             isEditMetadataOverlayOpen -> {
                 viewModel.closeEditMetadataOverlay()
             }
-            selectedTab in 3..7 -> {
-                viewModel.selectTab(0)
+            selectedTab == 4 && pendingKnowledgeReturnNoteId != null && viewModel.returnFromKnowledgeMcqDraft() -> {
+                Unit
+            }
+            viewModel.navigateBackTab() -> {
+                Unit
             }
             currentPaper != null && !isFullScreenTestActive -> {
                 showConfirmExitDialog = true
+            }
+            selectedTab != 0 -> {
+                viewModel.selectTab(0, pushHistory = false)
             }
             else -> {
                 val now = System.currentTimeMillis()
@@ -338,7 +352,7 @@ fun HomeScreen(
     Box(modifier = modifier.fillMaxSize()) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showBrainLab && !viewModel.showVoicePractice && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog,
+        gesturesEnabled = !isFullScreenTestActive && !showPsychometricDialog && !showInputSheet && knowledgeEditorDraft == null && activeKnowledgeReaderNoteId == null && !isEditMetadataOverlayOpen && !isAddQuestionOverlayOpen && !viewModel.showAppGuide && !viewModel.showStudyPlanner && !viewModel.showBrainLab && !viewModel.showVoicePractice && !viewModel.showHeadwordInboxOverlay && !showCountdownsDialog && !showRootKnowledgeLibrary,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = colors.surface,
@@ -1126,7 +1140,31 @@ fun HomeScreen(
                         onCreateNewQuestionSet = { folderId ->
                             creationTargetFolderId = folderId
                             showInputSheet = true
-                        }
+                        },
+                        isParentOverlayBlocking = drawerState.isOpen ||
+                            isFullScreenTestActive ||
+                            showCountdownsDialog ||
+                            showPsychometricDialog ||
+                            showHistoricalAnalyticsDialog ||
+                            showConfirmExitDialog ||
+                            selectedSubjectFolder != null ||
+                            showInputSheet ||
+                            showPrintDialog ||
+                            showOmrScannerDialog ||
+                            showSavedDialog ||
+                            showFontSizeDialog ||
+                            showThemePaletteDialog ||
+                            isAddQuestionOverlayOpen ||
+                            isEditMetadataOverlayOpen ||
+                            knowledgeEditorDraft != null ||
+                            activeKnowledgeReaderNoteId != null ||
+                            viewModel.showVocabularyHub ||
+                            viewModel.showAppGuide ||
+                            viewModel.showVoicePractice ||
+                            viewModel.showBrainLab ||
+                            viewModel.showStudyPlanner ||
+                            viewModel.showHeadwordInboxOverlay ||
+                            showRootKnowledgeLibrary
                     )
                     1 -> MasterViewTab(
                         viewModel = viewModel,
@@ -1622,6 +1660,142 @@ fun HomeScreen(
         )
     }
 
+    // Full-screen edge-to-edge Root Knowledge Library Overlay (below Reader/Editor so Back preserves exact position!)
+    if (showRootKnowledgeLibrary) {
+        val isChildOverlayBlocking = activeKnowledgeReaderNoteId != null ||
+            knowledgeEditorDraft != null ||
+            viewModel.showAppGuide ||
+            viewModel.showVocabularyHub ||
+            drawerState.isOpen
+        BackHandler(enabled = !isChildOverlayBlocking) {
+            when {
+                selectedKnowledgeSubject != null -> viewModel.selectKnowledgeSubject(null)
+                selectedKnowledgeCourse != null -> viewModel.selectKnowledgeCourse(null)
+                else -> viewModel.closeRootKnowledgeLibrary()
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+            color = colors.background
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Surface(color = colors.surface, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                when {
+                                    selectedKnowledgeSubject != null -> viewModel.selectKnowledgeSubject(null)
+                                    selectedKnowledgeCourse != null -> viewModel.selectKnowledgeCourse(null)
+                                    else -> viewModel.closeRootKnowledgeLibrary()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("root_knowledge_library_back_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.inkBold)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = selectedKnowledgeSubject
+                                    ?: selectedKnowledgeCourse
+                                    ?: "Knowledge Sets & Courses",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.inkBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = when {
+                                    selectedKnowledgeSubject != null && selectedKnowledgeCourse != null ->
+                                        "$selectedKnowledgeCourse • $selectedKnowledgeSubject"
+                                    selectedKnowledgeCourse != null ->
+                                        "$selectedKnowledgeCourse • Subjects & Sets"
+                                    else ->
+                                        "${studyNotes.size} Knowledge Sets • Course → Subject → Notes"
+                                },
+                                fontSize = 11.5.sp,
+                                color = colors.inkMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                val linkedPaperTitles = remember(savedPapers) { savedPapers.associate { it.id to it.title } }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    item {
+                        KnowledgeCourseBrowser(
+                            notes = studyNotes,
+                            folders = folders,
+                            registeredCoursesMap = knowledgeCoursesMap,
+                            selectedCourse = selectedKnowledgeCourse,
+                            selectedSubject = selectedKnowledgeSubject,
+                            onSelectCourse = { viewModel.selectKnowledgeCourse(it) },
+                            onSelectSubject = { viewModel.selectKnowledgeSubject(it) },
+                            onCreateCourse = { name -> viewModel.createKnowledgeCourse(name) },
+                            onAddSubjectToCourse = { courseName, subjectName ->
+                                viewModel.addSubjectToKnowledgeCourse(courseName, subjectName)
+                            },
+                            onRenameCourse = { oldName, newName -> viewModel.renameKnowledgeCourse(oldName, newName) },
+                            onRenameSubject = { courseName, oldSub, newSub ->
+                                viewModel.renameKnowledgeSubject(courseName, oldSub, newSub)
+                            },
+                            onAssignNoteCourseSubject = { noteId, courseName, subjectName ->
+                                viewModel.assignNoteCourseAndSubject(noteId, courseName, subjectName)
+                            },
+                            searchQuery = rootKnowledgeSearchQuery,
+                            onSearchQueryChange = { rootKnowledgeSearchQuery = it },
+                            onAddKnowledgeSet = { cName, sName ->
+                                viewModel.openKnowledgeEditor(
+                                    note = null,
+                                    defaultFolderId = if (lastActiveFolderId == "all") null else lastActiveFolderId,
+                                    defaultCourse = cName,
+                                    defaultSubject = sName
+                                )
+                            },
+                            onOpenNote = { note -> viewModel.openKnowledgeReader(note.id) },
+                            onEditNote = { note ->
+                                viewModel.openKnowledgeEditor(
+                                    note = note,
+                                    defaultFolderId = note.folderId,
+                                    defaultCourse = note.course,
+                                    defaultSubject = note.subject
+                                )
+                            },
+                            onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
+                            linkedPaperTitles = linkedPaperTitles,
+                            flashcardSrsByNote = flashcardSrsByNote,
+                            onCompileCourseActiveRecall = { cName, sName ->
+                                viewModel.compileActiveRecallSetForSubjectOrFolder(
+                                    folderId = null,
+                                    subjectName = sName,
+                                    courseName = cName
+                                )
+                            },
+                            isParentOverlayBlocking = isChildOverlayBlocking
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     // Full-screen edge-to-edge Knowledge Sets Studio Reader Overlay (no Dialog clipping)
     activeKnowledgeReaderNoteId?.let { noteId ->
         val liveNote = studyNotes.find { it.id == noteId }
@@ -1642,8 +1816,17 @@ fun HomeScreen(
                     viewModel.openKnowledgeEditor(
                         note = liveNote,
                         defaultFolderId = liveNote.folderId,
+                        defaultCourse = liveNote.course,
                         defaultSubject = liveNote.subject,
                         defaultLinkedPaperId = liveNote.linkedPaperId
+                    )
+                },
+                onAppendToNote = { rawAppendText, skipDuplicates, onDone ->
+                    viewModel.appendToStudyNote(
+                        noteId = liveNote.id,
+                        rawAppendText = rawAppendText,
+                        skipDuplicates = skipDuplicates,
+                        onCompleted = onDone
                     )
                 },
                 onOpenLinkedPaper = { pid ->
@@ -1753,6 +1936,13 @@ fun HomeScreen(
 
     // Full-screen edge-to-edge Knowledge Sets Studio Editor Overlay (no Dialog/IME clipping)
     knowledgeEditorDraft?.let { draft ->
+        val existingCoursesList = remember(knowledgeCoursesMap, studyNotes) {
+            (knowledgeCoursesMap.keys + studyNotes.map { it.course })
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sorted()
+        }
         KnowledgeStudioEditorScreen(
             draft = draft,
             folders = folders,
@@ -1768,10 +1958,27 @@ fun HomeScreen(
                     collectionType = collectionType,
                     customLabel = customLabel,
                     linkedPaperId = linkedPaperId,
-                    formatRule = formatRule
+                    formatRule = formatRule,
+                    course = draft.defaultCourse
                 )
             },
             onDismiss = { viewModel.closeKnowledgeEditor() },
+            existingCourses = existingCoursesList,
+            onSaveWithCourse = { id, title, course, subject, sourceAi, rawContent, folderId, collectionType, customLabel, linkedPaperId, formatRule ->
+                viewModel.saveStudyNote(
+                    id = id,
+                    title = title,
+                    subject = subject,
+                    sourceAi = sourceAi,
+                    rawContent = rawContent,
+                    folderId = folderId,
+                    collectionType = collectionType,
+                    customLabel = customLabel,
+                    linkedPaperId = linkedPaperId,
+                    formatRule = formatRule,
+                    course = course
+                )
+            },
             promptPresets = promptPresets,
             activeKnowledgePresetId = viewModel.activeKnowledgePresetId,
             onSelectKnowledgePreset = { preset -> viewModel.selectPromptPreset(preset, applyToMainBuilder = true) },
@@ -1990,7 +2197,10 @@ fun HomeScreen(
                     GuideDestination.STUDENT_TEST -> viewModel.selectTab(2)
                     GuideDestination.PRINT_OMR -> viewModel.selectTab(3)
                     GuideDestination.AI_PROMPT_STUDIO -> viewModel.selectTab(5)
-                    GuideDestination.KNOWLEDGE_STUDIO -> viewModel.selectTab(0)
+                    GuideDestination.KNOWLEDGE_STUDIO -> {
+                        viewModel.selectTab(0)
+                        viewModel.openRootKnowledgeLibrary()
+                    }
                     GuideDestination.VOCABULARY_HUB -> viewModel.openVocabularyHub()
                     GuideDestination.HEADWORD_INBOX -> viewModel.openHeadwordInboxOverlay()
                     GuideDestination.STUDY_PLANNER -> viewModel.openStudyPlanner()

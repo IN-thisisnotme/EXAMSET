@@ -374,6 +374,7 @@ export type RestoreMode = 'SMART_MERGE' | 'FULL_REPLACE';
 export interface BackupCounts {
   papersCount: number;
   notesCount: number;
+  knowledgeCoursesCount?: number;
   foldersCount: number;
   attemptsCount: number;
   analyticsDaysCount: number;

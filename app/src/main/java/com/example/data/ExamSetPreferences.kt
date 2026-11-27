@@ -738,6 +738,43 @@ class ExamSetPreferences(context: Context) {
         return prefs.getString(KEY_BRAIN_LAB_SETTINGS, "") ?: ""
     }
 
+    fun getKnowledgeCoursesMap(): Map<String, List<String>> {
+        val raw = prefs.getString(KEY_KNOWLEDGE_COURSES_MAP, null) ?: return emptyMap()
+        return runCatching {
+            val obj = JSONObject(raw)
+            val result = linkedMapOf<String, List<String>>()
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val course = keys.next().trim()
+                if (course.isBlank()) continue
+                val arr = obj.optJSONArray(course)
+                val subjects = buildList {
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            val sub = arr.optString(i).trim()
+                            if (sub.isNotBlank() && sub !in this) add(sub)
+                        }
+                    }
+                }
+                result[course] = subjects
+            }
+            result
+        }.getOrDefault(emptyMap())
+    }
+
+    fun saveKnowledgeCoursesMap(map: Map<String, List<String>>) {
+        val obj = JSONObject()
+        map.forEach { (rawCourse, subjects) ->
+            val course = rawCourse.trim()
+            if (course.isNotBlank()) {
+                val arr = JSONArray()
+                subjects.map { it.trim() }.filter { it.isNotBlank() }.distinct().forEach { arr.put(it) }
+                obj.put(course, arr)
+            }
+        }
+        prefs.edit().putString(KEY_KNOWLEDGE_COURSES_MAP, obj.toString()).apply()
+    }
+
     companion object {
         private const val KEY_LAST_ACTIVE_PAPER_ID = "key_last_active_paper_id"
         private const val KEY_DRAFT_RAW_TEXT = "key_draft_raw_text"
@@ -779,5 +816,6 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_PAPER_MSQ_POLICIES = "key_paper_msq_policies_v1"
         private const val KEY_BRAIN_LAB_STATS = "key_brain_lab_stats_v1"
         private const val KEY_BRAIN_LAB_SETTINGS = "key_brain_lab_settings_v1"
+        private const val KEY_KNOWLEDGE_COURSES_MAP = "key_knowledge_courses_map_v1"
     }
 }

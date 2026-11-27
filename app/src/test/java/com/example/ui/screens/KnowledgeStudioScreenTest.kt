@@ -1,10 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -147,7 +149,17 @@ class KnowledgeStudioScreenTest {
             }
         }
 
-        // Flashcards collection opens directly in SM-2 Deck Studio with hidden answer
+        // Study-First: Flashcards collection opens in readable List view with answers visible first
+        composeTestRule.onNodeWithTag("srs_rating_dock").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("study_first_start_deck_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("reader_navigator_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("reader_jump_chip_1").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Energy is conserved: ΔU = Q - W.").assertIsDisplayed()
+
+        // Launch SM-2 Deck Studio when ready
+        composeTestRule.onNodeWithTag("study_first_start_deck_button").performClick()
+        composeTestRule.waitForIdle()
+
         composeTestRule.onNodeWithTag("srs_rating_dock").assertIsDisplayed()
         composeTestRule.onNodeWithTag("flashcard_reveal_button").assertIsDisplayed().performClick()
         composeTestRule.waitForIdle()
@@ -217,10 +229,149 @@ class KnowledgeStudioScreenTest {
         // Callout renders clean label without stray ** asterisks
         composeTestRule.onNodeWithText("Review Identification").assertIsDisplayed()
 
-        // Switching to Write & Paste reveals raw input and Paste tool
+        // Switching to Write & Paste reveals raw input, Append, and Paste tools
         composeTestRule.onNodeWithTag("knowledge_editor_write_mode_chip").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("study_note_content_input").assertIsDisplayed()
         composeTestRule.onNodeWithTag("knowledge_paste_clipboard_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("knowledge_editor_append_clipboard_button").assertIsDisplayed()
+    }
+
+    @Test
+    fun knowledgeStudioReader_appendButtonOpensSheetAndAppendsNewUnit() {
+        val baseNote = com.example.data.StudyNoteEntity(
+            id = 55L,
+            title = "Constitutional Amendments",
+            subject = "Polity",
+            course = "UPSC CSE",
+            collectionType = KnowledgeCollectionType.ONE_LINERS.code,
+            rawContent = "1. **42nd Amendment** -> Added Socialist, Secular, Integrity to Preamble."
+        )
+        var appendedPayload = ""
+
+        composeTestRule.setContent {
+            ExamSetTheme(darkTheme = true) {
+                KnowledgeStudioReaderScreen(
+                    note = baseNote,
+                    onToggleBookmark = { _, _ -> },
+                    onToggleMastered = { _, _ -> },
+                    onEdit = {},
+                    onAppendToNote = { rawAppend, _, onDone ->
+                        appendedPayload = rawAppend
+                        onDone(1, 0)
+                    },
+                    onGenerateMcqDraft = {},
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("reader_append_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("append_quick_primary_input").performTextInput("44th Amendment")
+        composeTestRule.onNodeWithTag("append_quick_secondary_input").performTextInput("Moved Right to Property to Article 300A.")
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("append_knowledge_submit_button").assertIsEnabled().performClick()
+        composeTestRule.waitForIdle()
+
+        assertTrue(appendedPayload.contains("44th Amendment"))
+        assertTrue(appendedPayload.contains("Article 300A"))
+    }
+
+    @Test
+    fun knowledgeCourseBrowser_navigatesCourseToSubjectToNotesAndShowsSuggestedStudy() {
+        val sampleNotes = listOf(
+            com.example.data.StudyNoteEntity(
+                id = 1L,
+                title = "Directive Principles",
+                subject = "Polity",
+                course = "UPSC CSE",
+                rawContent = "1. **Article 40** -> Organisation of village panchayats."
+            ),
+            com.example.data.StudyNoteEntity(
+                id = 2L,
+                title = "Thermodynamics",
+                subject = "Physics",
+                course = "JEE Main",
+                rawContent = "1. **Zeroth Law** -> Defines thermal equilibrium."
+            )
+        )
+        var selectedCourse: String? = null
+        var selectedSubject: String? = null
+
+        composeTestRule.setContent {
+            val cState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+            val sState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+            ExamSetTheme(darkTheme = true) {
+                KnowledgeCourseBrowser(
+                    notes = sampleNotes,
+                    folders = emptyList(),
+                    registeredCoursesMap = mapOf("UPSC CSE" to listOf("Polity")),
+                    selectedCourse = cState.value,
+                    selectedSubject = sState.value,
+                    onSelectCourse = {
+                        cState.value = it
+                        sState.value = null
+                        selectedCourse = it
+                        selectedSubject = null
+                    },
+                    onSelectSubject = {
+                        sState.value = it
+                        selectedSubject = it
+                    },
+                    onCreateCourse = {},
+                    onAddSubjectToCourse = { _, _ -> },
+                    onRenameCourse = { _, _ -> },
+                    onRenameSubject = { _, _, _ -> },
+                    onAssignNoteCourseSubject = { _, _, _ -> },
+                    searchQuery = "",
+                    onSearchQueryChange = {},
+                    onAddKnowledgeSet = { _, _ -> },
+                    onOpenNote = {},
+                    onEditNote = {},
+                    onDeleteNote = {}
+                )
+            }
+        }
+
+        // Suggested Next Study & Courses are visible at root level
+        composeTestRule.onNodeWithTag("suggested_next_knowledge_card").assertIsDisplayed()
+        composeTestRule.onNodeWithText("UPSC CSE").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("UPSC CSE", selectedCourse)
+        composeTestRule.onNodeWithText("Polity").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Polity", selectedSubject)
+        composeTestRule.onNodeWithText("New Knowledge Set in Polity").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("Directive Principles").assertCountEquals(2)
+    }
+
+    @Test
+    fun studyNoteParser_prepareAppendedContentSkipsDuplicatesAndRenumbers() {
+        val existing = """
+            1. **Article 32** -> Constitutional Remedies
+            2. **Article 40** -> Village Panchayats
+        """.trimIndent()
+        val incoming = """
+            1. **Article 32** -> Constitutional Remedies
+            2. **Article 44** -> Uniform Civil Code
+        """.trimIndent()
+
+        val preview = com.example.util.StudyNoteParser.prepareAppendedContent(
+            existingRaw = existing,
+            newRaw = incoming,
+            skipDuplicates = true
+        )
+
+        assertEquals(2, preview.existingUnitCount)
+        assertEquals(1, preview.skippedDuplicatesCount)
+        assertEquals(1, preview.addedUnitCount)
+        assertTrue(preview.appendSegment.contains("3. **Article 44**"))
+        assertTrue(preview.combinedContent.contains("1. **Article 32**"))
+        assertTrue(preview.combinedContent.contains("3. **Article 44**"))
     }
 }

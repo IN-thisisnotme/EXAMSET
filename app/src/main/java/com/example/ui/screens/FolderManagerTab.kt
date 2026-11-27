@@ -260,6 +260,7 @@ fun FolderManagerTab(
     onNavigateToStudent: () -> Unit,
     onNavigateToPrint: () -> Unit = {},
     onCreateNewQuestionSet: (folderId: String?) -> Unit = {},
+    isParentOverlayBlocking: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val colors = ExamTheme.colors
@@ -272,6 +273,12 @@ fun FolderManagerTab(
     val currentPaperEntityId by viewModel.currentPaperEntityId.collectAsState()
     val lastOpenedPaper by viewModel.lastOpenedPaper.collectAsState()
     val currentPaper by viewModel.currentPaper.collectAsState()
+    val showRootKnowledgeLibrary by viewModel.showRootKnowledgeLibrary.collectAsState()
+    val selectedKnowledgeCourse by viewModel.selectedKnowledgeCourse.collectAsState()
+    val selectedKnowledgeSubject by viewModel.selectedKnowledgeSubject.collectAsState()
+    val knowledgeCoursesMap by viewModel.knowledgeCoursesMap.collectAsState()
+    val activeKnowledgeReaderNoteId by viewModel.activeKnowledgeReaderNoteId.collectAsState()
+    val knowledgeEditorDraft by viewModel.knowledgeEditorDraft.collectAsState()
 
     // Preserved active folder location state
     val savedActiveFolderId by viewModel.lastActiveFolderId.collectAsState()
@@ -281,7 +288,6 @@ fun FolderManagerTab(
     var selectedPaperFilter by remember { mutableStateOf("All Papers") }
     var showAllFoldersExpanded by remember { mutableStateOf(false) }
     var activeQuickFeatureFilter by remember { mutableStateOf<QuickFeatureAction?>(null) }
-    var showRootStudyNotesDialog by remember { mutableStateOf(false) }
     var notesSearchQuery by remember { mutableStateOf("") }
 
     val navigateToFolder: (String) -> Unit = remember {
@@ -353,9 +359,12 @@ fun FolderManagerTab(
     var folderToDelete by remember { mutableStateOf<FolderItem?>(null) }
     var paperToAssignFolder by remember { mutableStateOf<PaperEntity?>(null) }
 
-    // Folder navigation & dialog dismissal BackHandler (prevents app exit during folder operations)
+    // Folder navigation & dialog dismissal BackHandler (respects higher-priority Home overlays/Drawer)
     BackHandler(
-        enabled = isSelectionMode ||
+        enabled = !isParentOverlayBlocking &&
+                !showRootKnowledgeLibrary &&
+                activeQuickFeatureFilter == null &&
+                (isSelectionMode ||
                 paperToAssignFolder != null ||
                 showBatchMoveDialog ||
                 folderToRename != null ||
@@ -364,7 +373,7 @@ fun FolderManagerTab(
                 folderToDuplicate != null ||
                 showNewFolderDialog ||
                 showQuickJumpDialog ||
-                activeFolderId != "all"
+                activeFolderId != "all")
     ) {
         when {
             showBatchMoveDialog -> showBatchMoveDialog = false
@@ -553,9 +562,12 @@ fun FolderManagerTab(
         )
     }
 
-    val folderNotes = remember(studyNotes, activeFolderId) {
+    val folderNotes = remember(studyNotes, activeFolderId, descendantIds) {
         if (activeFolderId == "all") studyNotes
-        else studyNotes.filter { it.folderId == activeFolderId }
+        else {
+            val allFolderIds = descendantIds + activeFolderId
+            studyNotes.filter { it.folderId in allFolderIds }
+        }
     }
 
     val suggestedFolderPaper = remember(sortedFilteredPapers, libraryIndex, activeFolderId, selectedFolderTab) {
@@ -1161,7 +1173,7 @@ fun FolderManagerTab(
                         onToggleShowAllFolders = { showAllFoldersExpanded = !showAllFoldersExpanded },
                         onQuickFeatureClick = { action ->
                             when (action) {
-                                QuickFeatureAction.STUDY_NOTES -> showRootStudyNotesDialog = true
+                                QuickFeatureAction.STUDY_NOTES -> viewModel.openRootKnowledgeLibrary()
                                 QuickFeatureAction.VOCABULARY -> viewModel.openVocabularyHub()
                                 QuickFeatureAction.PRINTABLE_PDFS -> {
                                     val targetPaper = savedPapers.firstOrNull { it.id == currentPaperEntityId } ?: savedPapers.firstOrNull()
@@ -1325,15 +1337,33 @@ fun FolderManagerTab(
                     if (selectedFolderTab == FolderExamTab.STUDY_NOTES) {
                         item(key = "folder_study_notes_section") {
                             val linkedPaperTitles = remember(savedPapers) { savedPapers.associate { it.id to it.title } }
-                            StudyNotesSectionItems(
+                            KnowledgeCourseBrowser(
                                 notes = folderNotes,
+                                folders = folders,
+                                registeredCoursesMap = knowledgeCoursesMap,
+                                selectedCourse = selectedKnowledgeCourse,
+                                selectedSubject = selectedKnowledgeSubject,
+                                onSelectCourse = { viewModel.selectKnowledgeCourse(it) },
+                                onSelectSubject = { viewModel.selectKnowledgeSubject(it) },
+                                onCreateCourse = { name -> viewModel.createKnowledgeCourse(name) },
+                                onAddSubjectToCourse = { courseName, subjectName ->
+                                    viewModel.addSubjectToKnowledgeCourse(courseName, subjectName)
+                                },
+                                onRenameCourse = { oldName, newName -> viewModel.renameKnowledgeCourse(oldName, newName) },
+                                onRenameSubject = { courseName, oldSub, newSub ->
+                                    viewModel.renameKnowledgeSubject(courseName, oldSub, newSub)
+                                },
+                                onAssignNoteCourseSubject = { noteId, courseName, subjectName ->
+                                    viewModel.assignNoteCourseAndSubject(noteId, courseName, subjectName)
+                                },
                                 searchQuery = notesSearchQuery,
                                 onSearchQueryChange = { notesSearchQuery = it },
-                                onAddClick = {
+                                onAddKnowledgeSet = { cName, sName ->
                                     viewModel.openKnowledgeEditor(
                                         note = null,
                                         defaultFolderId = if (activeFolderId == "all") null else activeFolderId,
-                                        defaultSubject = currentFolder?.name ?: ""
+                                        defaultCourse = cName.ifBlank { viewModel.resolveRootFolderName(activeFolderId) },
+                                        defaultSubject = sName.ifBlank { currentFolder?.name ?: "" }
                                     )
                                 },
                                 onOpenNote = { note -> viewModel.openKnowledgeReader(note.id) },
@@ -1341,17 +1371,23 @@ fun FolderManagerTab(
                                     viewModel.openKnowledgeEditor(
                                         note = note,
                                         defaultFolderId = note.folderId,
+                                        defaultCourse = note.course,
                                         defaultSubject = note.subject
                                     )
                                 },
                                 onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
                                 linkedPaperTitles = linkedPaperTitles,
                                 flashcardSrsByNote = flashcardSrsByNote,
-                                onCompileCourseActiveRecall = {
+                                onCompileCourseActiveRecall = { cName, sName ->
                                     val targetFId = if (activeFolderId == "all") null else activeFolderId
-                                    val targetSub = currentFolder?.name.orEmpty()
-                                    viewModel.compileActiveRecallSetForSubjectOrFolder(targetFId, targetSub)
-                                }
+                                    val targetSub = sName.ifBlank { currentFolder?.name.orEmpty() }
+                                    viewModel.compileActiveRecallSetForSubjectOrFolder(
+                                        folderId = targetFId,
+                                        subjectName = targetSub,
+                                        courseName = cName
+                                    )
+                                },
+                                isParentOverlayBlocking = isParentOverlayBlocking || showRootKnowledgeLibrary || activeKnowledgeReaderNoteId != null || knowledgeEditorDraft != null
                             )
                         }
                     }
@@ -2023,93 +2059,6 @@ fun FolderManagerTab(
                                     }
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Root Knowledge Sets Library Dialog
-    if (showRootStudyNotesDialog) {
-        Dialog(
-            onDismissRequest = { showRootStudyNotesDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-        ) {
-            BackHandler { showRootStudyNotesDialog = false }
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding(),
-                color = colors.background
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Surface(color = colors.surface, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = { showRootStudyNotesDialog = false },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close", tint = colors.inkBold)
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Knowledge Sets & Collections",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = colors.inkBold
-                                )
-                                Text(
-                                    text = "${studyNotes.size} Knowledge Sets across all exam folders",
-                                    fontSize = 11.5.sp,
-                                    color = colors.inkMuted
-                                )
-                            }
-                        }
-                    }
-
-                    val linkedPaperTitles = remember(savedPapers) { savedPapers.associate { it.id to it.title } }
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp),
-                        contentPadding = PaddingValues(vertical = 12.dp)
-                    ) {
-                        item {
-                            StudyNotesSectionItems(
-                                notes = studyNotes,
-                                searchQuery = notesSearchQuery,
-                                onSearchQueryChange = { notesSearchQuery = it },
-                                onAddClick = {
-                                    showRootStudyNotesDialog = false
-                                    viewModel.openKnowledgeEditor(
-                                        note = null,
-                                        defaultFolderId = if (activeFolderId == "all") null else activeFolderId,
-                                        defaultSubject = currentFolder?.name ?: ""
-                                    )
-                                },
-                                onOpenNote = { note ->
-                                    showRootStudyNotesDialog = false
-                                    viewModel.openKnowledgeReader(note.id)
-                                },
-                                onEditNote = { note ->
-                                    showRootStudyNotesDialog = false
-                                    viewModel.openKnowledgeEditor(
-                                        note = note,
-                                        defaultFolderId = note.folderId,
-                                        defaultSubject = note.subject
-                                    )
-                                },
-                                onDeleteNote = { note -> viewModel.deleteStudyNote(note) },
-                                linkedPaperTitles = linkedPaperTitles,
-                                flashcardSrsByNote = flashcardSrsByNote
-                            )
                         }
                     }
                 }

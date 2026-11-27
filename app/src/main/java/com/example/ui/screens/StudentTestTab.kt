@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -290,6 +291,13 @@ fun StudentTestTab(
             todayTestSecondsFlow = todayTestSecondsFlow,
             pacingSummary = pacingSummaryForAnalytics
         )
+    }
+
+    BackHandler(enabled = showHistoryDialog || showHistoricalAnalyticsDialog) {
+        when {
+            showHistoricalAnalyticsDialog -> showHistoricalAnalyticsDialog = false
+            showHistoryDialog -> showHistoryDialog = false
+        }
     }
 
     when {
@@ -1647,6 +1655,16 @@ private fun ActiveExamView(
     val markedOnlyCount = activeQuestions.count { answers[it.num].isNullOrBlank() && it.num in markedForReview }
     val ansMarkedCount = activeQuestions.count { answers[it.num]?.isNotBlank() == true && it.num in markedForReview }
     val notVisitedCount = activeQuestions.count { it.num !in visitedQuestions }
+
+    BackHandler {
+        when {
+            showCbtPaletteSideSheet -> showCbtPaletteSideSheet = false
+            showSubmitConfirmDialog -> showSubmitConfirmDialog = false
+            showExitConfirmDialog -> showExitConfirmDialog = false
+            isFullscreen -> isFullscreen = false
+            else -> showExitConfirmDialog = true
+        }
+    }
 
     // Exit / Pause Confirmation
     if (showExitConfirmDialog) {
@@ -3168,6 +3186,14 @@ private fun ExamResultAndReviewView(
     var isSavedToKnowledge by remember { mutableStateOf(false) }
     val effectiveTimeSpentSeconds = timeSpentSecondsFlow?.collectAsState()?.value ?: timeSpentSeconds
     val effectiveQuestionTimes = questionTimesFlow?.collectAsState()?.value ?: questionTimes
+
+    BackHandler {
+        when {
+            showPaletteDialog -> showPaletteDialog = false
+            activeTab != ResultHubTab.SCORECARD -> activeTab = ResultHubTab.SCORECARD
+            else -> onExitToOverview()
+        }
+    }
 
     // Official one-time evaluation (MSQ-aware)
     val officialAnswers = if (submittedAnswers.isNotEmpty()) submittedAnswers else answers

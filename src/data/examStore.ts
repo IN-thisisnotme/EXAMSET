@@ -10,6 +10,7 @@ import {
   DictationConfig,
   FlashcardSrsState,
   HeadwordQueueItem,
+  KnowledgeCoursesMap,
   LanguageWordOfTheDayState,
   PromptPreset,
   StudyNoteRecord,
@@ -40,6 +41,7 @@ const KEYS = {
   COUNTDOWNS: 'examset_countdowns_v1',
   // Phase 4 Storage Keys
   STUDY_NOTES: 'examset_study_notes_v1',
+  KNOWLEDGE_COURSES: 'examset_knowledge_courses_v1',
   VOCAB_DECKS: 'examset_vocab_decks_v1',
   VOCAB_SRS: 'examset_vocab_srs_v1',
   VOCAB_VARIANT: 'examset_vocab_variant_v1',
@@ -336,20 +338,97 @@ export const ExamStore = {
 
   // --- Phase 4 Persistence Methods ---
 
+  normalizeStudyNote(note: StudyNoteRecord): StudyNoteRecord {
+    return {
+      ...note,
+      course: (note.course || '').trim(),
+      subject: (note.subject || '').trim() || 'General Studies',
+      bookmarkedIndices: Array.isArray(note.bookmarkedIndices) ? note.bookmarkedIndices : [],
+      masteredIndices: Array.isArray(note.masteredIndices) ? note.masteredIndices : [],
+      srsStates: note.srsStates || {},
+    };
+  },
+
+  normalizeKnowledgeCoursesMap(raw: unknown): KnowledgeCoursesMap {
+    const out: KnowledgeCoursesMap = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    for (const [rawCourse, rawSubjects] of Object.entries(raw as Record<string, unknown>)) {
+      const course = String(rawCourse || '').trim();
+      if (!course) continue;
+      const seenSub = new Set<string>();
+      const subjects: string[] = [];
+      if (Array.isArray(rawSubjects)) {
+        for (const item of rawSubjects) {
+          const sub = String(item || '').trim();
+          const key = sub.toLowerCase();
+          if (sub && !seenSub.has(key)) {
+            seenSub.add(key);
+            subjects.push(sub);
+          }
+        }
+      }
+      out[course] = subjects;
+    }
+    return out;
+  },
+
+  mergeKnowledgeCoursesMaps(
+    base: KnowledgeCoursesMap,
+    incoming: KnowledgeCoursesMap
+  ): KnowledgeCoursesMap {
+    const result: KnowledgeCoursesMap = {};
+    const courseKeyMap = new Map<string, string>();
+    const addEntry = (courseRaw: string, subjectsRaw: string[]) => {
+      const cTrim = courseRaw.trim();
+      if (!cTrim) return;
+      const cKey = cTrim.toLowerCase();
+      const canonicalCourse = courseKeyMap.get(cKey) || cTrim;
+      courseKeyMap.set(cKey, canonicalCourse);
+      const existingList = result[canonicalCourse] || [];
+      const seenSub = new Set(existingList.map((s) => s.trim().toLowerCase()));
+      const mergedList = [...existingList];
+      for (const sRaw of subjectsRaw || []) {
+        const sTrim = String(sRaw || '').trim();
+        const sKey = sTrim.toLowerCase();
+        if (sTrim && !seenSub.has(sKey)) {
+          seenSub.add(sKey);
+          mergedList.push(sTrim);
+        }
+      }
+      result[canonicalCourse] = mergedList;
+    };
+    for (const [c, subs] of Object.entries(base || {})) addEntry(c, subs);
+    for (const [c, subs] of Object.entries(incoming || {})) addEntry(c, subs);
+    return result;
+  },
+
+  loadKnowledgeCoursesMap(): KnowledgeCoursesMap {
+    const stored = safeReadJson<unknown>(KEYS.KNOWLEDGE_COURSES, {});
+    return this.normalizeKnowledgeCoursesMap(stored);
+  },
+
+  saveKnowledgeCoursesMap(map: KnowledgeCoursesMap): void {
+    safeWriteJson(KEYS.KNOWLEDGE_COURSES, this.normalizeKnowledgeCoursesMap(map));
+  },
+
   loadStudyNotes(seedNotes: StudyNoteRecord[] = []): StudyNoteRecord[] {
     const stored = safeReadJson<StudyNoteRecord[] | null>(KEYS.STUDY_NOTES, null);
     if (stored && Array.isArray(stored) && stored.length > 0) {
-      return [...stored].sort((a, b) => b.updatedAt - a.updatedAt);
+      return [...stored].map((n) => this.normalizeStudyNote(n)).sort((a, b) => b.updatedAt - a.updatedAt);
     }
     if (stored === null && seedNotes.length > 0) {
-      safeWriteJson(KEYS.STUDY_NOTES, seedNotes);
-      return seedNotes;
+      const normalized = seedNotes.map((n) => this.normalizeStudyNote(n));
+      safeWriteJson(KEYS.STUDY_NOTES, normalized);
+      return normalized;
     }
-    return stored || [];
+    return (stored || []).map((n) => this.normalizeStudyNote(n));
   },
 
   saveStudyNotes(notes: StudyNoteRecord[]): void {
-    safeWriteJson(KEYS.STUDY_NOTES, notes);
+    safeWriteJson(
+      KEYS.STUDY_NOTES,
+      notes.map((n) => this.normalizeStudyNote(n))
+    );
   },
 
   loadVocabDecks(seedDecks: VocabularyDeck[] = []): VocabularyDeck[] {

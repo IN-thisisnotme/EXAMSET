@@ -7,7 +7,7 @@ import {
   EMPTY_BRAIN_LAB_STATS,
   type VaultSnapshotRecord,
 } from '../src/types/phase5';
-import { DEFAULT_DICTATION_CONFIG } from '../src/types/phase4';
+import { DEFAULT_DICTATION_CONFIG, DEFAULT_KNOWLEDGE_RULE } from '../src/types/phase4';
 import {
   applyVaultRestoreToState,
   buildVaultArchive,
@@ -16,6 +16,7 @@ import {
 } from '../src/utils/vaultArchiveEngine';
 import { CloudSyncEngine } from '../src/utils/cloudSyncEngine';
 import { ExamStore } from '../src/data/examStore';
+import { StudyNoteParser } from '../src/utils/studyNoteParser';
 
 function createMemoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -293,3 +294,95 @@ test('ExamStore snapshot fallback works without IndexedDB and prunes manual/auto
     Object.defineProperty(globalThis, 'localStorage', { value: prevLocal, configurable: true, writable: true });
   }
 });
+
+test('StudyNoteParser.prepareAppendedContent deduplicates and renumbers sequentially', () => {
+  const existing = [
+    '## Core Principles',
+    '1. **Article 14** -> Equality before law.',
+    '2. **Article 21** -> Protection of life and personal liberty.',
+  ].join('\n');
+
+  const incoming = [
+    '1. **Article 14** -> Equality before law.',
+    '2. **Article 32** -> Constitutional Remedies.',
+    '3. **Article 44** -> Uniform Civil Code.',
+  ].join('\n');
+
+  const preview = StudyNoteParser.prepareAppendedContent(existing, incoming, DEFAULT_KNOWLEDGE_RULE, true);
+  assert.equal(preview.addedUnitCount, 2);
+  assert.equal(preview.skippedDuplicatesCount, 1);
+  assert.match(preview.appendSegment, /^3\. \*\*Article 32\*\*/m);
+  assert.match(preview.appendSegment, /^4\. \*\*Article 44\*\*/m);
+  assert.match(preview.combinedContent, /Article 21[\s\S]*3\. \*\*Article 32\*\*/);
+});
+
+test('vaultArchiveEngine round-trips knowledgeCourses, course, and masteredIndices across Clean Replace & Smart Merge', () => {
+  const incomingState = makeWorkspaceState();
+  incomingState.knowledgeCourses = {
+    'UPSC GS': ['Polity', 'Economy'],
+    'SSC Tier-2': ['Quant'],
+  };
+  incomingState.studyNotes = [
+    {
+      id: 'note-1',
+      title: 'Fundamental Rights',
+      course: 'UPSC GS',
+      subject: 'Polity',
+      sourceAi: 'Custom',
+      rawContent: '1. **Art 14** -> Equality\n2. **Art 19** -> Freedoms\n3. **Art 21** -> Life',
+      folderId: 'default',
+      collectionType: 'ONE_LINER',
+      formatRule: DEFAULT_KNOWLEDGE_RULE,
+      bookmarkedIndices: [1],
+      masteredIndices: [0, 2],
+      srsStates: {},
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_100_000,
+    },
+  ];
+
+  const { rawJson } = buildVaultArchive(incomingState, 'Course Device', 1_700_000_300_000);
+  const preview = inspectVaultArchiveText(rawJson, 'courses.examset.json');
+  assert.equal(preview.checksumVerified, true);
+  assert.equal(preview.manifest.counts.knowledgeCoursesCount, 2);
+
+  // Smart Merge into local state having different course + overlapping note with different masteredIndices
+  const localState = makeWorkspaceState();
+  localState.knowledgeCourses = {
+    'UPSC GS': ['History'],
+    'State PSC': ['Geography'],
+  };
+  localState.studyNotes = [
+    {
+      ...incomingState.studyNotes[0],
+      bookmarkedIndices: [0],
+      masteredIndices: [1],
+      updatedAt: 1_700_000_050_000,
+    },
+  ];
+
+  const merged = applyVaultRestoreToState(localState, preview, 'SMART_MERGE', localState.folders[0]);
+  assert.deepEqual(merged.knowledgeCourses?.['UPSC GS'], ['History', 'Polity', 'Economy']);
+  assert.deepEqual(merged.knowledgeCourses?.['SSC Tier-2'], ['Quant']);
+  assert.deepEqual(merged.knowledgeCourses?.['State PSC'], ['Geography']);
+  assert.equal(merged.studyNotes.length, 1);
+  assert.equal(merged.studyNotes[0].course, 'UPSC GS');
+  assert.deepEqual(merged.studyNotes[0].masteredIndices?.slice().sort(), [0, 1, 2]);
+  assert.deepEqual(merged.studyNotes[0].bookmarkedIndices?.slice().sort(), [0, 1]);
+
+  // Clean Replace replaces course map cleanly
+  const replaced = applyVaultRestoreToState(localState, preview, 'FULL_REPLACE', localState.folders[0]);
+  assert.deepEqual(replaced.knowledgeCourses, incomingState.knowledgeCourses);
+  assert.deepEqual(replaced.studyNotes[0].masteredIndices, [0, 2]);
+
+  // Backward compatibility: older v5 archive without knowledgeCourses still verifies cleanly
+  const legacyObj = JSON.parse(rawJson);
+  delete legacyObj.sections.brainAndPreferences.knowledgeCourses;
+  // Re-build checksum on brainAndPreferences to simulate older v5 generator
+  const olderState = makeWorkspaceState();
+  const { rawJson: olderRaw } = buildVaultArchive(olderState, 'Legacy v5', 1_700_000_000_000);
+  const olderPreview = inspectVaultArchiveText(olderRaw, 'older.examset.json');
+  assert.equal(olderPreview.checksumVerified, true);
+  assert.equal(olderPreview.manifest.counts.knowledgeCoursesCount, 0);
+});
+

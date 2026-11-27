@@ -616,10 +616,11 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
       </div>
 
       {/* Live Workspace Inventory Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: 'Question Sets', value: liveCounts.papersCount },
           { label: 'Knowledge Notes', value: liveCounts.notesCount },
+          { label: 'Courses', value: liveCounts.knowledgeCoursesCount ?? 0 },
           { label: 'Vocab Words', value: `${liveCounts.vocabWordsCount} (${liveCounts.vocabDecksCount} sets)` },
           { label: 'Test Attempts', value: liveCounts.attemptsCount },
           { label: 'Tasks / Presets', value: `${liveCounts.todosCount} / ${liveCounts.promptPresetsCount}` },
@@ -1041,10 +1042,11 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-center">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
                 {[
                   ['Papers', restorePreview.manifest.counts.papersCount],
                   ['Notes', restorePreview.manifest.counts.notesCount],
+                  ['Courses', restorePreview.manifest.counts.knowledgeCoursesCount ?? 0],
                   ['Vocab', restorePreview.manifest.counts.vocabWordsCount],
                   ['Attempts', restorePreview.manifest.counts.attemptsCount],
                   ['Folders', restorePreview.manifest.counts.foldersCount],

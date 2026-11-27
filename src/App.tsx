@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
+  ArrowLeft,
   Bell,
   BookMarked,
   BookOpen,
@@ -35,6 +36,7 @@ import {
   FlashcardSrsState,
   HeadwordQueueItem,
   KnowledgeCollectionType,
+  KnowledgeCoursesMap,
   LanguageWordOfTheDayState,
   PromptPreset,
   StudyNoteRecord,
@@ -212,6 +214,20 @@ const ExamSetWorkspace: React.FC = () => {
     isDark,
   } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>('creator');
+  const [tabHistory, setTabHistory] = useState<ActiveTab[]>([]);
+  const [tabHasSubBack, setTabHasSubBack] = useState<boolean>(false);
+  const tabBackHandlerRef = useRef<(() => boolean) | null>(null);
+  const studyNoteRequestCloseRef = useRef<(() => void) | null>(null);
+  const hasPushedTrapRef = useRef<boolean>(false);
+
+  const registerTabBackHandler = useCallback((handler: (() => boolean) | null) => {
+    tabBackHandlerRef.current = handler;
+    setTabHasSubBack(Boolean(handler));
+  }, []);
+
+  const registerStudyNoteCloseRequest = useCallback((fn: (() => void) | null) => {
+    studyNoteRequestCloseRef.current = fn;
+  }, []);
 
   const [papers, setPapers] = useState<QuestionPaper[]>(() => ExamStore.loadPapers(DEFAULT_PAPER));
   const [currentPaper, setCurrentPaper] = useState<QuestionPaper>(() =>
@@ -229,6 +245,10 @@ const ExamSetWorkspace: React.FC = () => {
   const [studyNotes, setStudyNotes] = useState<StudyNoteRecord[]>(() =>
     ExamStore.loadStudyNotes(STARTER_STUDY_NOTES)
   );
+  const [knowledgeCourses, setKnowledgeCourses] = useState<KnowledgeCoursesMap>(() =>
+    ExamStore.loadKnowledgeCoursesMap()
+  );
+  const [requestedStudyNoteId, setRequestedStudyNoteId] = useState<string | null>(null);
   const [vocabDecks, setVocabDecks] = useState<VocabularyDeck[]>(() =>
     ExamStore.loadVocabDecks(STARTER_VOCAB_DECKS)
   );
@@ -274,6 +294,7 @@ const ExamSetWorkspace: React.FC = () => {
   const [editingStudyNote, setEditingStudyNote] = useState<StudyNoteRecord | null>(null);
   const [studyNotePrefill, setStudyNotePrefill] = useState<{
     collectionType?: KnowledgeCollectionType;
+    course?: string;
     subject?: string;
     topic?: string;
   } | null>(null);
@@ -316,6 +337,20 @@ const ExamSetWorkspace: React.FC = () => {
     }, 3200);
   };
 
+  const navigateTab = useCallback(
+    (nextTab: ActiveTab, pushHistory: boolean = true) => {
+      setMobileMenuOpen(false);
+      setActiveTab((prev) => {
+        if (prev === nextTab) return prev;
+        if (pushHistory) {
+          setTabHistory((hist) => [...hist.slice(-19), prev]);
+        }
+        return nextTab;
+      });
+    },
+    []
+  );
+
   useEffect(() => {
     ExamStore.setActivePaper(currentPaper);
   }, [currentPaper]);
@@ -324,10 +359,10 @@ const ExamSetWorkspace: React.FC = () => {
     void CloudSyncEngine.handleOAuthCallbackIfPresent().then((res) => {
       if (res) {
         showToast(res.message);
-        setActiveTab('backup_vault');
+        navigateTab('backup_vault', false);
       }
     });
-  }, []);
+  }, [navigateTab]);
 
   const handleSavePaper = (paper: QuestionPaper, silent: boolean = false) => {
     const normalized = normalizePaperMetadata(paper);
@@ -352,7 +387,7 @@ const ExamSetWorkspace: React.FC = () => {
     setCurrentPaper(normalized);
     setShowCreateModal(false);
     setCreateInitialText('');
-    setActiveTab('master');
+    navigateTab('master');
     showToast(`Created "${normalized.metadata.title}" (${normalized.questions.length} Qs)`);
   };
 
@@ -368,7 +403,7 @@ const ExamSetWorkspace: React.FC = () => {
     setPapers(list);
     setCurrentPaper(normalizedItems[0]);
     setShowBatchImportModal(false);
-    setActiveTab('folders');
+    navigateTab('folders');
     showToast(`Imported ${normalizedItems.length} question paper(s) into Library`);
   };
 
@@ -475,15 +510,56 @@ const ExamSetWorkspace: React.FC = () => {
   };
 
   // Phase 4 Handlers
+  const ensureCourseRegisteredForNotes = useCallback((notesToCheck: StudyNoteRecord[]) => {
+    setKnowledgeCourses((prev) => {
+      let changed = false;
+      const nextMap: KnowledgeCoursesMap = { ...prev };
+      for (const note of notesToCheck) {
+        const cTrim = (note.course || '').trim();
+        const sTrim = note.subject.trim();
+        if (!cTrim) continue;
+        const existingKey =
+          Object.keys(nextMap).find((k) => k.trim().toLowerCase() === cTrim.toLowerCase()) || cTrim;
+        const existingSubs = nextMap[existingKey] || [];
+        if (!nextMap[existingKey]) {
+          nextMap[existingKey] = sTrim ? [sTrim] : [];
+          changed = true;
+        } else if (
+          sTrim &&
+          !existingSubs.some((s) => s.trim().toLowerCase() === sTrim.toLowerCase())
+        ) {
+          nextMap[existingKey] = [...existingSubs, sTrim].sort((a, b) => a.localeCompare(b));
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      ExamStore.saveKnowledgeCoursesMap(nextMap);
+      return nextMap;
+    });
+  }, []);
+
+  const handleSaveKnowledgeCourses = (nextMap: KnowledgeCoursesMap) => {
+    setKnowledgeCourses(nextMap);
+    ExamStore.saveKnowledgeCoursesMap(nextMap);
+  };
+
   const handleSaveStudyNote = (note: StudyNoteRecord) => {
     const idx = studyNotes.findIndex((n) => n.id === note.id);
     const next = idx >= 0 ? studyNotes.map((n, i) => (i === idx ? note : n)) : [note, ...studyNotes];
     setStudyNotes(next);
     ExamStore.saveStudyNotes(next);
+    ensureCourseRegisteredForNotes([note]);
     setShowStudyNoteModal(false);
     setEditingStudyNote(null);
     setStudyNotePrefill(null);
     showToast(`Saved Study Note "${note.title}"`);
+  };
+
+  const handleSaveStudyNotesBatch = (nextNotes: StudyNoteRecord[], toastMsg?: string) => {
+    setStudyNotes(nextNotes);
+    ExamStore.saveStudyNotes(nextNotes);
+    ensureCourseRegisteredForNotes(nextNotes);
+    if (toastMsg) showToast(toastMsg);
   };
 
   const handleDeleteStudyNote = (noteId: string) => {
@@ -557,6 +633,7 @@ const ExamSetWorkspace: React.FC = () => {
       attempts,
       countdowns,
       studyNotes,
+      knowledgeCourses,
       vocabDecks,
       vocabSrs,
       englishVariant,
@@ -581,6 +658,7 @@ const ExamSetWorkspace: React.FC = () => {
       attempts,
       countdowns,
       studyNotes,
+      knowledgeCourses,
       vocabDecks,
       vocabSrs,
       englishVariant,
@@ -756,6 +834,10 @@ const ExamSetWorkspace: React.FC = () => {
     setStudyNotes(merged.studyNotes);
     ExamStore.saveStudyNotes(merged.studyNotes);
 
+    const restoredCourses = merged.knowledgeCourses || {};
+    setKnowledgeCourses(restoredCourses);
+    ExamStore.saveKnowledgeCoursesMap(restoredCourses);
+
     setVocabDecks(merged.vocabDecks);
     ExamStore.saveVocabDecks(merged.vocabDecks);
 
@@ -816,14 +898,15 @@ const ExamSetWorkspace: React.FC = () => {
       const target = papers.find((p) => p.metadata.id === sugg.paperId);
       if (target) {
         setCurrentPaper(target);
-        setActiveTab('student_portal');
+        navigateTab('student_portal');
       }
     } else if (sugg.category === 'FLASHCARDS') {
-      setActiveTab('knowledge_studio');
+      if (sugg.noteId) setRequestedStudyNoteId(sugg.noteId);
+      navigateTab('knowledge_studio');
     } else if (sugg.category === 'VOCABULARY') {
-      setActiveTab('vocabulary_hub');
+      navigateTab('vocabulary_hub');
     } else if (sugg.category === 'HEADWORD_INBOX') {
-      setActiveTab('vocabulary_hub');
+      navigateTab('vocabulary_hub');
       setShowHeadwordInboxModal(true);
     }
   };
@@ -833,62 +916,218 @@ const ExamSetWorkspace: React.FC = () => {
       const p = papers.find((x) => x.metadata.id === todo.linkedPaperId);
       if (p) {
         setCurrentPaper(p);
-        setActiveTab('student_portal');
+        navigateTab('student_portal');
       }
     } else if (todo.linkedType === 'NOTE') {
-      setActiveTab('knowledge_studio');
+      if (todo.linkedNoteId) setRequestedStudyNoteId(todo.linkedNoteId);
+      navigateTab('knowledge_studio');
     } else if (todo.linkedType === 'VOCAB_DECK') {
-      setActiveTab('vocabulary_hub');
+      navigateTab('vocabulary_hub');
     }
   };
 
   const handleGuideNavigate = (dest: GuideDestination) => {
     switch (dest) {
       case 'CREATOR':
-        setActiveTab('creator');
+        navigateTab('creator');
         break;
       case 'MASTER_VIEW':
-        setActiveTab('master');
+        navigateTab('master');
         break;
       case 'PRINT_OMR':
-        setActiveTab('print');
+        navigateTab('print');
         break;
       case 'STUDENT_TEST':
-        setActiveTab('student_portal');
+        navigateTab('student_portal');
         break;
       case 'FOLDERS':
-        setActiveTab('folders');
+        navigateTab('folders');
         break;
       case 'KNOWLEDGE_STUDIO':
-        setActiveTab('knowledge_studio');
+        navigateTab('knowledge_studio');
         break;
       case 'DICTATION_LAB':
-        setActiveTab('dictation');
+        navigateTab('dictation');
         break;
       case 'VOCABULARY_HUB':
-        setActiveTab('vocabulary_hub');
+        navigateTab('vocabulary_hub');
         break;
       case 'HEADWORD_INBOX':
-        setActiveTab('vocabulary_hub');
+        navigateTab('vocabulary_hub');
         setShowHeadwordInboxModal(true);
         break;
       case 'AI_PROMPT_STUDIO':
-        setActiveTab('prompt_generator');
+        navigateTab('prompt_generator');
         break;
       case 'STUDY_PLANNER':
-        setActiveTab('study_planner');
+        navigateTab('study_planner');
         break;
       case 'BRAIN_LAB':
-        setActiveTab('brain_lab');
+        navigateTab('brain_lab');
         break;
       case 'BACKUP_VAULT':
-        setActiveTab('backup_vault');
+        navigateTab('backup_vault');
         break;
       case 'COUNTDOWNS':
         setShowCountdownsModal(true);
         break;
     }
   };
+
+  const hasOpenGlobalModal = Boolean(
+    showAppGuideModal ||
+      showHeadwordInboxModal ||
+      auditVocabDeck ||
+      showVocabImportModal ||
+      showStudyNoteModal ||
+      showCountdownsModal ||
+      showAuditModal ||
+      editingMetadataPaper ||
+      showBatchImportModal ||
+      showCreateModal ||
+      showFontModal ||
+      showThemeModal ||
+      mobileMenuOpen
+  );
+
+  const canGoBackInApp = hasOpenGlobalModal || tabHasSubBack || tabHistory.length > 0;
+
+  const closeTopGlobalModal = useCallback((): boolean => {
+    if (showAppGuideModal) {
+      setShowAppGuideModal(false);
+      return true;
+    }
+    if (showHeadwordInboxModal) {
+      setShowHeadwordInboxModal(false);
+      return true;
+    }
+    if (auditVocabDeck) {
+      setAuditVocabDeck(null);
+      return true;
+    }
+    if (showVocabImportModal) {
+      setShowVocabImportModal(false);
+      return true;
+    }
+    if (showStudyNoteModal) {
+      if (studyNoteRequestCloseRef.current) {
+        studyNoteRequestCloseRef.current();
+      } else {
+        setShowStudyNoteModal(false);
+        setEditingStudyNote(null);
+        setStudyNotePrefill(null);
+      }
+      return true;
+    }
+    if (showCountdownsModal) {
+      setShowCountdownsModal(false);
+      return true;
+    }
+    if (showAuditModal) {
+      setShowAuditModal(false);
+      return true;
+    }
+    if (editingMetadataPaper) {
+      setEditingMetadataPaper(null);
+      return true;
+    }
+    if (showBatchImportModal) {
+      setShowBatchImportModal(false);
+      return true;
+    }
+    if (showCreateModal) {
+      setShowCreateModal(false);
+      setCreateInitialText('');
+      return true;
+    }
+    if (showFontModal) {
+      setShowFontModal(false);
+      return true;
+    }
+    if (showThemeModal) {
+      setShowThemeModal(false);
+      return true;
+    }
+    if (mobileMenuOpen) {
+      setMobileMenuOpen(false);
+      return true;
+    }
+    return false;
+  }, [
+    showAppGuideModal,
+    showHeadwordInboxModal,
+    auditVocabDeck,
+    showVocabImportModal,
+    showStudyNoteModal,
+    showCountdownsModal,
+    showAuditModal,
+    editingMetadataPaper,
+    showBatchImportModal,
+    showCreateModal,
+    showFontModal,
+    showThemeModal,
+    mobileMenuOpen,
+  ]);
+
+  const handleBackStep = useCallback(
+    (allowTabPop: boolean = true): boolean => {
+      if (closeTopGlobalModal()) return true;
+      if (tabBackHandlerRef.current && tabBackHandlerRef.current()) {
+        return true;
+      }
+      if (allowTabPop && tabHistory.length > 0) {
+        const prevTab = tabHistory[tabHistory.length - 1];
+        setTabHistory((hist) => hist.slice(0, -1));
+        setActiveTab(prevTab);
+        return true;
+      }
+      return false;
+    },
+    [closeTopGlobalModal, tabHistory]
+  );
+
+  const handleBackStepRef = useRef(handleBackStep);
+  handleBackStepRef.current = handleBackStep;
+  const canGoBackRef = useRef(canGoBackInApp);
+  canGoBackRef.current = canGoBackInApp;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (canGoBackInApp && !hasPushedTrapRef.current) {
+      try {
+        if (!window.location.search.includes('code=')) {
+          window.history.pushState({ examsetTrap: true }, '');
+          hasPushedTrapRef.current = true;
+        }
+      } catch {
+        // Ignore restricted history API contexts
+      }
+    }
+  }, [canGoBackInApp]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPopState = () => {
+      hasPushedTrapRef.current = false;
+      if (canGoBackRef.current) {
+        handleBackStepRef.current(true);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (hasOpenGlobalModal || tabBackHandlerRef.current) {
+        if (handleBackStepRef.current(false)) {
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [hasOpenGlobalModal]);
 
   const totalVocabWords = useMemo(
     () => vocabDecks.reduce((sum, d) => sum + d.entries.length, 0),
@@ -963,7 +1202,20 @@ const ExamSetWorkspace: React.FC = () => {
         <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6">
           <div className="flex items-center justify-between min-h-[3.5rem] py-1.5 gap-2 sm:gap-3">
             {/* Brand + Active Set Summary */}
-            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              {canGoBackInApp && (
+                <button
+                  type="button"
+                  onClick={() => handleBackStep(true)}
+                  className="min-h-[38px] px-2.5 py-1.5 flex items-center gap-1 rounded-xl border text-xs font-bold transition flex-shrink-0"
+                  style={{ backgroundColor: colors.tealLight, borderColor: colors.teal, color: colors.tealDark }}
+                  title="Step Back (or press browser Back / Esc)"
+                  aria-label="Go back to previous view"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">Back</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setRailExpanded((v) => !v)}
@@ -1071,7 +1323,7 @@ const ExamSetWorkspace: React.FC = () => {
                   )}
                   <button
                     type="button"
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => navigateTab(item.id)}
                     className="min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition flex-shrink-0"
                     style={
                       isActive
@@ -1123,10 +1375,7 @@ const ExamSetWorkspace: React.FC = () => {
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => {
-                            setActiveTab(item.id);
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => navigateTab(item.id)}
                           className="w-full min-h-[44px] flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition"
                           style={
                             isActive
@@ -1181,7 +1430,7 @@ const ExamSetWorkspace: React.FC = () => {
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => setActiveTab(item.id)}
+                        onClick={() => navigateTab(item.id)}
                         title={item.label}
                         className={`w-full min-h-[42px] flex items-center rounded-xl text-xs font-bold transition ${
                           railExpanded ? 'justify-between px-3 py-2 gap-2' : 'justify-center px-2 py-2 relative'
@@ -1226,9 +1475,9 @@ const ExamSetWorkspace: React.FC = () => {
             <CreatorTab
               currentPaper={currentPaper}
               onSavePaper={handleSavePaper}
-              onNavigateToMaster={() => setActiveTab('master')}
-              onNavigateToStudentPortal={() => setActiveTab('student_portal')}
-              onNavigateToPrint={() => setActiveTab('print')}
+              onNavigateToMaster={() => navigateTab('master')}
+              onNavigateToStudentPortal={() => navigateTab('student_portal')}
+              onNavigateToPrint={() => navigateTab('print')}
               onOpenCreateModal={() => {
                 setCreateDefaultFolderId(currentPaper.metadata.folderId || 'default');
                 setCreateInitialText('');
@@ -1246,6 +1495,7 @@ const ExamSetWorkspace: React.FC = () => {
               onUpdatePaper={handleSavePaper}
               onOpenEditMetadata={() => setEditingMetadataPaper(currentPaper)}
               onOpenAuditModal={() => setShowAuditModal(true)}
+              registerBackHandler={registerTabBackHandler}
             />
           )}
 
@@ -1259,6 +1509,7 @@ const ExamSetWorkspace: React.FC = () => {
               attempts={attempts}
               onSaveAttempt={handleSaveAttempt}
               onDeleteAttempt={handleDeleteAttempt}
+              registerBackHandler={registerTabBackHandler}
             />
           )}
 
@@ -1269,8 +1520,8 @@ const ExamSetWorkspace: React.FC = () => {
               folders={folders}
               countdowns={countdowns}
               onSelectPaper={handleSelectPaper}
-              onNavigateToMaster={() => setActiveTab('master')}
-              onNavigateToStudentPortal={() => setActiveTab('student_portal')}
+              onNavigateToMaster={() => navigateTab('master')}
+              onNavigateToStudentPortal={() => navigateTab('student_portal')}
               onOpenCreateModal={(folderId) => {
                 setCreateDefaultFolderId(folderId || 'default');
                 setCreateInitialText('');
@@ -1284,6 +1535,12 @@ const ExamSetWorkspace: React.FC = () => {
               onMovePapersToFolder={handleMovePapersToFolder}
               onDeletePapers={handleDeletePapers}
               onTogglePaperCompleted={handleTogglePaperCompleted}
+              studyNotes={studyNotes}
+              onOpenKnowledgeNote={(noteId) => {
+                setRequestedStudyNoteId(noteId);
+                navigateTab('knowledge_studio');
+              }}
+              registerBackHandler={registerTabBackHandler}
             />
           )}
 
@@ -1293,17 +1550,24 @@ const ExamSetWorkspace: React.FC = () => {
               papers={papers}
               attempts={attempts}
               folders={folders}
+              registeredCoursesMap={knowledgeCourses}
+              initialSelectedNoteId={requestedStudyNoteId}
+              onClearInitialSelectedNoteId={() => setRequestedStudyNoteId(null)}
+              onSaveCoursesMap={handleSaveKnowledgeCourses}
               onSaveNote={handleSaveStudyNote}
+              onSaveNotesBatch={handleSaveStudyNotesBatch}
               onDeleteNote={handleDeleteStudyNote}
-              onOpenEditor={(note) => {
+              onOpenEditor={(note, prefill) => {
                 setEditingStudyNote(note || null);
-                setStudyNotePrefill(null);
+                setStudyNotePrefill(prefill || null);
                 setShowStudyNoteModal(true);
               }}
               onSendNoteToDictation={(noteId) => {
                 setDictationTargetNoteId(noteId);
-                setActiveTab('dictation');
+                navigateTab('dictation');
               }}
+              onNotify={showToast}
+              registerBackHandler={registerTabBackHandler}
             />
           )}
 
@@ -1343,8 +1607,8 @@ const ExamSetWorkspace: React.FC = () => {
               vocabDecks={vocabDecks}
               folders={folders}
               defaultEnglishVariant={englishVariant}
-              onNavigateToCreator={() => setActiveTab('creator')}
-              onNavigateToKnowledge={() => setActiveTab('knowledge_studio')}
+              onNavigateToCreator={() => navigateTab('creator')}
+              onNavigateToKnowledge={() => navigateTab('knowledge_studio')}
               onSendToCreator={(promptText) => {
                 setCreateDefaultFolderId(currentPaper.metadata.folderId || 'default');
                 setCreateInitialText(promptText);
@@ -1353,15 +1617,15 @@ const ExamSetWorkspace: React.FC = () => {
               onCreateStudyNoteFromPrompt={(collectionType, subject, topic) => {
                 setEditingStudyNote(null);
                 setStudyNotePrefill({ collectionType, subject, topic });
-                setActiveTab('knowledge_studio');
+                navigateTab('knowledge_studio');
                 setShowStudyNoteModal(true);
               }}
               onOpenVocabImport={() => {
-                setActiveTab('vocabulary_hub');
+                navigateTab('vocabulary_hub');
                 setShowVocabImportModal(true);
               }}
               onOpenHeadwordInbox={() => {
-                setActiveTab('vocabulary_hub');
+                navigateTab('vocabulary_hub');
                 setShowHeadwordInboxModal(true);
               }}
             />
@@ -1420,7 +1684,7 @@ const ExamSetWorkspace: React.FC = () => {
               allPapers={papers}
               onImportPaper={(paper) => {
                 handleSavePaper(paper);
-                setActiveTab('master');
+                navigateTab('master');
               }}
               onImportPapers={handleBatchImport}
               onOpenBatchImport={() => setShowBatchImportModal(true)}
@@ -1451,10 +1715,7 @@ const ExamSetWorkspace: React.FC = () => {
             <button
               key={item.id}
               type="button"
-              onClick={() => {
-                setActiveTab(item.id);
-                setMobileMenuOpen(false);
-              }}
+              onClick={() => navigateTab(item.id)}
               className="min-h-[54px] flex flex-col items-center justify-center gap-0.5 text-[0.625rem] font-bold"
               style={{
                 color: active ? colors.teal : colors.muted,
@@ -1558,7 +1819,10 @@ const ExamSetWorkspace: React.FC = () => {
           prefill={studyNotePrefill}
           papers={papers}
           folders={folders}
+          registeredCoursesMap={knowledgeCourses}
+          existingNotes={studyNotes}
           onSaveNote={handleSaveStudyNote}
+          onRegisterCloseRequest={registerStudyNoteCloseRequest}
           onClose={() => {
             setShowStudyNoteModal(false);
             setEditingStudyNote(null);

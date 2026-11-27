@@ -14,6 +14,7 @@ data class StudyNoteEntity(
     val folderId: String? = null,
     val title: String,
     val subject: String = "",
+    val course: String = "",
     val sourceAi: String = "One-Liners",
     val rawContent: String,
     val bookmarkedLinesJson: String = "[]",
@@ -64,6 +65,22 @@ data class StudyNoteEntity(
         } else {
             sourceAi
         }
+    }
+
+    fun effectiveCourseLabel(fallbackFolderRoot: String = ""): String {
+        val explicit = course.trim()
+        if (explicit.isNotBlank()) return explicit
+        if (subject.contains(">")) {
+            val prefix = subject.substringBefore(">").trim()
+            if (prefix.isNotBlank()) return prefix
+        }
+        return fallbackFolderRoot.trim().ifBlank { "General Studies" }
+    }
+
+    fun effectiveSubjectLabel(): String {
+        val raw = subject.trim()
+        val clean = if (raw.contains(">")) raw.substringAfterLast(">").trim() else raw
+        return clean.ifBlank { "General Notes" }
     }
 
     companion object {

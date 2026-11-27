@@ -9,6 +9,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  BookMarked,
   Layers,
   Play,
   Search,
@@ -23,6 +24,7 @@ import {
   PaperCategory,
   QuestionPaper,
 } from '../../types/exam';
+import { StudyNoteRecord } from '../../types/phase4';
 import { useTheme } from '../../theme/ThemeProvider';
 import { ExamNumberGenerator } from '../../utils/examNumberGenerator';
 import { PaperLanguageDetector } from '../../utils/paperLanguageDetector';
@@ -45,6 +47,9 @@ interface FolderManagerTabProps {
   onMovePapersToFolder: (paperIds: string[], targetFolderId: string) => void;
   onDeletePapers: (paperIds: string[]) => void;
   onTogglePaperCompleted: (paperId: string) => void;
+  studyNotes?: StudyNoteRecord[];
+  onOpenKnowledgeNote?: (noteId: string) => void;
+  registerBackHandler?: (handler: (() => boolean) | null) => void;
 }
 
 const FOLDER_COLORS = ['#177E89', '#17324D', '#247A55', '#D97706', '#4F46E5', '#DC2626'];
@@ -66,6 +71,9 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
   onMovePapersToFolder,
   onDeletePapers,
   onTogglePaperCompleted,
+  studyNotes = [],
+  onOpenKnowledgeNote,
+  registerBackHandler,
 }) => {
   const { colors } = useTheme();
   const [activeFolderId, setActiveFolderId] = useState<string>('default');
@@ -86,6 +94,32 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
   }, [countdowns]);
 
   const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
+
+  useEffect(() => {
+    if (!registerBackHandler) return;
+    const hasSubBack = Boolean(isCreatingFolder || searchQuery.trim() || activeFolderId !== 'default');
+    if (!hasSubBack) {
+      registerBackHandler(null);
+      return;
+    }
+    registerBackHandler(() => {
+      if (isCreatingFolder) {
+        setIsCreatingFolder(false);
+        return true;
+      }
+      if (searchQuery.trim()) {
+        setSearchQuery('');
+        return true;
+      }
+      if (activeFolderId !== 'default') {
+        const cur = folderById.get(activeFolderId);
+        setActiveFolderId(cur?.parentId || 'default');
+        return true;
+      }
+      return false;
+    });
+    return () => registerBackHandler(null);
+  }, [registerBackHandler, isCreatingFolder, searchQuery, activeFolderId, folderById]);
 
   // Breadcrumb path for active folder
   const breadcrumbs = useMemo(() => {
@@ -162,6 +196,22 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
       return true;
     });
   }, [papers, activeFolderId, searchQuery, stageFilter, categoryFilter]);
+
+  const filteredFolderNotes = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return studyNotes.filter((n) => {
+      const fId = n.folderId || 'default';
+      if (!q && fId !== activeFolderId) return false;
+      if (q) {
+        return (
+          n.title.toLowerCase().includes(q) ||
+          n.subject.toLowerCase().includes(q) ||
+          (n.course || '').toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [studyNotes, activeFolderId, searchQuery]);
 
   const pinnedCountdowns = useMemo(() => countdowns.filter((c) => c.isPinned), [countdowns]);
 
@@ -652,6 +702,51 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
           })
         )}
       </div>
+
+      {/* Linked Knowledge Sets inside Active Folder */}
+      {filteredFolderNotes.length > 0 && (
+        <div
+          className="p-4 rounded-xl border space-y-2.5"
+          style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: colors.tealDark }}>
+              <BookMarked className="w-3.5 h-3.5" />
+              Knowledge Sets in This Folder ({filteredFolderNotes.length})
+            </h4>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {filteredFolderNotes.map((note) => (
+              <div
+                key={note.id}
+                onClick={() => onOpenKnowledgeNote?.(note.id)}
+                className={`p-3 rounded-xl border flex items-center justify-between gap-2 transition ${
+                  onOpenKnowledgeNote ? 'cursor-pointer hover:shadow-sm' : ''
+                }`}
+                style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold truncate" style={{ color: colors.inkBold }}>
+                    {note.title}
+                  </div>
+                  <div className="text-[0.6875rem] truncate" style={{ color: colors.muted }}>
+                    {(note.course || '').trim() ? `${note.course} › ` : ''}
+                    {note.subject}
+                  </div>
+                </div>
+                {onOpenKnowledgeNote && (
+                  <span
+                    className="px-2.5 py-1 rounded-lg text-[0.6875rem] font-bold flex-shrink-0"
+                    style={{ backgroundColor: colors.tealLight, color: colors.tealDark }}
+                  >
+                    Study
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

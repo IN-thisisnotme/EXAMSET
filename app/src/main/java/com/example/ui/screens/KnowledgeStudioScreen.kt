@@ -37,7 +37,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -56,8 +59,11 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.RadioButtonChecked
@@ -105,6 +111,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,6 +134,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.PaperEntity
 import com.example.data.StudyNoteEntity
 import com.example.model.FlashcardSrsState
+import com.example.model.FlashcardSrsStatus
 import com.example.model.FolderItem
 import com.example.model.KnowledgeCollectionType
 import com.example.model.KnowledgeDepth
@@ -138,6 +146,8 @@ import com.example.model.PromptPreset
 import com.example.model.PromptPresetMode
 import com.example.model.SrsRating
 import com.example.ui.KnowledgeEditorDraft
+import com.example.ui.components.AppendKnowledgeSheet
+import com.example.ui.components.KnowledgeNavigatorSideSheet
 import com.example.ui.components.LatexText
 import com.example.ui.components.MathFormulaParser
 import com.example.ui.components.MathFormulaView
@@ -145,9 +155,11 @@ import com.example.ui.components.PromptPresetBar
 import com.example.ui.components.PromptPresetOverlays
 import com.example.ui.components.rememberPromptPresetDialogState
 import com.example.ui.theme.ExamTheme
+import com.example.util.SpacedRepetitionEngine
 import com.example.util.StudyNoteBlock
 import com.example.util.StudyNoteCardSection
 import com.example.util.StudyNoteParser
+import kotlinx.coroutines.launch
 
 enum class RecallMaskMode(
     val shortLabel: String,
@@ -205,6 +217,20 @@ fun KnowledgeStudioEditorScreen(
         formatRule: KnowledgeFormatRule
     ) -> Unit,
     onDismiss: () -> Unit,
+    existingCourses: List<String> = emptyList(),
+    onSaveWithCourse: ((
+        id: Long,
+        title: String,
+        course: String,
+        subject: String,
+        sourceAi: String,
+        rawContent: String,
+        folderId: String?,
+        collectionType: KnowledgeCollectionType,
+        customLabel: String,
+        linkedPaperId: Long?,
+        formatRule: KnowledgeFormatRule
+    ) -> Unit)? = null,
     promptPresets: List<PromptPreset> = emptyList(),
     activeKnowledgePresetId: String? = null,
     onSelectKnowledgePreset: (PromptPreset) -> Unit = {},
@@ -250,11 +276,24 @@ fun KnowledgeStudioEditorScreen(
         }
     }
 
-    var title by remember(draft) { mutableStateOf(initialNote?.title ?: draft.prefillTitle) }
-    var sourceAi by remember(draft) { mutableStateOf(initialNote?.sourceAi ?: "") }
-    var selectedFolderId by remember(draft) { mutableStateOf(initialNote?.folderId ?: draft.defaultFolderId) }
-    var linkedPaperId by remember(draft) { mutableStateOf(initialNote?.linkedPaperId ?: draft.defaultLinkedPaperId) }
-    var rawContent by remember(draft) { mutableStateOf(initialNote?.rawContent ?: draft.prefillContent) }
+    val initialCourseValue = remember(draft) {
+        initialNote?.course?.ifBlank { draft.defaultCourse } ?: draft.defaultCourse
+    }
+    val initialTitleValue = remember(draft) { initialNote?.title ?: draft.prefillTitle }
+    val initialSubjectValue = remember(draft) { initialNote?.subject ?: draft.defaultSubject }
+    val initialSourceValue = remember(draft) { initialNote?.sourceAi ?: "" }
+    val initialFolderValue = remember(draft) { initialNote?.folderId ?: draft.defaultFolderId }
+    val initialPaperValue = remember(draft) { initialNote?.linkedPaperId ?: draft.defaultLinkedPaperId }
+    val initialRawValue = remember(draft) { initialNote?.rawContent ?: draft.prefillContent }
+    val initialTypeValue = remember(draft) { initialNote?.resolvedCollectionType() ?: draft.defaultCollectionType }
+    val initialCustomLabelValue = remember(draft) { initialNote?.customLabel ?: initialRule.customCollectionLabel }
+
+    var title by remember(draft) { mutableStateOf(initialTitleValue) }
+    var courseName by remember(draft) { mutableStateOf(initialCourseValue) }
+    var sourceAi by remember(draft) { mutableStateOf(initialSourceValue) }
+    var selectedFolderId by remember(draft) { mutableStateOf(initialFolderValue) }
+    var linkedPaperId by remember(draft) { mutableStateOf(initialPaperValue) }
+    var rawContent by remember(draft) { mutableStateOf(initialRawValue) }
     var previousContentBeforeTransform by remember(draft) { mutableStateOf<String?>(null) }
 
     var activeEditorTab by remember(draft) { mutableIntStateOf(0) } // 0: Paste / Input, 1: AI Prompt Generator
@@ -263,15 +302,28 @@ fun KnowledgeStudioEditorScreen(
     var localActivePresetId by remember(draft, activeKnowledgePresetId) { mutableStateOf(activeKnowledgePresetId) }
     var clearedPromptUndo by remember(draft) { mutableStateOf<Triple<KnowledgePromptConfig, String, String?>?>(null) }
     var showConfirmResetPromptDialog by remember(draft) { mutableStateOf(false) }
+    var showDiscardChangesDialog by remember(draft) { mutableStateOf(false) }
     val knowledgePresetDialogState = rememberPromptPresetDialogState()
     var showMetadataPanel by remember(draft) { mutableStateOf(false) }
     var isPreviewMode by remember(draft) {
         mutableStateOf((initialNote?.rawContent ?: draft.prefillContent).isNotBlank())
     }
+    var showCourseDropdown by remember { mutableStateOf(false) }
     var showFolderDropdown by remember { mutableStateOf(false) }
     var showLinkedPaperDropdown by remember { mutableStateOf(false) }
 
     val activeRule = promptState.toFormatRule()
+
+    val hasUnsavedChanges = (title != initialTitleValue ||
+        courseName != initialCourseValue ||
+        promptState.subject != initialSubjectValue ||
+        sourceAi != initialSourceValue ||
+        selectedFolderId != initialFolderValue ||
+        linkedPaperId != initialPaperValue ||
+        rawContent != initialRawValue ||
+        promptState.collectionType != initialTypeValue ||
+        promptState.customCollectionLabel != initialCustomLabelValue) &&
+        (initialNote != null || rawContent.isNotBlank() || title.isNotBlank())
 
     val parsedBlocks = remember(rawContent, activeRule) {
         StudyNoteParser.parseBlocks(rawContent, activeRule)
@@ -364,11 +416,103 @@ fun KnowledgeStudioEditorScreen(
         )
     }
 
-    BackHandler {
-        if (activeEditorTab == 1) {
-            switchToInputTab()
+    val performSaveNote = {
+        if (rawContent.isNotBlank()) {
+            keyboardController?.hide()
+            focusManager.clearFocus(force = true)
+            val resolvedTitle = title.trim().ifBlank { promptState.topic.trim() }
+            if (onSaveWithCourse != null) {
+                onSaveWithCourse(
+                    initialNote?.id ?: 0L,
+                    resolvedTitle,
+                    courseName.trim(),
+                    promptState.subject,
+                    sourceAi,
+                    rawContent,
+                    selectedFolderId,
+                    promptState.collectionType,
+                    promptState.customCollectionLabel,
+                    linkedPaperId,
+                    activeRule
+                )
+            } else {
+                onSave(
+                    initialNote?.id ?: 0L,
+                    resolvedTitle,
+                    promptState.subject,
+                    sourceAi,
+                    rawContent,
+                    selectedFolderId,
+                    promptState.collectionType,
+                    promptState.customCollectionLabel,
+                    linkedPaperId,
+                    activeRule
+                )
+            }
+            onDismiss()
+        }
+    }
+
+    val requestCloseEditor: () -> Unit = {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+        if (hasUnsavedChanges) {
+            showDiscardChangesDialog = true
         } else {
             onDismiss()
+        }
+    }
+
+    if (showDiscardChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChangesDialog = false },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            title = { Text("Discard Unsaved Changes?", fontWeight = FontWeight.Bold) },
+            text = { Text("You have unsaved edits in this Knowledge Set. Discard them or keep editing?") },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (rawContent.isNotBlank()) {
+                        Button(
+                            onClick = {
+                                showDiscardChangesDialog = false
+                                performSaveNote()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Save & Close", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            showDiscardChangesDialog = false
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text("Discard", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showDiscardChangesDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Keep Editing", color = colors.inkBold)
+                }
+            }
+        )
+    }
+
+    BackHandler {
+        when {
+            showDiscardChangesDialog -> showDiscardChangesDialog = false
+            activeEditorTab == 1 -> switchToInputTab()
+            else -> requestCloseEditor()
         }
     }
 
@@ -395,11 +539,7 @@ fun KnowledgeStudioEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = {
-                                keyboardController?.hide()
-                                focusManager.clearFocus(force = true)
-                                onDismiss()
-                            },
+                            onClick = requestCloseEditor,
                             modifier = Modifier
                                 .size(48.dp)
                                 .testTag("close_knowledge_sheet_button")
@@ -471,11 +611,7 @@ fun KnowledgeStudioEditorScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedButton(
-                                    onClick = {
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus(force = true)
-                                        onDismiss()
-                                    },
+                                    onClick = requestCloseEditor,
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.inkBold),
                                     border = BorderStroke(1.dp, colors.border),
                                     shape = RoundedCornerShape(10.dp),
@@ -525,26 +661,7 @@ fun KnowledgeStudioEditorScreen(
                                 }
 
                                 Button(
-                                    onClick = {
-                                        if (rawContent.isNotBlank()) {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus(force = true)
-                                            val resolvedTitle = title.trim().ifBlank { promptState.topic.trim() }
-                                            onSave(
-                                                initialNote?.id ?: 0L,
-                                                resolvedTitle,
-                                                promptState.subject,
-                                                sourceAi,
-                                                rawContent,
-                                                selectedFolderId,
-                                                promptState.collectionType,
-                                                promptState.customCollectionLabel,
-                                                linkedPaperId,
-                                                activeRule
-                                            )
-                                            onDismiss()
-                                        }
-                                    },
+                                    onClick = performSaveNote,
                                     enabled = rawContent.isNotBlank(),
                                     shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -793,6 +910,45 @@ fun KnowledgeStudioEditorScreen(
                                                 .testTag("study_note_title_input")
                                         )
 
+                                        Box(modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedTextField(
+                                                value = courseName,
+                                                onValueChange = { courseName = it },
+                                                label = { Text("Course / Exam Stream (Optional)") },
+                                                placeholder = { Text("e.g., UPSC CSE, SSC CGL, JEE Main") },
+                                                singleLine = true,
+                                                trailingIcon = if (existingCourses.isNotEmpty()) {
+                                                    {
+                                                        IconButton(
+                                                            onClick = { showCourseDropdown = true },
+                                                            modifier = Modifier.size(40.dp)
+                                                        ) {
+                                                            Icon(Icons.Default.ExpandMore, contentDescription = "Pick Course", tint = colors.teal)
+                                                        }
+                                                    }
+                                                } else null,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .testTag("knowledge_course_input")
+                                            )
+                                            if (existingCourses.isNotEmpty()) {
+                                                DropdownMenu(
+                                                    expanded = showCourseDropdown,
+                                                    onDismissRequest = { showCourseDropdown = false }
+                                                ) {
+                                                    existingCourses.forEach { cName ->
+                                                        DropdownMenuItem(
+                                                            text = { Text(cName) },
+                                                            onClick = {
+                                                                courseName = cName
+                                                                showCourseDropdown = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                             OutlinedTextField(
                                                 value = promptState.subject,
@@ -977,11 +1133,47 @@ fun KnowledgeStudioEditorScreen(
                                                 Text("Undo", fontSize = 11.sp)
                                             }
                                         }
+                                        if (rawContent.isNotBlank()) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                                    val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                                                    if (clip.isNotBlank()) {
+                                                        previousContentBeforeTransform = rawContent
+                                                        val appended = StudyNoteParser.prepareAppendedContent(
+                                                            existingRaw = rawContent,
+                                                            newRaw = clip,
+                                                            rule = activeRule,
+                                                            skipDuplicates = true
+                                                        )
+                                                        rawContent = appended.combinedContent
+                                                        showMetadataPanel = false
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (appended.addedUnitCount > 0) "Appended ${appended.addedUnitCount} item(s)" else "Appended clipboard text",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier
+                                                    .heightIn(min = 38.dp)
+                                                    .testTag("knowledge_editor_append_clipboard_button")
+                                            ) {
+                                                Icon(Icons.Default.PlaylistAdd, contentDescription = "Append from clipboard", modifier = Modifier.size(14.dp), tint = colors.teal)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Append", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                            }
+                                        }
                                         OutlinedButton(
                                             onClick = {
                                                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                                                 val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
                                                 if (clip.isNotBlank()) {
+                                                    previousContentBeforeTransform = rawContent.ifBlank { null }
                                                     rawContent = clip
                                                     showMetadataPanel = false
                                                 } else {
@@ -1352,12 +1544,15 @@ fun KnowledgeStudioReaderScreen(
     onResetFlashcardSrs: (StudyNoteEntity) -> Unit = {},
     onRecordStudySeconds: (Long) -> Unit = {},
     onEdit: () -> Unit,
+    onAppendToNote: ((rawAppendText: String, skipDuplicates: Boolean, onDone: (Int, Int) -> Unit) -> Unit)? = null,
     onOpenLinkedPaper: ((Long) -> Unit)? = null,
     onGenerateMcqDraft: (StudyNoteEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
     val colors = ExamTheme.colors
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val readerListState = rememberLazyListState()
     val formatRule = remember(note.formatRuleJson, note.collectionType) { note.parsedFormatRule() }
     val isFlashcardDeckNote = remember(note.id, note.collectionType) {
         note.resolvedCollectionType() == KnowledgeCollectionType.FLASHCARDS
@@ -1365,16 +1560,22 @@ fun KnowledgeStudioReaderScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var showSearchBar by remember { mutableStateOf(false) }
-    var recallMode by remember(note.id) { mutableStateOf(isFlashcardDeckNote) }
+    // Study-First Design: always open in readable List mode with answers visible first so users
+    // learn and absorb the concepts clearly before toggling Active Recall or SM-2 Deck mode.
+    var recallMode by remember(note.id) { mutableStateOf(false) }
     var maskMode by remember { mutableStateOf(RecallMaskMode.ANSWER_AND_EXPLANATION) }
     var typeFilter by remember { mutableStateOf(RecallTypeFilter.ALL) }
     var starredOnly by remember { mutableStateOf(false) }
     var hideMastered by remember { mutableStateOf(false) }
     var showTypeBadges by remember { mutableStateOf(true) }
     var showOptionsBeforeReveal by remember { mutableStateOf(true) }
-    var isDeckMode by remember(note.id) { mutableStateOf(isFlashcardDeckNote) }
+    var isDeckMode by remember(note.id) { mutableStateOf(false) }
     var showRecallSettingsDialog by remember { mutableStateOf(false) }
     var showNotebookDictation by remember(note.id) { mutableStateOf(false) }
+    var showNavigatorSheet by remember(note.id) { mutableStateOf(false) }
+    var showAppendSheet by remember(note.id) { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var focusedBlockIndex by remember(note.id) { mutableStateOf<Int?>(null) }
     var expandAllMultiLiners by remember { mutableStateOf(true) }
     var expandedCardOverrides by remember(note.id) { mutableStateOf<Map<Int, Boolean>>(emptyMap()) }
     var revealedIndices by remember(note.id, recallMode, maskMode) { mutableStateOf(setOf<Int>()) }
@@ -1490,7 +1691,51 @@ fun KnowledgeStudioReaderScreen(
         visibleBlocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
     }
 
-    BackHandler { onDismiss() }
+    val hasLinkedBanner = !linkedPaperTitle.isNullOrBlank() && note.linkedPaperId != null && onOpenLinkedPaper != null
+    val hasStudyFirstDeckBanner = isFlashcardDeckNote && studyUnits.isNotEmpty()
+    val listHeaderOffset = (if (hasLinkedBanner) 1 else 0) + (if (hasStudyFirstDeckBanner) 1 else 0)
+
+    val jumpToBlock: (Int) -> Unit = { targetBlockIdx ->
+        focusedBlockIndex = targetBlockIdx
+        if (isDeckMode) {
+            isDeckMode = false
+        }
+        val currentIdxInVisible = visibleBlocks.indexOfFirst { it.blockIndex == targetBlockIdx }
+        if (currentIdxInVisible >= 0) {
+            coroutineScope.launch {
+                readerListState.animateScrollToItem(listHeaderOffset + currentIdxInVisible)
+            }
+        } else {
+            // Reset active filters so the target block is visible, then scroll
+            typeFilter = RecallTypeFilter.ALL
+            starredOnly = false
+            hideMastered = false
+            searchQuery = ""
+            val fallbackIdx = blocks.indexOfFirst { it.blockIndex == targetBlockIdx }
+            if (fallbackIdx >= 0) {
+                coroutineScope.launch {
+                    readerListState.animateScrollToItem(listHeaderOffset + fallbackIdx)
+                }
+            }
+        }
+    }
+
+    BackHandler {
+        when {
+            showNotebookDictation -> showNotebookDictation = false
+            showRecallSettingsDialog -> showRecallSettingsDialog = false
+            showNavigatorSheet -> showNavigatorSheet = false
+            showAppendSheet -> showAppendSheet = false
+            showMoreMenu -> showMoreMenu = false
+            showSearchBar || searchQuery.isNotBlank() -> {
+                searchQuery = ""
+                showSearchBar = false
+            }
+            isDeckMode -> isDeckMode = false
+            recallMode -> recallMode = false
+            else -> onDismiss()
+        }
+    }
 
     if (showRecallSettingsDialog) {
         ActiveRecallSettingsDialog(
@@ -1592,7 +1837,9 @@ fun KnowledgeStudioReaderScreen(
                                     }
                                     showSearchBar = !showSearchBar
                                 },
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("reader_search_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Search,
@@ -1600,20 +1847,66 @@ fun KnowledgeStudioReaderScreen(
                                     tint = if (showSearchBar || searchQuery.isNotBlank()) colors.teal else colors.inkMuted
                                 )
                             }
-                            IconButton(
-                                onClick = { onGenerateMcqDraft(note) },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Quiz, contentDescription = "Draft Quiz from Knowledge Set", tint = colors.navyBanner)
+                            if (onAppendToNote != null) {
+                                IconButton(
+                                    onClick = { showAppendSheet = true },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("reader_append_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlaylistAdd,
+                                        contentDescription = "Append Items",
+                                        tint = colors.teal
+                                    )
+                                }
                             }
-                            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp)) {
+                            IconButton(
+                                onClick = onEdit,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("reader_edit_button")
+                            ) {
                                 Icon(Icons.Default.Edit, contentDescription = "Edit Knowledge Set", tint = colors.inkBold)
                             }
-                            IconButton(
-                                onClick = { printStudyNoteAsPdf(context, note) },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Print, contentDescription = "Print A4 PDF", tint = colors.teal)
+                            Box {
+                                IconButton(
+                                    onClick = { showMoreMenu = true },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("reader_more_menu_button")
+                                ) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More Tools", tint = colors.inkMuted)
+                                }
+                                DropdownMenu(
+                                    expanded = showMoreMenu,
+                                    onDismissRequest = { showMoreMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Navigator & Index (${studyUnits.size})") },
+                                        leadingIcon = { Icon(Icons.Default.GridView, contentDescription = null, tint = colors.teal) },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showNavigatorSheet = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Draft MCQ Quiz") },
+                                        leadingIcon = { Icon(Icons.Default.Quiz, contentDescription = null, tint = colors.navyBanner) },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            onGenerateMcqDraft(note)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Print A4 PDF") },
+                                        leadingIcon = { Icon(Icons.Default.Print, contentDescription = null, tint = colors.teal) },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            printStudyNoteAsPdf(context, note)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1853,6 +2146,97 @@ fun KnowledgeStudioReaderScreen(
                         )
                     }
 
+                    // Question / Concept Jump Strip + Side-Sheet Grid Launcher (always visible in List mode)
+                    if (!isDeckMode && studyUnits.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                onClick = { showNavigatorSheet = true },
+                                shape = RoundedCornerShape(9.dp),
+                                color = colors.navyBanner,
+                                modifier = Modifier
+                                    .heightIn(min = 34.dp)
+                                    .testTag("reader_navigator_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.GridView,
+                                        contentDescription = "Open Navigator",
+                                        tint = colors.navyBannerText,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Index (${studyUnits.size})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.navyBannerText,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
+                            LazyRow(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                itemsIndexed(studyUnits, key = { idx, unit -> "jump_${unit.blockIndex}_$idx" }) { idx, unit ->
+                                    val isUnitMastered = unit.blockIndex in mastered
+                                    val isUnitStarred = unit.blockIndex in bookmarked
+                                    val isFocused = unit.blockIndex == focusedBlockIndex
+                                    val chipBg = when {
+                                        isFocused -> colors.teal
+                                        isUnitMastered -> colors.greenLight
+                                        isUnitStarred -> colors.amberLight
+                                        else -> colors.surfaceVariant
+                                    }
+                                    val chipFg = when {
+                                        isFocused -> Color.White
+                                        isUnitMastered -> colors.green
+                                        isUnitStarred -> colors.amber
+                                        else -> colors.inkBold
+                                    }
+                                    Surface(
+                                        onClick = { jumpToBlock(unit.blockIndex) },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = chipBg,
+                                        border = BorderStroke(
+                                            width = if (isFocused) 1.2.dp else 0.7.dp,
+                                            color = if (isFocused) colors.teal else colors.border
+                                        ),
+                                        modifier = Modifier
+                                            .heightIn(min = 32.dp)
+                                            .testTag("reader_jump_chip_${idx + 1}")
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = "${idx + 1}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = chipFg,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Active Recall Live Status & Progress Banner (compact 1-row + slim progress bar)
                     AnimatedVisibility(visible = recallMode && recallableVisibleUnits.isNotEmpty()) {
                         Surface(
@@ -1991,6 +2375,7 @@ fun KnowledgeStudioReaderScreen(
                 )
             } else {
                 LazyColumn(
+                    state = readerListState,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -1999,10 +2384,11 @@ fun KnowledgeStudioReaderScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Linked Question Set Banner scrolls cleanly with content instead of pinning at top
-                    if (!linkedPaperTitle.isNullOrBlank() && note.linkedPaperId != null && onOpenLinkedPaper != null) {
+                    if (hasLinkedBanner) {
+                        val linkedId = note.linkedPaperId!!
                         item(key = "linked_paper_banner") {
                             Surface(
-                                onClick = { onOpenLinkedPaper(note.linkedPaperId) },
+                                onClick = { onOpenLinkedPaper?.invoke(linkedId) },
                                 shape = RoundedCornerShape(10.dp),
                                 color = colors.blueLight,
                                 border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.3f)),
@@ -2035,6 +2421,63 @@ fun KnowledgeStudioReaderScreen(
                                         maxLines = 1,
                                         softWrap = false
                                     )
+                                }
+                            }
+                        }
+                    }
+
+                    // Study-First Guide Banner for Flashcards Decks: Learn clearly first, then launch SM-2 Deck
+                    if (hasStudyFirstDeckBanner) {
+                        item(key = "study_first_deck_prompt") {
+                            val nowMillis = System.currentTimeMillis()
+                            val dueCount = studyUnits.count { unit ->
+                                val st = srsMap[unit.blockIndex]
+                                st != null && st.reviewCount > 0 && SpacedRepetitionEngine.statusOf(st, nowMillis) == FlashcardSrsStatus.DUE
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = colors.tealLight.copy(alpha = 0.55f),
+                                border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Study Mode First • ${studyUnits.size} Cards",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.inkBold
+                                        )
+                                        Text(
+                                            text = if (dueCount > 0) "$dueCount due for SM-2 recall. Read clearly here first, then start Deck when ready."
+                                            else "Review questions & answers clearly here first, then launch Deck or Active Recall.",
+                                            fontSize = 11.sp,
+                                            color = colors.inkMuted,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            recallMode = true
+                                            isDeckMode = true
+                                        },
+                                        shape = RoundedCornerShape(9.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .heightIn(min = 40.dp)
+                                            .testTag("study_first_start_deck_button")
+                                    ) {
+                                        Icon(Icons.Default.Style, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Start Deck", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -2122,6 +2565,39 @@ fun KnowledgeStudioReaderScreen(
             preferredEnglishVariant = preferredEnglishVariant,
             onLogStudySeconds = onRecordStudySeconds,
             onDismiss = { showNotebookDictation = false }
+        )
+    }
+
+    KnowledgeNavigatorSideSheet(
+        isOpen = showNavigatorSheet,
+        onDismiss = { showNavigatorSheet = false },
+        noteTitle = note.title,
+        badgeLabel = note.effectiveBadgeLabel(),
+        allBlocks = blocks,
+        bookmarkedIndices = bookmarked,
+        masteredIndices = mastered,
+        srsMap = srsMap,
+        currentBlockIndex = focusedBlockIndex,
+        onJumpToBlock = { targetIdx ->
+            showNavigatorSheet = false
+            jumpToBlock(targetIdx)
+        },
+        onScrollToTop = {
+            showNavigatorSheet = false
+            focusedBlockIndex = null
+            isDeckMode = false
+            coroutineScope.launch { readerListState.animateScrollToItem(0) }
+        }
+    )
+
+    if (showAppendSheet && onAppendToNote != null) {
+        AppendKnowledgeSheet(
+            note = note,
+            existingUnitCount = totalStudyItems,
+            onAppendText = { rawAppend, skipDuplicates, onDone ->
+                onAppendToNote(rawAppend, skipDuplicates, onDone)
+            },
+            onDismiss = { showAppendSheet = false }
         )
     }
 }

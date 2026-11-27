@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -375,6 +376,33 @@ fun MasterViewTab(
 
     val isScrolledPastHeader by remember {
         derivedStateOf { listState.firstVisibleItemIndex > 0 }
+    }
+
+    BackHandler(
+        enabled = showResolutionHubDialog ||
+            showBulkAuditDialog ||
+            showBulkMergeAnswersDialog ||
+            showPaletteOverlay ||
+            showDiscardConfirmDialog ||
+            showReviewDialog ||
+            isEditMode ||
+            searchQuery.isNotBlank() ||
+            filterMode != "all"
+    ) {
+        when {
+            showResolutionHubDialog -> showResolutionHubDialog = false
+            showBulkAuditDialog -> showBulkAuditDialog = false
+            showBulkMergeAnswersDialog -> showBulkMergeAnswersDialog = false
+            showPaletteOverlay -> showPaletteOverlay = false
+            showDiscardConfirmDialog -> showDiscardConfirmDialog = false
+            showReviewDialog -> showReviewDialog = false
+            isEditMode -> {
+                if (changedCount > 0) showReviewDialog = true
+                else exitEditMode(false)
+            }
+            searchQuery.isNotBlank() -> searchQuery = ""
+            filterMode != "all" -> filterMode = "all"
+        }
     }
 
     Box(

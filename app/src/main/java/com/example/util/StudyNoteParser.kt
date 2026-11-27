@@ -2028,4 +2028,155 @@ object StudyNoteParser {
             append("</body></html>")
         }
     }
+
+    data class KnowledgeAppendPreview(
+        val combinedContent: String,
+        val appendSegment: String,
+        val existingUnitCount: Int,
+        val parsedNewUnitCount: Int,
+        val addedUnitCount: Int,
+        val skippedDuplicatesCount: Int,
+        val structuralBlocksCount: Int
+    )
+
+    private fun normalizeUnitSignature(block: StudyNoteBlock): String {
+        val raw = when (block) {
+            is StudyNoteBlock.OneLiner -> "${block.leadTerm} ${block.detail}"
+            is StudyNoteBlock.MultiLinerCard -> block.title
+            else -> ""
+        }
+        return raw.lowercase()
+            .replace(Regex("""^(?:q\s*\d+|\d+)\s*[:.)\-]\s*"""), "")
+            .replace(Regex("""[^a-z0-9\p{L}\p{N}]+"""), " ")
+            .trim()
+    }
+
+    fun prepareAppendedContent(
+        existingRaw: String,
+        newRaw: String,
+        rule: KnowledgeFormatRule = KnowledgeFormatRule(),
+        skipDuplicates: Boolean = true
+    ): KnowledgeAppendPreview {
+        val trimmedExisting = existingRaw.trimEnd()
+        val trimmedNew = normalizeDelimiters(newRaw).trim()
+        val existingBlocks = parseBlocks(trimmedExisting, rule)
+        val existingUnits = existingBlocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
+
+        if (trimmedNew.isBlank()) {
+            return KnowledgeAppendPreview(
+                combinedContent = existingRaw,
+                appendSegment = "",
+                existingUnitCount = existingUnits.size,
+                parsedNewUnitCount = 0,
+                addedUnitCount = 0,
+                skippedDuplicatesCount = 0,
+                structuralBlocksCount = 0
+            )
+        }
+
+        val existingKeys = existingUnits.map { normalizeUnitSignature(it) }.filter { it.isNotBlank() }.toMutableSet()
+        val candidateBlocks = parseBlocks(trimmedNew, rule)
+        val candidateUnits = candidateBlocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
+        val structuralBlocks = candidateBlocks.count {
+            it is StudyNoteBlock.Heading || it is StudyNoteBlock.Table || it is StudyNoteBlock.Callout || it is StudyNoteBlock.Paragraph
+        }
+
+        // Split candidate raw text into top-level logical chunks when duplicate filtering is enabled
+        var addedUnits = 0
+        var skippedDuplicates = 0
+        val keptText = if (!skipDuplicates || existingKeys.isEmpty() || candidateUnits.isEmpty()) {
+            candidateUnits.forEach { u ->
+                val sig = normalizeUnitSignature(u)
+                if (sig.isNotBlank()) existingKeys.add(sig)
+            }
+            addedUnits = candidateUnits.size
+            trimmedNew
+        } else {
+            val lines = trimmedNew.lines()
+            val keptChunks = mutableListOf<String>()
+            val currentChunk = mutableListOf<String>()
+
+            fun flushChunk() {
+                if (currentChunk.isEmpty()) return
+                val chunkText = currentChunk.joinToString("\n").trim()
+                currentChunk.clear()
+                if (chunkText.isBlank()) return
+                val chunkBlocks = parseBlocks(chunkText, rule)
+                val chunkUnits = chunkBlocks.filter { it is StudyNoteBlock.OneLiner || it is StudyNoteBlock.MultiLinerCard }
+                if (chunkUnits.isEmpty()) {
+                    keptChunks.add(chunkText)
+                    return
+                }
+                val unit = chunkUnits.first()
+                val sig = normalizeUnitSignature(unit)
+                if (sig.isNotBlank() && sig in existingKeys) {
+                    skippedDuplicates++
+                } else {
+                    if (sig.isNotBlank()) existingKeys.add(sig)
+                    addedUnits += chunkUnits.size
+                    keptChunks.add(chunkText)
+                }
+            }
+
+            for (rawLine in lines) {
+                val t = rawLine.trim()
+                val indent = rawLine.indexOfFirst { !it.isWhitespace() }.let { if (it == -1) 0 else it }
+                val startsNewTopLevelItem = indent <= 1 && (
+                    Regex("""^(?:#{1,4})\s+""").containsMatchIn(t) ||
+                    Regex("""^(?:Q\d*|Question)\s*[:.\-]\s+""", RegexOption.IGNORE_CASE).containsMatchIn(t) ||
+                    Regex("""^(?:\d{1,4}[.)]|[-*•‣▪])\s+""").containsMatchIn(t) ||
+                    splitDirectKeyValue(t, rule.layerOrder) != null
+                )
+                if (startsNewTopLevelItem && currentChunk.isNotEmpty()) {
+                    flushChunk()
+                }
+                currentChunk.add(rawLine)
+            }
+            flushChunk()
+            keptChunks.joinToString("\n\n").trim()
+        }
+
+        // Auto-renumber leading sequential item numbers or Q-numbers for continuity
+        var nextNumber = existingUnits.size + 1
+        val finalAppendSegment = if (keptText.isBlank()) {
+            ""
+        } else {
+            keptText.lines().joinToString("\n") { line ->
+                val indent = line.indexOfFirst { !it.isWhitespace() }.let { if (it == -1) 0 else it }
+                if (indent <= 1) {
+                    val numMatch = Regex("""^(\s*)(\d{1,4})([.)]\s+.+)$""").find(line)
+                    val qMatch = Regex("""^(\s*)Q(\d+)(\s*[:.\-]\s+.+)$""", RegexOption.IGNORE_CASE).find(line)
+                    when {
+                        qMatch != null -> {
+                            val n = nextNumber++
+                            "${qMatch.groupValues[1]}Q$n${qMatch.groupValues[3]}"
+                        }
+                        numMatch != null -> {
+                            val n = nextNumber++
+                            "${numMatch.groupValues[1]}$n${numMatch.groupValues[3]}"
+                        }
+                        else -> line
+                    }
+                } else {
+                    line
+                }
+            }
+        }
+
+        val combined = when {
+            finalAppendSegment.isBlank() -> existingRaw
+            trimmedExisting.isBlank() -> finalAppendSegment
+            else -> "$trimmedExisting\n\n$finalAppendSegment"
+        }
+
+        return KnowledgeAppendPreview(
+            combinedContent = combined,
+            appendSegment = finalAppendSegment,
+            existingUnitCount = existingUnits.size,
+            parsedNewUnitCount = candidateUnits.size,
+            addedUnitCount = addedUnits,
+            skippedDuplicatesCount = skippedDuplicates,
+            structuralBlocksCount = structuralBlocks
+        )
+    }
 }
