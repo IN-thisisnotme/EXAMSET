@@ -20,6 +20,7 @@ import com.example.model.VoicePromptItem
 import com.example.model.VoiceSourceFilter
 import com.example.model.VoiceTranscriptSegment
 import com.example.model.VoiceWordMatchStatus
+import java.text.Normalizer
 import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
@@ -371,7 +372,15 @@ object VoiceFluencyEngine {
                     val noteFolderPath = folderPathsById[note.folderId.orEmpty()]
                         ?.ifBlank { FolderPathHelper.formatDisplayPath(note.subject) }
                         ?: FolderPathHelper.formatDisplayPath(note.subject).ifBlank { "General Notes" }
-                    val language = rule.language.ifBlank { "English" }
+                    val explicitLang = rule.language.trim()
+                    val language = if (explicitLang.isNotBlank() && !explicitLang.equals("English", ignoreCase = true)) {
+                        explicitLang
+                    } else {
+                        PaperLanguageDetector.detectLanguages(note.rawContent, note.title)
+                            .firstOrNull()
+                            .orEmpty()
+                            .ifBlank { explicitLang.ifBlank { "English" } }
+                    }
                     val blocks = StudyNoteParser.parseBlocks(note.rawContent, rule)
                     var addedForNote = 0
                     for (block in blocks) {
@@ -410,6 +419,12 @@ object VoiceFluencyEngine {
                     val paperFolderPath = folderPathsById[paperEntity.folderId.orEmpty()]
                         ?.ifBlank { FolderPathHelper.formatDisplayPath(paperEntity.subject) }
                         ?: FolderPathHelper.formatDisplayPath(paperEntity.subject).ifBlank { "Exam Papers" }
+                    val paperLanguage = PaperLanguageDetector.detectLanguagesCached(
+                        paperId = paperEntity.id,
+                        updatedAt = paperEntity.updatedAt,
+                        rawText = paperEntity.rawText,
+                        title = paperEntity.title
+                    ).firstOrNull().orEmpty().ifBlank { "English" }
 
                     var addedForPaper = 0
                     for (q in parsed.questions) {
@@ -465,7 +480,7 @@ object VoiceFluencyEngine {
                                 sourceLabel = "MCQ • ${paperEntity.title}",
                                 folderId = paperEntity.folderId,
                                 folderPath = paperFolderPath,
-                                language = "English",
+                                language = paperLanguage,
                                 formulaExpressions = expressions,
                                 optionExpressions = optionLines
                             )
@@ -836,27 +851,39 @@ object VoiceFluencyEngine {
         referenceSummary: String
     ): Int? {
         val verbalizedRef = verbalizeSymbolsForKeywords(referenceSummary)
-        val refKeywords = verbalizedRef
-            .lowercase(Locale.ROOT)
-            .split(Regex("[^a-z0-9]+"))
+        val refKeywords = tokenizeUnicodeKeywordUnits(verbalizedRef)
             .filter { token ->
-                (token.length >= 4 && token !in stopWords) ||
-                    token in spokenMathKeywordWhitelist
+                val isUnspacedToken = token.any(::isUnspacedScriptChar)
+                val isAsciiWord = token.all { it in 'a'..'z' || it in '0'..'9' }
+                when {
+                    isUnspacedToken -> token.isNotEmpty()
+                    isAsciiWord -> (token.length >= 4 && token !in stopWords) || token in spokenMathKeywordWhitelist
+                    else -> token.length >= 3 && token !in stopWords
+                }
             }
             .distinct()
         if (refKeywords.isEmpty()) return null
 
-        val spokenWords = verbalizeSymbolsForKeywords(transcript)
-            .lowercase(Locale.ROOT)
-            .split(Regex("[^a-z0-9]+"))
-            .filter { it.length >= 2 }
+        val spokenWords = tokenizeUnicodeKeywordUnits(verbalizeSymbolsForKeywords(transcript))
+            .filter { token -> token.any(::isUnspacedScriptChar) || token.length >= 2 }
             .toSet()
         if (spokenWords.isEmpty()) return 0
 
-        val matched = refKeywords.count { it in spokenWords }
+        val matched = refKeywords.count { refTok ->
+            refTok in spokenWords || spokenWords.any { spkTok -> isSttNearMatch(refTok, spkTok) }
+        }
         return ((matched.toDouble() / refKeywords.size.toDouble()) * 100.0)
             .roundToInt()
             .coerceIn(0, 100)
+    }
+
+    private fun tokenizeUnicodeKeywordUnits(raw: String): List<String> {
+        if (raw.isBlank()) return emptyList()
+        return Normalizer.normalize(raw, Normalizer.Form.NFKC)
+            .lowercase(Locale.ROOT)
+            .split(Regex("[^\\p{L}\\p{M}\\p{N}]+"))
+            .filter { it.isNotBlank() }
+            .flatMap(::splitUnspacedScriptRuns)
     }
 
     private val spokenMathKeywordWhitelist = setOf(
@@ -1592,13 +1619,26 @@ object VoiceFluencyEngine {
                 .replace("%", " percent ")
                 .replace("—", " ")
                 .replace("–", " ")
+                .replace("।", " ")
+                .replace("॥", " ")
+                .replace("、", " ")
+                .replace("。", " ")
+                .replace("，", " ")
+                .replace("؟", " ")
+                .replace("،", " ")
+                .replace("؛", " ")
                 .replace(Regex("""(?<=\p{L})-(?=\p{L})"""), " ")
                 .replace(Regex("""(?<=\p{L})/(?=\p{L})"""), " ")
         )
         return expanded
             .split(Regex("\\s+"))
+            .flatMap(::splitUnspacedScriptRuns)
             .mapNotNull { piece ->
-                val cleanDisplay = piece.trim('[', ']', '(', ')', ',', '.', ';', ':', '!', '?', '"', '\'', '’', '‘', '“', '”', '—', '–')
+                val cleanDisplay = piece.trim(
+                    '[', ']', '(', ')', ',', '.', ';', ':', '!', '?', '"', '\'',
+                    '’', '‘', '“', '”', '—', '–', '।', '॥', '、', '。', '，',
+                    '「', '」', '『', '』', '《', '》', '¿', '¡', '؟', '،', '؛'
+                )
                 val key = canonicalKey(cleanDisplay)
                 if (cleanDisplay.isNotBlank() && key.isNotBlank()) {
                     AlignmentWord(display = cleanDisplay, key = key)
@@ -1696,14 +1736,72 @@ object VoiceFluencyEngine {
         val minLen = minOf(expectedKey.length, spokenKey.length)
         if (minLen < 3 || abs(expectedKey.length - spokenKey.length) > 2) return false
 
-        val dist = levenshteinDistance(expectedKey, spokenKey)
-        val skelA = phoneticSkeleton(expectedKey)
-        val skelB = phoneticSkeleton(spokenKey)
-        if (skelA.isNotEmpty() && skelA == skelB && dist <= 2) return true
+        val expectedFolded = foldLatinDiacritics(expectedKey)
+        val spokenFolded = foldLatinDiacritics(spokenKey)
+        if (expectedFolded == spokenFolded) return true
 
-        if (minLen >= 4 && dist == 1) return true
-        if (minLen >= 6 && dist <= 2 && expectedKey.first() == spokenKey.first()) return true
-        return false
+        val bothAsciiLatin = expectedFolded.all { it in 'a'..'z' } && spokenFolded.all { it in 'a'..'z' }
+        val dist = levenshteinDistance(expectedFolded, spokenFolded)
+        if (bothAsciiLatin) {
+            val skelA = phoneticSkeleton(expectedFolded)
+            val skelB = phoneticSkeleton(spokenFolded)
+            if (skelA.isNotEmpty() && skelA == skelB && dist <= 2) return true
+
+            if (minLen >= 4 && dist == 1) return true
+            if (minLen >= 6 && dist <= 2 && expectedFolded.first() == spokenFolded.first()) return true
+            return false
+        }
+
+        // For non-Latin scripts (Hindi, Arabic, Cyrillic, etc.), accept only conservative 1-char edit on words >= 4 chars
+        return minLen >= 4 && dist == 1
+    }
+
+    private fun foldLatinDiacritics(key: String): String {
+        val hasNonAscii = key.any { it.code > 127 }
+        if (!hasNonAscii) return key
+        // Only strip combining marks if the token is Latin-script so Indic vowel matras/virama stay intact.
+        val isLatinToken = key.all { ch ->
+            ch.code <= 127 || Character.UnicodeScript.of(ch.code) == Character.UnicodeScript.LATIN ||
+                Character.getType(ch) == Character.NON_SPACING_MARK.toInt()
+        }
+        if (!isLatinToken) return key
+        return Normalizer.normalize(key, Normalizer.Form.NFKD)
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+    }
+
+    private fun isUnspacedScriptChar(ch: Char): Boolean {
+        val script = Character.UnicodeScript.of(ch.code)
+        return script == Character.UnicodeScript.HAN ||
+            script == Character.UnicodeScript.HIRAGANA ||
+            script == Character.UnicodeScript.KATAKANA ||
+            script == Character.UnicodeScript.THAI ||
+            script == Character.UnicodeScript.LAO ||
+            script == Character.UnicodeScript.KHMER ||
+            script == Character.UnicodeScript.MYANMAR
+    }
+
+    private fun splitUnspacedScriptRuns(token: String): List<String> {
+        if (token.isEmpty()) return emptyList()
+        if (!token.any(::isUnspacedScriptChar)) return listOf(token)
+        val out = mutableListOf<String>()
+        val currentRun = StringBuilder()
+        for (ch in token) {
+            if (isUnspacedScriptChar(ch)) {
+                if (currentRun.isNotEmpty()) {
+                    out.add(currentRun.toString())
+                    currentRun.setLength(0)
+                }
+                if (Character.isLetterOrDigit(ch)) {
+                    out.add(ch.toString())
+                }
+            } else {
+                currentRun.append(ch)
+            }
+        }
+        if (currentRun.isNotEmpty()) {
+            out.add(currentRun.toString())
+        }
+        return out
     }
 
     private fun phoneticSkeleton(word: String): String {
@@ -1757,8 +1855,16 @@ object VoiceFluencyEngine {
     }
 
     private fun canonicalKey(raw: String): String {
-        val stripped = raw.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
-        return spokenNumberWordMap[stripped] ?: stripped
+        if (raw.isBlank()) return ""
+        val normalized = Normalizer.normalize(raw.trim(), Normalizer.Form.NFKC)
+            .lowercase(Locale.ROOT)
+        val stripped = normalized.replace(Regex("[^\\p{L}\\p{M}\\p{N}]"), "")
+        if (stripped.isBlank()) return ""
+        return if (stripped.all { it in 'a'..'z' || it in '0'..'9' }) {
+            spokenNumberWordMap[stripped] ?: stripped
+        } else {
+            stripped
+        }
     }
 
     private fun normalizeToken(raw: String): String {

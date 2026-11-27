@@ -452,4 +452,82 @@ class VoiceFluencyEngineTest {
         )
         assertEquals("The the Speaker", singleWordRepeat)
     }
+
+    @Test
+    fun alignSpokenToReference_supportsDevanagariArabicFrenchDiacriticsAndUnspacedJapanese() {
+        // Devanagari (preserving vowel matras)
+        val hindiRef = "भारत का संविधान सर्वोच्च है"
+        val hindiSpoken = "भारत का संविधान सर्वोच्च है"
+        val hindiStats = VoiceFluencyEngine.alignSpokenToReference(hindiRef, hindiSpoken, estimatedWpm = 110)
+        assertEquals(5, hindiStats.totalReferenceWords)
+        assertEquals(100, hindiStats.matchPercent)
+        assertEquals(0, hindiStats.mistakeCount)
+
+        // Arabic
+        val arabicRef = "العلم نور والجهل ظلام"
+        val arabicSpoken = "العلم نور والجهل ظلام"
+        val arabicStats = VoiceFluencyEngine.alignSpokenToReference(arabicRef, arabicSpoken, estimatedWpm = 100)
+        assertEquals(4, arabicStats.totalReferenceWords)
+        assertEquals(100, arabicStats.matchPercent)
+
+        // French/Spanish diacritics tolerance in SMART_STT_TOLERANT mode
+        val frenchRef = "L'éducation publique résume l'état"
+        val frenchSpoken = "Leducation publique resume letat"
+        val frenchStats = VoiceFluencyEngine.alignSpokenToReference(
+            referenceText = frenchRef,
+            spokenText = frenchSpoken,
+            estimatedWpm = 115,
+            tolerance = com.example.model.VoiceComparisonTolerance.SMART_STT_TOLERANT
+        )
+        assertTrue(frenchStats.matchPercent >= 75)
+
+        // Unspaced Japanese CJK/Kana characters
+        val jpRef = "日本の憲法"
+        val jpSpoken = "日本の憲法"
+        val jpStats = VoiceFluencyEngine.alignSpokenToReference(jpRef, jpSpoken, estimatedWpm = 90)
+        assertEquals(5, jpStats.totalReferenceWords)
+        assertEquals(100, jpStats.matchPercent)
+    }
+
+    @Test
+    fun buildPromptsForFolder_detectsNoteAndPaperLanguagesAutomatically() {
+        val hindiNote = StudyNoteEntity(
+            id = 301L,
+            folderId = "f-parent",
+            title = "संविधान",
+            subject = "Polity",
+            rawContent = "1. **मौलिक अधिकार** -> भारतीय संविधान के भाग तीन में नागरिकों को छह मौलिक अधिकार प्राप्त हैं।"
+        )
+        val spanishPaper = PaperEntity(
+            id = 302L,
+            folderId = "f-parent",
+            title = "Historia",
+            subject = "Polity",
+            questionCount = 1,
+            answerKeyCount = 1,
+            explanationCount = 0,
+            rawText = """
+                Language: Spanish
+                Q1. ¿Cuál es la capital de España?
+                A) Barcelona
+                B) Madrid
+                C) Sevilla
+                D) Valencia
+                Answer: B
+            """.trimIndent()
+        )
+
+        val result = VoiceFluencyEngine.buildPromptsForFolder(
+            selectedFolderId = "f-parent",
+            folders = folders,
+            studyNotes = listOf(hindiNote),
+            papers = listOf(spanishPaper),
+            sourceFilter = VoiceSourceFilter.ALL
+        )
+
+        val notePrompt = result.prompts.first { it.id.startsWith("note_301") }
+        val paperPrompt = result.prompts.first { it.id.startsWith("paper_302") }
+        assertEquals("Hindi", notePrompt.language)
+        assertEquals("Spanish", paperPrompt.language)
+    }
 }

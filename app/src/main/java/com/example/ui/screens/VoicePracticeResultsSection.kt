@@ -69,8 +69,48 @@ fun VoicePracticeResultsSection(
 
     when (uiState) {
         VoiceAnalysisUiState.Idle,
-        VoiceAnalysisUiState.Recording,
-        is VoiceAnalysisUiState.RecordedReady -> Unit
+        VoiceAnalysisUiState.Recording -> Unit
+
+        is VoiceAnalysisUiState.RecordedReady -> {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                border = BorderStroke(1.dp, colors.green.copy(alpha = 0.55f)),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .testTag("voice_recorded_ready_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Audio Take Saved",
+                        tint = colors.green,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        val totalSec = (uiState.durationMs / 1000L).coerceAtLeast(1L)
+                        Text(
+                            text = "Local audio take saved (${totalSec}s)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.inkBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Play and compare your takes below, or tap Keep Only Final on the best recording.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.inkMuted
+                        )
+                    }
+                }
+            }
+        }
 
         VoiceAnalysisUiState.Analyzing -> {
             Card(
@@ -95,14 +135,14 @@ fun VoicePracticeResultsSection(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Comparing speech with text...",
+                            text = "Reading words & comparing speech...",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = colors.inkBold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Aligning matched words, mistakes, missed terms, and extra pronunciations offline.",
+                            text = "Silently reading speech from your recording and aligning matched words, mistakes, and skipped terms.",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.inkMuted
                         )

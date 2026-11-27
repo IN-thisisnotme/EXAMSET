@@ -5,6 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -30,6 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -43,7 +50,8 @@ private const val RAPID_EMPTY_ERROR_WINDOW_MS = 1_200L
 private const val MAX_RAPID_EMPTY_ERRORS_PER_ENGINE = 3
 private const val ERROR_LANGUAGE_NOT_SUPPORTED_CODE = 12
 private const val ERROR_LANGUAGE_UNAVAILABLE_CODE = 13
-private const val STREAM_MUSIC_UNMUTE_SAFETY_MS = 450L
+private const val STREAM_EARCON_RELEASE_DELAY_MS = 350L
+private const val SILENT_EMPTY_RETRY_DELAY_MS = 900L
 private const val AUDIO_PIPE_SAMPLE_RATE_HZ = 16_000
 private const val AUDIO_PIPE_EARLY_FAIL_WINDOW_MS = 1_500L
 
@@ -143,6 +151,8 @@ class VoiceSpeechSessionController(context: Context) {
 
     private var activeBiasingVocabulary: List<String> = emptyList()
     private var activeReferenceText: String = ""
+    private var activeLanguageTag: String = Locale.getDefault().toLanguageTag()
+    private var activeLanguageDisplayName: String = Locale.getDefault().displayLanguage.ifBlank { "English" }
 
     private var audioPipeDisabledForSession = false
     private var usingAudioPipeForCurrentPass = false
@@ -153,9 +163,22 @@ class VoiceSpeechSessionController(context: Context) {
     private var audioPumpStopFlag: AtomicBoolean? = null
     private var audioPumpThread: Thread? = null
 
+    private var sessionWavWriter: WavSessionWriter? = null
+    private var sessionWavFile: File? = null
+
+    private var wavTranscriptionGeneration = 0L
+    private var wavTranscribeThread: Thread? = null
+    private var wavTranscribeStopFlag: AtomicBoolean? = null
+    private var wavTranscribeWriteFd: ParcelFileDescriptor? = null
+
     private var didMuteStreamMusic = false
-    private val safetyUnmuteRunnable = Runnable {
-        restoreMutedStreamMusicIfNeeded()
+    private var didMuteStreamSystem = false
+    private var didMuteStreamNotification = false
+    private var heldAudioFocusRequest: AudioFocusRequest? = null
+    private var heldLegacyAudioFocus = false
+    private val legacyAudioFocusListener = AudioManager.OnAudioFocusChangeListener { }
+    private val delayedAudioGuardReleaseRunnable = Runnable {
+        restoreAudioGuardsImmediately()
     }
 
     private var onSilenceAutoFinish: ((transcript: String, durationMs: Long, engineLabel: String) -> Unit)? = null
@@ -167,6 +190,15 @@ class VoiceSpeechSessionController(context: Context) {
     var engineMode by mutableStateOf(VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST)
 
     var suppressSystemBeeps by mutableStateOf(true)
+
+    var isAudioOnlySession by mutableStateOf(false)
+        private set
+
+    var isTranscribingWav by mutableStateOf(false)
+        private set
+
+    var lastRecordedWavPath by mutableStateOf<String?>(null)
+        private set
 
     var committedTranscript by mutableStateOf("")
         private set
@@ -189,7 +221,7 @@ class VoiceSpeechSessionController(context: Context) {
     var lastErrorMessage by mutableStateOf<String?>(null)
         private set
 
-    var activeEngineLabel by mutableStateOf("On-Device Speech-to-Text")
+    var activeEngineLabel by mutableStateOf("Zero-Beep Audio Studio")
         private set
 
     val isListening: Boolean
@@ -221,6 +253,9 @@ class VoiceSpeechSessionController(context: Context) {
             return standardAvailable || onDeviceAvailable
         }
 
+    val isPostAudioTranscriptionSupported: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && isRecognitionAvailable
+
     private inline fun runOnMain(crossinline block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             block()
@@ -229,32 +264,122 @@ class VoiceSpeechSessionController(context: Context) {
         }
     }
 
-    private fun muteStreamMusicTransientlyIfAllowed() {
-        if (!suppressSystemBeeps) return
-        if (didMuteStreamMusic) return
-        val am = audioManager ?: return
-        val touchExploration = runCatching { accessibilityManager?.isTouchExplorationEnabled == true }.getOrDefault(false)
-        if (touchExploration) return
-        val alreadyMuted = runCatching { am.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrDefault(false)
-        if (alreadyMuted) return
-
-        val adjusted = runCatching {
-            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
-            true
-        }.getOrDefault(false)
-        if (adjusted) {
-            didMuteStreamMusic = true
-            mainHandler.removeCallbacks(safetyUnmuteRunnable)
-            mainHandler.postDelayed(safetyUnmuteRunnable, STREAM_MUSIC_UNMUTE_SAFETY_MS)
+    fun setSystemBeepSuppressionEnabled(enabled: Boolean) {
+        suppressSystemBeeps = enabled
+        if (!enabled) {
+            restoreAudioGuardsImmediately()
+        } else if (status == VoiceMicSessionStatus.LISTENING && (!isAudioOnlySession || isTranscribingWav)) {
+            acquireSessionAudioGuards()
         }
     }
 
-    private fun restoreMutedStreamMusicIfNeeded() {
-        mainHandler.removeCallbacks(safetyUnmuteRunnable)
-        if (!didMuteStreamMusic) return
-        didMuteStreamMusic = false
-        runCatching {
-            audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+    private fun acquireSessionAudioGuards() {
+        if (!suppressSystemBeeps) return
+        mainHandler.removeCallbacks(delayedAudioGuardReleaseRunnable)
+        val am = audioManager ?: return
+        val touchExploration = runCatching { accessibilityManager?.isTouchExplorationEnabled == true }.getOrDefault(false)
+        if (touchExploration) return
+
+        // Request exclusive transient audio focus so system chimes/notifications duck or suppress during speech capture.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (heldAudioFocusRequest == null) {
+                runCatching {
+                    val attrs = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                    val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                        .setAudioAttributes(attrs)
+                        .setAcceptsDelayedFocusGain(false)
+                        .setOnAudioFocusChangeListener(legacyAudioFocusListener)
+                        .build()
+                    if (am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                        heldAudioFocusRequest = req
+                    }
+                }
+            }
+        } else if (!heldLegacyAudioFocus) {
+            @Suppress("DEPRECATION")
+            val granted = runCatching {
+                am.requestAudioFocus(
+                    legacyAudioFocusListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
+                ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            }.getOrDefault(false)
+            if (granted) heldLegacyAudioFocus = true
+        }
+
+        if (!didMuteStreamMusic) {
+            val musicMuted = runCatching { am.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrDefault(false)
+            if (!musicMuted) {
+                val ok = runCatching {
+                    am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+                    true
+                }.getOrDefault(false)
+                if (ok) didMuteStreamMusic = true
+            }
+        }
+
+        if (!didMuteStreamSystem) {
+            val sysMuted = runCatching { am.isStreamMute(AudioManager.STREAM_SYSTEM) }.getOrDefault(false)
+            if (!sysMuted) {
+                val ok = runCatching {
+                    am.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_MUTE, 0)
+                    true
+                }.getOrDefault(false)
+                if (ok) didMuteStreamSystem = true
+            }
+        }
+
+        if (!didMuteStreamNotification) {
+            val notifMuted = runCatching { am.isStreamMute(AudioManager.STREAM_NOTIFICATION) }.getOrDefault(false)
+            if (!notifMuted) {
+                val ok = runCatching {
+                    am.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0)
+                    true
+                }.getOrDefault(false)
+                if (ok) didMuteStreamNotification = true
+            }
+        }
+    }
+
+    private fun scheduleAudioGuardRelease(delayMs: Long = STREAM_EARCON_RELEASE_DELAY_MS) {
+        mainHandler.removeCallbacks(delayedAudioGuardReleaseRunnable)
+        mainHandler.postDelayed(delayedAudioGuardReleaseRunnable, delayMs)
+    }
+
+    private fun restoreAudioGuardsImmediately() {
+        mainHandler.removeCallbacks(delayedAudioGuardReleaseRunnable)
+        val am = audioManager ?: run {
+            didMuteStreamMusic = false
+            didMuteStreamSystem = false
+            didMuteStreamNotification = false
+            heldAudioFocusRequest = null
+            heldLegacyAudioFocus = false
+            return
+        }
+        if (didMuteStreamMusic) {
+            didMuteStreamMusic = false
+            runCatching { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0) }
+        }
+        if (didMuteStreamSystem) {
+            didMuteStreamSystem = false
+            runCatching { am.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0) }
+        }
+        if (didMuteStreamNotification) {
+            didMuteStreamNotification = false
+            runCatching { am.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0) }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            heldAudioFocusRequest?.let { req ->
+                heldAudioFocusRequest = null
+                runCatching { am.abandonAudioFocusRequest(req) }
+            }
+        } else if (heldLegacyAudioFocus) {
+            heldLegacyAudioFocus = false
+            @Suppress("DEPRECATION")
+            runCatching { am.abandonAudioFocus(legacyAudioFocusListener) }
         }
     }
 
@@ -273,7 +398,334 @@ class VoiceSpeechSessionController(context: Context) {
         val threadToJoin = audioPumpThread
         audioPumpThread = null
         if (threadToJoin != null && threadToJoin != Thread.currentThread()) {
-            runCatching { threadToJoin.join(120L) }
+            runCatching { threadToJoin.join(250L) }
+        }
+    }
+
+    private fun finalizeOrDiscardSessionWav(keepFileIfValid: Boolean): String? {
+        val writer = sessionWavWriter
+        val file = sessionWavFile
+        if (writer != null) {
+            writer.closeAndFinalize()
+        }
+        if (!keepFileIfValid) {
+            sessionWavWriter = null
+            sessionWavFile = null
+            if (file != null) {
+                runCatching { file.delete() }
+            }
+            return null
+        }
+        val validPath = if (file != null && file.exists() && file.length() > 44L) {
+            file.absolutePath
+        } else {
+            if (file != null) runCatching { file.delete() }
+            null
+        }
+        sessionWavWriter = null
+        sessionWavFile = null
+        return validPath
+    }
+
+    private fun stopWavTranscriptionResources() {
+        wavTranscribeStopFlag?.set(true)
+        wavTranscribeStopFlag = null
+        runCatching { wavTranscribeWriteFd?.close() }
+        wavTranscribeWriteFd = null
+        val t = wavTranscribeThread
+        wavTranscribeThread = null
+        if (t != null && t != Thread.currentThread()) {
+            runCatching { t.join(250L) }
+        }
+        isTranscribingWav = false
+    }
+
+    fun cancelWavTranscription() {
+        runOnMain {
+            wavTranscriptionGeneration++
+            stopWavTranscriptionResources()
+            if (recognizerMayBeActive && status == VoiceMicSessionStatus.IDLE) {
+                cancelRecognizerSafely()
+                scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+            } else if (status == VoiceMicSessionStatus.IDLE) {
+                restoreAudioGuardsImmediately()
+            }
+        }
+    }
+
+    /**
+     * Silently feeds a cleanly recorded local 16kHz PCM WAV file into Android 13+'s
+     * [SpeechRecognizer] via [RecognizerIntent.EXTRA_AUDIO_SOURCE] while holding session-wide
+     * earcon stream mutes and exclusive audio focus, guaranteeing zero beeps during speech.
+     */
+    fun transcribeSavedWavFile(
+        wavPath: String,
+        languageTag: String,
+        languageDisplayName: String,
+        biasingVocabulary: List<String> = emptyList(),
+        referenceTextForReranking: String = "",
+        onFinished: (transcript: String, engineLabel: String) -> Unit
+    ) {
+        runOnMain {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                onFinished("", "")
+                return@runOnMain
+            }
+            val wavFile = File(wavPath)
+            if (!wavFile.exists() || wavFile.length() <= 44L) {
+                onFinished("", "")
+                return@runOnMain
+            }
+
+            wavTranscriptionGeneration++
+            val genSnapshot = wavTranscriptionGeneration
+            stopWavTranscriptionResources()
+            cancelRecognizerSafely()
+
+            activeLanguageTag = languageTag.trim().ifBlank { Locale.getDefault().toLanguageTag() }
+            activeLanguageDisplayName = languageDisplayName.trim().ifBlank {
+                Locale.forLanguageTag(activeLanguageTag).displayLanguage.ifBlank { "Selected Language" }
+            }
+            activeBiasingVocabulary = biasingVocabulary.take(96)
+            activeReferenceText = referenceTextForReranking
+
+            isTranscribingWav = true
+            acquireSessionAudioGuards()
+
+            launchWavTranscriptionPass(
+                wavFile = wavFile,
+                genSnapshot = genSnapshot,
+                forceStandardFallback = false,
+                onFinished = onFinished
+            )
+        }
+    }
+
+    private fun launchWavTranscriptionPass(
+        wavFile: File,
+        genSnapshot: Long,
+        forceStandardFallback: Boolean,
+        onFinished: (transcript: String, engineLabel: String) -> Unit
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || genSnapshot != wavTranscriptionGeneration) {
+            isTranscribingWav = false
+            scheduleAudioGuardRelease()
+            onFinished("", "")
+            return
+        }
+
+        stopWavTranscriptionResources()
+        cancelRecognizerSafely()
+
+        val preferOnDevice = !forceStandardFallback
+        val recognizer = obtainRecognizer(preferOnDeviceApi = preferOnDevice)
+        if (recognizer == null) {
+            isTranscribingWav = false
+            scheduleAudioGuardRelease()
+            onFinished("", "")
+            return
+        }
+
+        val pipe = runCatching { ParcelFileDescriptor.createPipe() }.getOrNull()
+        if (pipe == null) {
+            isTranscribingWav = false
+            scheduleAudioGuardRelease()
+            onFinished("", "")
+            return
+        }
+        val readFd = pipe[0]
+        val writeFd = pipe[1]
+        wavTranscribeWriteFd = writeFd
+        isTranscribingWav = true
+
+        val engineUsedLabel = if (recognizerUsingOnDeviceApi) {
+            "Zero-Beep Studio + On-Device Speech ($activeLanguageDisplayName)"
+        } else {
+            "Zero-Beep Studio + Device Speech ($activeLanguageDisplayName)"
+        }
+
+        var accumulatedText = ""
+        var currentPartial = ""
+        var completed = false
+
+        val pcmDataBytes = (wavFile.length() - 44L).coerceAtLeast(0L)
+        val audioDurationMs = (pcmDataBytes * 1000L) / (AUDIO_PIPE_SAMPLE_RATE_HZ * 2L)
+        val watchdogTimeoutMs = (audioDurationMs + 14_000L).coerceIn(14_000L, 65_000L)
+
+        lateinit var watchdogRunnable: Runnable
+
+        fun finishTranscription(transcript: String) {
+            if (completed || genSnapshot != wavTranscriptionGeneration) return
+            completed = true
+            mainHandler.removeCallbacks(watchdogRunnable)
+            recognizerMayBeActive = false
+            stopWavTranscriptionResources()
+            scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+            onFinished(transcript.trim(), engineUsedLabel)
+        }
+
+        watchdogRunnable = Runnable {
+            if (genSnapshot != wavTranscriptionGeneration || completed) return@Runnable
+            val bestSoFar = VoiceFluencyEngine.mergeTranscriptSegments(accumulatedText, currentPartial)
+            runCatching { recognizer.cancel() }
+            finishTranscription(bestSoFar)
+        }
+
+        val listenerOk = runCatching {
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) = Unit
+                override fun onBeginningOfSpeech() = Unit
+                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onEndOfSpeech() = Unit
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    if (genSnapshot != wavTranscriptionGeneration || completed) return
+                    val partial = extractRecognizedText(partialResults, rerankAgainstReference = false)
+                    if (partial.isNotBlank()) {
+                        runOnMain { currentPartial = partial }
+                    }
+                }
+
+                override fun onSegmentResults(segmentResults: Bundle) {
+                    if (genSnapshot != wavTranscriptionGeneration || completed) return
+                    val chunk = extractRecognizedText(segmentResults, rerankAgainstReference = true)
+                    runOnMain {
+                        val picked = chunk.ifBlank { currentPartial.trim() }
+                        if (picked.isNotBlank()) {
+                            accumulatedText = VoiceFluencyEngine.mergeTranscriptSegments(accumulatedText, picked)
+                        }
+                        currentPartial = ""
+                    }
+                }
+
+                override fun onEndOfSegmentedSession() {
+                    runOnMain {
+                        if (genSnapshot != wavTranscriptionGeneration || completed) return@runOnMain
+                        val finalText = VoiceFluencyEngine.mergeTranscriptSegments(accumulatedText, currentPartial)
+                        finishTranscription(finalText)
+                    }
+                }
+
+                override fun onResults(results: Bundle?) {
+                    val chunk = extractRecognizedText(results, rerankAgainstReference = true)
+                    runOnMain {
+                        if (genSnapshot != wavTranscriptionGeneration || completed) return@runOnMain
+                        val tail = chunk.ifBlank { currentPartial.trim() }
+                        val finalText = VoiceFluencyEngine.mergeTranscriptSegments(accumulatedText, tail)
+                        finishTranscription(finalText)
+                    }
+                }
+
+                @SuppressLint("SwitchIntDef")
+                override fun onError(error: Int) {
+                    runOnMain {
+                        if (genSnapshot != wavTranscriptionGeneration || completed) return@runOnMain
+                        val canFallbackToStandard = !forceStandardFallback &&
+                            engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST &&
+                            accumulatedText.isBlank() &&
+                            currentPartial.isBlank() &&
+                            (error == ERROR_LANGUAGE_NOT_SUPPORTED_CODE ||
+                                error == ERROR_LANGUAGE_UNAVAILABLE_CODE ||
+                                error == SpeechRecognizer.ERROR_CLIENT ||
+                                error == SpeechRecognizer.ERROR_AUDIO)
+                        if (canFallbackToStandard) {
+                            completed = true
+                            mainHandler.removeCallbacks(watchdogRunnable)
+                            recognizerMayBeActive = false
+                            destroyRecognizer()
+                            launchWavTranscriptionPass(
+                                wavFile = wavFile,
+                                genSnapshot = genSnapshot,
+                                forceStandardFallback = true,
+                                onFinished = onFinished
+                            )
+                        } else {
+                            val bestSoFar = VoiceFluencyEngine.mergeTranscriptSegments(accumulatedText, currentPartial)
+                            finishTranscription(bestSoFar)
+                        }
+                    }
+                }
+
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+        }
+
+        if (listenerOk.isFailure) {
+            runCatching { readFd.close() }
+            finishTranscription("")
+            return
+        }
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, activeLanguageTag)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, activeLanguageTag)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 25_000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 12_000L)
+            if (engineMode == VoiceSpeechEngineMode.STRICT_OFFLINE || !forceStandardFallback) {
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            }
+            if (activeBiasingVocabulary.isNotEmpty()) {
+                putStringArrayListExtra(
+                    RecognizerIntent.EXTRA_BIASING_STRINGS,
+                    ArrayList(activeBiasingVocabulary.take(96))
+                )
+            }
+            putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE)
+            putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, readFd)
+            putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+            putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+            putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, AUDIO_PIPE_SAMPLE_RATE_HZ)
+        }
+
+        runCatching {
+            mainHandler.postDelayed(watchdogRunnable, watchdogTimeoutMs)
+            recognizerMayBeActive = true
+            recognizer.startListening(intent)
+            runCatching { readFd.close() }
+
+            val stopFlag = AtomicBoolean(false)
+            wavTranscribeStopFlag = stopFlag
+            wavTranscribeThread = thread(start = true, isDaemon = true, name = "ExamSetWavToSttPump") {
+                val buf = ByteArray(1280)
+                try {
+                    ParcelFileDescriptor.AutoCloseOutputStream(writeFd).use { pipeOut ->
+                        FileInputStream(wavFile).use { fis ->
+                            var toSkip = 44L
+                            while (toSkip > 0L) {
+                                val skipped = fis.skip(toSkip)
+                                if (skipped <= 0L) break
+                                toSkip -= skipped
+                            }
+                            while (!stopFlag.get() && genSnapshot == wavTranscriptionGeneration) {
+                                val read = fis.read(buf)
+                                if (read <= 0) break
+                                pipeOut.write(buf, 0, read)
+                                Thread.sleep(2L)
+                            }
+                        }
+                        // Append ~640ms trailing silence so recognizer closes final word cleanly before EOF
+                        if (!stopFlag.get() && genSnapshot == wavTranscriptionGeneration) {
+                            val silenceFrame = ByteArray(1280)
+                            repeat(16) {
+                                if (!stopFlag.get()) {
+                                    pipeOut.write(silenceFrame)
+                                    Thread.sleep(2L)
+                                }
+                            }
+                        }
+                        runCatching { pipeOut.flush() }
+                    }
+                } catch (_: Throwable) {
+                    // Clean shutdown or interrupted pipe
+                }
+            }
+        }.onFailure {
+            runCatching { readFd.close() }
+            finishTranscription("")
         }
     }
 
@@ -283,7 +735,7 @@ class VoiceSpeechSessionController(context: Context) {
             val now = System.currentTimeMillis()
             activeSpeakingMs = accumulatedSpeakingMs + (now - unpausedStartWallMs).coerceAtLeast(0L)
             silenceElapsedMs = (now - lastSpeechActivityWallMs).coerceAtLeast(0L)
-            if (!usingAudioPipeForCurrentPass) {
+            if (!usingAudioPipeForCurrentPass && !isAudioOnlySession) {
                 normalizedRmsLevel = (normalizedRmsLevel * 0.84f).let { if (it < 0.03f) 0f else it }
             }
 
@@ -291,13 +743,14 @@ class VoiceSpeechSessionController(context: Context) {
                 val finalTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, currentSegmentPartial)
                 val finalDuration = activeSpeakingMs.coerceAtLeast(1000L)
                 val finalEngine = activeEngineLabel
-                stopInternalToIdle(clearTranscripts = false)
-                if (finalTranscript.isNotBlank()) {
+                val hasKeepableData = finalTranscript.isNotBlank() || isAudioOnlySession
+                stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = hasKeepableData)
+                if (finalTranscript.isNotBlank() || (isAudioOnlySession && !lastRecordedWavPath.isNullOrBlank())) {
                     statusNotice = "Finished automatically after 30 seconds of silence."
                     onSilenceAutoFinish?.invoke(finalTranscript, finalDuration, finalEngine)
                 } else {
                     onSilenceNoSpeech?.invoke(
-                        "Microphone stopped after 30 seconds of silence with no words detected. Tap Start Speaking when ready, or use System Dialog / Type Check."
+                        "Microphone stopped after 30 seconds of silence with no speech detected. Tap Start Speaking when ready or use Type Check."
                     )
                 }
                 return
@@ -309,8 +762,11 @@ class VoiceSpeechSessionController(context: Context) {
 
     fun startSession(
         initialSeedText: String = "",
+        languageTag: String = Locale.getDefault().toLanguageTag(),
+        languageDisplayName: String = "",
         biasingVocabulary: List<String> = emptyList(),
         referenceTextForReranking: String = "",
+        audioOnly: Boolean = false,
         onAutoFinishOnSilence: (transcript: String, durationMs: Long, engineLabel: String) -> Unit,
         onNoSpeechTimeout: (message: String) -> Unit
     ) {
@@ -325,13 +781,23 @@ class VoiceSpeechSessionController(context: Context) {
 
             mainHandler.removeCallbacksAndMessages(null)
             stopAudioPipeResources()
-            restoreMutedStreamMusicIfNeeded()
+            stopWavTranscriptionResources()
+            finalizeOrDiscardSessionWav(keepFileIfValid = false)
+            restoreAudioGuardsImmediately()
 
             activeSessionGeneration++
             activeSegmentId++
+            wavTranscriptionGeneration++
             retriedClientBusyInSegment = false
             consecutiveRapidEmptyErrors = 0
             audioPipeDisabledForSession = false
+            isAudioOnlySession = audioOnly
+            lastRecordedWavPath = null
+
+            activeLanguageTag = languageTag.trim().ifBlank { Locale.getDefault().toLanguageTag() }
+            activeLanguageDisplayName = languageDisplayName.trim().ifBlank {
+                Locale.forLanguageTag(activeLanguageTag).displayLanguage.ifBlank { "Selected Language" }
+            }
             activeBiasingVocabulary = biasingVocabulary.take(96)
             activeReferenceText = referenceTextForReranking
 
@@ -347,13 +813,28 @@ class VoiceSpeechSessionController(context: Context) {
             statusNotice = null
             lastErrorMessage = null
 
+            val takeFile = VoiceLocalAudioStore.createSessionTakeFile(appContext)
+            val wavWriter = WavSessionWriter(takeFile)
+            if (wavWriter.openOrResume()) {
+                sessionWavFile = takeFile
+                sessionWavWriter = wavWriter
+            } else {
+                sessionWavFile = null
+                sessionWavWriter = null
+            }
+
             val now = System.currentTimeMillis()
             unpausedStartWallMs = now
             lastSpeechActivityWallMs = now
             status = VoiceMicSessionStatus.LISTENING
 
             mainHandler.post(sessionTicker)
-            launchListeningPass(forceStandardFallback = false)
+            if (audioOnly) {
+                launchAudioOnlyPass()
+            } else {
+                acquireSessionAudioGuards()
+                launchListeningPass(forceStandardFallback = false)
+            }
         }
     }
 
@@ -362,7 +843,7 @@ class VoiceSpeechSessionController(context: Context) {
             if (status != VoiceMicSessionStatus.LISTENING) return@runOnMain
             mainHandler.removeCallbacksAndMessages(null)
             stopAudioPipeResources()
-            restoreMutedStreamMusicIfNeeded()
+            sessionWavWriter?.closeAndFinalize()
 
             activeSegmentId++
             consecutiveRapidEmptyErrors = 0
@@ -375,9 +856,20 @@ class VoiceSpeechSessionController(context: Context) {
             silenceElapsedMs = 0L
             normalizedRmsLevel = 0f
 
-            cancelRecognizerSafely()
+            if (recognizerMayBeActive) {
+                acquireSessionAudioGuards()
+                cancelRecognizerSafely()
+                scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+            } else {
+                restoreAudioGuardsImmediately()
+            }
+
             status = VoiceMicSessionStatus.PAUSED_BY_USER
-            statusNotice = "Paused cleanly — your captured words are saved. Tap Resume Mic to continue or Finish & Check."
+            statusNotice = if (isAudioOnlySession) {
+                "Recording paused — tap Resume or Finish & Check when ready."
+            } else {
+                "Paused cleanly — your words and audio take are held. Tap Resume Mic or Finish & Check."
+            }
         }
     }
 
@@ -386,7 +878,9 @@ class VoiceSpeechSessionController(context: Context) {
             if (status != VoiceMicSessionStatus.PAUSED_BY_USER) return@runOnMain
             mainHandler.removeCallbacksAndMessages(null)
             stopAudioPipeResources()
-            restoreMutedStreamMusicIfNeeded()
+            restoreAudioGuardsImmediately()
+
+            sessionWavWriter?.openOrResume()
 
             retriedClientBusyInSegment = false
             consecutiveRapidEmptyErrors = 0
@@ -400,7 +894,12 @@ class VoiceSpeechSessionController(context: Context) {
             status = VoiceMicSessionStatus.LISTENING
 
             mainHandler.post(sessionTicker)
-            launchListeningPass(forceStandardFallback = false)
+            if (isAudioOnlySession) {
+                launchAudioOnlyPass()
+            } else {
+                acquireSessionAudioGuards()
+                launchListeningPass(forceStandardFallback = false)
+            }
         }
     }
 
@@ -412,7 +911,7 @@ class VoiceSpeechSessionController(context: Context) {
             accumulatedSpeakingMs
         }
         val finalTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, currentSegmentPartial)
-        stopInternalToIdle(clearTranscripts = false)
+        stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = true)
         committedTranscript = finalTranscript
         activeSpeakingMs = totalDuration
         return finalTranscript to totalDuration
@@ -420,9 +919,13 @@ class VoiceSpeechSessionController(context: Context) {
 
     fun cancelSession() {
         runOnMain {
-            stopInternalToIdle(clearTranscripts = true)
+            wavTranscriptionGeneration++
+            stopWavTranscriptionResources()
+            stopInternalToIdle(clearTranscripts = true, keepFinalizedWav = false)
             statusNotice = null
             lastErrorMessage = null
+            isAudioOnlySession = false
+            lastRecordedWavPath = null
         }
     }
 
@@ -446,28 +949,49 @@ class VoiceSpeechSessionController(context: Context) {
 
     fun clearAll() {
         runOnMain {
-            stopInternalToIdle(clearTranscripts = true)
+            wavTranscriptionGeneration++
+            stopWavTranscriptionResources()
+            stopInternalToIdle(clearTranscripts = true, keepFinalizedWav = false)
             statusNotice = null
             lastErrorMessage = null
+            isAudioOnlySession = false
+            lastRecordedWavPath = null
+        }
+    }
+
+    fun releaseAudioGuardsForBackground() {
+        runOnMain {
+            if (!isTranscribingWav) {
+                restoreAudioGuardsImmediately()
+            }
         }
     }
 
     private fun cancelRecognizerSafely() {
         if (recognizerMayBeActive) {
+            acquireSessionAudioGuards()
             runCatching { speechRecognizer?.cancel() }
             recognizerMayBeActive = false
         }
     }
 
-    private fun stopInternalToIdle(clearTranscripts: Boolean) {
+    private fun stopInternalToIdle(
+        clearTranscripts: Boolean,
+        keepFinalizedWav: Boolean = false
+    ) {
         mainHandler.removeCallbacksAndMessages(null)
         stopAudioPipeResources()
-        restoreMutedStreamMusicIfNeeded()
+        lastRecordedWavPath = finalizeOrDiscardSessionWav(keepFileIfValid = keepFinalizedWav)
         activeSessionGeneration++
         activeSegmentId++
         consecutiveRapidEmptyErrors = 0
         segmentedSessionActiveForCurrentPass = false
-        cancelRecognizerSafely()
+        if (recognizerMayBeActive) {
+            cancelRecognizerSafely()
+            scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+        } else if (!isTranscribingWav) {
+            restoreAudioGuardsImmediately()
+        }
         status = VoiceMicSessionStatus.IDLE
         normalizedRmsLevel = 0f
         silenceElapsedMs = 0L
@@ -506,9 +1030,9 @@ class VoiceSpeechSessionController(context: Context) {
 
     private fun destroyRecognizer() {
         stopAudioPipeResources()
-        restoreMutedStreamMusicIfNeeded()
         runCatching {
             if (recognizerMayBeActive) {
+                acquireSessionAudioGuards()
                 speechRecognizer?.cancel()
             }
             speechRecognizer?.destroy()
@@ -538,10 +1062,7 @@ class VoiceSpeechSessionController(context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    private fun prepareAudioRecordPipe(
-        generationSnapshot: Long,
-        segmentSnapshot: Long
-    ): Pair<ParcelFileDescriptor, AudioRecord>? {
+    private fun createConfiguredAudioRecord(): AudioRecord? {
         if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
         ) {
@@ -569,7 +1090,12 @@ class VoiceSpeechSessionController(context: Context) {
             runCatching { audioRecord.release() }
             return null
         }
+        return audioRecord
+    }
 
+    @SuppressLint("MissingPermission")
+    private fun prepareAudioRecordPipe(): Pair<ParcelFileDescriptor, AudioRecord>? {
+        val audioRecord = createConfiguredAudioRecord() ?: return null
         val pipe = runCatching { ParcelFileDescriptor.createPipe() }.getOrNull()
         if (pipe == null) {
             runCatching { audioRecord.release() }
@@ -581,6 +1107,96 @@ class VoiceSpeechSessionController(context: Context) {
         activeAudioRecord = audioRecord
         activeAudioWriteFd = writeFd
         return readFd to audioRecord
+    }
+
+    private fun startAudioOnlyPump(
+        audioRecord: AudioRecord,
+        generationSnapshot: Long,
+        segmentSnapshot: Long
+    ) {
+        val stopFlag = AtomicBoolean(false)
+        audioPumpStopFlag = stopFlag
+        usingAudioPipeForCurrentPass = true
+
+        audioPumpThread = thread(start = true, isDaemon = true, name = "ExamSetVoiceLocalWav") {
+            val frameBytes = 1280 // 40ms @ 16kHz 16-bit mono
+            val buffer = ByteArray(frameBytes)
+            try {
+                audioRecord.startRecording()
+                while (!stopFlag.get() &&
+                    generationSnapshot == activeSessionGeneration &&
+                    segmentSnapshot == activeSegmentId
+                ) {
+                    val readCount = audioRecord.read(buffer, 0, buffer.size)
+                    if (readCount > 0) {
+                        sessionWavWriter?.writePcm(buffer, readCount)
+                        updateRmsFromPcmBuffer(buffer, readCount, generationSnapshot, segmentSnapshot)
+                    } else if (readCount < 0) {
+                        break
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "Local audio recorder pump terminated", t)
+            } finally {
+                runCatching { audioRecord.stop() }
+                runCatching { audioRecord.release() }
+            }
+        }
+    }
+
+    private fun launchAudioOnlyPass() {
+        if (status != VoiceMicSessionStatus.LISTENING) return
+        stopAudioPipeResources()
+        cancelRecognizerSafely()
+
+        val generationSnapshot = activeSessionGeneration
+        val segmentSnapshot = ++activeSegmentId
+        val audioRecord = createConfiguredAudioRecord()
+        if (audioRecord == null) {
+            stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = false)
+            lastErrorMessage = "Microphone audio recorder could not start. Close any app using the mic and try again."
+            return
+        }
+        activeAudioRecord = audioRecord
+        activeEngineLabel = "Local Audio Recorder (Zero Beeps)"
+        startAudioOnlyPump(audioRecord, generationSnapshot, segmentSnapshot)
+    }
+
+    private fun updateRmsFromPcmBuffer(
+        buffer: ByteArray,
+        readCount: Int,
+        generationSnapshot: Long,
+        segmentSnapshot: Long
+    ) {
+        var sumSq = 0.0
+        val sampleCount = readCount / 2
+        var idx = 0
+        while (idx + 1 < readCount) {
+            val lo = buffer[idx].toInt() and 0xFF
+            val hi = buffer[idx + 1].toInt()
+            val sample = (hi shl 8) or lo
+            val norm = sample / 32768.0
+            sumSq += norm * norm
+            idx += 2
+        }
+        if (sampleCount > 0) {
+            val rms = sqrt(sumSq / sampleCount).toFloat()
+            val level = (rms * 5.2f).coerceIn(0.05f, 1f)
+            if (rms >= 0.025f) {
+                lastSpeechActivityWallMs = System.currentTimeMillis()
+            }
+            runOnMain {
+                if (generationSnapshot == activeSessionGeneration &&
+                    segmentSnapshot == activeSegmentId &&
+                    status == VoiceMicSessionStatus.LISTENING
+                ) {
+                    normalizedRmsLevel = level
+                    if (rms >= 0.025f) {
+                        silenceElapsedMs = 0L
+                    }
+                }
+            }
+        }
     }
 
     private fun startAudioPipePump(
@@ -606,36 +1222,8 @@ class VoiceSpeechSessionController(context: Context) {
                         val readCount = audioRecord.read(buffer, 0, buffer.size)
                         if (readCount > 0) {
                             out.write(buffer, 0, readCount)
-                            // Compute normalized RMS level cleanly without allocating per sample
-                            var sumSq = 0.0
-                            val sampleCount = readCount / 2
-                            var idx = 0
-                            while (idx + 1 < readCount) {
-                                val lo = buffer[idx].toInt() and 0xFF
-                                val hi = buffer[idx + 1].toInt()
-                                val sample = (hi shl 8) or lo
-                                val norm = sample / 32768.0
-                                sumSq += norm * norm
-                                idx += 2
-                            }
-                            if (sampleCount > 0) {
-                                val rms = sqrt(sumSq / sampleCount).toFloat()
-                                val level = (rms * 5.2f).coerceIn(0.05f, 1f)
-                                if (rms >= 0.025f) {
-                                    lastSpeechActivityWallMs = System.currentTimeMillis()
-                                }
-                                runOnMain {
-                                    if (generationSnapshot == activeSessionGeneration &&
-                                        segmentSnapshot == activeSegmentId &&
-                                        status == VoiceMicSessionStatus.LISTENING
-                                    ) {
-                                        normalizedRmsLevel = level
-                                        if (rms >= 0.025f) {
-                                            silenceElapsedMs = 0L
-                                        }
-                                    }
-                                }
-                            }
+                            sessionWavWriter?.writePcm(buffer, readCount)
+                            updateRmsFromPcmBuffer(buffer, readCount, generationSnapshot, segmentSnapshot)
                         } else if (readCount < 0) {
                             break
                         }
@@ -686,7 +1274,7 @@ class VoiceSpeechSessionController(context: Context) {
         val supportsApi33Features = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
         var pendingPipe: Pair<ParcelFileDescriptor, AudioRecord>? = null
         if (supportsApi33Features && !audioPipeDisabledForSession && !forceStandardFallback) {
-            pendingPipe = prepareAudioRecordPipe(generationSnapshot, segmentSnapshot)
+            pendingPipe = prepareAudioRecordPipe()
         }
         val willUseAudioPipe = pendingPipe != null
         val willUseSegmentedSession = supportsApi33Features
@@ -705,13 +1293,13 @@ class VoiceSpeechSessionController(context: Context) {
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     runOnMain {
-                        restoreMutedStreamMusicIfNeeded()
+                        // Keep session-wide earcon guard active across the entire LISTENING state
+                        acquireSessionAudioGuards()
                     }
                 }
 
                 override fun onBeginningOfSpeech() {
                     runOnMain {
-                        restoreMutedStreamMusicIfNeeded()
                         if (generationSnapshot != activeSessionGeneration ||
                             segmentSnapshot != activeSegmentId ||
                             status != VoiceMicSessionStatus.LISTENING
@@ -740,6 +1328,7 @@ class VoiceSpeechSessionController(context: Context) {
                         if (generationSnapshot != activeSessionGeneration ||
                             segmentSnapshot != activeSegmentId
                         ) return@runOnMain
+                        acquireSessionAudioGuards()
                         if (!usingAudioPipeForCurrentPass) {
                             normalizedRmsLevel = 0.08f
                         }
@@ -789,19 +1378,23 @@ class VoiceSpeechSessionController(context: Context) {
                         if (generationSnapshot != activeSessionGeneration ||
                             segmentSnapshot != activeSegmentId ||
                             status != VoiceMicSessionStatus.LISTENING
-                        ) return@runOnMain
+                        ) {
+                            scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+                            return@runOnMain
+                        }
                         val dangling = currentSegmentPartial.trim()
                         if (dangling.isNotBlank()) {
                             committedTranscript = VoiceFluencyEngine.mergeTranscriptSegments(committedTranscript, dangling)
                             currentSegmentPartial = ""
                         }
+                        acquireSessionAudioGuards()
                         mainHandler.postDelayed({
                             if (generationSnapshot == activeSessionGeneration &&
                                 status == VoiceMicSessionStatus.LISTENING
                             ) {
                                 launchListeningPass(forceStandardFallback = forceStandardFallback)
                             }
-                        }, 120L)
+                        }, 200L)
                     }
                 }
 
@@ -809,11 +1402,13 @@ class VoiceSpeechSessionController(context: Context) {
                     val extracted = extractRecognizedText(results, rerankAgainstReference = true)
                     runOnMain {
                         recognizerMayBeActive = false
-                        restoreMutedStreamMusicIfNeeded()
                         if (generationSnapshot != activeSessionGeneration ||
                             segmentSnapshot != activeSegmentId ||
                             status != VoiceMicSessionStatus.LISTENING
-                        ) return@runOnMain
+                        ) {
+                            scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+                            return@runOnMain
+                        }
                         val finalChunk = extracted.ifBlank { currentSegmentPartial.trim() }
 
                         if (finalChunk.isNotBlank()) {
@@ -825,14 +1420,15 @@ class VoiceSpeechSessionController(context: Context) {
                         currentSegmentPartial = ""
                         retriedClientBusyInSegment = false
 
-                        // Keep continuous session open across natural mid-sentence pauses until user pauses/stops or 30s silence elapses.
+                        // Keep session-wide earcon guard held across pause & pass transition
+                        acquireSessionAudioGuards()
                         mainHandler.postDelayed({
                             if (generationSnapshot == activeSessionGeneration &&
                                 status == VoiceMicSessionStatus.LISTENING
                             ) {
                                 launchListeningPass(forceStandardFallback = forceStandardFallback)
                             }
-                        }, 120L)
+                        }, 200L)
                     }
                 }
 
@@ -840,11 +1436,13 @@ class VoiceSpeechSessionController(context: Context) {
                 override fun onError(error: Int) {
                     runOnMain {
                         recognizerMayBeActive = false
-                        restoreMutedStreamMusicIfNeeded()
                         if (generationSnapshot != activeSessionGeneration ||
                             segmentSnapshot != activeSegmentId ||
                             status != VoiceMicSessionStatus.LISTENING
-                        ) return@runOnMain
+                        ) {
+                            scheduleAudioGuardRelease(STREAM_EARCON_RELEASE_DELAY_MS)
+                            return@runOnMain
+                        }
 
                         val passElapsed = System.currentTimeMillis() - lastPassStartedWallMs
 
@@ -856,13 +1454,14 @@ class VoiceSpeechSessionController(context: Context) {
                             audioPipeDisabledForSession = true
                             stopAudioPipeResources()
                             destroyRecognizer()
+                            acquireSessionAudioGuards()
                             mainHandler.postDelayed({
                                 if (generationSnapshot == activeSessionGeneration &&
                                     status == VoiceMicSessionStatus.LISTENING
                                 ) {
                                     launchListeningPass(forceStandardFallback = forceStandardFallback)
                                 }
-                            }, 160L)
+                            }, 200L)
                             return@runOnMain
                         }
 
@@ -890,28 +1489,30 @@ class VoiceSpeechSessionController(context: Context) {
                                 consecutiveRapidEmptyErrors = decision.nextRapidErrorCount
                                 when (decision.action) {
                                     VoiceSpeechEmptyErrorAction.RETRY_SAME_ENGINE -> {
+                                        acquireSessionAudioGuards()
                                         mainHandler.postDelayed({
                                             if (generationSnapshot == activeSessionGeneration &&
                                                 status == VoiceMicSessionStatus.LISTENING
                                             ) {
                                                 launchListeningPass(forceStandardFallback = forceStandardFallback)
                                             }
-                                        }, 200L)
+                                        }, SILENT_EMPTY_RETRY_DELAY_MS)
                                     }
                                     VoiceSpeechEmptyErrorAction.FALLBACK_TO_STANDARD -> {
                                         destroyRecognizer()
                                         statusNotice = "Switched to standard device Speech Service for clearer pickup."
+                                        acquireSessionAudioGuards()
                                         mainHandler.postDelayed({
                                             if (generationSnapshot == activeSessionGeneration &&
                                                 status == VoiceMicSessionStatus.LISTENING
                                             ) {
                                                 launchListeningPass(forceStandardFallback = true)
                                             }
-                                        }, 180L)
+                                        }, 240L)
                                     }
                                     VoiceSpeechEmptyErrorAction.STOP_WITH_NOTICE -> {
-                                        stopInternalToIdle(clearTranscripts = false)
-                                        lastErrorMessage = "Live background mic is not receiving speech on this device. Tap System Dialog or Type Check below."
+                                        stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = committedTranscript.isNotBlank())
+                                        lastErrorMessage = "Live mic stopped receiving speech. Use Zero-Beep Studio, Audio Only, or Type Check below."
                                     }
                                 }
                             }
@@ -923,16 +1524,17 @@ class VoiceSpeechSessionController(context: Context) {
                             ERROR_LANGUAGE_UNAVAILABLE_CODE -> {
                                 if (engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST && !forceStandardFallback) {
                                     destroyRecognizer()
-                                    statusNotice = "Offline speech pack unavailable — switched automatically to device Speech Service."
+                                    statusNotice = "Offline speech pack unavailable for $activeLanguageDisplayName — switched automatically to device Speech Service."
+                                    acquireSessionAudioGuards()
                                     mainHandler.postDelayed({
                                         if (generationSnapshot == activeSessionGeneration &&
                                             status == VoiceMicSessionStatus.LISTENING
                                         ) {
                                             launchListeningPass(forceStandardFallback = true)
                                         }
-                                    }, 180L)
+                                    }, 240L)
                                 } else {
-                                    stopInternalToIdle(clearTranscripts = false)
+                                    stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = committedTranscript.isNotBlank())
                                     lastErrorMessage = describeSpeechError(error, engineMode)
                                 }
                             }
@@ -942,21 +1544,22 @@ class VoiceSpeechSessionController(context: Context) {
                                 if (!retriedClientBusyInSegment) {
                                     retriedClientBusyInSegment = true
                                     destroyRecognizer()
+                                    acquireSessionAudioGuards()
                                     mainHandler.postDelayed({
                                         if (generationSnapshot == activeSessionGeneration &&
                                             status == VoiceMicSessionStatus.LISTENING
                                         ) {
                                             launchListeningPass(forceStandardFallback = forceStandardFallback)
                                         }
-                                    }, 240L)
+                                    }, 260L)
                                 } else {
-                                    stopInternalToIdle(clearTranscripts = false)
+                                    stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = committedTranscript.isNotBlank())
                                     lastErrorMessage = describeSpeechError(error, engineMode)
                                 }
                             }
 
                             else -> {
-                                stopInternalToIdle(clearTranscripts = false)
+                                stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = committedTranscript.isNotBlank())
                                 lastErrorMessage = describeSpeechError(error, engineMode)
                             }
                         }
@@ -974,21 +1577,21 @@ class VoiceSpeechSessionController(context: Context) {
                 runCatching { audioRecord.release() }
             }
             destroyRecognizer()
-            stopInternalToIdle(clearTranscripts = false)
-            lastErrorMessage = "Microphone speech listener could not attach on this device. Tap System Dialog or Type Check below."
+            stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = committedTranscript.isNotBlank())
+            lastErrorMessage = "Microphone speech listener could not attach on this device. Use Audio Only (Zero Beeps) or Type Check below."
             return
         }
 
-        val languageTag = Locale.getDefault().toLanguageTag()
+        val languageTag = activeLanguageTag.ifBlank { Locale.getDefault().toLanguageTag() }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 20_000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 12_000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10_000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 25_000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 15_000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 12_000L)
             if (requestOfflineExtra) {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             }
@@ -1015,10 +1618,7 @@ class VoiceSpeechSessionController(context: Context) {
             }
         }
 
-        // Only transiently suppress system earcons if the platform recognizer is opening the mic directly
-        if (!willUseAudioPipe) {
-            muteStreamMusicTransientlyIfAllowed()
-        }
+        acquireSessionAudioGuards()
 
         runCatching {
             lastPassStartedWallMs = System.currentTimeMillis()
@@ -1027,7 +1627,6 @@ class VoiceSpeechSessionController(context: Context) {
             val pipePair = pendingPipe
             val writeFd = activeAudioWriteFd
             if (pipePair != null && writeFd != null) {
-                // Close our process copy of readFd after Binder handoff so closing writeFd sends immediate EOF.
                 runCatching { pipePair.first.close() }
                 startAudioPipePump(
                     audioRecord = pipePair.second,
@@ -1038,32 +1637,33 @@ class VoiceSpeechSessionController(context: Context) {
             }
         }.onFailure { err ->
             recognizerMayBeActive = false
-            restoreMutedStreamMusicIfNeeded()
             pendingPipe?.let { (readFd, _) -> runCatching { readFd.close() } }
             stopAudioPipeResources()
             Log.e(TAG, "SpeechRecognizer.startListening failed", err)
             if (willUseAudioPipe && !audioPipeDisabledForSession) {
                 audioPipeDisabledForSession = true
                 destroyRecognizer()
+                acquireSessionAudioGuards()
                 mainHandler.postDelayed({
                     if (generationSnapshot == activeSessionGeneration &&
                         status == VoiceMicSessionStatus.LISTENING
                     ) {
                         launchListeningPass(forceStandardFallback = forceStandardFallback)
                     }
-                }, 160L)
+                }, 180L)
             } else if (engineMode == VoiceSpeechEngineMode.AUTO_OFFLINE_FIRST && !forceStandardFallback) {
                 destroyRecognizer()
+                acquireSessionAudioGuards()
                 mainHandler.postDelayed({
                     if (generationSnapshot == activeSessionGeneration &&
                         status == VoiceMicSessionStatus.LISTENING
                     ) {
                         launchListeningPass(forceStandardFallback = true)
                     }
-                }, 200L)
+                }, 220L)
             } else {
-                stopInternalToIdle(clearTranscripts = false)
-                lastErrorMessage = "Microphone speech service could not start on this device. Tap System Dialog or Type Check below."
+                stopInternalToIdle(clearTranscripts = false, keepFinalizedWav = committedTranscript.isNotBlank())
+                lastErrorMessage = "Microphone speech service could not start here. Use Zero-Beep Studio, Audio Only, or Type Check below."
             }
         }
     }
@@ -1071,38 +1671,42 @@ class VoiceSpeechSessionController(context: Context) {
     fun shutdown() {
         runOnMain {
             mainHandler.removeCallbacksAndMessages(null)
+            wavTranscriptionGeneration++
+            stopWavTranscriptionResources()
             stopAudioPipeResources()
-            restoreMutedStreamMusicIfNeeded()
+            finalizeOrDiscardSessionWav(keepFileIfValid = false)
             activeSessionGeneration++
             activeSegmentId++
             consecutiveRapidEmptyErrors = 0
             destroyRecognizer()
+            restoreAudioGuardsImmediately()
             status = VoiceMicSessionStatus.IDLE
         }
     }
 
     private fun describeSpeechError(errorCode: Int, mode: VoiceSpeechEngineMode): String {
+        val langName = activeLanguageDisplayName.ifBlank { Locale.getDefault().displayLanguage }
         return when (errorCode) {
             SpeechRecognizer.ERROR_AUDIO ->
-                "Microphone audio input failed. Close any app using the mic, or use System Dialog below."
+                "Microphone audio input failed. Close any app using the mic, or use Audio Only / Type Check below."
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
                 "Microphone permission is required. Grant Microphone access in App Settings and try again."
             ERROR_LANGUAGE_UNAVAILABLE_CODE,
             ERROR_LANGUAGE_NOT_SUPPORTED_CODE ->
                 if (mode == VoiceSpeechEngineMode.STRICT_OFFLINE) {
-                    "Offline speech pack for ${Locale.getDefault().displayLanguage} is not downloaded. Switch to Smart Mic (Offline First) or download the offline voice pack in Android Settings."
+                    "Offline speech pack for $langName ($activeLanguageTag) is not downloaded. Switch to Smart Mic (Offline First) or download the offline voice pack in Android Settings."
                 } else {
-                    "Speech recognition for ${Locale.getDefault().displayLanguage} is unavailable on this device. Try System Dialog or Type Check."
+                    "Speech recognition for $langName ($activeLanguageTag) is unavailable right now. Try switching the language selector, Audio Only, or Type Check."
                 }
             SpeechRecognizer.ERROR_NETWORK,
             SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
             SpeechRecognizer.ERROR_SERVER ->
-                "Speech service is unreachable right now. Download your device's offline speech pack in Android Settings or use Type Check."
+                "Speech service is unreachable right now. Download your device's offline speech pack in Android Settings, or use Audio Only / Type Check."
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
             SpeechRecognizer.ERROR_CLIENT ->
-                "Android Speech Recognizer is busy or unsupported in the background on this device. Tap System Dialog below for instant dictation."
+                "Android Speech Recognizer is busy or unsupported in the background on this device. Use Zero-Beep Audio Only or Type Check below."
             else ->
-                "Speech-to-Text stopped (code $errorCode). Tap Start Speaking again or use System Dialog below."
+                "Speech-to-Text stopped (code $errorCode). Tap Start Speaking again or use Audio Only / Type Check below."
         }
     }
 }
@@ -1110,9 +1714,17 @@ class VoiceSpeechSessionController(context: Context) {
 @Composable
 fun rememberVoiceSpeechSessionController(): VoiceSpeechSessionController {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val controller = remember(context) { VoiceSpeechSessionController(context) }
-    DisposableEffect(controller) {
+    DisposableEffect(controller, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                controller.releaseAudioGuardsForBackground()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             controller.shutdown()
         }
     }

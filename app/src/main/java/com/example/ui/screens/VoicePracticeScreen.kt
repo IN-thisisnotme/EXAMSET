@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
-import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,7 +53,6 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatSize
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -122,6 +120,7 @@ import com.example.data.StudyNoteEntity
 import com.example.data.toQuestionPaper
 import com.example.model.FolderItem
 import com.example.model.QuestionPaper
+import com.example.model.VocabularyLanguageVariants
 import com.example.model.VoiceAnalysisUiState
 import com.example.model.VoiceComparisonTolerance
 import com.example.model.VoiceFolderPromptResult
@@ -130,11 +129,17 @@ import com.example.model.VoicePromptItem
 import com.example.model.VoiceSourceFilter
 import com.example.ui.components.FontSizeSelectorDialog
 import com.example.ui.components.LatexText
+import com.example.ui.components.VoiceLanguageSelectorBar
+import com.example.ui.components.VoiceLocalTakesPlayerCard
 import com.example.ui.theme.ExamTheme
+import com.example.util.DEFAULT_MAX_VOICE_TAKES_IN_SET
 import com.example.util.FolderPathHelper
 import com.example.util.VoiceFluencyEngine
+import com.example.util.VoiceLanguageHelper
+import com.example.util.VoiceLocalAudioStore
 import com.example.util.VoiceMicSessionStatus
 import com.example.util.VoiceSpeechEngineMode
+import com.example.util.rememberVoiceAudioPlayer
 import com.example.util.rememberVoiceSpeechSessionController
 import java.util.Locale
 import kotlin.math.abs
@@ -152,6 +157,24 @@ private data class VoicePromptLoadState(
         matchedFolderCount = 0
     )
 )
+
+private enum class VoiceCaptureBehavior(
+    val label: String,
+    val helperSummary: String
+) {
+    ZERO_BEEP_STUDIO(
+        label = "Zero-Beep Studio",
+        helperSummary = "Records cleanly with 0 pause beeps, then reads words from your audio."
+    ),
+    LIVE_SILENT_MIC(
+        label = "Live Silent Mic",
+        helperSummary = "Streams live words while locking system earcons muted for the full session."
+    ),
+    AUDIO_ONLY(
+        label = "Audio Only (0 Beeps)",
+        helperSummary = "Pure local recording for listen-back & 3-take comparison."
+    )
+}
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -181,7 +204,18 @@ fun VoicePracticeScreen(
     // val aiAnalyzer = remember { FirebaseVoiceAiAnalyzer() }
 
     val speechController = rememberVoiceSpeechSessionController()
+    val audioPlayer = rememberVoiceAudioPlayer()
     val sttSupported = remember(speechController) { speechController.isRecognitionAvailable }
+    val postAudioSttSupported = remember(speechController) { speechController.isPostAudioTranscriptionSupported }
+    var captureBehavior by remember(speechController) {
+        mutableStateOf(
+            when {
+                speechController.isPostAudioTranscriptionSupported -> VoiceCaptureBehavior.ZERO_BEEP_STUDIO
+                speechController.isRecognitionAvailable -> VoiceCaptureBehavior.LIVE_SILENT_MIC
+                else -> VoiceCaptureBehavior.AUDIO_ONLY
+            }
+        )
+    }
 
     var selectedFolderId by remember(initialFolderId) {
         mutableStateOf(
@@ -201,6 +235,10 @@ fun VoicePracticeScreen(
     var showReadContextDrawer by remember { mutableStateOf(false) }
     var showFolderDropdown by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
+    var selectedLanguageOverride by rememberSaveable { mutableStateOf<String?>(null) }
+    var englishVariant by rememberSaveable { mutableStateOf(VocabularyLanguageVariants.DEFAULT_ENGLISH_VARIANT) }
+    var savedClips by remember { mutableStateOf(VoiceLocalAudioStore.loadClips(context)) }
+    var lastRegisteredClipPath by remember { mutableStateOf<String?>(null) }
 
     fun checkMicGranted(): Boolean = runCatching {
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -215,6 +253,11 @@ fun VoicePracticeScreen(
     var showManualInput by remember { mutableStateOf(false) }
     var manualSpokenText by remember { mutableStateOf("") }
     var comparisonTolerance by remember { mutableStateOf(VoiceComparisonTolerance.SMART_STT_TOLERANT) }
+
+    LaunchedEffect(Unit) {
+        VoiceLocalAudioStore.pruneOrphanWavs(context)
+        savedClips = VoiceLocalAudioStore.loadClips(context)
+    }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -309,6 +352,25 @@ fun VoicePracticeScreen(
     val safePromptIndex = promptIndex.coerceIn(0, (orderedPrompts.size - 1).coerceAtLeast(0))
     val currentPrompt: VoicePromptItem? = orderedPrompts.getOrNull(safePromptIndex)
 
+    val libraryLanguages = remember(studyNotes, orderedPrompts) {
+        (studyNotes.mapNotNull { it.parsedFormatRule().language.trim().takeIf { l -> l.isNotBlank() } } +
+            orderedPrompts.map { it.language.trim() })
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+    val detectedPromptLanguage = currentPrompt?.language?.takeIf { it.isNotBlank() } ?: "English"
+    val effectiveLanguage = remember(detectedPromptLanguage, selectedLanguageOverride) {
+        VoiceLanguageHelper.normalizeLanguageDisplayName(
+            selectedLanguageOverride?.takeIf { it.isNotBlank() } ?: detectedPromptLanguage
+        )
+    }
+    val effectiveBcp47Tag = remember(effectiveLanguage, englishVariant) {
+        VoiceLanguageHelper.resolveBcp47Tag(effectiveLanguage, englishVariant)
+    }
+    val effectiveLanguageBadge = remember(effectiveLanguage, englishVariant) {
+        VoiceLanguageHelper.formatCompactLanguageBadge(effectiveLanguage, englishVariant)
+    }
+
     val readAloudScript = remember(currentPrompt?.id, currentPrompt?.referenceSummary, currentPrompt?.formulaExpressions) {
         currentPrompt?.let { VoiceFluencyEngine.resolveReadAloudPassage(it) }.orEmpty()
     }
@@ -327,18 +389,42 @@ fun VoicePracticeScreen(
         }
     }
 
+    fun registerRecordedTakeIfAvailable(
+        transcript: String,
+        durationMs: Long,
+        matchPercent: Int?,
+        estimatedWpm: Int
+    ) {
+        val wavPath = speechController.lastRecordedWavPath ?: return
+        val prompt = currentPrompt ?: return
+        savedClips = VoiceLocalAudioStore.addTakeToRollingSet(
+            context = context,
+            sourceWavPath = wavPath,
+            promptId = prompt.id,
+            promptTitle = prompt.title,
+            languageLabel = effectiveLanguageBadge,
+            durationMs = durationMs,
+            transcriptPreview = transcript,
+            matchPercent = matchPercent,
+            estimatedWpm = estimatedWpm,
+            maxTakesInSet = DEFAULT_MAX_VOICE_TAKES_IN_SET
+        )
+        lastRegisteredClipPath = wavPath
+    }
+
     val analysisErrorFallback = stringResource(R.string.voice_analysis_error)
     fun evaluateSpokenText(
         transcript: String,
         durationMs: Long,
         engineLabel: String,
-        toleranceOverride: VoiceComparisonTolerance = comparisonTolerance
+        toleranceOverride: VoiceComparisonTolerance = comparisonTolerance,
+        clipPathOverride: String? = null
     ) {
         val prompt = currentPrompt ?: return
         val cleaned = transcript.trim()
         if (cleaned.isBlank()) {
             analysisState = VoiceAnalysisUiState.Error(
-                "No spoken words were detected yet. Tap Start Speaking, use System Dialog, or enter text below."
+                "No spoken words were detected yet. Tap Start Speaking or enter text below."
             )
             return
         }
@@ -356,6 +442,25 @@ fun VoicePracticeScreen(
             )
         }.onSuccess { result ->
             analysisState = VoiceAnalysisUiState.Success(result)
+            val matchPct = result.metrics.comparison?.matchPercent
+            val wpm = result.metrics.estimatedWpm
+            val preferredClipPath = clipPathOverride ?: lastRegisteredClipPath
+            if (!preferredClipPath.isNullOrBlank() && savedClips.any { it.filePath == preferredClipPath }) {
+                savedClips = VoiceLocalAudioStore.updateTakeEvaluation(
+                    context = context,
+                    filePath = preferredClipPath,
+                    transcriptPreview = cleaned,
+                    matchPercent = matchPct,
+                    estimatedWpm = wpm
+                )
+            } else if (!speechController.lastRecordedWavPath.isNullOrBlank()) {
+                registerRecordedTakeIfAvailable(
+                    transcript = cleaned,
+                    durationMs = result.metrics.durationMs.coerceAtLeast(durationMs),
+                    matchPercent = matchPct,
+                    estimatedWpm = wpm
+                )
+            }
         }.onFailure {
             analysisState = VoiceAnalysisUiState.Error(analysisErrorFallback)
         }
@@ -364,6 +469,7 @@ fun VoicePracticeScreen(
     LaunchedEffect(currentPrompt?.id, selectedFolderId, sourceFilter, includeFormulas) {
         speechController.clearAll()
         manualSpokenText = ""
+        lastRegisteredClipPath = null
         showReadContextDrawer = false
         if (analysisState != VoiceAnalysisUiState.Idle) {
             analysisState = VoiceAnalysisUiState.Idle
@@ -379,15 +485,92 @@ fun VoicePracticeScreen(
         }
     }
 
-    fun beginMicSession(seedExistingText: String = "") {
+    fun transcribeSavedClipSilently(
+        wavPath: String,
+        durationMs: Long
+    ) {
+        val expectedPromptId = currentPrompt?.id ?: return
+        analysisState = VoiceAnalysisUiState.Analyzing
+        speechController.transcribeSavedWavFile(
+            wavPath = wavPath,
+            languageTag = effectiveBcp47Tag,
+            languageDisplayName = effectiveLanguage,
+            biasingVocabulary = biasingVocabulary,
+            referenceTextForReranking = rerankingReferenceText,
+            onFinished = { spoken, engineLabel ->
+                if (currentPrompt?.id != expectedPromptId) return@transcribeSavedWavFile
+                if (spoken.isNotBlank()) {
+                    manualSpokenText = spoken
+                    speechController.replaceTranscript(spoken)
+                    lastRegisteredClipPath = wavPath
+                    evaluateSpokenText(
+                        transcript = spoken,
+                        durationMs = durationMs,
+                        engineLabel = engineLabel,
+                        clipPathOverride = wavPath
+                    )
+                } else {
+                    analysisState = VoiceAnalysisUiState.RecordedReady(durationMs)
+                }
+            }
+        )
+    }
+
+    fun completeRecordedAudioTake(
+        wavPath: String?,
+        durationMs: Long,
+        autoReadWords: Boolean
+    ) {
+        if (wavPath.isNullOrBlank()) {
+            analysisState = VoiceAnalysisUiState.Error(
+                "No audio clip could be saved. Ensure microphone access is enabled and try again."
+            )
+            return
+        }
+        registerRecordedTakeIfAvailable(
+            transcript = "",
+            durationMs = durationMs,
+            matchPercent = null,
+            estimatedWpm = 0
+        )
+        if (durationMs >= 1000L) {
+            onLogStudySeconds((durationMs / 1000L).coerceAtLeast(1L))
+        }
+        if (autoReadWords && postAudioSttSupported) {
+            transcribeSavedClipSilently(wavPath = wavPath, durationMs = durationMs)
+        } else {
+            analysisState = VoiceAnalysisUiState.RecordedReady(durationMs)
+        }
+    }
+
+    fun beginMicSession(
+        seedExistingText: String = "",
+        behaviorOverride: VoiceCaptureBehavior = captureBehavior
+    ) {
+        audioPlayer.stopAndRelease()
+        speechController.cancelWavTranscription()
+        lastRegisteredClipPath = null
+        val useAudioFirstCapture = behaviorOverride != VoiceCaptureBehavior.LIVE_SILENT_MIC
+        val autoReadAfterStop = behaviorOverride == VoiceCaptureBehavior.ZERO_BEEP_STUDIO && postAudioSttSupported
         analysisState = VoiceAnalysisUiState.Recording
         speechController.startSession(
             initialSeedText = seedExistingText,
+            languageTag = effectiveBcp47Tag,
+            languageDisplayName = effectiveLanguage,
             biasingVocabulary = biasingVocabulary,
             referenceTextForReranking = rerankingReferenceText,
+            audioOnly = useAudioFirstCapture,
             onAutoFinishOnSilence = { transcript, durMs, engine ->
                 manualSpokenText = transcript
-                evaluateSpokenText(transcript, durMs, engine)
+                if (useAudioFirstCapture && transcript.isBlank()) {
+                    completeRecordedAudioTake(
+                        wavPath = speechController.lastRecordedWavPath,
+                        durationMs = durMs,
+                        autoReadWords = autoReadAfterStop
+                    )
+                } else {
+                    evaluateSpokenText(transcript, durMs, engine)
+                }
             },
             onNoSpeechTimeout = { msg ->
                 analysisState = VoiceAnalysisUiState.Error(msg)
@@ -396,74 +579,30 @@ fun VoicePracticeScreen(
     }
 
     fun finishAndEvaluateMicSession() {
+        val wasAudioOnly = speechController.isAudioOnlySession
+        val autoReadAfterStop = wasAudioOnly &&
+            captureBehavior == VoiceCaptureBehavior.ZERO_BEEP_STUDIO &&
+            postAudioSttSupported
         val (transcript, durMs) = speechController.finishSession()
         manualSpokenText = transcript
-        evaluateSpokenText(
-            transcript = transcript,
-            durationMs = durMs,
-            engineLabel = speechController.activeEngineLabel
-        )
-    }
-
-    // System Voice Dictation dialog fallback (works on devices where background SpeechRecognizer fails)
-    val systemSpeechLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { activityResult ->
-        if (activityResult.resultCode == Activity.RESULT_OK) {
-            val spoken = activityResult.data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull { it.isNotBlank() }
-                ?.trim()
-                .orEmpty()
-            if (spoken.isNotBlank()) {
-                speechController.appendExternalDictation(spoken)
-                val combined = speechController.committedTranscript.ifBlank { spoken }
-                manualSpokenText = combined
-                evaluateSpokenText(
-                    transcript = combined,
-                    durationMs = speechController.activeSpeakingMs,
-                    engineLabel = "System Voice Dictation"
-                )
-            }
-        }
-    }
-
-    fun launchSystemVoiceDialog() {
-        if (speechController.isListening) {
-            speechController.pauseByUser()
-        }
-        val languageTag = Locale.getDefault().toLanguageTag()
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
-            putExtra(
-                RecognizerIntent.EXTRA_PROMPT,
-                if (practiceMode == VoicePracticeMode.READ_ALOUD) {
-                    "Read the highlighted script lines aloud"
-                } else {
-                    "Speak your answer clearly"
-                }
+        if (wasAudioOnly && transcript.isBlank()) {
+            completeRecordedAudioTake(
+                wavPath = speechController.lastRecordedWavPath,
+                durationMs = durMs,
+                autoReadWords = autoReadAfterStop
             )
-            if (speechController.engineMode == VoiceSpeechEngineMode.STRICT_OFFLINE) {
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-                biasingVocabulary.isNotEmpty()
-            ) {
-                putStringArrayListExtra(
-                    RecognizerIntent.EXTRA_BIASING_STRINGS,
-                    ArrayList(biasingVocabulary.take(96))
-                )
-            }
+        } else {
+            evaluateSpokenText(
+                transcript = transcript,
+                durationMs = durMs,
+                engineLabel = speechController.activeEngineLabel
+            )
         }
-        runCatching { systemSpeechLauncher.launch(intent) }
-            .onFailure {
-                showManualInput = true
-                analysisState = VoiceAnalysisUiState.Error(
-                    "No System Voice input app is installed on this device. Use Type / Dictate Check below."
-                )
-            }
     }
+
+    // [DEPRECATED 2026-11-26] Reason: Google Voice Input pop-up dialog (ACTION_RECOGNIZE_SPEECH activity) always triggers system earcon beep chimes on open/pause/finish; replaced with Zero-Beep Studio (record cleanly first, then read words via EXTRA_AUDIO_SOURCE) and session-wide muted Live Silent Mic. Restore if: explicitly re-adding system popup dictation modal.
+    // val systemSpeechLauncher = rememberLauncherForActivityResult(...) { ... }
+    // fun launchSystemVoiceDialog() { ... }
 
     val settingsErrorFallback = stringResource(R.string.voice_mic_settings_error)
     fun openAppSettings() {
@@ -535,8 +674,14 @@ fun VoicePracticeScreen(
     BackHandler {
         when {
             showFontDialog -> showFontDialog = false
-            speechController.isSessionActive -> speechController.cancelSession()
-            else -> onDismiss()
+            speechController.isSessionActive -> {
+                speechController.cancelSession()
+                audioPlayer.stopAndRelease()
+            }
+            else -> {
+                audioPlayer.stopAndRelease()
+                onDismiss()
+            }
         }
     }
 
@@ -572,6 +717,7 @@ fun VoicePracticeScreen(
                     IconButton(
                         onClick = {
                             speechController.cancelSession()
+                            audioPlayer.stopAndRelease()
                             onDismiss()
                         },
                         modifier = Modifier
@@ -987,6 +1133,22 @@ fun VoicePracticeScreen(
                                                 softWrap = false,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
+                                        }
+                                        if (currentPrompt.language.isNotBlank()) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = colors.navyBanner
+                                            ) {
+                                                Text(
+                                                    text = currentPrompt.language,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.navyBannerText,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
                                         }
                                         if (practiceMode == VoicePracticeMode.READ_ALOUD && readAloudWordCount > 0) {
                                             Surface(
@@ -1438,17 +1600,29 @@ fun VoicePracticeScreen(
                                                 )
                                         )
                                         Text(
-                                            text = when (speechController.status) {
-                                                VoiceMicSessionStatus.LISTENING -> "Listening Continuously"
-                                                VoiceMicSessionStatus.PAUSED_BY_USER -> "Paused by You"
-                                                VoiceMicSessionStatus.IDLE -> "Voice Studio Ready"
+                                            text = when {
+                                                speechController.isTranscribingWav ->
+                                                    "Reading Words Silently ($effectiveLanguageBadge)"
+                                                speechController.status == VoiceMicSessionStatus.LISTENING &&
+                                                    captureBehavior == VoiceCaptureBehavior.ZERO_BEEP_STUDIO &&
+                                                    speechController.isAudioOnlySession ->
+                                                    "Zero-Beep Recording ($effectiveLanguageBadge)"
+                                                speechController.status == VoiceMicSessionStatus.LISTENING &&
+                                                    speechController.isAudioOnlySession ->
+                                                    "Recording Local Take (Zero Beeps)"
+                                                speechController.status == VoiceMicSessionStatus.LISTENING ->
+                                                    "Listening Silently ($effectiveLanguageBadge)"
+                                                speechController.status == VoiceMicSessionStatus.PAUSED_BY_USER ->
+                                                    "Paused by You"
+                                                else -> "Voice Studio Ready"
                                             },
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = when (speechController.status) {
-                                                VoiceMicSessionStatus.LISTENING -> colors.red
-                                                VoiceMicSessionStatus.PAUSED_BY_USER -> colors.amber
-                                                VoiceMicSessionStatus.IDLE -> colors.inkBold
+                                            color = when {
+                                                speechController.isTranscribingWav -> colors.tealDark
+                                                speechController.status == VoiceMicSessionStatus.LISTENING -> colors.red
+                                                speechController.status == VoiceMicSessionStatus.PAUSED_BY_USER -> colors.amber
+                                                else -> colors.inkBold
                                             },
                                             maxLines = 1,
                                             softWrap = false
@@ -1480,7 +1654,25 @@ fun VoicePracticeScreen(
                                     idleColor = colors.border
                                 )
 
-                                // Engine Recognition Mode & Silent Mic Strip (horizontally scrollable)
+                                // Multilingual Speech Language & English Accent Variant Picker
+                                VoiceLanguageSelectorBar(
+                                    detectedPromptLanguage = detectedPromptLanguage,
+                                    selectedLanguageOverride = selectedLanguageOverride,
+                                    englishVariant = englishVariant,
+                                    libraryLanguages = libraryLanguages,
+                                    enabled = !speechController.isSessionActive && !speechController.isTranscribingWav,
+                                    onSelectLanguageOverride = { selectedLanguageOverride = it },
+                                    onSelectEnglishVariant = { englishVariant = it }
+                                )
+
+                                // Capture Mode Selector (Zero-Beep Studio / Live Silent Mic / Audio Only)
+                                val availableBehaviors = remember(postAudioSttSupported, sttSupported) {
+                                    buildList {
+                                        if (postAudioSttSupported) add(VoiceCaptureBehavior.ZERO_BEEP_STUDIO)
+                                        if (sttSupported) add(VoiceCaptureBehavior.LIVE_SILENT_MIC)
+                                        add(VoiceCaptureBehavior.AUDIO_ONLY)
+                                    }
+                                }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1488,58 +1680,105 @@ fun VoicePracticeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    VoiceSpeechEngineMode.entries.forEach { mode ->
+                                    availableBehaviors.forEach { behavior ->
                                         FilterChip(
-                                            selected = speechController.engineMode == mode,
-                                            onClick = { speechController.engineMode = mode },
-                                            enabled = !speechController.isSessionActive,
+                                            selected = captureBehavior == behavior,
+                                            onClick = { captureBehavior = behavior },
+                                            enabled = !speechController.isSessionActive && !speechController.isTranscribingWav,
                                             label = {
                                                 Text(
-                                                    text = mode.label,
+                                                    text = behavior.label,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = if (behavior == VoiceCaptureBehavior.ZERO_BEEP_STUDIO ||
+                                                    behavior == VoiceCaptureBehavior.AUDIO_ONLY
+                                                ) {
+                                                    colors.greenLight
+                                                } else {
+                                                    colors.tealLight
+                                                },
+                                                selectedLabelColor = if (behavior == VoiceCaptureBehavior.ZERO_BEEP_STUDIO ||
+                                                    behavior == VoiceCaptureBehavior.AUDIO_ONLY
+                                                ) {
+                                                    colors.green
+                                                } else {
+                                                    colors.tealDark
+                                                }
+                                            ),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("voice_capture_behavior_${behavior.name.lowercase(Locale.ROOT)}")
+                                        )
+                                    }
+                                }
+
+                                // Engine Recognition Mode & Silent Mic Guard Strip (horizontally scrollable)
+                                if (captureBehavior != VoiceCaptureBehavior.AUDIO_ONLY) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        VoiceSpeechEngineMode.entries.forEach { mode ->
+                                            FilterChip(
+                                                selected = speechController.engineMode == mode,
+                                                onClick = { speechController.engineMode = mode },
+                                                enabled = !speechController.isSessionActive && !speechController.isTranscribingWav,
+                                                label = {
+                                                    Text(
+                                                        text = mode.label,
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = colors.tealLight,
+                                                    selectedLabelColor = colors.tealDark
+                                                ),
+                                                modifier = Modifier.heightIn(min = 48.dp)
+                                            )
+                                        }
+                                        FilterChip(
+                                            selected = speechController.suppressSystemBeeps,
+                                            onClick = {
+                                                speechController.setSystemBeepSuppressionEnabled(!speechController.suppressSystemBeeps)
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = if (speechController.suppressSystemBeeps) {
+                                                        Icons.Default.VolumeOff
+                                                    } else {
+                                                        Icons.Default.VolumeUp
+                                                    },
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = "Mute Beeps Guard",
                                                     style = MaterialTheme.typography.labelMedium,
                                                     maxLines = 1,
                                                     softWrap = false
                                                 )
                                             },
                                             colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = colors.tealLight,
-                                                selectedLabelColor = colors.tealDark
+                                                selectedContainerColor = colors.greenLight,
+                                                selectedLabelColor = colors.green
                                             ),
-                                            modifier = Modifier.heightIn(min = 48.dp)
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("voice_silent_mic_chip")
                                         )
                                     }
-                                    FilterChip(
-                                        selected = speechController.suppressSystemBeeps,
-                                        onClick = {
-                                            speechController.suppressSystemBeeps = !speechController.suppressSystemBeeps
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = if (speechController.suppressSystemBeeps) {
-                                                    Icons.Default.VolumeOff
-                                                } else {
-                                                    Icons.Default.VolumeUp
-                                                },
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        },
-                                        label = {
-                                            Text(
-                                                text = "Silent Mic (No Beeps)",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = colors.greenLight,
-                                            selectedLabelColor = colors.green
-                                        ),
-                                        modifier = Modifier
-                                            .heightIn(min = 48.dp)
-                                            .testTag("voice_silent_mic_chip")
-                                    )
                                 }
 
                                 // Word-Comparison Tolerance Selector (protects against recognizer homophones/misspellings)
@@ -1701,10 +1940,16 @@ fun VoicePracticeScreen(
                                             }
                                             Text(
                                                 text = liveText.ifBlank {
-                                                    if (speechController.isPaused) {
-                                                        "Session paused before any words were captured. Tap Resume Mic to continue."
-                                                    } else {
-                                                        "Speak clearly — short natural pauses stay silent without beeping or clipping."
+                                                    when {
+                                                        speechController.isPaused ->
+                                                            "Session paused cleanly — your take is safe. Tap Resume or Finish when ready."
+                                                        speechController.isAudioOnlySession &&
+                                                            captureBehavior == VoiceCaptureBehavior.ZERO_BEEP_STUDIO ->
+                                                            "Recording cleanly with 0 pause beeps. Speak naturally — words are read silently when you tap Finish & Read Words."
+                                                        speechController.isAudioOnlySession ->
+                                                            "Recording pure local audio (0 beeps). Saved on this device only."
+                                                        else ->
+                                                            "Speak clearly — system earcons stay muted throughout this live session."
                                                     }
                                                 },
                                                 style = MaterialTheme.typography.bodyLarge,
@@ -1798,19 +2043,15 @@ fun VoicePracticeScreen(
                                 when (speechController.status) {
                                     VoiceMicSessionStatus.IDLE -> {
                                         val micScale by animateFloatAsState(
-                                            targetValue = if (currentPrompt != null) 1.0f else 0.96f,
+                                            targetValue = if (currentPrompt != null && !speechController.isTranscribingWav) 1.0f else 0.96f,
                                             animationSpec = spring(),
                                             label = "mic_ready_scale"
                                         )
                                         Button(
                                             onClick = {
-                                                if (sttSupported) {
-                                                    runWithMicPermission { beginMicSession() }
-                                                } else {
-                                                    runWithMicPermission { launchSystemVoiceDialog() }
-                                                }
+                                                runWithMicPermission { beginMicSession() }
                                             },
-                                            enabled = currentPrompt != null,
+                                            enabled = currentPrompt != null && !speechController.isTranscribingWav,
                                             shape = CircleShape,
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = colors.teal,
@@ -1829,10 +2070,10 @@ fun VoicePracticeScreen(
                                         }
 
                                         Text(
-                                            text = if (sttSupported) {
-                                                "Continuous silent mic • Natural pauses won't beep or clip words • 30s silence safety stop"
+                                            text = if (speechController.isTranscribingWav) {
+                                                "Reading spoken words silently from your local recording ($effectiveLanguageBadge)..."
                                             } else {
-                                                "Tap Mic for System Dialog or use Type Check below"
+                                                "${captureBehavior.label} ($effectiveLanguageBadge) • ${captureBehavior.helperSummary}"
                                             },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = colors.inkMuted,
@@ -1888,7 +2129,7 @@ fun VoicePracticeScreen(
                                                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Text(
-                                                        text = "Resume Mic",
+                                                        text = if (speechController.isAudioOnlySession) "Resume Audio" else "Resume Mic",
                                                         style = MaterialTheme.typography.labelLarge,
                                                         fontWeight = FontWeight.Bold,
                                                         maxLines = 1,
@@ -1911,7 +2152,13 @@ fun VoicePracticeScreen(
                                                 Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "Finish & Check",
+                                                    text = when {
+                                                        speechController.isAudioOnlySession &&
+                                                            captureBehavior == VoiceCaptureBehavior.ZERO_BEEP_STUDIO &&
+                                                            postAudioSttSupported -> "Finish & Read Words"
+                                                        speechController.isAudioOnlySession -> "Save Audio Take"
+                                                        else -> "Finish & Check"
+                                                    },
                                                     style = MaterialTheme.typography.labelLarge,
                                                     fontWeight = FontWeight.Bold,
                                                     maxLines = 1,
@@ -1935,7 +2182,7 @@ fun VoicePracticeScreen(
                                     }
                                 }
 
-                                // Secondary Utility Bar (Horizontally Scrollable — never wraps/stacks)
+                                // Secondary Utility Bar (Horizontally Scrollable — zero Google beep popups)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1943,23 +2190,34 @@ fun VoicePracticeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    OutlinedButton(
-                                        onClick = { runWithMicPermission { launchSystemVoiceDialog() } },
-                                        enabled = currentPrompt != null,
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier
-                                            .heightIn(min = 48.dp)
-                                            .testTag("voice_system_dialog_btn")
+                                    if (!speechController.isSessionActive &&
+                                        !speechController.isTranscribingWav &&
+                                        captureBehavior != VoiceCaptureBehavior.AUDIO_ONLY
                                     ) {
-                                        Icon(Icons.Default.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "System Dialog (May Beep)",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
+                                        OutlinedButton(
+                                            onClick = {
+                                                runWithMicPermission {
+                                                    beginMicSession(behaviorOverride = VoiceCaptureBehavior.AUDIO_ONLY)
+                                                }
+                                            },
+                                            enabled = currentPrompt != null,
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("voice_record_audio_only_btn")
+                                        ) {
+                                            Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Record Audio Only (Zero Beeps)",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
                                     }
+
+                                    // [DEPRECATED 2026-11-26] Reason: System Dialog (May Beep) button removed so Google Voice pop-up chimes cannot interrupt sessions. Restore if: user requests Google popup modal again.
 
                                     OutlinedButton(
                                         onClick = { showManualInput = !showManualInput },
@@ -1978,7 +2236,7 @@ fun VoicePracticeScreen(
                                         )
                                     }
 
-                                    if (analysisState != VoiceAnalysisUiState.Idle || liveText.isNotBlank()) {
+                                    if (analysisState != VoiceAnalysisUiState.Idle || liveText.isNotBlank() || speechController.isTranscribingWav) {
                                         OutlinedButton(
                                             onClick = {
                                                 speechController.clearAll()
@@ -2074,11 +2332,54 @@ fun VoicePracticeScreen(
                                         durationMs = speechController.activeSpeakingMs,
                                         engineLabel = "Offline Text Comparison"
                                     )
-                                } else if (sttSupported) {
-                                    runWithMicPermission { beginMicSession() }
                                 } else {
-                                    runWithMicPermission { launchSystemVoiceDialog() }
+                                    runWithMicPermission { beginMicSession() }
                                 }
+                            }
+                        )
+
+                        VoiceLocalTakesPlayerCard(
+                            clips = savedClips,
+                            audioPlayer = audioPlayer,
+                            onPlayPauseClip = { clip ->
+                                audioPlayer.playOrPause(clip.filePath)
+                            },
+                            onSeekClip = { posMs ->
+                                audioPlayer.seekTo(posMs)
+                            },
+                            onKeepOnlyFinalClip = { clip ->
+                                if (audioPlayer.activeFilePath != clip.filePath) {
+                                    audioPlayer.stopAndRelease()
+                                }
+                                savedClips = VoiceLocalAudioStore.keepOnlyFinalClip(context, clip.id)
+                                lastRegisteredClipPath = clip.filePath
+                            },
+                            onDeleteClip = { clip ->
+                                if (audioPlayer.activeFilePath == clip.filePath) {
+                                    audioPlayer.stopAndRelease()
+                                }
+                                savedClips = VoiceLocalAudioStore.deleteClip(context, clip.id)
+                                if (lastRegisteredClipPath == clip.filePath) {
+                                    lastRegisteredClipPath = null
+                                }
+                            },
+                            onClearAllClips = {
+                                audioPlayer.stopAndRelease()
+                                VoiceLocalAudioStore.deleteAllRecordings(context)
+                                savedClips = emptyList()
+                                lastRegisteredClipPath = null
+                            },
+                            isTranscribing = speechController.isTranscribingWav || speechController.isSessionActive,
+                            onTranscribeClip = if (postAudioSttSupported) {
+                                { clip ->
+                                    audioPlayer.stopAndRelease()
+                                    transcribeSavedClipSilently(
+                                        wavPath = clip.filePath,
+                                        durationMs = clip.durationMs
+                                    )
+                                }
+                            } else {
+                                null
                             }
                         )
                     }
