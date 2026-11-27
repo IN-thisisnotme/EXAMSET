@@ -146,6 +146,7 @@ import com.example.ui.components.PromptPresetOverlays
 import com.example.ui.components.rememberPromptPresetDialogState
 import com.example.ui.theme.ExamTheme
 import com.example.util.StudyNoteBlock
+import com.example.util.StudyNoteCardSection
 import com.example.util.StudyNoteParser
 
 enum class RecallMaskMode(
@@ -1403,13 +1404,21 @@ fun KnowledgeStudioReaderScreen(
         studyUnits.count { it is StudyNoteBlock.MultiLinerCard && it.isQuestionCard }
     }
     val conceptCount = remember(studyUnits) {
-        studyUnits.count { it is StudyNoteBlock.MultiLinerCard && !it.isQuestionCard && !it.badge.equals("Q & A", ignoreCase = true) }
+        studyUnits.count {
+            it is StudyNoteBlock.MultiLinerCard &&
+                !it.isQuestionCard &&
+                !it.badge.equals("Q & A", ignoreCase = true) &&
+                !it.badge.equals("Long Q&A", ignoreCase = true)
+        }
     }
     val oneLinerCount = remember(studyUnits) {
         studyUnits.count { it is StudyNoteBlock.OneLiner }
     }
     val qaCardCount = remember(studyUnits) {
-        studyUnits.count { it is StudyNoteBlock.MultiLinerCard && it.badge.equals("Q & A", ignoreCase = true) }
+        studyUnits.count {
+            it is StudyNoteBlock.MultiLinerCard &&
+                (it.badge.equals("Q & A", ignoreCase = true) || it.badge.equals("Long Q&A", ignoreCase = true))
+        }
     }
 
     fun matchesTypeFilter(block: StudyNoteBlock): Boolean {
@@ -1418,9 +1427,13 @@ fun KnowledgeStudioReaderScreen(
             RecallTypeFilter.INCORRECT -> block is StudyNoteBlock.MultiLinerCard && block.statusTag.contains("Incorrect", ignoreCase = true)
             RecallTypeFilter.SKIPPED -> block is StudyNoteBlock.MultiLinerCard && block.statusTag.contains("Skipped", ignoreCase = true)
             RecallTypeFilter.MCQ -> block is StudyNoteBlock.MultiLinerCard && block.isQuestionCard
-            RecallTypeFilter.CONCEPTS -> block is StudyNoteBlock.MultiLinerCard && !block.isQuestionCard && !block.badge.equals("Q & A", ignoreCase = true)
+            RecallTypeFilter.CONCEPTS -> block is StudyNoteBlock.MultiLinerCard &&
+                !block.isQuestionCard &&
+                !block.badge.equals("Q & A", ignoreCase = true) &&
+                !block.badge.equals("Long Q&A", ignoreCase = true)
             RecallTypeFilter.ONE_LINERS -> block is StudyNoteBlock.OneLiner
-            RecallTypeFilter.QA_CARDS -> block is StudyNoteBlock.MultiLinerCard && block.badge.equals("Q & A", ignoreCase = true)
+            RecallTypeFilter.QA_CARDS -> block is StudyNoteBlock.MultiLinerCard &&
+                (block.badge.equals("Q & A", ignoreCase = true) || block.badge.equals("Long Q&A", ignoreCase = true))
         }
     }
 
@@ -1442,6 +1455,17 @@ fun KnowledgeStudioReaderScreen(
                     block.optionsList.any { it.second.contains(searchQuery, ignoreCase = true) } ||
                     block.paragraphs.any { it.contains(searchQuery, ignoreCase = true) } ||
                     block.nestedBullets.any { it.second.contains(searchQuery, ignoreCase = true) } ||
+                    block.richSections.any { sec ->
+                        when (sec) {
+                            is StudyNoteCardSection.Paragraph -> sec.text.contains(searchQuery, ignoreCase = true)
+                            is StudyNoteCardSection.Bullet -> sec.text.contains(searchQuery, ignoreCase = true)
+                            is StudyNoteCardSection.Formula -> sec.text.contains(searchQuery, ignoreCase = true)
+                            is StudyNoteCardSection.Callout -> sec.label.contains(searchQuery, ignoreCase = true) ||
+                                sec.body.contains(searchQuery, ignoreCase = true)
+                            is StudyNoteCardSection.Table -> sec.headers.any { it.contains(searchQuery, ignoreCase = true) } ||
+                                sec.rows.flatten().any { it.contains(searchQuery, ignoreCase = true) }
+                        }
+                    } ||
                     block.formula.contains(searchQuery, ignoreCase = true)
                 is StudyNoteBlock.Callout -> block.label.contains(searchQuery, ignoreCase = true) ||
                     block.body.contains(searchQuery, ignoreCase = true)
@@ -3024,139 +3048,293 @@ fun KnowledgeBlockItemView(
                                 }
                             }
 
-                            block.paragraphs.forEachIndexed { pIdx, para ->
-                                val trimmedPara = para.trim()
-                                val isDisplayMathPara = (trimmedPara.startsWith("$$") && trimmedPara.endsWith("$$")) ||
-                                    (trimmedPara.startsWith("\\[") && trimmedPara.endsWith("\\]"))
-                                if (isDisplayMathPara) {
+                            if (block.richSections.isNotEmpty()) {
+                                block.richSections.forEachIndexed { sIdx, sec ->
+                                    when (sec) {
+                                        is StudyNoteCardSection.Paragraph -> {
+                                            val trimmedPara = sec.text.trim()
+                                            val isDisplayMathPara = (trimmedPara.startsWith("$$") && trimmedPara.endsWith("$$")) ||
+                                                (trimmedPara.startsWith("\\[") && trimmedPara.endsWith("\\]"))
+                                            if (isDisplayMathPara) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = colors.blueLight.copy(alpha = 0.7f),
+                                                    border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.3f)),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = if (sIdx == 0) 2.dp else 7.dp)
+                                                ) {
+                                                    Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                                        if (MathFormulaParser.has2DMath(trimmedPara)) {
+                                                            MathFormulaView(formula = trimmedPara, color = colors.tealDark, fontSize = 14.sp)
+                                                        } else {
+                                                            LatexText(text = trimmedPara, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                LatexText(
+                                                    text = sec.text,
+                                                    fontSize = 13.sp,
+                                                    color = colors.ink,
+                                                    lineHeight = 20.sp,
+                                                    modifier = Modifier.padding(top = if (sIdx == 0) 3.dp else 7.dp)
+                                                )
+                                            }
+                                        }
+                                        is StudyNoteCardSection.Bullet -> {
+                                            val indentDp = ((sec.level - 1).coerceIn(0, 2) * 14).dp
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = indentDp, top = 4.dp),
+                                                verticalAlignment = Alignment.Top
+                                            ) {
+                                                Text(
+                                                    text = if (sec.level <= 1) "•" else "◦",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.teal,
+                                                    modifier = Modifier.padding(end = 6.dp)
+                                                )
+                                                LatexText(
+                                                    text = sec.text,
+                                                    fontSize = 12.5.sp,
+                                                    color = colors.ink,
+                                                    lineHeight = 19.sp,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                        is StudyNoteCardSection.Formula -> {
+                                            Spacer(modifier = Modifier.height(7.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = colors.blueLight,
+                                                border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.35f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                                    Text(
+                                                        text = "FORMULA",
+                                                        fontSize = 9.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = colors.tealDark
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    if (MathFormulaParser.has2DMath(sec.text)) {
+                                                        MathFormulaView(formula = sec.text, color = colors.tealDark, fontSize = 14.sp)
+                                                    } else {
+                                                        LatexText(text = sec.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.tealDark)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        is StudyNoteCardSection.Table -> {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Card(
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant.copy(alpha = 0.45f)),
+                                                border = BorderStroke(0.8.dp, colors.border),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(rememberScrollState())
+                                                        .padding(8.dp)
+                                                ) {
+                                                    Row(modifier = Modifier.background(colors.surfaceVariant)) {
+                                                        sec.headers.forEach { hdr ->
+                                                            Text(
+                                                                text = hdr,
+                                                                fontSize = 12.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = colors.inkBold,
+                                                                modifier = Modifier
+                                                                    .width(140.dp)
+                                                                    .padding(8.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    sec.rows.forEachIndexed { rIdx, row ->
+                                                        Row(
+                                                            modifier = Modifier.background(
+                                                                if (rIdx % 2 == 1) colors.background else colors.surface
+                                                            )
+                                                        ) {
+                                                            sec.headers.indices.forEach { cIdx ->
+                                                                LatexText(
+                                                                    text = row.getOrNull(cIdx).orEmpty(),
+                                                                    fontSize = 12.sp,
+                                                                    color = colors.ink,
+                                                                    modifier = Modifier
+                                                                        .width(140.dp)
+                                                                        .padding(8.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        is StudyNoteCardSection.Callout -> {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = colors.blueLight.copy(alpha = 0.75f),
+                                                border = BorderStroke(0.9.dp, colors.teal.copy(alpha = 0.4f)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text(
+                                                        text = sec.label,
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = colors.tealDark
+                                                    )
+                                                    Spacer(modifier = Modifier.height(3.dp))
+                                                    LatexText(text = sec.body, fontSize = 12.5.sp, color = colors.inkBold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                block.paragraphs.forEachIndexed { pIdx, para ->
+                                    val trimmedPara = para.trim()
+                                    val isDisplayMathPara = (trimmedPara.startsWith("$$") && trimmedPara.endsWith("$$")) ||
+                                        (trimmedPara.startsWith("\\[") && trimmedPara.endsWith("\\]"))
+                                    if (isDisplayMathPara) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = colors.blueLight.copy(alpha = 0.7f),
+                                            border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.3f)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = if (pIdx == 0) 2.dp else 6.dp)
+                                        ) {
+                                            Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                                if (MathFormulaParser.has2DMath(trimmedPara)) {
+                                                    MathFormulaView(
+                                                        formula = trimmedPara,
+                                                        color = colors.tealDark,
+                                                        fontSize = 14.sp
+                                                    )
+                                                } else {
+                                                    LatexText(
+                                                        text = trimmedPara,
+                                                        fontSize = 13.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = colors.tealDark
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        LatexText(
+                                            text = para,
+                                            fontSize = 13.sp,
+                                            color = colors.ink,
+                                            lineHeight = 20.sp,
+                                            modifier = Modifier.padding(top = if (pIdx == 0) 3.dp else 7.dp)
+                                        )
+                                    }
+                                }
+
+                                if (block.formula.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = colors.blueLight.copy(alpha = 0.7f),
-                                        border = BorderStroke(0.7.dp, colors.teal.copy(alpha = 0.3f)),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = if (pIdx == 0) 2.dp else 6.dp)
+                                        color = colors.blueLight,
+                                        border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.35f)),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                            if (MathFormulaParser.has2DMath(trimmedPara)) {
+                                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                            Text(
+                                                text = "FORMULA",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = colors.tealDark
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            if (MathFormulaParser.has2DMath(block.formula)) {
                                                 MathFormulaView(
-                                                    formula = trimmedPara,
+                                                    formula = block.formula,
                                                     color = colors.tealDark,
                                                     fontSize = 14.sp
                                                 )
                                             } else {
                                                 LatexText(
-                                                    text = trimmedPara,
-                                                    fontSize = 13.5.sp,
+                                                    text = block.formula,
+                                                    fontSize = 13.sp,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = colors.tealDark
                                                 )
                                             }
                                         }
                                     }
-                                } else {
-                                    LatexText(
-                                        text = para,
-                                        fontSize = 13.sp,
-                                        color = colors.ink,
-                                        lineHeight = 20.sp,
-                                        modifier = Modifier.padding(top = if (pIdx == 0) 3.dp else 7.dp)
-                                    )
                                 }
-                            }
 
-                            if (block.formula.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = colors.blueLight,
-                                    border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.35f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                        Text(
-                                            text = "FORMULA",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = colors.tealDark
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        if (MathFormulaParser.has2DMath(block.formula)) {
-                                            MathFormulaView(
-                                                formula = block.formula,
-                                                color = colors.tealDark,
-                                                fontSize = 14.sp
-                                            )
-                                        } else {
-                                            LatexText(
-                                                text = block.formula,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = colors.tealDark
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (block.keyTakeaway.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(9.dp),
-                                    color = colors.surfaceVariant.copy(alpha = 0.65f),
-                                    border = BorderStroke(0.7.dp, colors.border),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(
-                                            text = "KEY TAKEAWAY & SOLUTION",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = colors.tealDark,
-                                            letterSpacing = 0.4.sp
-                                        )
-                                        val cleanTakeawayLines = block.keyTakeaway
-                                            .replace(Regex("""\s+-\s+\(([A-Ea-e])\)"""), "\n($1)")
-                                            .lines()
-                                            .map { it.trim() }
-                                            .filter { it.isNotBlank() }
-                                        cleanTakeawayLines.forEach { line ->
-                                            LatexText(
-                                                text = line,
-                                                fontSize = 12.5.sp,
-                                                color = colors.ink,
-                                                lineHeight = 18.5.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (block.nestedBullets.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    block.nestedBullets.forEach { (level, bulletText) ->
-                                        val indentDp = ((level - 1).coerceIn(0, 2) * 14).dp
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = indentDp),
-                                            verticalAlignment = Alignment.Top
-                                        ) {
+                                if (block.keyTakeaway.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(9.dp),
+                                        color = colors.surfaceVariant.copy(alpha = 0.65f),
+                                        border = BorderStroke(0.7.dp, colors.border),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(
-                                                text = if (level <= 1) "•" else "◦",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = colors.teal,
-                                                modifier = Modifier.padding(end = 6.dp)
+                                                text = "KEY TAKEAWAY & SOLUTION",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = colors.tealDark,
+                                                letterSpacing = 0.4.sp
                                             )
-                                            LatexText(
-                                                text = bulletText,
-                                                fontSize = 12.5.sp,
-                                                color = colors.ink,
-                                                lineHeight = 19.sp,
-                                                modifier = Modifier.weight(1f)
-                                            )
+                                            val cleanTakeawayLines = block.keyTakeaway
+                                                .replace(Regex("""\s+-\s+\(([A-Ea-e])\)"""), "\n($1)")
+                                                .lines()
+                                                .map { it.trim() }
+                                                .filter { it.isNotBlank() }
+                                            cleanTakeawayLines.forEach { line ->
+                                                LatexText(
+                                                    text = line,
+                                                    fontSize = 12.5.sp,
+                                                    color = colors.ink,
+                                                    lineHeight = 18.5.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (block.nestedBullets.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        block.nestedBullets.forEach { (level, bulletText) ->
+                                            val indentDp = ((level - 1).coerceIn(0, 2) * 14).dp
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = indentDp),
+                                                verticalAlignment = Alignment.Top
+                                            ) {
+                                                Text(
+                                                    text = if (level <= 1) "•" else "◦",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.teal,
+                                                    modifier = Modifier.padding(end = 6.dp)
+                                                )
+                                                LatexText(
+                                                    text = bulletText,
+                                                    fontSize = 12.5.sp,
+                                                    color = colors.ink,
+                                                    lineHeight = 19.sp,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
                                         }
                                     }
                                 }

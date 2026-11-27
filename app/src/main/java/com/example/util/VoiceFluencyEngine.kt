@@ -217,6 +217,16 @@ object VoiceFluencyEngine {
                     val rawSections = buildList {
                         addAll(block.paragraphs)
                         addAll(block.nestedBullets.map { it.second })
+                        block.richSections.forEach { sec ->
+                            when (sec) {
+                                is StudyNoteCardSection.Callout -> add("${sec.label}: ${sec.body}")
+                                is StudyNoteCardSection.Table -> {
+                                    if (sec.headers.isNotEmpty()) add(sec.headers.joinToString(", "))
+                                    sec.rows.forEach { row -> add(row.joinToString(", ")) }
+                                }
+                                else -> Unit
+                            }
+                        }
                         if (includeFormulas && cleanFormula.isNotBlank()) add("Formula: $cleanFormula")
                         if (block.correctAnswer.isNotBlank()) add(block.correctAnswer)
                         if (block.keyTakeaway.isNotBlank()) add(block.keyTakeaway)

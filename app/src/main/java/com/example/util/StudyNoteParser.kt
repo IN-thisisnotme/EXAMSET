@@ -9,6 +9,14 @@ import com.example.model.KnowledgeLayerOrder
 import com.example.model.KnowledgeTransformAction
 import com.example.model.QuestionPaper
 
+sealed interface StudyNoteCardSection {
+    data class Paragraph(val text: String) : StudyNoteCardSection
+    data class Bullet(val level: Int, val text: String) : StudyNoteCardSection
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : StudyNoteCardSection
+    data class Callout(val label: String, val body: String) : StudyNoteCardSection
+    data class Formula(val text: String) : StudyNoteCardSection
+}
+
 sealed interface StudyNoteBlock {
     val blockIndex: Int
 
@@ -41,7 +49,8 @@ sealed interface StudyNoteBlock {
         val candidateAnswer: String = "",
         val optionsList: List<Pair<String, String>> = emptyList(),
         val correctAnswer: String = "",
-        val keyTakeaway: String = ""
+        val keyTakeaway: String = "",
+        val richSections: List<StudyNoteCardSection> = emptyList()
     ) : StudyNoteBlock
 
     data class Table(
@@ -118,56 +127,26 @@ object StudyNoteParser {
 
             // 3. Markdown Table block
             if (trimmed.startsWith("|") && trimmed.count { it == '|' } >= 2 && i + 1 < lines.size && lines[i + 1].trim().contains("|")) {
-                val tableLines = mutableListOf<String>()
-                var j = i
-                while (j < lines.size && lines[j].trim().contains("|")) {
-                    tableLines.add(lines[j].trim())
-                    j++
-                }
-                val parsedRows = tableLines.filterNot { line ->
-                    Regex("""^\|?\s*[:\-]+(\s*\|\s*[:\-]+)+\s*\|?$""").matches(line)
-                }.map { row ->
-                    row.trim('|').split("|").map { cleanMarkdownDecorators(it.trim()) }
-                }.filter { cells -> cells.any { it.isNotBlank() } }
-
-                if (parsedRows.size >= 2) {
+                val parsed = parseMarkdownTableBlock(lines, i)
+                if (parsed != null) {
+                    val (headers, rows, nextAfterTable) = parsed
                     blocks.add(
                         StudyNoteBlock.Table(
                             blockIndex = blockCounter++,
-                            headers = parsedRows.first(),
-                            rows = parsedRows.drop(1)
+                            headers = headers,
+                            rows = rows
                         )
                     )
-                    i = j
+                    i = nextAfterTable
                     continue
                 }
             }
 
             // 4. Callout / Blockquote (> ...)
             if (trimmed.startsWith(">")) {
-                val calloutLines = mutableListOf<String>()
-                var j = i
-                while (j < lines.size && lines[j].trim().startsWith(">")) {
-                    calloutLines.add(lines[j].trim().removePrefix(">").trim())
-                    j++
-                }
-                val joined = calloutLines.joinToString("\n")
-                val splitColon = joined.split(":", limit = 2)
-                val rawPrefixCleaned = splitColon[0]
-                    .replace(Regex("""^\s*[*_`]+|[*_`]+\s*$"""), "")
-                    .trim()
-                val candidateLabel = cleanMarkdownDecorators(rawPrefixCleaned)
-                val hasLabel = splitColon.size == 2 && candidateLabel.isNotBlank() && candidateLabel.length <= 28
-                val label = if (hasLabel) candidateLabel else "Key Insight"
-                val body = if (hasLabel) {
-                    splitColon[1]
-                        .replace(Regex("""^\s*[*_]{1,3}\s*"""), "")
-                        .trim()
-                } else {
-                    joined.trim()
-                }
+                val (label, body, nextAfterCallout) = parseCalloutBlock(lines, i)
                 blocks.add(StudyNoteBlock.Callout(blockCounter++, label, body))
-                i = j
+                i = nextAfterCallout
                 continue
             }
 
@@ -177,7 +156,9 @@ object StudyNoteParser {
                 val qText = cleanMarkdownDecorators(qMatch.groupValues[1])
                 val paragraphs = mutableListOf<String>()
                 val nested = mutableListOf<Pair<Int, String>>()
+                val richSections = mutableListOf<StudyNoteCardSection>()
                 var formula = ""
+                var inDashGroup = false
                 var j = i + 1
                 while (j < lines.size) {
                     val nextRaw = lines[j]
@@ -186,39 +167,87 @@ object StudyNoteParser {
                         val nextNonEmptyIdx = findNextNonEmptyLine(lines, j + 1)
                         if (nextNonEmptyIdx == -1) break
                         val lookAhead = lines[nextNonEmptyIdx].trim()
-                        if (isQaBlockBoundary(lookAhead, leadingSpaces(lines[nextNonEmptyIdx]), rule.layerOrder)) break
+                        if (isExplicitQaCardBoundary(lookAhead, leadingSpaces(lines[nextNonEmptyIdx]), rule.layerOrder)) break
                         j = nextNonEmptyIdx
                         continue
                     }
-                    if (isQaBlockBoundary(nextTrim, leadingSpaces(nextRaw), rule.layerOrder)) break
+                    if (isExplicitQaCardBoundary(nextTrim, leadingSpaces(nextRaw), rule.layerOrder)) break
+
+                    // Embedded Markdown Table inside Q&A answer
+                    if (nextTrim.startsWith("|") && nextTrim.count { it == '|' } >= 2 && j + 1 < lines.size && lines[j + 1].trim().contains("|")) {
+                        val parsedTable = parseMarkdownTableBlock(lines, j)
+                        if (parsedTable != null) {
+                            val (headers, rows, nextAfterTable) = parsedTable
+                            richSections.add(StudyNoteCardSection.Table(headers, rows))
+                            inDashGroup = false
+                            j = nextAfterTable
+                            continue
+                        }
+                    }
+
+                    // Embedded Callout / Exam Tip (> ...) inside Q&A answer
+                    if (nextTrim.startsWith(">")) {
+                        val (label, body, nextAfterCallout) = parseCalloutBlock(lines, j)
+                        richSections.add(StudyNoteCardSection.Callout(label, body))
+                        inDashGroup = false
+                        j = nextAfterCallout
+                        continue
+                    }
 
                     // Multi-line display math block $$...$$ or \[...\]
                     if (isDisplayMathStart(nextTrim)) {
                         val (mathBlock, nextAfterMath) = collectDisplayMathBlock(lines, j)
                         if (formula.isBlank()) formula = mathBlock else paragraphs.add(mathBlock)
+                        richSections.add(StudyNoteCardSection.Formula(mathBlock))
+                        inDashGroup = false
                         j = nextAfterMath
                         continue
                     }
 
                     val aMatch = Regex("""^(?:A(?:ns(?:wer)?)?|Explanation|Detail)\s*[:.\-]\s*(.+)$""", RegexOption.IGNORE_CASE).find(nextTrim)
-                    val qaBulletMatch = Regex("""^[-*•‣▪]\s+(.+)$""").find(nextTrim)
+                    val qaBulletMatch = Regex("""^([-*•‣▪])\s+(.+)$""").find(nextTrim)
                     if (aMatch != null) {
-                        paragraphs.add(aMatch.groupValues[1].trim())
+                        val ansText = aMatch.groupValues[1].trim()
+                        paragraphs.add(ansText)
+                        richSections.add(StudyNoteCardSection.Paragraph(ansText))
+                        inDashGroup = false
                     } else if (qaBulletMatch != null) {
-                        val bulletBody = qaBulletMatch.groupValues[1].trim()
+                        val marker = qaBulletMatch.groupValues[1]
+                        val bulletBody = qaBulletMatch.groupValues[2].trim()
                         val formulaBullet = Regex("""^(?:\*\*|__)?(?:Formula|Equation)(?:\*\*|__)?\s*[:\-]\s*(.+)$""", RegexOption.IGNORE_CASE).find(bulletBody)
                         if (formulaBullet != null && formula.isBlank()) {
-                            formula = cleanMarkdownDecorators(formulaBullet.groupValues[1])
+                            val cleanF = cleanMarkdownDecorators(formulaBullet.groupValues[1])
+                            formula = cleanF
+                            richSections.add(StudyNoteCardSection.Formula(cleanF))
                         } else {
-                            nested.add(countIndentLevel(nextRaw) to bulletBody)
+                            val rawIndent = leadingSpaces(nextRaw)
+                            val bulletLevel = when {
+                                marker == "-" && bulletBody.endsWith(":") -> {
+                                    inDashGroup = true
+                                    1
+                                }
+                                marker == "*" && inDashGroup && rawIndent == 0 -> 2
+                                else -> {
+                                    if (marker == "-") inDashGroup = false
+                                    countIndentLevel(nextRaw)
+                                }
+                            }
+                            nested.add(bulletLevel to bulletBody)
+                            richSections.add(StudyNoteCardSection.Bullet(bulletLevel, bulletBody))
                         }
                     } else {
-                        if (looksLikeFormula(nextTrim) && formula.isBlank()) formula = nextTrim
-                        else paragraphs.add(nextTrim)
+                        inDashGroup = false
+                        if (looksLikeFormula(nextTrim) && formula.isBlank()) {
+                            formula = nextTrim
+                            richSections.add(StudyNoteCardSection.Formula(nextTrim))
+                        } else {
+                            paragraphs.add(nextTrim)
+                            richSections.add(StudyNoteCardSection.Paragraph(nextTrim))
+                        }
                     }
                     j++
                 }
-                if (paragraphs.isNotEmpty() || nested.isNotEmpty() || formula.isNotBlank()) {
+                if (paragraphs.isNotEmpty() || nested.isNotEmpty() || formula.isNotBlank() || richSections.isNotEmpty()) {
                     blocks.add(
                         StudyNoteBlock.MultiLinerCard(
                             blockIndex = blockCounter++,
@@ -228,7 +257,8 @@ object StudyNoteParser {
                             paragraphs = paragraphs,
                             nestedBullets = nested,
                             formula = formula,
-                            isReversed = false
+                            isReversed = false,
+                            richSections = richSections
                         )
                     )
                     i = j
@@ -1601,7 +1631,63 @@ object StudyNoteParser {
         return text
             .replace("\r\n", "\n")
             .replace("\r", "\n")
+            .replace(Regex("""^(\s*)\\-\s+""", RegexOption.MULTILINE), "$1- ")
+            .replace(Regex("""^(\s*)\\\*\s+""", RegexOption.MULTILINE), "$1* ")
+            .replace(Regex("""^(\s*\d{1,4})\\\.(\s+)""", RegexOption.MULTILINE), "$1.$2")
+            // Unescape inline bracketed labels like \[High-Yield\] or \[PYQ Focus\] without disturbing \[...\] math
+            .replace(Regex("""\\\[([A-Za-z][A-Za-z0-9\s\-&,]{2,38})\\\]""")) { m ->
+                val inner = m.groupValues[1].trim()
+                if (inner.contains(' ') || inner.contains('-') || inner.length >= 4) "[$inner]" else m.value
+            }
             .replace(Regex("""\\\((.+?)\\\)""", RegexOption.DOT_MATCHES_ALL)) { m -> "\$${m.groupValues[1]}\$" }
+    }
+
+    private fun parseMarkdownTableBlock(
+        lines: List<String>,
+        startIdx: Int
+    ): Triple<List<String>, List<List<String>>, Int>? {
+        val tableLines = mutableListOf<String>()
+        var j = startIdx
+        while (j < lines.size && lines[j].trim().contains("|")) {
+            tableLines.add(lines[j].trim())
+            j++
+        }
+        val parsedRows = tableLines.filterNot { line ->
+            Regex("""^\|?\s*[:\-]+(\s*\|\s*[:\-]+)+\s*\|?$""").matches(line)
+        }.map { row ->
+            row.trim('|').split("|").map { cleanMarkdownDecorators(it.trim()) }
+        }.filter { cells -> cells.any { it.isNotBlank() } }
+
+        if (parsedRows.size < 2) return null
+        return Triple(parsedRows.first(), parsedRows.drop(1), j)
+    }
+
+    private fun parseCalloutBlock(
+        lines: List<String>,
+        startIdx: Int
+    ): Triple<String, String, Int> {
+        val calloutLines = mutableListOf<String>()
+        var j = startIdx
+        while (j < lines.size && lines[j].trim().startsWith(">")) {
+            calloutLines.add(lines[j].trim().removePrefix(">").trim())
+            j++
+        }
+        val joined = calloutLines.joinToString("\n")
+        val splitColon = joined.split(":", limit = 2)
+        val rawPrefixCleaned = splitColon[0]
+            .replace(Regex("""^\s*[*_`]+|[*_`]+\s*$"""), "")
+            .trim()
+        val candidateLabel = cleanMarkdownDecorators(rawPrefixCleaned)
+        val hasLabel = splitColon.size == 2 && candidateLabel.isNotBlank() && candidateLabel.length <= 28
+        val label = if (hasLabel) candidateLabel else "Key Insight"
+        val body = if (hasLabel) {
+            splitColon[1]
+                .replace(Regex("""^\s*[*_]{1,3}\s*"""), "")
+                .trim()
+        } else {
+            joined.trim()
+        }
+        return Triple(label, body, j)
     }
 
     private fun findNextNonEmptyLine(lines: List<String>, startIdx: Int): Int {
@@ -1622,6 +1708,36 @@ object StudyNoteParser {
             trimmed.startsWith("```") ||
             Regex("""^(?:Q(?:\d+)?|Question)\s*[:.\-]\s*""", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) ||
             (Regex("""^(?:TOPIC|SECTION|UNIT|CHAPTER|PART|MODULE)\s*[\dIVXA-Z]*\s*[:\-]\s*.+""", RegexOption.IGNORE_CASE).matches(trimmed) && trimmed.length <= 120)
+    }
+
+    /**
+     * Boundary check inside an explicit `Q:` / `A:` card.
+     * Preserves embedded Markdown tables (`| ... |`), callouts (`> Exam Tip: ...`), and
+     * numbered sub-points (`1. Authority:`) inside the answer while still stopping cleanly on
+     * headings, dividers, the next `Q:`, or an explicit top-level `1. **Term** -> Detail` item.
+     */
+    private fun isExplicitQaCardBoundary(trimmed: String, indent: Int, layerOrder: KnowledgeLayerOrder): Boolean {
+        if (trimmed.startsWith("#") ||
+            trimmed == "---" ||
+            trimmed == "***" ||
+            trimmed.startsWith("```") ||
+            Regex("""^(?:Q(?:\d+)?|Question)\s*[:.\-]\s*""", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) ||
+            (Regex("""^(?:TOPIC|SECTION|UNIT|CHAPTER|PART|MODULE)\s*[\dIVXA-Z]*\s*[:\-]\s*.+""", RegexOption.IGNORE_CASE).matches(trimmed) && trimmed.length <= 120)
+        ) {
+            return true
+        }
+        if (indent == 0 && Regex("""^\d{1,4}[.)]\s+""").containsMatchIn(trimmed)) {
+            val withoutNum = trimmed.replaceFirst(Regex("""^\d{1,4}[.)]\s+"""), "")
+            val cleanedWithoutNum = cleanMarkdownDecorators(withoutNum)
+            if (Regex("""^Q\d+\s*[:.]""", RegexOption.IGNORE_CASE).containsMatchIn(cleanedWithoutNum)) {
+                return true
+            }
+            if (withoutNum.contains(" -> ") || withoutNum.contains(" => ")) {
+                return splitDirectKeyValue(withoutNum, layerOrder) != null ||
+                    Regex("""^\d{1,4}[.)]\s+\*\*.+?\*\*""").containsMatchIn(trimmed)
+            }
+        }
+        return false
     }
 
     private fun isQaBlockBoundary(trimmed: String, indent: Int, layerOrder: KnowledgeLayerOrder): Boolean {
@@ -1814,28 +1930,75 @@ object StudyNoteParser {
                             }
                             append("</ul>")
                         }
-                        block.paragraphs.forEach { p ->
-                            if (isDisplayMathStart(p.trim())) {
-                                append("<div class='formula'>${formatRichHtml(p)}</div>")
-                            } else {
-                                append("<p style='margin:7px 0 5px 0;'>${formatRichHtml(p)}</p>")
+                        if (block.richSections.isNotEmpty()) {
+                            var inBulletList = false
+                            fun closeListIfOpen() {
+                                if (inBulletList) {
+                                    append("</ul>")
+                                    inBulletList = false
+                                }
                             }
-                        }
-                        if (block.correctAnswer.isNotBlank()) {
-                            append("<p style='margin:6px 0 4px 0;color:#0F766E;'><strong>Correct Answer:</strong> ${formatRichHtml(block.correctAnswer)}</p>")
-                        }
-                        if (block.formula.isNotBlank()) {
-                            append("<div class='formula'>${formatRichHtml(block.formula)}</div>")
-                        }
-                        if (block.keyTakeaway.isNotBlank()) {
-                            append("<p style='margin:6px 0 4px 0;'><strong>Key Takeaway:</strong> ${formatRichHtml(block.keyTakeaway)}</p>")
-                        }
-                        if (block.nestedBullets.isNotEmpty()) {
-                            append("<ul class='nested'>")
-                            block.nestedBullets.forEach { (_, txt) ->
-                                append("<li>${formatRichHtml(txt)}</li>")
+                            block.richSections.forEach { sec ->
+                                when (sec) {
+                                    is StudyNoteCardSection.Paragraph -> {
+                                        closeListIfOpen()
+                                        append("<p style='margin:7px 0 5px 0;'>${formatRichHtml(sec.text)}</p>")
+                                    }
+                                    is StudyNoteCardSection.Bullet -> {
+                                        if (!inBulletList) {
+                                            append("<ul class='nested'>")
+                                            inBulletList = true
+                                        }
+                                        val indentStyle = if (sec.level > 1) " style='margin-left:14px;'" else ""
+                                        append("<li$indentStyle>${formatRichHtml(sec.text)}</li>")
+                                    }
+                                    is StudyNoteCardSection.Formula -> {
+                                        closeListIfOpen()
+                                        append("<div class='formula'>${formatRichHtml(sec.text)}</div>")
+                                    }
+                                    is StudyNoteCardSection.Table -> {
+                                        closeListIfOpen()
+                                        append("<table><thead><tr>")
+                                        sec.headers.forEach { h -> append("<th>${formatRichHtml(h)}</th>") }
+                                        append("</tr></thead><tbody>")
+                                        sec.rows.forEach { row ->
+                                            append("<tr>")
+                                            row.forEach { cell -> append("<td>${formatRichHtml(cell)}</td>") }
+                                            append("</tr>")
+                                        }
+                                        append("</tbody></table>")
+                                    }
+                                    is StudyNoteCardSection.Callout -> {
+                                        closeListIfOpen()
+                                        append("<div class='callout'><strong>${esc(sec.label)}:</strong> ${formatRichHtml(sec.body)}</div>")
+                                    }
+                                }
                             }
-                            append("</ul>")
+                            closeListIfOpen()
+                        } else {
+                            block.paragraphs.forEach { p ->
+                                if (isDisplayMathStart(p.trim())) {
+                                    append("<div class='formula'>${formatRichHtml(p)}</div>")
+                                } else {
+                                    append("<p style='margin:7px 0 5px 0;'>${formatRichHtml(p)}</p>")
+                                }
+                            }
+                            if (block.correctAnswer.isNotBlank()) {
+                                append("<p style='margin:6px 0 4px 0;color:#0F766E;'><strong>Correct Answer:</strong> ${formatRichHtml(block.correctAnswer)}</p>")
+                            }
+                            if (block.formula.isNotBlank()) {
+                                append("<div class='formula'>${formatRichHtml(block.formula)}</div>")
+                            }
+                            if (block.keyTakeaway.isNotBlank()) {
+                                append("<p style='margin:6px 0 4px 0;'><strong>Key Takeaway:</strong> ${formatRichHtml(block.keyTakeaway)}</p>")
+                            }
+                            if (block.nestedBullets.isNotEmpty()) {
+                                append("<ul class='nested'>")
+                                block.nestedBullets.forEach { (_, txt) ->
+                                    append("<li>${formatRichHtml(txt)}</li>")
+                                }
+                                append("</ul>")
+                            }
                         }
                         append("</div>\n")
                     }

@@ -480,8 +480,9 @@ class StudyNoteParserTest {
             examTarget = "UPSC Civil Services",
             itemCount = 3
         )
-        assertTrue(prompt.contains("Generate exactly 3 full-length subjective / UPSC Mains"))
-        assertTrue(prompt.contains("~250-word UPSC Mains"))
+        assertTrue(prompt.contains("Generate exactly 3 full-length subjective / long-form analytical Q&A cards"))
+        assertTrue(prompt.contains("~250-word examination-grade model answers"))
+        assertTrue(prompt.contains("Target Examination: UPSC Civil Services"))
         assertTrue(prompt.contains("\$\$...\$\$"))
 
         val htmlSource = """
@@ -501,7 +502,7 @@ class StudyNoteParserTest {
             rawContent = htmlSource
         )
         val html = StudyNoteParser.generatePrintableHtml(note)
-        assertTrue(html.contains("Long-Form / Mains Q&amp;A"))
+        assertTrue(html.contains("Long-Form / Subjective Q&amp;A"))
         assertTrue(html.contains("<strong>"))
         assertTrue(html.contains("Part III ↔ Part IV"))
         assertTrue(html.contains("<div class='formula'>"))
@@ -599,4 +600,195 @@ class StudyNoteParserTest {
         assertTrue(callout?.body?.startsWith("Roll No:") == true)
         assertTrue(callout?.body?.startsWith("*") != true)
     }
+
+    @Test
+    fun `parseBlocks keeps ChatGPT Q1-Q5 long-form answers with tables, callouts, numbered sub-lists and escaped markers intact`() {
+        val raw = """
+            ### Disaster Management: Concepts, Framework and Governance
+
+            Q1: Define disaster management and critically examine its objectives. \[High-Yield\]
+
+            A: Introduction: Disaster management refers to systematic risk reduction.
+
+            Core Analytical Dimensions:
+
+            \- Objectives of Disaster Management:
+
+            * Protect human life and livelihoods.
+            * Strengthen community preparedness.
+
+            \- Traditional versus Modern Approach:
+
+            | Parameter | Traditional Approach | Modern Approach |
+            | --- | --- | --- |
+            | Main focus | Post-disaster relief | Comprehensive risk management |
+            | Orientation | Reactive | Proactive |
+
+            \- Principles of Effective Disaster Management:
+
+            * Multi-hazard approach: Address natural and technological hazards.
+            * Community participation: Involve local citizens.
+
+            Way Forward: Strengthen local disaster governance.
+
+            > Exam Tip: Remember Prevention -> Mitigation -> Preparedness -> Response -> Recovery.
+
+            ### Constitutional, Legal and Institutional Framework in India
+
+            Q2: Examine the institutional framework of disaster management in India. \[PYQ Focus\]
+
+            A: Introduction: The Disaster Management Act, 2005 provides the statutory basis.
+
+            \- Major Institutional Mechanisms:
+
+            1\. National Disaster Management Authority (NDMA):
+
+            * Chaired by the Prime Minister.
+
+            2\. State Disaster Management Authority (SDMA):
+
+            * Chaired by the Chief Minister.
+
+            | Institution | Leadership | Primary Responsibility |
+            | --- | --- | --- |
+            | NDMA | Prime Minister | National policy |
+            | SDMA | Chief Minister | State planning |
+
+            \- Critical Evaluation:
+
+            * Overlapping departmental responsibilities hinder coordination.
+
+            Way Forward: Strengthen local institutions.
+
+            > Exam Tip: Memorise Section 3 (NDMA) and Section 14 (SDMA).
+        """.trimIndent()
+
+        val rule = KnowledgeFormatRule(collectionType = KnowledgeCollectionType.LONG_ANSWER)
+        val blocks = StudyNoteParser.parseBlocks(raw, rule)
+        val headings = blocks.filterIsInstance<StudyNoteBlock.Heading>()
+        val cards = blocks.filterIsInstance<StudyNoteBlock.MultiLinerCard>()
+        val topLevelOneLiners = blocks.filterIsInstance<StudyNoteBlock.OneLiner>()
+        val topLevelTables = blocks.filterIsInstance<StudyNoteBlock.Table>()
+        val topLevelCallouts = blocks.filterIsInstance<StudyNoteBlock.Callout>()
+
+        assertEquals(2, headings.size)
+        assertEquals(2, cards.size)
+        assertEquals(0, topLevelOneLiners.size)
+        assertEquals(0, topLevelTables.size)
+        assertEquals(0, topLevelCallouts.size)
+        assertEquals(2, StudyNoteParser.countOneLiners(raw, rule))
+
+        val q1 = cards[0]
+        assertTrue("Expected unescaped [High-Yield] tag, got: ${q1.title}", q1.title.contains("[High-Yield]") && !q1.title.contains("\\["))
+        assertTrue(q1.richSections.any { it is StudyNoteCardSection.Table && it.headers == listOf("Parameter", "Traditional Approach", "Modern Approach") })
+        assertTrue(q1.richSections.any { it is StudyNoteCardSection.Callout && it.label == "Exam Tip" })
+        assertTrue(q1.richSections.any { it is StudyNoteCardSection.Bullet && it.text.contains("Multi-hazard approach") })
+        assertTrue(q1.richSections.any { it is StudyNoteCardSection.Paragraph && it.text.startsWith("Way Forward:") })
+
+        // Order check inside Q1: table appears before Principles bullet, which appears before Way Forward and Exam Tip
+        val tableIdx = q1.richSections.indexOfFirst { it is StudyNoteCardSection.Table }
+        val principleIdx = q1.richSections.indexOfFirst { it is StudyNoteCardSection.Bullet && it.text.contains("Multi-hazard") }
+        val wayForwardIdx = q1.richSections.indexOfFirst { it is StudyNoteCardSection.Paragraph && it.text.startsWith("Way Forward:") }
+        val tipIdx = q1.richSections.indexOfFirst { it is StudyNoteCardSection.Callout && it.label == "Exam Tip" }
+        assertTrue(tableIdx in 1 until principleIdx)
+        assertTrue(principleIdx < wayForwardIdx)
+        assertTrue(wayForwardIdx < tipIdx)
+
+        val q2 = cards[1]
+        assertTrue(q2.title.contains("[PYQ Focus]"))
+        assertTrue(q2.richSections.any { it is StudyNoteCardSection.Paragraph && it.text.startsWith("1. National Disaster Management Authority") })
+        assertTrue(q2.richSections.any { it is StudyNoteCardSection.Bullet && it.text.contains("Overlapping departmental") })
+        assertTrue(q2.richSections.any { it is StudyNoteCardSection.Table && it.rows.size == 2 })
+
+        val note = StudyNoteEntity(
+            title = "Disaster Management",
+            subject = "GS3",
+            collectionType = KnowledgeCollectionType.LONG_ANSWER.code,
+            rawContent = raw
+        )
+        val html = StudyNoteParser.generatePrintableHtml(note)
+        assertTrue("Expected embedded table rendered in printable HTML", html.contains("<table>") && html.contains("Comprehensive risk management"))
+        assertTrue("Expected embedded Exam Tip callout rendered in printable HTML", html.contains("Exam Tip:") && html.contains("Prevention"))
+    }
+
+    @Test
+    fun `parseBlocks parses 5-question ChatGPT Disaster Management structure into exactly 5 cards`() {
+        val raw = """
+            ### Disaster Management: Concepts, Framework and Governance
+            Q1: Define disaster management. \[High-Yield\]
+            A: Introduction: Systematic risk reduction.
+            \- Objectives:
+            * Protect human life.
+            | Parameter | Traditional | Modern |
+            | --- | --- | --- |
+            | Focus | Relief | Risk management |
+            Way Forward: Strengthen local governance.
+            > Exam Tip: Prevention -> Mitigation -> Preparedness.
+
+            ### Disaster Risk, Vulnerability and Hazard Assessment
+            Q2: Explain hazard, vulnerability and risk. \[PYQ Focus\]
+            A: Introduction: Risk arises from hazards and vulnerability.
+            \- Disaster Risk Relationship:
+            Disaster Risk ∝ Hazard × Exposure × Vulnerability ÷ Capacity
+            > Exam Tip: Do not confuse hazard with disaster.
+
+            ### Constitutional, Legal and Institutional Framework in India
+            Q3: Examine the Disaster Management Act, 2005. \[High-Yield\] \[PYQ Focus\]
+            A: Introduction: Statutory framework for disaster risk reduction.
+            1\. NDMA:
+            * Chaired by PM.
+            2\. SDMA:
+            * Chaired by CM.
+            | Institution | Leadership | Responsibility |
+            | --- | --- | --- |
+            | NDMA | PM | National policy |
+
+            ### Disaster Preparedness, Mitigation and Emergency Response
+            Q4: Discuss preparedness and early warning. \[High-Yield\] \[PYQ Focus\]
+            A: Introduction: Preparedness reduces mortality.
+            \- Structural mitigation:
+            * Earthquake-resistant buildings.
+            Early-Warning Process:
+            Hazard Monitoring → Forecasting → Warning Dissemination
+            | Component | Activities | Outcome |
+            | --- | --- | --- |
+            | Search | Evacuation | Saving lives |
+            > Exam Tip: Distinguish mitigation from preparedness.
+
+            ### Post-Disaster Recovery, Climate Change and Sustainable Development
+            Q5: Examine climate change and Sendai Framework. \[High-Yield\] \[PYQ Focus\]
+            A: Introduction: Disasters and climate change interact.
+            \- Impact on Development:
+            Economic Dimension:
+            * Destruction of infrastructure.
+            1\. Understanding Disaster Risk:
+            * Hazard mapping.
+            2\. Strengthening Governance:
+            * Institutional accountability.
+            3\. Investing in Resilience:
+            * Early warning.
+            4\. Enhancing Preparedness:
+            * Build Back Better.
+            | Framework | Year | Objective |
+            | --- | --- | --- |
+            | Sendai | 2015–2030 | Reducing risk |
+            > Exam Tip: Remember U-G-I-P.
+        """.trimIndent()
+
+        val rule = KnowledgeFormatRule(collectionType = KnowledgeCollectionType.LONG_ANSWER)
+        val blocks = StudyNoteParser.parseBlocks(raw, rule)
+        val cards = blocks.filterIsInstance<StudyNoteBlock.MultiLinerCard>()
+
+        assertEquals(5, cards.size)
+        assertEquals(5, StudyNoteParser.countOneLiners(raw, rule))
+        assertEquals(0, blocks.filterIsInstance<StudyNoteBlock.OneLiner>().size)
+        assertEquals(0, blocks.filterIsInstance<StudyNoteBlock.Table>().size)
+        assertEquals(0, blocks.filterIsInstance<StudyNoteBlock.Callout>().size)
+
+        assertTrue(cards[2].title.contains("[High-Yield] [PYQ Focus]") && !cards[2].title.contains("\\"))
+        assertTrue(cards[1].richSections.any { it is StudyNoteCardSection.Paragraph && it.text.contains("Disaster Risk ∝ Hazard") })
+        assertTrue(cards[3].richSections.any { it is StudyNoteCardSection.Paragraph && it.text.contains("Hazard Monitoring → Forecasting") })
+        assertTrue(cards[4].richSections.any { it is StudyNoteCardSection.Paragraph && it.text.startsWith("4. Enhancing Preparedness:") })
+    }
 }
+

@@ -170,6 +170,22 @@ object DictationEngine {
                     if (block.formula.isNotBlank()) {
                         sections.add("Formula: ${block.formula}")
                     }
+                    block.richSections.forEach { sec ->
+                        when (sec) {
+                            is StudyNoteCardSection.Callout -> {
+                                val text = listOf(sec.label, sec.body).filter { it.isNotBlank() }.joinToString(": ")
+                                if (text.isNotBlank()) sections.add(text)
+                            }
+                            is StudyNoteCardSection.Table -> {
+                                val tblLines = buildList {
+                                    if (sec.headers.isNotEmpty()) add(sec.headers.joinToString(" | "))
+                                    sec.rows.forEach { row -> add(row.joinToString(" | ")) }
+                                }
+                                if (tblLines.isNotEmpty()) sections.add(tblLines.joinToString("\n"))
+                            }
+                            else -> Unit
+                        }
+                    }
                     val dictateBody = if (sections.isNotEmpty()) {
                         sections.joinToString("\n\n")
                     } else {
