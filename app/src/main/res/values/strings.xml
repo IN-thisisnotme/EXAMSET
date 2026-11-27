@@ -10,4 +10,18 @@
     <string name="voice_mic_open_settings_btn">Open App Settings</string>
     <string name="voice_mic_settings_error">Could not open App Settings automatically. Open Android Settings > Apps > ExamSet > Permissions > Microphone.</string>
     <string name="voice_analysis_error">Could not analyze this speech snippet. Try again or tap Reset.</string>
+    <string name="voice_dictate_tab_label">Dictate</string>
+    <string name="voice_studio_title">Voice &amp; Dictation Studio</string>
+    <string name="voice_version_stack_title">VERSION STACK</string>
+    <string name="voice_version_stack_privacy">Stored locally on this device only • Never uploaded or backed up</string>
+    <string name="voice_playback_play_all">Play All</string>
+    <string name="voice_playback_pause">Pause</string>
+    <string name="voice_playback_resume">Resume</string>
+    <string name="voice_playback_stop">Stop</string>
+    <string name="voice_playback_prev">Previous Take</string>
+    <string name="voice_playback_next">Next Take</string>
+    <string name="voice_set_final_btn">Set as Final</string>
+    <string name="voice_final_selected_btn">Final Selected</string>
+    <string name="voice_clear_drafts_btn">Clear Drafts</string>
+    <string name="voice_clear_stack_btn">Clear Stack</string>
 </resources>

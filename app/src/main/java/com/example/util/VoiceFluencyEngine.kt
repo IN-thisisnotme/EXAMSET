@@ -1154,6 +1154,7 @@ object VoiceFluencyEngine {
         tolerance: VoiceComparisonTolerance = VoiceComparisonTolerance.SMART_STT_TOLERANT
     ): VoiceAnalysisResult {
         val targetReference = when (mode) {
+            VoicePracticeMode.DICTATE_COMPARE,
             VoicePracticeMode.READ_ALOUD -> resolveReadAloudPassage(prompt)
             VoicePracticeMode.EXPLAIN_FROM_MEMORY -> prompt.referenceSummary.ifBlank { prompt.promptQuestion }
             VoicePracticeMode.FREE_SUBJECT_SPEAK -> prompt.referenceSummary.ifBlank { prompt.promptQuestion }
@@ -1223,6 +1224,7 @@ object VoiceFluencyEngine {
 
         val effectiveMetrics = if (metrics.comparison != null) metrics else metrics.copy(comparison = comp)
         val primaryScore = when (mode) {
+            VoicePracticeMode.DICTATE_COMPARE,
             VoicePracticeMode.READ_ALOUD -> comp.netAccuracyPercent
             VoicePracticeMode.EXPLAIN_FROM_MEMORY -> metrics.keywordCoveragePercent ?: comp.matchPercent
             VoicePracticeMode.FREE_SUBJECT_SPEAK -> metrics.keywordCoveragePercent ?: comp.matchPercent

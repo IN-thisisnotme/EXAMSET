@@ -90,6 +90,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.ui.res.stringResource
+import com.example.R
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalDrawerSheet
@@ -297,7 +299,7 @@ fun HomeScreen(
             isEditMetadataOverlayOpen -> {
                 viewModel.closeEditMetadataOverlay()
             }
-            selectedTab in 3..6 -> {
+            selectedTab in 3..7 -> {
                 viewModel.selectTab(0)
             }
             currentPaper != null && !isFullScreenTestActive -> {
@@ -631,9 +633,9 @@ fun HomeScreen(
                     )
 
                     NavigationDrawerItem(
-                        label = { Text("Speak to Test (Voice)", fontWeight = FontWeight.Medium) },
+                        label = { Text("Dictate & Voice Studio", fontWeight = FontWeight.Medium) },
                         icon = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = colors.teal) },
-                        selected = viewModel.showVoicePractice,
+                        selected = selectedTab == 7 || viewModel.showVoicePractice,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
                             viewModel.openVoicePractice()
@@ -738,6 +740,7 @@ fun HomeScreen(
                                     )
                                     val activePaperSnapshot = currentPaper
                                     val subtitle = when {
+                                        selectedTab == 7 -> activeFolderPath ?: "Dictation & Version Stack"
                                         activePaperSnapshot != null -> "${ExamNumberGenerator.formatSetDisplayLabel(activePaperSnapshot.metadata.setNumber)} • ${FolderPathHelper.formatDisplayPath(activePaperSnapshot.metadata.subject)}"
                                         !activeFolderPath.isNullOrBlank() -> activeFolderPath
                                         else -> "Exam Studio"
@@ -878,10 +881,12 @@ fun HomeScreen(
                         contentColor = colors.inkBold,
                         tonalElevation = 8.dp
                     ) {
+                        val dictateTabLabel = stringResource(R.string.voice_dictate_tab_label)
                         val navItems = listOf(
                             Triple(0, "Exams", Icons.Default.FolderOpen),
                             Triple(1, "Master", Icons.AutoMirrored.Filled.Assignment),
-                            Triple(2, "Test", Icons.Default.School)
+                            Triple(2, "Test", Icons.Default.School),
+                            Triple(7, dictateTabLabel, Icons.Default.RecordVoiceOver)
                         )
 
                         navItems.forEach { (index, label, icon) ->
@@ -897,6 +902,7 @@ fun HomeScreen(
                                         viewModel.selectTab(index)
                                     }
                                 },
+                                modifier = Modifier.testTag("bottom_nav_tab_$index"),
                                 alwaysShowLabel = true,
                                 icon = {
                                     BadgedBox(
@@ -944,10 +950,12 @@ fun HomeScreen(
                 }
             }
         ) { innerPadding ->
+            val dictateRailLabel = stringResource(R.string.voice_dictate_tab_label)
             val railNavItems = listOf(
                 Triple(0, "Exams", Icons.Default.FolderOpen),
                 Triple(1, "Master", Icons.AutoMirrored.Filled.Assignment),
-                Triple(2, "Test", Icons.Default.School)
+                Triple(2, "Test", Icons.Default.School),
+                Triple(7, dictateRailLabel, Icons.Default.RecordVoiceOver)
             )
             val mainTabColumn: @Composable (Modifier) -> Unit = { columnModifier ->
             Column(
@@ -1011,8 +1019,8 @@ fun HomeScreen(
                     }
                 }
 
-                // Quick Stats & Chips Row (hidden in active full-screen test mode and post-submission Result Hub)
-                if (!isFullScreenTestActive && !(selectedTab == 2 && isExamSubmitted)) {
+                // Quick Stats & Chips Row (hidden in active full-screen test mode, post-submission Result Hub, and Dictate tab)
+                if (!isFullScreenTestActive && !(selectedTab == 2 && isExamSubmitted) && selectedTab != 7) {
                     currentPaper?.let { paper ->
                         Row(
                             modifier = Modifier
@@ -1228,6 +1236,18 @@ fun HomeScreen(
                     viewModel = viewModel,
                     onNavigateToMaster = { viewModel.selectTab(1) },
                     onOpenPsychometrics = { showPsychometricDialog = true }
+                )
+                7 -> VoicePracticeScreen(
+                    folders = folders,
+                    studyNotes = studyNotes,
+                    papers = savedPapers,
+                    initialFolderId = lastActiveFolderId,
+                    fontScaleMode = fontScaleMode,
+                    onSelectFontScaleMode = { mode -> viewModel.setFontScaleMode(mode) },
+                    onLogStudySeconds = { secs -> viewModel.recordStudySeconds(secs) },
+                    onParsePaper = { entity -> viewModel.parsePaperForVoicePractice(entity) },
+                    embeddedInTab = true,
+                    onDismiss = { viewModel.selectTab(0) }
                 )
             }
             }

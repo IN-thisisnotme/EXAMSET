@@ -4,16 +4,20 @@ enum class VoicePracticeMode(
     val label: String,
     val description: String
 ) {
+    DICTATE_COMPARE(
+        label = "Dictate",
+        description = "Keep your note or passage displayed on screen while recording takes and playing back your version stack."
+    ),
     READ_ALOUD(
-        label = "Read Aloud Check",
+        label = "Read Aloud",
         description = "Read the shown text aloud and compare every matched, missed, extra, and mistaken word offline."
     ),
     EXPLAIN_FROM_MEMORY(
-        label = "Explain from Memory",
+        label = "Memory Recall",
         description = "See only the topic or question, speak your answer aloud, then compare against the reference notes."
     ),
     FREE_SUBJECT_SPEAK(
-        label = "Subject Free-Speak",
+        label = "Free Speak",
         description = "Speak freely on the folder's subject prompt and inspect pace, repetitions, and keyword coverage."
     )
 }

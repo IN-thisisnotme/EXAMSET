@@ -530,4 +530,31 @@ class VoiceFluencyEngineTest {
         assertEquals("Hindi", notePrompt.language)
         assertEquals("Spanish", paperPrompt.language)
     }
+
+    @Test
+    fun evaluateOfflineSpeechCheck_dictateCompareModeScoresPassageAccuracy() {
+        val prompt = com.example.model.VoicePromptItem(
+            id = "note_77_0",
+            title = "Fundamental Duties",
+            promptQuestion = "Read the note text.",
+            referenceSummary = "Key answer: Citizens must uphold constitutional ideals and protect public property.",
+            sourceLabel = "Note • Polity",
+            folderId = "f-parent",
+            folderPath = "Polity"
+        )
+
+        val result = VoiceFluencyEngine.evaluateOfflineSpeechCheck(
+            spokenTranscript = "Citizens must uphold constitutional ideals and protect public property.",
+            prompt = prompt,
+            durationMs = 5_000L,
+            mode = VoicePracticeMode.DICTATE_COMPARE
+        )
+
+        val comp = result.metrics.comparison!!
+        assertEquals(100, comp.matchPercent)
+        assertEquals(100, comp.netAccuracyPercent)
+        assertEquals(100, result.topicAccuracyPercent)
+        assertFalse(result.usedAiAudioAnalysis)
+    }
 }
+

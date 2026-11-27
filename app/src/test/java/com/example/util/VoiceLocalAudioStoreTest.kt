@@ -105,4 +105,110 @@ class VoiceLocalAudioStoreTest {
         assertTrue(f2.exists())
         assertFalse(f3.exists())
     }
+
+    @Test
+    fun deriveStackKey_groupsNoteBlocksTogetherAndSeparatesPapers() {
+        assertEquals("note_42", VoiceLocalAudioStore.deriveStackKey("note_42_0", "Bill A"))
+        assertEquals("note_42", VoiceLocalAudioStore.deriveStackKey("note_42_3", "Bill B"))
+        assertEquals("paper_7_1", VoiceLocalAudioStore.deriveStackKey("paper_7_1", "Quiz Q1"))
+        assertEquals("my_custom_note", VoiceLocalAudioStore.deriveStackKey("", "  My Custom   Note "))
+    }
+
+    @Test
+    fun versionStacks_isolateNotesAndProtectFinalTakeDuringRollingEviction() {
+        val dir = tempFolder.newFolder("version_stacks_isolation")
+        val a1 = createValidWav(dir, "a1.wav")
+        val a2 = createValidWav(dir, "a2.wav")
+        val a3 = createValidWav(dir, "a3.wav")
+        val a4 = createValidWav(dir, "a4.wav")
+        val b1 = createValidWav(dir, "b1.wav")
+        val b2 = createValidWav(dir, "b2.wav")
+
+        // Record 3 takes for Note A (note_10_0 / note_10_1 share stackKey note_10)
+        VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, a1.absolutePath, "note_10_0", "Note A", "English", 3000L, "v1")
+        Thread.sleep(5L)
+        VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, a2.absolutePath, "note_10_1", "Note A", "English", 3200L, "v2")
+        Thread.sleep(5L)
+        val afterA3 = VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, a3.absolutePath, "note_10_0", "Note A", "English", 3400L, "v3")
+
+        // Record 2 takes for Note B (note_20_0)
+        Thread.sleep(5L)
+        VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, b1.absolutePath, "note_20_0", "Note B", "English", 2500L, "b1")
+        Thread.sleep(5L)
+        VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, b2.absolutePath, "note_20_0", "Note B", "English", 2600L, "b2")
+
+        // Mark Note A take #1 as Final (should be protected when take #4 arrives)
+        val a1Id = afterA3.first { it.filePath == a1.absolutePath }.id
+        val markedFinal = VoiceLocalAudioStore.setFinalClipInDir(dir, a1Id)
+        val noteAClipsAfterMark = markedFinal.filter { it.effectiveStackKey() == "note_10" }
+        assertEquals(3, noteAClipsAfterMark.size)
+        assertTrue(noteAClipsAfterMark.first { it.id == a1Id }.isFinal)
+
+        // Add take #4 to Note A -> evicts oldest NON-final draft (a2), keeps a1 (Final), a3, a4, and leaves Note B intact
+        Thread.sleep(5L)
+        val afterA4 = VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, a4.absolutePath, "note_10_0", "Note A", "English", 3800L, "v4")
+        val stackA = afterA4.filter { it.effectiveStackKey() == "note_10" }
+        val stackB = afterA4.filter { it.effectiveStackKey() == "note_20" }
+
+        assertEquals(3, stackA.size)
+        assertEquals(2, stackB.size)
+        assertTrue("Final clip a1 must be protected from eviction", a1.exists())
+        assertFalse("Oldest non-final draft a2 should be evicted", a2.exists())
+        assertTrue(a3.exists() && a4.exists() && b1.exists() && b2.exists())
+    }
+
+    @Test
+    fun setFinalAndClearDraftsAndDeleteStack_operateOnlyWithinTargetStack() {
+        val dir = tempFolder.newFolder("stack_lifecycle")
+        val a1 = createValidWav(dir, "a1.wav")
+        val a2 = createValidWav(dir, "a2.wav")
+        val b1 = createValidWav(dir, "b1.wav")
+
+        VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, a1.absolutePath, "note_1_0", "Alpha", "English", 2000L)
+        Thread.sleep(5L)
+        val clips2 = VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, a2.absolutePath, "note_1_0", "Alpha", "English", 2200L)
+        Thread.sleep(5L)
+        val allClips = VoiceLocalAudioStore.addTakeToRollingSetInDir(dir, b1.absolutePath, "note_2_0", "Beta", "English", 2400L)
+
+        val a1Id = allClips.first { it.filePath == a1.absolutePath }.id
+        val a2Id = clips2.first { it.filePath == a2.absolutePath }.id
+
+        // Toggle Final from a1 -> a2 non-destructively (all WAVs stay on disk)
+        VoiceLocalAudioStore.setFinalClipInDir(dir, a1Id)
+        val switched = VoiceLocalAudioStore.setFinalClipInDir(dir, a2Id)
+        val switchedA = switched.filter { it.effectiveStackKey() == "note_1" }
+        assertFalse(switchedA.first { it.id == a1Id }.isFinal)
+        assertTrue(switchedA.first { it.id == a2Id }.isFinal)
+        assertTrue(a1.exists() && a2.exists() && b1.exists())
+
+        // Clear non-final drafts in note_1 -> deletes a1, preserves a2 and note_2 (b1)
+        val afterClearDrafts = VoiceLocalAudioStore.clearNonFinalDraftsInDir(dir, "note_1")
+        assertEquals(2, afterClearDrafts.size)
+        assertFalse(a1.exists())
+        assertTrue(a2.exists() && b1.exists())
+
+        // Delete note_1 stack -> deletes a2, preserves note_2 (b1)
+        val afterDeleteStack = VoiceLocalAudioStore.deleteStackInDir(dir, "note_1")
+        assertEquals(1, afterDeleteStack.size)
+        assertEquals("note_2", afterDeleteStack.first().effectiveStackKey())
+        assertFalse(a2.exists())
+        assertTrue(b1.exists())
+    }
+
+    @Test
+    fun voiceStackPlaybackQueue_ordersAndNavigatesVersionsSequentially() {
+        val c1 = SavedVoiceClip("id1", 1, "/tmp/1.wav", "note_1_0", "T", "English", 2000L, 100L, 100L)
+        val c2 = SavedVoiceClip("id2", 2, "/tmp/2.wav", "note_1_0", "T", "English", 2500L, 100L, 200L)
+        val c3 = SavedVoiceClip("id3", 3, "/tmp/3.wav", "note_1_0", "T", "English", 3000L, 100L, 300L)
+
+        val ordered = VoiceStackPlaybackQueue.orderedStackClips(listOf(c3, c1, c2))
+        assertEquals(listOf("id1", "id2", "id3"), ordered.map { it.id })
+        assertEquals(0, VoiceStackPlaybackQueue.resolveStartIndex(ordered, null))
+        assertEquals(1, VoiceStackPlaybackQueue.resolveStartIndex(ordered, "id2"))
+        assertEquals("id2", VoiceStackPlaybackQueue.nextClip(ordered, "id1")?.id)
+        assertEquals(null, VoiceStackPlaybackQueue.nextClip(ordered, "id3"))
+        assertEquals("id1", VoiceStackPlaybackQueue.previousClip(ordered, "id2")?.id)
+        assertEquals(null, VoiceStackPlaybackQueue.previousClip(ordered, "id1"))
+    }
 }
+

@@ -378,7 +378,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openVoicePractice() {
-        showVoicePractice = true
+        showVoicePractice = false
+        selectTab(7)
     }
 
     fun closeVoicePractice() {
@@ -2361,7 +2362,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Restore saved tab if valid, or default to Library (0)
             val savedTab = runCatching { appPreferences.getActiveTabIndex() }.getOrDefault(0)
             withContext(Dispatchers.Main) {
-                if (savedTab in 0..6) {
+                if (savedTab in 0..7) {
                     _selectedTab.value = savedTab
                 } else {
                     _selectedTab.value = 0
