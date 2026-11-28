@@ -110,14 +110,16 @@ object CountdownAlertScheduler {
         }.getOrDefault(true)
 
         var channelEnabled = true
+        var soundChannelMuted = false
+        var vibChannelMuted = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ensureChannels(context)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             val soundChannel = nm?.getNotificationChannel(CHANNEL_SOUND_VIBRATE)
             val vibChannel = nm?.getNotificationChannel(CHANNEL_VIBRATE_ONLY)
-            val soundOff = soundChannel != null && soundChannel.importance == NotificationManager.IMPORTANCE_NONE
-            val vibOff = vibChannel != null && vibChannel.importance == NotificationManager.IMPORTANCE_NONE
-            if (soundOff && vibOff) {
+            soundChannelMuted = soundChannel != null && soundChannel.importance == NotificationManager.IMPORTANCE_NONE
+            vibChannelMuted = vibChannel != null && vibChannel.importance == NotificationManager.IMPORTANCE_NONE
+            if (soundChannelMuted && vibChannelMuted) {
                 channelEnabled = false
             }
         }
@@ -142,6 +144,12 @@ object CountdownAlertScheduler {
         }
 
         val warnings = buildList {
+            if (channelEnabled && soundChannelMuted) {
+                add("\"Countdown Alerts (Sound & Vibrate)\" channel is muted in Android Settings — sound-enabled alerts will be suppressed.")
+            }
+            if (channelEnabled && vibChannelMuted) {
+                add("\"Countdown Alerts (Vibrate Only)\" channel is muted in Android Settings — vibrate-only alerts will be suppressed.")
+            }
             if (!exactAllowed) {
                 add("Exact Alarms & Reminders access is off — Android Doze may delay alerts by several minutes.")
             }

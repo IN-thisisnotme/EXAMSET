@@ -103,6 +103,18 @@ object WebVaultExportBuilder {
                     if (c.targetUtcMillis != null && c.targetUtcMillis > 0L) {
                         put("targetUtcMillis", c.targetUtcMillis)
                     }
+                    put("alertEnabled", c.alertEnabled)
+                    put(
+                        "alertLeadMinutes",
+                        c.alertLeadMinutes.coerceIn(
+                            com.example.model.ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+                            com.example.model.ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+                        )
+                    )
+                    if (c.alertMessage.isNotBlank()) put("alertMessage", c.alertMessage)
+                    put("vibrateOnAlert", c.vibrateOnAlert)
+                    put("alertSoundEnabled", c.alertSoundEnabled)
+                    put("alertAtZero", c.alertAtZero)
                 })
             }
         }

@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollToKeyAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
@@ -307,17 +309,19 @@ class AppGuideAndStudyPlannerTest {
         }
 
         composeTestRule.onNodeWithTag("exam_countdowns_dialog").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("countdown_time_input").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("countdown_tz_local").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("countdown_tz_gmt").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("countdown_lead_hours_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_time_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_tz_local").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_tz_gmt").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_lead_hours_input").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithText("+7d").assertDoesNotExist()
-        composeTestRule.onNodeWithText("Disaster Management").assertIsDisplayed()
 
-        composeTestRule.onNodeWithTag("countdown_title_input").performTextInput("Term-End Paper I")
-        composeTestRule.onNodeWithTag("countdown_tz_gmt").performClick()
-        composeTestRule.onNodeWithTag("save_countdown_button").performClick()
+        composeTestRule.onNodeWithTag("countdown_title_input").performScrollTo().performTextInput("Term-End Paper I")
+        composeTestRule.onNodeWithTag("countdown_tz_gmt").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("save_countdown_button").performScrollTo().performClick()
         composeTestRule.waitForIdle()
+
+        composeTestRule.onNode(hasScrollToKeyAction()).performScrollToKey("c1")
+        composeTestRule.onNodeWithText("Disaster Management").assertIsDisplayed()
 
         assertEquals("Term-End Paper I", savedTitle)
         assertEquals("00:00", savedTime)
@@ -364,15 +368,17 @@ class AppGuideAndStudyPlannerTest {
         }
 
         composeTestRule.onNodeWithTag("exam_countdowns_dialog").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Pin to Library Strip").assertIsDisplayed()
-        composeTestRule.onNodeWithText("GMT (UTC)").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Add").assertIsDisplayed()
+        composeTestRule.onNodeWithText("GMT (UTC)").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("Pin to Library Strip").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("Add").performScrollTo().assertIsDisplayed()
 
-        // Enter edit mode and cancel cleanly
+        // Scroll to saved item, enter edit mode, then scroll back up to cancel cleanly
+        composeTestRule.onNode(hasScrollToKeyAction()).performScrollToKey("c1")
         composeTestRule.onNodeWithContentDescription("Edit Countdown").performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("cancel_countdown_edit_button").assertIsDisplayed().performClick()
+        composeTestRule.onNode(hasScrollToKeyAction()).performScrollToKey("countdown_form")
+        composeTestRule.onNodeWithTag("cancel_countdown_edit_button").performScrollTo().assertIsDisplayed().performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Add Exam Target").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Add Exam Target").performScrollTo().assertIsDisplayed()
     }
 }

@@ -214,7 +214,21 @@ class WebVaultJsonAdapterTest {
             )
         )
         appPrefs.saveExamCountdowns(
-            listOf(ExamCountdownTarget(id = "cd_1", title = "UPSC Prelims", targetDateStr = "2027-05-25"))
+            listOf(
+                ExamCountdownTarget(
+                    id = "cd_1",
+                    title = "UPSC Prelims",
+                    targetDateStr = "2027-05-25",
+                    targetTimeStr = "09:30",
+                    timezoneMode = "LOCAL",
+                    alertEnabled = true,
+                    alertLeadMinutes = 120,
+                    alertMessage = "Carry admit card and black ballpoint pen",
+                    vibrateOnAlert = true,
+                    alertSoundEnabled = false,
+                    alertAtZero = true
+                )
+            )
         )
         appPrefs.saveStudyTodos(
             listOf(StudyTodoItem(id = "td_1", title = "Revise Parliament", priority = TodoPriority.HIGH))
@@ -274,6 +288,16 @@ class WebVaultJsonAdapterTest {
         assertEquals(ThemeMode.DARK, themePrefs.getThemeMode())
         assertEquals(ColorSchemePreset.FOREST_SAGE, themePrefs.getColorSchemePreset())
         assertEquals(AppFontScaleMode.LARGE, appPrefs.getFontScaleMode())
+
+        val restoredCountdowns = appPrefs.getExamCountdowns()
+        assertEquals(1, restoredCountdowns.size)
+        val restoredCd = restoredCountdowns.first()
+        assertTrue(restoredCd.alertEnabled)
+        assertEquals(120, restoredCd.alertLeadMinutes)
+        assertEquals("Carry admit card and black ballpoint pen", restoredCd.alertMessage)
+        assertTrue(restoredCd.vibrateOnAlert)
+        assertFalse(restoredCd.alertSoundEnabled)
+        assertTrue(restoredCd.alertAtZero)
 
         // Verify tampering breaks SHA-256 check
         val tamperedJson = webJson.replace("One-tenth of total membership.", "TAMPERED content.")

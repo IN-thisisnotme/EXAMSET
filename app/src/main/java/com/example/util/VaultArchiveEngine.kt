@@ -304,7 +304,11 @@ object VaultArchiveEngine {
             if (trimmed.startsWith("{")) {
                 val parsedRoot = runCatching { JSONObject(trimmed) }.getOrNull()
                 if (parsedRoot != null && WebVaultBridge.isWebVaultV5Root(parsedRoot)) {
-                    return WebVaultBridge.inspectWebVaultJson(trimmed, parsedRoot, sourceLabel, file)
+                    val sectionsObj = parsedRoot.optJSONObject("sections")
+                    if (sectionsObj != null && sectionsObj.has("vocabAndPresets")) {
+                        return WebVaultBridge.inspectWebVaultJson(trimmed, parsedRoot, sourceLabel, file)
+                    }
+                    return WebVaultJsonAdapter.inspectWebVaultJson(file, trimmed, sourceLabel)
                 }
             }
             val papers = ExamJsonHelper.bundleFromJson(rawJson)
@@ -471,15 +475,30 @@ object VaultArchiveEngine {
         if (preview.isWebVaultJson) {
             val rawJson = preview.legacyJsonContent ?: preview.tempFile?.readText(Charsets.UTF_8)
                 ?: throw IllegalStateException("Web vault JSON content missing")
-            return WebVaultBridge.restoreWebVaultJson(
-                context = context,
-                db = db,
-                appPrefs = appPrefs,
-                themePrefs = themePrefs,
-                rawJson = rawJson,
-                mode = mode,
-                mergeAppSettings = mergeAppSettings
-            )
+            val isBridgeV5 = runCatching {
+                JSONObject(rawJson).optJSONObject("sections")?.has("vocabAndPresets") == true
+            }.getOrDefault(false)
+            return if (isBridgeV5) {
+                WebVaultBridge.restoreWebVaultJson(
+                    context = context,
+                    db = db,
+                    appPrefs = appPrefs,
+                    themePrefs = themePrefs,
+                    rawJson = rawJson,
+                    mode = mode,
+                    mergeAppSettings = mergeAppSettings
+                )
+            } else {
+                WebVaultJsonAdapter.restoreFromWebVaultJson(
+                    context = context,
+                    db = db,
+                    appPrefs = appPrefs,
+                    themePrefs = themePrefs,
+                    preview = preview,
+                    mode = mode,
+                    mergeAppSettings = mergeAppSettings
+                )
+            }
         }
         if (preview.isLegacyJson) {
             val rawJson = preview.legacyJsonContent ?: preview.tempFile?.readText(Charsets.UTF_8)
@@ -857,6 +876,9 @@ object VaultArchiveEngine {
     }
 
     private fun ByteArray.toHexString(): String = joinToString("") { "%02x".format(it) }
+
+    internal fun computeSha256Hex(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).toHexString()
 
     // --- JSON Serialization Helpers ---
 
@@ -1344,44 +1366,15 @@ object VaultArchiveEngine {
         // Restore registered Knowledge Courses -> Subjects hierarchy map
         val incomingCoursesRaw = obj.optString("knowledgeCoursesJson", "")
         if (incomingCoursesRaw.isNotBlank()) {
-            runCatching {
-                val cObj = JSONObject(incomingCoursesRaw)
-                val incomingMap = linkedMapOf<String, List<String>>()
-                val cKeys = cObj.keys()
-                while (cKeys.hasNext()) {
-                    val course = cKeys.next().trim()
-                    if (course.isBlank()) continue
-                    val arr = cObj.optJSONArray(course)
-                    val subs = buildList<String> {
-                        if (arr != null) {
-                            for (i in 0 until arr.length()) {
-                                val s = arr.optString(i).trim()
-                                if (s.isNotBlank() && none { it.equals(s, ignoreCase = true) }) add(s)
-                            }
-                        }
-                    }
-                    incomingMap[course] = subs
-                }
+            val parsedObj = runCatching { JSONObject(incomingCoursesRaw) }.getOrNull()
+            if (parsedObj != null) {
+                val incomingMap = parseKnowledgeCoursesMapJson(incomingCoursesRaw)
                 if (overwriteAll) {
                     appPrefs.saveKnowledgeCoursesMap(incomingMap)
                 } else if (incomingMap.isNotEmpty()) {
-                    val merged = linkedMapOf<String, MutableList<String>>()
-                    val canonicalCourseByLower = mutableMapOf<String, String>()
-                    fun absorb(courseRaw: String, subs: List<String>) {
-                        val c = courseRaw.trim()
-                        if (c.isBlank()) return
-                        val canonical = canonicalCourseByLower.getOrPut(c.lowercase(Locale.ROOT)) { c }
-                        val list = merged.getOrPut(canonical) { mutableListOf() }
-                        subs.forEach { sRaw ->
-                            val s = sRaw.trim()
-                            if (s.isNotBlank() && list.none { it.equals(s, ignoreCase = true) }) {
-                                list.add(s)
-                            }
-                        }
-                    }
-                    appPrefs.getKnowledgeCoursesMap().forEach { (c, subs) -> absorb(c, subs) }
-                    incomingMap.forEach { (c, subs) -> absorb(c, subs) }
-                    appPrefs.saveKnowledgeCoursesMap(merged)
+                    appPrefs.saveKnowledgeCoursesMap(
+                        mergeKnowledgeCoursesMaps(appPrefs.getKnowledgeCoursesMap(), incomingMap)
+                    )
                 }
             }
         } else if (overwriteAll) {
@@ -1806,7 +1799,7 @@ object VaultArchiveEngine {
         }
     }
 
-    private fun mergeVocabularyDecksForRestore(
+    internal fun mergeVocabularyDecksForRestore(
         existingDecks: List<VocabularyDeck>,
         incomingDecks: List<VocabularyDeck>,
         deckIdRemap: MutableMap<String, String>,
@@ -1941,6 +1934,65 @@ object VaultArchiveEngine {
         )
     }
 
+    internal fun mergeStudyNoteEntity(
+        existing: StudyNoteEntity,
+        incoming: StudyNoteEntity,
+        remappedLinkedPaper: Long?,
+        cleanUid: String
+    ): StudyNoteEntity = mergeStudyNoteForRestore(
+        existing = existing,
+        incoming = incoming.copy(syncUid = cleanUid),
+        remappedLinkedPaper = remappedLinkedPaper,
+        cleanFolderId = incoming.folderId
+    )
+
+    internal fun parseKnowledgeCoursesMapJson(raw: String): Map<String, List<String>> {
+        if (raw.isBlank()) return emptyMap()
+        return runCatching {
+            val cObj = JSONObject(raw)
+            val incomingMap = linkedMapOf<String, List<String>>()
+            val cKeys = cObj.keys()
+            while (cKeys.hasNext()) {
+                val course = cKeys.next().trim()
+                if (course.isBlank()) continue
+                val arr = cObj.optJSONArray(course)
+                val subs = buildList<String> {
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            val s = arr.optString(i).trim()
+                            if (s.isNotBlank() && none { it.equals(s, ignoreCase = true) }) add(s)
+                        }
+                    }
+                }
+                incomingMap[course] = subs
+            }
+            incomingMap
+        }.getOrDefault(emptyMap())
+    }
+
+    internal fun mergeKnowledgeCoursesMaps(
+        existing: Map<String, List<String>>,
+        incoming: Map<String, List<String>>
+    ): Map<String, List<String>> {
+        val merged = linkedMapOf<String, MutableList<String>>()
+        val canonicalCourseByLower = mutableMapOf<String, String>()
+        fun absorb(courseRaw: String, subs: List<String>) {
+            val c = courseRaw.trim()
+            if (c.isBlank()) return
+            val canonical = canonicalCourseByLower.getOrPut(c.lowercase(Locale.ROOT)) { c }
+            val list = merged.getOrPut(canonical) { mutableListOf() }
+            subs.forEach { sRaw ->
+                val s = sRaw.trim()
+                if (s.isNotBlank() && list.none { it.equals(s, ignoreCase = true) }) {
+                    list.add(s)
+                }
+            }
+        }
+        existing.forEach { (c, subs) -> absorb(c, subs) }
+        incoming.forEach { (c, subs) -> absorb(c, subs) }
+        return merged
+    }
+
     internal fun applyVocabularyFieldsPublic(
         obj: JSONObject,
         appPrefs: ExamSetPreferences,
@@ -1950,7 +2002,7 @@ object VaultArchiveEngine {
         applyVocabularyFields(obj, appPrefs, overwriteAll, mergeAppSettings)
     }
 
-    private fun isIncomingSrsNewer(existing: FlashcardSrsState, incoming: FlashcardSrsState): Boolean {
+    internal fun isIncomingSrsNewer(existing: FlashcardSrsState, incoming: FlashcardSrsState): Boolean {
         if (incoming.reviewCount != existing.reviewCount) {
             return incoming.reviewCount > existing.reviewCount
         }
