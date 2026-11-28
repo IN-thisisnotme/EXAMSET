@@ -1025,7 +1025,7 @@ class VaultArchiveEngineTest {
         val attemptsSec = """[{"id":"att-1","paperId":"web-p1","score":2,"maxScore":2,"correctCount":1,"partialCount":0,"incorrectCount":0,"unansweredCount":0,"timeSpentSeconds":30,"submittedAnswers":{"1":"B"},"questionTimes":{"1":15},"submittedAt":1700000020000}]"""
         val notesSec = """[{"id":"web-note-1","title":"Directive Principles","course":"UPSC Mains","subject":"Polity","sourceAi":"Web","rawContent":"1. **Art 40** -> Village Panchayats","folderId":"fld_web","collectionType":"ONE_LINERS","customLabel":"","linkedPaperId":"web-p1","formatRule":{},"bookmarkedIndices":[0],"masteredIndices":[0],"srsStates":{"0":{"blockIndex":0,"repetitions":2,"easeFactor":2.5,"intervalDays":6,"dueAtMillis":1790000000000,"lastReviewedAtMillis":1780000000000,"lapses":0,"lastRating":"GOOD","reviewCount":2,"correctCount":2}},"createdAt":1700000000000,"updatedAt":1700000010000}]"""
         val vocabSec = """{"vocabDecks":[{"id":"d-en-b2","title":"English B2","language":"English","languageVariant":"UK","translationLanguage":"","levelCode":"B2","customLevelLabel":"","domain":"General","entries":[{"id":"w1","word":"Candor","pronunciation":"","partOfSpeech":"noun","levelCode":"B2","customLevelLabel":"","language":"English","languageVariant":"UK","meaning":"Frankness","translation":"","translationLanguage":"","examples":[],"synonyms":["frankness"],"antonyms":[],"collocations":[],"usageNote":"","isBookmarked":true,"createdAt":1700000000000,"updatedAt":1700000000000}],"createdAt":1700000000000,"updatedAt":1700000000000}],"vocabSrs":{},"englishVariant":"UK","headwordInbox":[],"dismissedHeadwords":[],"wotdStates":{},"promptPresets":[]}"""
-        val plannerSec = """{"countdowns":[{"id":"cd-1","title":"UPSC Prelims","targetDateIso":"2027-05-24","examType":"GS","color":"#0D9488","isPinned":true}],"studyTodos":[{"id":"td-1","title":"Revise Art 40","priority":"HIGH","dueDateStr":"2027-05-01","isCompleted":false,"targetPomodoros":2,"completedPomodoros":1,"linkedType":"NOTE","linkedNoteId":"web-note-1","linkedDeckLanguage":"","linkedLabel":"Directive Principles","createdAt":1700000000000}],"pomodoroConfig":{"preset":"DEEP_50_10","customFocusMinutes":30,"customBreakMinutes":5,"dailyFocusGoalMinutes":90},"dailyAnalytics":{"2026-11-27":{"dateStr":"2026-11-27","testsCompleted":1,"questionsAnswered":1,"correctAnswers":1,"studyTimeSeconds":300}}}"""
+        val plannerSec = """{"countdowns":[{"id":"cd-1","title":"UPSC Prelims","targetDateIso":"2027-05-24","examType":"GS","color":"#0D9488","isPinned":true,"alertEnabled":true,"alertLeadMinutes":150,"alertMessage":"Gate opens","vibrateOnAlert":true,"alertSoundEnabled":false,"alertAtZero":true}],"studyTodos":[{"id":"td-1","title":"Revise Art 40","priority":"HIGH","dueDateStr":"2027-05-01","isCompleted":false,"targetPomodoros":2,"completedPomodoros":1,"linkedType":"NOTE","linkedNoteId":"web-note-1","linkedDeckLanguage":"","linkedLabel":"Directive Principles","createdAt":1700000000000}],"pomodoroConfig":{"preset":"DEEP_50_10","customFocusMinutes":30,"customBreakMinutes":5,"dailyFocusGoalMinutes":90},"dailyAnalytics":{"2026-11-27":{"dateStr":"2026-11-27","testsCompleted":1,"questionsAnswered":1,"correctAnswers":1,"studyTimeSeconds":300}}}"""
         val brainSec = """{"knowledgeCourses":{"UPSC Mains":["Polity"]},"brainLabStats":{"bestNBackTier":3,"totalCognitiveSeconds":420,"lastUpdatedAtMillis":1700000010000},"brainLabSettings":{"audioEnabled":false,"countCalmInDailyStudyTime":false,"preferredBudgetMinutes":5},"dismissedTips":["tip_one"],"themeMode":"DARK","colorPreset":"WARM_PAPER","fontScaleMode":"LARGE"}"""
 
         val webJson = """{"manifest":{"format":"examset-vault-v5","schemaVersion":5,"appVersion":"web-2.5","createdAt":1700000050000,"deviceName":"Firefox Web","counts":{"papersCount":1,"notesCount":1,"knowledgeCoursesCount":1,"foldersCount":2,"attemptsCount":1,"analyticsDaysCount":1,"vocabDecksCount":1,"vocabWordsCount":1,"promptPresetsCount":0,"todosCount":1,"countdownsCount":1},"entryChecksumsSha256":{"papers":"${sha256(papersSec)}","folders":"${sha256(foldersSec)}","attempts":"${sha256(attemptsSec)}","studyNotes":"${sha256(notesSec)}","vocabAndPresets":"${sha256(vocabSec)}","plannerAndAnalytics":"${sha256(plannerSec)}","brainAndPreferences":"${sha256(brainSec)}"}},"sections":{"papers":$papersSec,"folders":$foldersSec,"attempts":$attemptsSec,"studyNotes":$notesSec,"vocabAndPresets":$vocabSec,"plannerAndAnalytics":$plannerSec,"brainAndPreferences":$brainSec}}"""
@@ -1060,7 +1060,14 @@ class VaultArchiveEngineTest {
         assertEquals(3, appPrefs.getBrainLabStats().bestNBackTier)
         assertEquals(ThemeMode.DARK, themePrefs.getThemeMode())
         assertEquals(1, appPrefs.getVocabularyDecks().size)
-        assertEquals(1, appPrefs.getExamCountdowns().size)
+        val restoredCountdowns = appPrefs.getExamCountdowns()
+        assertEquals(1, restoredCountdowns.size)
+        assertTrue(restoredCountdowns.first().alertEnabled)
+        assertEquals(150, restoredCountdowns.first().alertLeadMinutes)
+        assertEquals("Gate opens", restoredCountdowns.first().alertMessage)
+        assertTrue(restoredCountdowns.first().vibrateOnAlert)
+        assertFalse(restoredCountdowns.first().alertSoundEnabled)
+        assertTrue(restoredCountdowns.first().alertAtZero)
 
         // Tampered Web JSON must fail verification
         val tamperedFile = File(tempDir, "web_tampered.examset.json").apply {
@@ -1068,5 +1075,43 @@ class VaultArchiveEngineTest {
         }
         val tamperedPreview = VaultArchiveEngine.inspectLocalFile(tamperedFile)
         assertFalse(tamperedPreview.checksumVerified)
+    }
+
+    @Test
+    fun `ExamCountdownTarget alert serialization and default lead preferences round-trip cleanly`() {
+        assertEquals(120, appPrefs.getDefaultCountdownAlertLeadMinutes())
+        appPrefs.setDefaultCountdownAlertLeadMinutes(90)
+        assertEquals(90, appPrefs.getDefaultCountdownAlertLeadMinutes())
+
+        appPrefs.markCountdownAlertFired("cd-x|EARLY|1000")
+        appPrefs.markCountdownAlertFired("cd-y|EARLY|2000")
+        appPrefs.clearFiredCountdownAlertsForId("cd-x")
+        assertEquals(setOf("cd-y|EARLY|2000"), appPrefs.getFiredCountdownAlertKeys())
+
+        val cd = ExamCountdownTarget(
+            id = "cd-alert-1",
+            title = "Finals",
+            targetDateStr = "2027-06-10",
+            targetTimeStr = "09:30",
+            timezoneMode = "GMT",
+            targetUtcMillis = 1_812_619_800_000L,
+            alertEnabled = true,
+            alertLeadMinutes = 120,
+            alertMessage = "Gate opens soon",
+            vibrateOnAlert = true,
+            alertSoundEnabled = false,
+            alertAtZero = true
+        )
+        assertEquals(1_812_619_800_000L - 120L * 60_000L, cd.earlyAlertTriggerMillis())
+        assertEquals("2h", cd.formattedLeadSummary())
+
+        val decoded = ExamCountdownTarget.fromJson(cd.toJson())
+        assertNotNull(decoded)
+        assertEquals(cd.alertEnabled, decoded?.alertEnabled)
+        assertEquals(cd.alertLeadMinutes, decoded?.alertLeadMinutes)
+        assertEquals(cd.alertMessage, decoded?.alertMessage)
+        assertEquals(cd.vibrateOnAlert, decoded?.vibrateOnAlert)
+        assertEquals(cd.alertSoundEnabled, decoded?.alertSoundEnabled)
+        assertEquals(cd.alertAtZero, decoded?.alertAtZero)
     }
 }

@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
@@ -212,6 +213,8 @@ fun HomeScreen(
     val isAddQuestionOverlayOpen by viewModel.isAddQuestionOverlayOpen.collectAsState()
     val examCountdowns by viewModel.examCountdowns.collectAsState()
     val countdownNowMillis by viewModel.countdownNowMillis.collectAsState()
+    val defaultCountdownAlertMinutes by viewModel.defaultCountdownAlertMinutes.collectAsState()
+    val activeInAppCountdownAlert by viewModel.activeInAppCountdownAlert.collectAsState()
     val studyTodos by viewModel.studyTodos.collectAsState()
     val studyDueSuggestions by viewModel.studyDueSuggestions.collectAsState()
     val dismissedFormatTips by viewModel.dismissedFormatTips.collectAsState()
@@ -266,6 +269,9 @@ fun HomeScreen(
             }
             viewModel.showStudyPlanner -> {
                 viewModel.closeStudyPlanner()
+            }
+            activeInAppCountdownAlert != null -> {
+                viewModel.dismissInAppCountdownAlert()
             }
             showCountdownsDialog -> {
                 showCountdownsDialog = false
@@ -2048,7 +2054,12 @@ fun HomeScreen(
         ExamCountdownsDialog(
             countdowns = examCountdowns,
             nowMillis = countdownNowMillis,
-            onSaveCountdown = { id, title, dateStr, timeStr, tzMode, subject, colorHex, isPinned ->
+            defaultAlertLeadMinutes = defaultCountdownAlertMinutes,
+            onSaveDefaultAlertLeadMinutes = { mins -> viewModel.setDefaultCountdownAlertMinutes(mins) },
+            onTestAlert = { title, message, leadMins, vibrate, sound ->
+                viewModel.testCountdownAlert(title, message, leadMins, vibrate, sound)
+            },
+            onSaveCountdown = { id, title, dateStr, timeStr, tzMode, subject, colorHex, isPinned, alertEnabled, alertLeadMinutes, alertMessage, vibrateOnAlert, alertSoundEnabled, alertAtZero ->
                 viewModel.addOrUpdateExamCountdown(
                     id = id,
                     title = title,
@@ -2057,12 +2068,100 @@ fun HomeScreen(
                     colorHex = colorHex,
                     isPinned = isPinned,
                     targetTimeStr = timeStr,
-                    timezoneMode = tzMode
+                    timezoneMode = tzMode,
+                    alertEnabled = alertEnabled,
+                    alertLeadMinutes = alertLeadMinutes,
+                    alertMessage = alertMessage,
+                    vibrateOnAlert = vibrateOnAlert,
+                    alertSoundEnabled = alertSoundEnabled,
+                    alertAtZero = alertAtZero
                 )
             },
             onTogglePin = { viewModel.togglePinExamCountdown(it) },
             onDelete = { viewModel.deleteExamCountdown(it) },
             onDismiss = { showCountdownsDialog = false }
+        )
+    }
+
+    activeInAppCountdownAlert?.let { alert ->
+        val leadLabel = com.example.model.ExamCountdownTarget.formatLeadDuration(alert.leadMinutes)
+        val stageTitle = when (alert.stage) {
+            com.example.util.CountdownAlertStage.EARLY -> "Countdown Alert — in $leadLabel"
+            com.example.util.CountdownAlertStage.ZERO -> "Countdown Reached — Starting Now!"
+            com.example.util.CountdownAlertStage.SNOOZE -> "Snoozed Countdown Reminder"
+        }
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissInAppCountdownAlert() },
+            containerColor = colors.surface,
+            titleContentColor = colors.inkBold,
+            textContentColor = colors.ink,
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.NotificationsActive,
+                    contentDescription = null,
+                    tint = colors.teal,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = alert.title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stageTitle,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.tealDark
+                    )
+                    if (alert.customMessage.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = colors.tealLight.copy(alpha = 0.55f),
+                            border = BorderStroke(0.8.dp, colors.teal.copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = alert.customMessage,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.inkBold,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Scheduled: ${alert.scheduleText}",
+                        fontSize = 12.sp,
+                        color = colors.muted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.dismissInAppCountdownAlert() },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.teal, contentColor = Color.White),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("dismiss_in_app_countdown_alert")
+                ) {
+                    Text("Dismiss", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { viewModel.snoozeInAppCountdownAlert(alert, 10) },
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("snooze_in_app_countdown_alert")
+                ) {
+                    Text("Snooze 10m", fontWeight = FontWeight.SemiBold, color = colors.inkBold)
+                }
+            }
         )
     }
 

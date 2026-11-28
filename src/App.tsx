@@ -62,6 +62,14 @@ import { DEFAULT_ROOT_FOLDER, ExamStore, normalizePaperMetadata } from './data/e
 // import { STARTER_STUDY_NOTES, STARTER_VOCAB_DECKS } from './data/phase4Seeds';
 import { applyVaultRestoreToState, buildVaultArchive, type WorkspaceBackupState } from './utils/vaultArchiveEngine';
 import { CloudSyncEngine } from './utils/cloudSyncEngine';
+import {
+  dispatchBrowserCountdownNotification,
+  evaluateDueCountdownAlerts,
+  formatLeadDuration,
+  playWebCountdownChime,
+  vibrateCountdownPattern,
+  type FiredCountdownAlert,
+} from './utils/countdownAlertEngine';
 import { ThemePaletteModal } from './components/ThemePaletteModal';
 import { FontScaleModal } from './components/FontScaleModal';
 import { InputModal } from './components/InputModal';
@@ -243,6 +251,11 @@ const ExamSetWorkspace: React.FC = () => {
   const [countdowns, setCountdowns] = useState<ExamCountdownTarget[]>(() =>
     ExamStore.loadCountdowns()
   );
+  const [defaultCountdownLeadMinutes, setDefaultCountdownLeadMinutes] = useState<number>(() =>
+    ExamStore.loadDefaultCountdownLeadMinutes()
+  );
+  const [activeCountdownAlert, setActiveCountdownAlert] = useState<FiredCountdownAlert | null>(null);
+  const snoozedTimersRef = useRef<Record<string, number>>({});
   const [attempts, setAttempts] = useState<AttemptRecord[]>(() => ExamStore.loadAttempts());
 
   // Phase 4 Persistent State (Clean start matching Android)
@@ -367,6 +380,46 @@ const ExamSetWorkspace: React.FC = () => {
       }
     });
   }, [navigateTab]);
+
+  const fireCountdownAlertFeedback = useCallback((alert: FiredCountdownAlert) => {
+    if (alert.vibrate) vibrateCountdownPattern();
+    if (alert.sound) void playWebCountdownChime();
+    dispatchBrowserCountdownNotification(alert);
+    setActiveCountdownAlert(alert);
+  }, []);
+
+  useEffect(() => {
+    const timers = snoozedTimersRef.current;
+    return () => {
+      Object.values(timers).forEach((tid) => window.clearTimeout(tid));
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!countdowns.some((cd) => cd.alertEnabled)) return;
+    const checkDue = () => {
+      const firedSet = new Set(ExamStore.loadFiredCountdownAlerts());
+      const dueAlerts = evaluateDueCountdownAlerts(countdowns, firedSet, Date.now());
+      for (const alert of dueAlerts) {
+        ExamStore.markFiredCountdownAlert(alert.alertKey);
+        fireCountdownAlertFeedback(alert);
+      }
+    };
+    checkDue();
+    const intervalId = window.setInterval(checkDue, 5000);
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkDue();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+    window.addEventListener('focus', onVisibilityOrFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+    };
+  }, [countdowns, fireCountdownAlertFeedback]);
 
   const handleSavePaper = (paper: QuestionPaper, silent: boolean = false) => {
     const normalized = normalizePaperMetadata(paper);
@@ -496,9 +549,51 @@ const ExamSetWorkspace: React.FC = () => {
     }
   };
 
+  const handleSaveDefaultCountdownLeadMinutes = (minutes: number) => {
+    const saved = ExamStore.saveDefaultCountdownLeadMinutes(minutes);
+    setDefaultCountdownLeadMinutes(saved);
+    showToast(`Default early alert set to ${formatLeadDuration(saved)} before target`);
+  };
+
   const handleSaveCountdowns = (next: ExamCountdownTarget[]) => {
+    const prevById = new Map(countdowns.map((c) => [c.id, c]));
+    const nextIds = new Set(next.map((c) => c.id));
+    for (const prev of countdowns) {
+      const updated = next.find((c) => c.id === prev.id);
+      if (!nextIds.has(prev.id) || (updated && JSON.stringify(updated) !== JSON.stringify(prev))) {
+        ExamStore.clearFiredCountdownAlertsForId(prev.id);
+        const pendingTimer = snoozedTimersRef.current[prev.id];
+        if (pendingTimer) {
+          window.clearTimeout(pendingTimer);
+          delete snoozedTimersRef.current[prev.id];
+        }
+      }
+    }
+    for (const item of next) {
+      if (!prevById.has(item.id)) {
+        ExamStore.clearFiredCountdownAlertsForId(item.id);
+      }
+    }
     setCountdowns(next);
     ExamStore.saveCountdowns(next);
+  };
+
+  const handleSnoozeCountdownAlert = (alert: FiredCountdownAlert, minutes: number = 10) => {
+    setActiveCountdownAlert(null);
+    const existingTimer = snoozedTimersRef.current[alert.countdownId];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+    snoozedTimersRef.current[alert.countdownId] = window.setTimeout(() => {
+      delete snoozedTimersRef.current[alert.countdownId];
+      fireCountdownAlertFeedback({
+        ...alert,
+        alertKey: `${alert.countdownId}|SNOOZE|${Date.now()}`,
+        stage: 'SNOOZE',
+        leadMinutes: minutes,
+      });
+    }, minutes * 60_000);
+    showToast(`Snoozed "${alert.title}" for ${minutes}m`);
   };
 
   const handleSaveAttempt = (record: AttemptRecord) => {
@@ -1864,9 +1959,93 @@ const ExamSetWorkspace: React.FC = () => {
         <ExamCountdownsModal
           isOpen={showCountdownsModal}
           countdowns={countdowns}
+          defaultLeadMinutes={defaultCountdownLeadMinutes}
+          onSaveDefaultLeadMinutes={handleSaveDefaultCountdownLeadMinutes}
           onSaveCountdowns={handleSaveCountdowns}
           onClose={() => setShowCountdownsModal(false)}
         />
+      )}
+
+      {activeCountdownAlert && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)' }}
+          onClick={() => setActiveCountdownAlert(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-3"
+            style={{
+              backgroundColor: colors.surface,
+              border: `2px solid ${colors.teal}`,
+              color: colors.ink,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: colors.tealLight, color: colors.teal }}
+              >
+                <Bell className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold uppercase tracking-wide" style={{ color: colors.tealDark }}>
+                  {activeCountdownAlert.stage === 'EARLY'
+                    ? `Countdown Alert — in ${formatLeadDuration(activeCountdownAlert.leadMinutes)}`
+                    : activeCountdownAlert.stage === 'ZERO'
+                    ? 'Countdown Reached — Starting Now!'
+                    : 'Snoozed Countdown Reminder'}
+                </div>
+                <h3 className="text-base font-extrabold mt-0.5 break-words" style={{ color: colors.inkBold }}>
+                  {activeCountdownAlert.title}
+                </h3>
+              </div>
+            </div>
+
+            {activeCountdownAlert.customMessage && (
+              <div
+                className="p-3 rounded-xl text-sm font-medium border"
+                style={{
+                  backgroundColor: colors.tealLight,
+                  borderColor: colors.teal,
+                  color: colors.inkBold,
+                }}
+              >
+                {activeCountdownAlert.customMessage}
+              </div>
+            )}
+
+            <div className="text-xs" style={{ color: colors.muted }}>
+              Scheduled: {activeCountdownAlert.scheduleText}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleSnoozeCountdownAlert(activeCountdownAlert, 10)}
+                className="px-4 py-2 rounded-xl text-xs font-bold border"
+                style={{
+                  backgroundColor: colors.surfaceVariant,
+                  borderColor: colors.border,
+                  color: colors.inkBold,
+                }}
+              >
+                Snooze 10m
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCountdownAlert(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold"
+                style={{
+                  backgroundColor: colors.teal,
+                  color: colors.onAccentText,
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Phase 4 Modals */}

@@ -327,6 +327,12 @@ export async function buildAndroidZipVaultArchive(
     isPinned: Boolean(cd.isPinned),
     colorHex: cd.color || '#177E89',
     updatedAt: nowMs,
+    alertEnabled: Boolean(cd.alertEnabled),
+    alertLeadMinutes: typeof cd.alertLeadMinutes === 'number' && cd.alertLeadMinutes > 0 ? cd.alertLeadMinutes : 120,
+    ...(cd.alertMessage ? { alertMessage: cd.alertMessage } : {}),
+    vibrateOnAlert: cd.vibrateOnAlert !== false,
+    alertSoundEnabled: cd.alertSoundEnabled !== false,
+    alertAtZero: cd.alertAtZero !== false,
   }));
 
   const androidTodos = state.studyTodos.map((t) => ({
@@ -766,6 +772,15 @@ export async function inspectAndroidZipBytes(
     targetTime: cd.targetTimeStr ? String(cd.targetTimeStr) : undefined,
     timezoneMode: cd.timezoneMode === 'GMT' ? 'GMT' : 'LOCAL',
     targetUtcMillis: cd.targetUtcMillis ? Number(cd.targetUtcMillis) : undefined,
+    alertEnabled: typeof cd.alertEnabled === 'boolean' ? cd.alertEnabled : false,
+    alertLeadMinutes:
+      typeof cd.alertLeadMinutes === 'number' && Number.isFinite(cd.alertLeadMinutes) && cd.alertLeadMinutes > 0
+        ? cd.alertLeadMinutes
+        : 120,
+    alertMessage: cd.alertMessage ? String(cd.alertMessage) : '',
+    vibrateOnAlert: typeof cd.vibrateOnAlert === 'boolean' ? cd.vibrateOnAlert : true,
+    alertSoundEnabled: typeof cd.alertSoundEnabled === 'boolean' ? cd.alertSoundEnabled : true,
+    alertAtZero: typeof cd.alertAtZero === 'boolean' ? cd.alertAtZero : true,
   }));
 
   const todosRaw = parseJsonObjectSafe<Array<Record<string, unknown>>>(prefsObj.studyTodosJson, []);

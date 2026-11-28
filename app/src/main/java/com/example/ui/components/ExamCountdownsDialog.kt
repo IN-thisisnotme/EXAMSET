@@ -1,5 +1,9 @@
 package com.example.ui.components
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
@@ -29,7 +34,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -53,6 +62,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -62,18 +72,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.model.ExamCountdownTarget
 import com.example.model.StudyDateUtils
 import com.example.ui.theme.ExamTheme
 import com.example.ui.theme.parseHexColorSafe
+import com.example.util.CountdownAlertScheduler
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -189,6 +205,9 @@ fun PinnedExamCountdownsStrip(
 fun ExamCountdownsDialog(
     countdowns: List<ExamCountdownTarget>,
     nowMillis: Long,
+    defaultAlertLeadMinutes: Int = ExamCountdownTarget.DEFAULT_ALERT_LEAD_MINUTES,
+    onSaveDefaultAlertLeadMinutes: (Int) -> Unit = {},
+    onTestAlert: (title: String, message: String, leadMinutes: Int, vibrate: Boolean, sound: Boolean) -> String = { _, _, _, _, _ -> "" },
     onSaveCountdown: (
         id: String?,
         title: String,
@@ -197,13 +216,22 @@ fun ExamCountdownsDialog(
         timezoneMode: String,
         subject: String,
         colorHex: String,
-        isPinned: Boolean
+        isPinned: Boolean,
+        alertEnabled: Boolean,
+        alertLeadMinutes: Int,
+        alertMessage: String,
+        vibrateOnAlert: Boolean,
+        alertSoundEnabled: Boolean,
+        alertAtZero: Boolean
     ) -> Boolean,
     onTogglePin: (String) -> Unit,
     onDelete: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val colors = ExamTheme.colors
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var liveNowMillis by remember(nowMillis) { mutableLongStateOf(nowMillis) }
     val hasTimedTarget = remember(countdowns) {
         countdowns.any { it.hasExplicitTime() || (it.targetUtcMillis ?: 0L) > 0L }
@@ -217,6 +245,28 @@ fun ExamCountdownsDialog(
         }
     }
 
+    var readiness by remember { mutableStateOf(CountdownAlertScheduler.inspectReadiness(context)) }
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                readiness = CountdownAlertScheduler.inspectReadiness(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        readiness = CountdownAlertScheduler.inspectReadiness(context)
+    }
+
+    val safeDefaultLead = defaultAlertLeadMinutes.coerceIn(
+        ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+        ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+    )
+
     var editingId by remember { mutableStateOf<String?>(null) }
     var titleInput by remember { mutableStateOf("") }
     var subjectInput by remember { mutableStateOf("") }
@@ -224,9 +274,45 @@ fun ExamCountdownsDialog(
     var timeInput by remember { mutableStateOf("00:00") }
     var tzModeInput by remember { mutableStateOf("LOCAL") }
     var isPinnedInput by remember { mutableStateOf(true) }
+
+    var alertEnabledInput by remember { mutableStateOf(true) }
+    var leadHoursInput by remember { mutableStateOf((safeDefaultLead / 60).toString()) }
+    var leadMinsInput by remember { mutableStateOf((safeDefaultLead % 60).toString()) }
+    var alertMessageInput by remember { mutableStateOf("") }
+    var vibrateInput by remember { mutableStateOf(true) }
+    var soundInput by remember { mutableStateOf(true) }
+    var alertAtZeroInput by remember { mutableStateOf(true) }
+    var testFeedback by remember { mutableStateOf<String?>(null) }
+
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var pendingDeleteTarget by remember { mutableStateOf<ExamCountdownTarget?>(null) }
+
+    val resetForm = {
+        editingId = null
+        titleInput = ""
+        subjectInput = ""
+        dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
+        timeInput = "00:00"
+        tzModeInput = "LOCAL"
+        isPinnedInput = true
+        alertEnabledInput = true
+        leadHoursInput = (safeDefaultLead / 60).toString()
+        leadMinsInput = (safeDefaultLead % 60).toString()
+        alertMessageInput = ""
+        vibrateInput = true
+        soundInput = true
+        alertAtZeroInput = true
+        testFeedback = null
+    }
+
+    val parsedLeadHours = leadHoursInput.trim().toIntOrNull()?.coerceIn(0, 720) ?: 0
+    val parsedLeadMins = leadMinsInput.trim().toIntOrNull()?.coerceIn(0, 59) ?: 0
+    val computedLeadMinutes = (parsedLeadHours * 60 + parsedLeadMins).coerceIn(
+        ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+        ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+    )
+    val isLeadZeroOrEmpty = (parsedLeadHours * 60 + parsedLeadMins) < ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES
 
     val localTzLabel = remember(liveNowMillis) {
         StudyDateUtils.localTimezoneShortLabel(liveNowMillis)
@@ -245,10 +331,16 @@ fun ExamCountdownsDialog(
         )
     }
 
+    val previewEarlyTriggerMillis = remember(previewTargetMillis, computedLeadMinutes, alertEnabledInput) {
+        if (!alertEnabledInput || previewTargetMillis == null) null
+        else previewTargetMillis - computedLeadMinutes * 60_000L
+    }
+
     val isTimeFieldValid = timeInput.trim().isBlank() || StudyDateUtils.isValidTimeHm(timeInput)
     val canSave = titleInput.trim().isNotBlank() &&
         StudyDateUtils.parseDateToStartOfDayMillis(dateInput) != null &&
-        isTimeFieldValid
+        isTimeFieldValid &&
+        (!alertEnabledInput || !isLeadZeroOrEmpty)
 
     pendingDeleteTarget?.let { targetToDelete ->
         AlertDialog(
@@ -267,11 +359,7 @@ fun ExamCountdownsDialog(
                     onClick = {
                         onDelete(targetToDelete.id)
                         if (editingId == targetToDelete.id) {
-                            editingId = null
-                            titleInput = ""
-                            subjectInput = ""
-                            timeInput = "00:00"
-                            tzModeInput = "LOCAL"
+                            resetForm()
                         }
                         pendingDeleteTarget = null
                     },
@@ -482,15 +570,7 @@ fun ExamCountdownsDialog(
                                         )
                                         if (editingId != null) {
                                             TextButton(
-                                                onClick = {
-                                                    editingId = null
-                                                    titleInput = ""
-                                                    subjectInput = ""
-                                                    dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
-                                                    timeInput = "00:00"
-                                                    tzModeInput = "LOCAL"
-                                                    isPinnedInput = true
-                                                },
+                                                onClick = resetForm,
                                                 modifier = Modifier
                                                     .heightIn(min = 48.dp)
                                                     .testTag("cancel_countdown_edit_button")
@@ -749,6 +829,376 @@ fun ExamCountdownsDialog(
                                         modifier = Modifier.fillMaxWidth()
                                     )
 
+                                    HorizontalDivider(color = colors.borderLight)
+
+                                    // Early Alert & Vibration Section
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (alertEnabledInput) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                                                contentDescription = null,
+                                                tint = if (alertEnabledInput) colors.teal else colors.muted,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(
+                                                    text = "Early Alert & Vibration",
+                                                    fontSize = 12.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = colors.inkBold
+                                                )
+                                                Text(
+                                                    text = "Default: ${ExamCountdownTarget.formatLeadDuration(safeDefaultLead)} before target",
+                                                    fontSize = 11.sp,
+                                                    color = colors.muted
+                                                )
+                                            }
+                                        }
+                                        Switch(
+                                            checked = alertEnabledInput,
+                                            onCheckedChange = { alertEnabledInput = it },
+                                            modifier = Modifier.testTag("countdown_alert_switch"),
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = colors.teal
+                                            )
+                                        )
+                                    }
+
+                                    if (alertEnabledInput) {
+                                        // Custom Hours & Minutes + Save as Default
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = leadHoursInput,
+                                                onValueChange = { raw ->
+                                                    leadHoursInput = raw.filter { it.isDigit() }.take(3)
+                                                },
+                                                label = { Text("Lead Hours") },
+                                                placeholder = { Text("2") },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("countdown_lead_hours_input")
+                                            )
+                                            OutlinedTextField(
+                                                value = leadMinsInput,
+                                                onValueChange = { raw ->
+                                                    leadMinsInput = raw.filter { it.isDigit() }.take(2)
+                                                },
+                                                label = { Text("Lead Mins") },
+                                                placeholder = { Text("0") },
+                                                singleLine = true,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("countdown_lead_mins_input")
+                                            )
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (!isLeadZeroOrEmpty) {
+                                                        onSaveDefaultAlertLeadMinutes(computedLeadMinutes)
+                                                    }
+                                                },
+                                                enabled = !isLeadZeroOrEmpty && computedLeadMinutes != safeDefaultLead,
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                                modifier = Modifier
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("save_default_lead_button")
+                                            ) {
+                                                Text(
+                                                    text = if (computedLeadMinutes == safeDefaultLead) "Default ✓" else "Set Default",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (computedLeadMinutes == safeDefaultLead) colors.teal else colors.inkBold,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+
+                                        if (isLeadZeroOrEmpty) {
+                                            Text(
+                                                text = "Enter at least 1 minute of advance lead time.",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.red
+                                            )
+                                        } else if (previewEarlyTriggerMillis != null) {
+                                            val isEarlyInPast = previewEarlyTriggerMillis <= liveNowMillis
+                                            val isTargetInFuture = (previewTargetMillis ?: 0L) > liveNowMillis
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isEarlyInPast) colors.amber.copy(alpha = 0.14f) else colors.surface,
+                                                border = BorderStroke(
+                                                    0.8.dp,
+                                                    if (isEarlyInPast) colors.amber else colors.border
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isEarlyInPast) Icons.Default.Warning else Icons.Default.AccessTime,
+                                                        contentDescription = null,
+                                                        tint = if (isEarlyInPast) colors.amber else colors.teal,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = when {
+                                                            !isTargetInFuture ->
+                                                                "Target date/time is already in the past — future alerts will not fire unless moved forward."
+                                                            isEarlyInPast ->
+                                                                "Early alert time (${StudyDateUtils.formatHumanDateTimeLocal(previewEarlyTriggerMillis)}) already passed; ${if (alertAtZeroInput) "only 0m on-time alert will fire" else "reduce lead time so it can fire"}."
+                                                            else ->
+                                                                "Early alert fires ${StudyDateUtils.formatHumanDateTimeLocal(previewEarlyTriggerMillis)} (${ExamCountdownTarget.formatLeadDuration(computedLeadMinutes)} before)"
+                                                        },
+                                                        fontSize = 11.sp,
+                                                        color = if (isEarlyInPast) colors.inkBold else colors.tealDark
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        OutlinedTextField(
+                                            value = alertMessageInput,
+                                            onValueChange = { alertMessageInput = it },
+                                            label = { Text("What is going to happen (Alert Note)") },
+                                            placeholder = { Text("e.g., Hall gate opens — carry admit card & ID") },
+                                            maxLines = 2,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("countdown_alert_message_input")
+                                        )
+
+                                        // Vibrate, Sound, and Zero-time toggles
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                onClick = { vibrateInput = !vibrateInput },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (vibrateInput) colors.tealLight else colors.surface,
+                                                border = BorderStroke(1.dp, if (vibrateInput) colors.teal else colors.border),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("countdown_vibrate_toggle")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.Center,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Vibration,
+                                                        contentDescription = null,
+                                                        tint = if (vibrateInput) colors.tealDark else colors.muted,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(5.dp))
+                                                    Text(
+                                                        text = if (vibrateInput) "Vibrate: On" else "Vibrate: Off",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (vibrateInput) colors.tealDark else colors.muted
+                                                    )
+                                                }
+                                            }
+                                            Surface(
+                                                onClick = { soundInput = !soundInput },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (soundInput) colors.tealLight else colors.surface,
+                                                border = BorderStroke(1.dp, if (soundInput) colors.teal else colors.border),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("countdown_sound_toggle")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                                    horizontalArrangement = Arrangement.Center,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = if (soundInput) "Sound: On" else "Sound: Off",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (soundInput) colors.tealDark else colors.muted
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Switch(
+                                                checked = alertAtZeroInput,
+                                                onCheckedChange = { alertAtZeroInput = it },
+                                                colors = SwitchDefaults.colors(
+                                                    checkedThumbColor = Color.White,
+                                                    checkedTrackColor = colors.teal
+                                                )
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Also alert at exact countdown time (0m)",
+                                                fontSize = 12.sp,
+                                                color = colors.ink,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+
+                                        // Transparent Readiness Disclosure Banner (never fails silently)
+                                        if (readiness.blockingIssues.isNotEmpty() || readiness.advisoryWarnings.isNotEmpty()) {
+                                            val hasBlocking = readiness.blockingIssues.isNotEmpty()
+                                            val bannerAccent = if (hasBlocking) colors.red else colors.amber
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = bannerAccent.copy(alpha = 0.10f),
+                                                border = BorderStroke(0.9.dp, bannerAccent.copy(alpha = 0.55f)),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .testTag("countdown_alert_readiness_banner")
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(10.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Warning,
+                                                            contentDescription = null,
+                                                            tint = bannerAccent,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = if (hasBlocking) "Alerts Cannot Fire Until Fixed" else "Delivery Notice",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = bannerAccent
+                                                        )
+                                                    }
+                                                    readiness.blockingIssues.forEach { issue ->
+                                                        Text(
+                                                            text = "• $issue",
+                                                            fontSize = 11.sp,
+                                                            color = colors.inkBold
+                                                        )
+                                                    }
+                                                    readiness.advisoryWarnings.forEach { warn ->
+                                                        Text(
+                                                            text = "• $warn",
+                                                            fontSize = 11.sp,
+                                                            color = colors.ink
+                                                        )
+                                                    }
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        if (!readiness.postNotificationsGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                                },
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                modifier = Modifier.heightIn(min = 48.dp)
+                                                            ) {
+                                                                Text("Allow Notifications", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.red)
+                                                            }
+                                                        } else if (!readiness.systemNotificationsEnabled || !readiness.channelEnabled) {
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    CountdownAlertScheduler.openAppNotificationSettings(context)
+                                                                },
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                modifier = Modifier.heightIn(min = 48.dp)
+                                                            ) {
+                                                                Text("Notification Settings", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.red)
+                                                            }
+                                                        }
+                                                        if (!readiness.exactAlarmsAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    CountdownAlertScheduler.openExactAlarmSettings(context)
+                                                                },
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                modifier = Modifier.heightIn(min = 48.dp)
+                                                            ) {
+                                                                Text("Allow Exact Alarms", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.amber)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                val result = onTestAlert(
+                                                    titleInput,
+                                                    alertMessageInput,
+                                                    computedLeadMinutes,
+                                                    vibrateInput,
+                                                    soundInput
+                                                )
+                                                testFeedback = result
+                                                readiness = CountdownAlertScheduler.inspectReadiness(context)
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
+                                                .testTag("test_countdown_alert_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Vibration,
+                                                contentDescription = null,
+                                                tint = colors.teal,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Test Vibration & Alert Now",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colors.tealDark
+                                            )
+                                        }
+
+                                        testFeedback?.let { fb ->
+                                            Text(
+                                                text = fb,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (readiness.isReadyForAlerts) colors.tealDark else colors.red
+                                            )
+                                        }
+                                    }
+
                                     val onSaveClick = {
                                         val normalizedTime = timeInput.trim().ifBlank { "00:00" }
                                         val saved = onSaveCountdown(
@@ -759,16 +1209,17 @@ fun ExamCountdownsDialog(
                                             tzModeInput,
                                             subjectInput,
                                             "#0D9488",
-                                            isPinnedInput
+                                            isPinnedInput,
+                                            alertEnabledInput,
+                                            computedLeadMinutes,
+                                            alertMessageInput,
+                                            vibrateInput,
+                                            soundInput,
+                                            alertAtZeroInput
                                         )
                                         if (saved) {
-                                            editingId = null
-                                            titleInput = ""
-                                            subjectInput = ""
-                                            dateInput = StudyDateUtils.addDaysToDateString(nowMillis, 30)
-                                            timeInput = "00:00"
-                                            tzModeInput = "LOCAL"
-                                            isPinnedInput = true
+                                            resetForm()
+                                            readiness = CountdownAlertScheduler.inspectReadiness(context)
                                         }
                                     }
 
@@ -993,6 +1444,13 @@ fun ExamCountdownsDialog(
                                                         tzModeInput = if (target.isGmtAnchored()) "GMT" else "LOCAL"
                                                         subjectInput = target.subject
                                                         isPinnedInput = target.isPinned
+                                                        alertEnabledInput = target.alertEnabled
+                                                        leadHoursInput = (target.alertLeadMinutes / 60).toString()
+                                                        leadMinsInput = (target.alertLeadMinutes % 60).toString()
+                                                        alertMessageInput = target.alertMessage
+                                                        vibrateInput = target.vibrateOnAlert
+                                                        soundInput = target.alertSoundEnabled
+                                                        alertAtZeroInput = target.alertAtZero
                                                     },
                                                     modifier = Modifier.size(48.dp)
                                                 ) {
@@ -1017,7 +1475,23 @@ fun ExamCountdownsDialog(
                                             }
                                         }
 
-                                        // Row 2: Schedule & Subject + Action Icons (stacked cleanly at large font scale)
+                                        val earlyMillis = target.earlyAlertTriggerMillis()
+                                        val isPastTarget = (remMs ?: 0L) <= 0L
+                                        val earlyMissed = target.alertEnabled && earlyMillis != null && earlyMillis <= liveNowMillis && !isPastTarget
+                                        val alertSummaryLine = when {
+                                            !target.alertEnabled -> "Alerts off"
+                                            isPastTarget -> "Target passed — alert inactive"
+                                            earlyMissed -> "Early ${target.formattedLeadSummary()} window passed" +
+                                                if (target.alertAtZero) " • 0m alert active" else ""
+                                            else -> buildString {
+                                                append("Alerts ${target.formattedLeadSummary()} before")
+                                                if (target.vibrateOnAlert) append(" • Vibrate")
+                                                if (!target.alertSoundEnabled) append(" • Silent")
+                                                if (target.alertAtZero) append(" • +0m")
+                                            }
+                                        }
+
+                                        // Row 2: Schedule, Alert summary & Subject + Action Icons
                                         if (isLargeScaleOrNarrow) {
                                             Column(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -1028,6 +1502,25 @@ fun ExamCountdownsDialog(
                                                     fontSize = 11.5.sp,
                                                     color = colors.ink
                                                 )
+                                                Text(
+                                                    text = alertSummaryLine,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = when {
+                                                        !target.alertEnabled || isPastTarget -> colors.muted
+                                                        earlyMissed -> colors.amber
+                                                        else -> colors.tealDark
+                                                    }
+                                                )
+                                                if (target.alertEnabled && target.alertMessage.isNotBlank()) {
+                                                    Text(
+                                                        text = "Note: ${target.alertMessage}",
+                                                        fontSize = 11.sp,
+                                                        color = colors.inkBold,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
                                                 if (target.subject.isNotBlank()) {
                                                     Text(
                                                         text = target.subject,
@@ -1050,12 +1543,34 @@ fun ExamCountdownsDialog(
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Column(modifier = Modifier.weight(1f)) {
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                ) {
                                                     Text(
                                                         text = target.formattedTargetSchedule(),
                                                         fontSize = 11.5.sp,
                                                         color = colors.ink
                                                     )
+                                                    Text(
+                                                        text = alertSummaryLine,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = when {
+                                                            !target.alertEnabled || isPastTarget -> colors.muted
+                                                            earlyMissed -> colors.amber
+                                                            else -> colors.tealDark
+                                                        }
+                                                    )
+                                                    if (target.alertEnabled && target.alertMessage.isNotBlank()) {
+                                                        Text(
+                                                            text = "Note: ${target.alertMessage}",
+                                                            fontSize = 11.sp,
+                                                            color = colors.inkBold,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
                                                     if (target.subject.isNotBlank()) {
                                                         Text(
                                                             text = target.subject,

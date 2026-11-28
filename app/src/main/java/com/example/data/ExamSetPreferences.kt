@@ -552,6 +552,58 @@ class ExamSetPreferences(context: Context) {
         return prefs.getString(KEY_EXAM_COUNTDOWNS, "[]") ?: "[]"
     }
 
+    fun getDefaultCountdownAlertLeadMinutes(): Int {
+        return prefs.getInt(
+            KEY_DEFAULT_COUNTDOWN_ALERT_LEAD_MINS,
+            com.example.model.ExamCountdownTarget.DEFAULT_ALERT_LEAD_MINUTES
+        ).coerceIn(
+            com.example.model.ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+            com.example.model.ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+        )
+    }
+
+    fun setDefaultCountdownAlertLeadMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(
+            com.example.model.ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+            com.example.model.ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+        )
+        prefs.edit().putInt(KEY_DEFAULT_COUNTDOWN_ALERT_LEAD_MINS, clamped).apply()
+    }
+
+    fun getFiredCountdownAlertKeys(): Set<String> {
+        val raw = prefs.getString(KEY_FIRED_COUNTDOWN_ALERTS, null) ?: return emptySet()
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildSet {
+                for (i in 0 until arr.length()) {
+                    val v = arr.optString(i, "").trim()
+                    if (v.isNotBlank()) add(v)
+                }
+            }
+        }.getOrDefault(emptySet())
+    }
+
+    fun markCountdownAlertFired(key: String) {
+        if (key.isBlank()) return
+        val existing = getFiredCountdownAlertKeys().toMutableList()
+        if (!existing.contains(key)) {
+            existing.add(key)
+        }
+        val capped = if (existing.size > 120) existing.takeLast(120) else existing
+        val arr = JSONArray()
+        capped.forEach { arr.put(it) }
+        prefs.edit().putString(KEY_FIRED_COUNTDOWN_ALERTS, arr.toString()).apply()
+    }
+
+    fun clearFiredCountdownAlertsForId(countdownId: String) {
+        if (countdownId.isBlank()) return
+        val prefix = "$countdownId|"
+        val remaining = getFiredCountdownAlertKeys().filterNot { it.startsWith(prefix) }
+        val arr = JSONArray()
+        remaining.forEach { arr.put(it) }
+        prefs.edit().putString(KEY_FIRED_COUNTDOWN_ALERTS, arr.toString()).apply()
+    }
+
     // --- Study Planner & Pomodoro Focus ---
 
     fun getStudyTodos(): List<com.example.model.StudyTodoItem> {
@@ -803,6 +855,8 @@ class ExamSetPreferences(context: Context) {
         private const val KEY_DISMISSED_WORD_KEYS = "key_dismissed_word_keys_v1"
         private const val KEY_LEGACY_SAMPLES_CLEANED = "key_legacy_samples_cleaned_v1"
         private const val KEY_EXAM_COUNTDOWNS = "key_exam_countdowns_v1"
+        private const val KEY_DEFAULT_COUNTDOWN_ALERT_LEAD_MINS = "key_default_countdown_alert_lead_mins_v1"
+        private const val KEY_FIRED_COUNTDOWN_ALERTS = "key_fired_countdown_alerts_v1"
         private const val KEY_STUDY_TODOS = "key_study_todos_v1"
         private const val KEY_POMODORO_PRESET = "key_pomodoro_preset_v1"
         private const val KEY_POMODORO_CUSTOM_FOCUS_MINS = "key_pomodoro_custom_focus_v1"

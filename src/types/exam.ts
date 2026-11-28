@@ -201,6 +201,12 @@ export interface ExamCountdownTarget {
   targetTime?: string; // HH:mm (24h), optional for backward compatibility
   timezoneMode?: 'LOCAL' | 'GMT';
   targetUtcMillis?: number;
+  alertEnabled?: boolean;
+  alertLeadMinutes?: number;
+  alertMessage?: string;
+  vibrateOnAlert?: boolean;
+  alertSoundEnabled?: boolean;
+  alertAtZero?: boolean;
 }
 
 export type AuditPhase = 'PHASE_1_KEYS' | 'PHASE_2_REPLACEMENTS' | 'PHASE_3_EXPLANATIONS';

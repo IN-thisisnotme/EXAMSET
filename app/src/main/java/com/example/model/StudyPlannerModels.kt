@@ -161,7 +161,13 @@ data class ExamCountdownTarget(
     val updatedAt: Long = createdAt,
     val targetTimeStr: String = "",
     val timezoneMode: String = "LOCAL",
-    val targetUtcMillis: Long? = null
+    val targetUtcMillis: Long? = null,
+    val alertEnabled: Boolean = false,
+    val alertLeadMinutes: Int = DEFAULT_ALERT_LEAD_MINUTES,
+    val alertMessage: String = "",
+    val vibrateOnAlert: Boolean = true,
+    val alertSoundEnabled: Boolean = true,
+    val alertAtZero: Boolean = true
 ) {
     fun hasExplicitTime(): Boolean = StudyDateUtils.isValidTimeHm(targetTimeStr)
 
@@ -174,6 +180,13 @@ data class ExamCountdownTarget(
         } else {
             StudyDateUtils.parseDateToStartOfDayMillis(targetDateStr)
         }
+    }
+
+    fun earlyAlertTriggerMillis(): Long? {
+        if (!alertEnabled) return null
+        val target = resolvedTargetMillis() ?: return null
+        val clampedLead = alertLeadMinutes.coerceIn(MIN_ALERT_LEAD_MINUTES, MAX_ALERT_LEAD_MINUTES)
+        return target - clampedLead * 60_000L
     }
 
     fun remainingMillis(nowMillis: Long): Long? {
@@ -228,6 +241,8 @@ data class ExamCountdownTarget(
         return "$title • ${formattedDaysShort(nowMillis)}"
     }
 
+    fun formattedLeadSummary(): String = formatLeadDuration(alertLeadMinutes)
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("title", title)
@@ -240,9 +255,31 @@ data class ExamCountdownTarget(
         if (targetTimeStr.isNotBlank()) put("targetTimeStr", targetTimeStr)
         if (timezoneMode.isNotBlank() && timezoneMode != "LOCAL") put("timezoneMode", timezoneMode)
         if (targetUtcMillis != null && targetUtcMillis > 0L) put("targetUtcMillis", targetUtcMillis)
+        put("alertEnabled", alertEnabled)
+        put("alertLeadMinutes", alertLeadMinutes.coerceIn(MIN_ALERT_LEAD_MINUTES, MAX_ALERT_LEAD_MINUTES))
+        if (alertMessage.isNotBlank()) put("alertMessage", alertMessage)
+        put("vibrateOnAlert", vibrateOnAlert)
+        put("alertSoundEnabled", alertSoundEnabled)
+        put("alertAtZero", alertAtZero)
     }
 
     companion object {
+        const val DEFAULT_ALERT_LEAD_MINUTES = 120
+        const val MIN_ALERT_LEAD_MINUTES = 1
+        const val MAX_ALERT_LEAD_MINUTES = 43200 // 30 days
+
+        fun formatLeadDuration(leadMinutes: Int): String {
+            val mins = leadMinutes.coerceIn(MIN_ALERT_LEAD_MINUTES, MAX_ALERT_LEAD_MINUTES)
+            val days = mins / (24 * 60)
+            val remHours = (mins % (24 * 60)) / 60
+            val remMins = mins % 60
+            val parts = mutableListOf<String>()
+            if (days > 0) parts.add("${days}d")
+            if (remHours > 0) parts.add("${remHours}h")
+            if (remMins > 0 || parts.isEmpty()) parts.add("${remMins}m")
+            return parts.joinToString(" ")
+        }
+
         fun fromJson(obj: JSONObject?): ExamCountdownTarget? {
             if (obj == null) return null
             val title = obj.optString("title", "").trim()
@@ -267,7 +304,14 @@ data class ExamCountdownTarget(
                 updatedAt = obj.optLong("updatedAt", createdAt),
                 targetTimeStr = timeStr,
                 timezoneMode = tzMode,
-                targetUtcMillis = utcMs
+                targetUtcMillis = utcMs,
+                alertEnabled = obj.optBoolean("alertEnabled", false),
+                alertLeadMinutes = obj.optInt("alertLeadMinutes", DEFAULT_ALERT_LEAD_MINUTES)
+                    .coerceIn(MIN_ALERT_LEAD_MINUTES, MAX_ALERT_LEAD_MINUTES),
+                alertMessage = obj.optString("alertMessage", "").trim(),
+                vibrateOnAlert = obj.optBoolean("vibrateOnAlert", true),
+                alertSoundEnabled = obj.optBoolean("alertSoundEnabled", true),
+                alertAtZero = obj.optBoolean("alertAtZero", true)
             )
         }
 

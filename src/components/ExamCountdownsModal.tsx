@@ -1,12 +1,37 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock, Globe, Pencil, Pin, Plus, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bell,
+  BellOff,
+  CalendarClock,
+  Clock,
+  Globe,
+  Pencil,
+  Pin,
+  Plus,
+  Trash2,
+  Vibrate,
+  Volume2,
+  X,
+} from 'lucide-react';
 import { ExamCountdownTarget } from '../types/exam';
 import { useTheme } from '../theme/ThemeProvider';
 import { StudyDateUtils } from '../utils/studyPlannerEngine';
+import {
+  clampLeadMinutes,
+  computeEarlyAlertTriggerMillis,
+  DEFAULT_ALERT_LEAD_MINUTES,
+  formatLeadDuration,
+  inspectWebAlertReadiness,
+  requestBrowserNotificationPermission,
+  testWebCountdownAlert,
+} from '../utils/countdownAlertEngine';
 
 interface ExamCountdownsModalProps {
   isOpen: boolean;
   countdowns: ExamCountdownTarget[];
+  defaultLeadMinutes?: number;
+  onSaveDefaultLeadMinutes?: (minutes: number) => void;
   onSaveCountdowns: (next: ExamCountdownTarget[]) => void;
   onClose: () => void;
 }
@@ -18,10 +43,14 @@ export function getDaysRemaining(targetDateIso: string): number {
 export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
   isOpen,
   countdowns,
+  defaultLeadMinutes = DEFAULT_ALERT_LEAD_MINUTES,
+  onSaveDefaultLeadMinutes,
   onSaveCountdowns,
   onClose,
 }) => {
   const { colors } = useTheme();
+  const safeDefaultLead = clampLeadMinutes(defaultLeadMinutes);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [dateIso, setDateIso] = useState(() => StudyDateUtils.addDaysToDateString(Date.now(), 30));
@@ -29,11 +58,22 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
   const [timezoneMode, setTimezoneMode] = useState<'LOCAL' | 'GMT'>('LOCAL');
   const [examType, setExamType] = useState('');
   const [isPinned, setIsPinned] = useState(true);
+
+  const [alertEnabled, setAlertEnabled] = useState(true);
+  const [leadHoursStr, setLeadHoursStr] = useState(() => String(Math.floor(safeDefaultLead / 60)));
+  const [leadMinsStr, setLeadMinsStr] = useState(() => String(safeDefaultLead % 60));
+  const [alertMessage, setAlertMessage] = useState('');
+  const [vibrateOnAlert, setVibrateOnAlert] = useState(true);
+  const [alertSoundEnabled, setAlertSoundEnabled] = useState(true);
+  const [alertAtZero, setAlertAtZero] = useState(true);
+  const [readiness, setReadiness] = useState(() => inspectWebAlertReadiness());
+  const [testStatus, setTestStatus] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     if (!isOpen) return;
     setNowMs(Date.now());
+    setReadiness(inspectWebAlertReadiness());
     const hasTimed = countdowns.some((cd) => StudyDateUtils.hasExplicitCountdownTime(cd));
     if (!hasTimed) return;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -47,6 +87,17 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
     () => StudyDateUtils.parseDateTimeMillis(dateIso, effectiveTime, timezoneMode === 'GMT'),
     [dateIso, effectiveTime, timezoneMode]
   );
+
+  const parsedLeadHours = Math.max(0, Math.min(720, parseInt(leadHoursStr || '0', 10) || 0));
+  const parsedLeadMins = Math.max(0, Math.min(59, parseInt(leadMinsStr || '0', 10) || 0));
+  const rawTotalLead = parsedLeadHours * 60 + parsedLeadMins;
+  const isLeadInvalid = alertEnabled && rawTotalLead < 1;
+  const computedLeadMinutes = clampLeadMinutes(rawTotalLead > 0 ? rawTotalLead : safeDefaultLead);
+
+  const previewEarlyTriggerMs = useMemo(() => {
+    if (!alertEnabled || previewUtcMs === null || isLeadInvalid) return null;
+    return previewUtcMs - computedLeadMinutes * 60_000;
+  }, [alertEnabled, previewUtcMs, isLeadInvalid, computedLeadMinutes]);
 
   const sortedCountdowns = useMemo(() => {
     return [...countdowns].sort((a, b) => {
@@ -66,15 +117,24 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
     setTimezoneMode('LOCAL');
     setExamType('');
     setIsPinned(true);
+    setAlertEnabled(true);
+    setLeadHoursStr(String(Math.floor(safeDefaultLead / 60)));
+    setLeadMinsStr(String(safeDefaultLead % 60));
+    setAlertMessage('');
+    setVibrateOnAlert(true);
+    setAlertSoundEnabled(true);
+    setAlertAtZero(true);
+    setTestStatus(null);
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanTitle = title.trim();
-    if (!cleanTitle || !dateIso) return;
+    if (!cleanTitle || !dateIso || isLeadInvalid) return;
     const cleanTime = StudyDateUtils.normalizeTimeHmOrBlank(timeStr.trim() || '00:00') || '00:00';
     const targetUtcMillis =
       StudyDateUtils.parseDateTimeMillis(dateIso, cleanTime, timezoneMode === 'GMT') ?? undefined;
+    const cleanMsg = alertMessage.trim();
 
     if (editingId) {
       onSaveCountdowns(
@@ -89,6 +149,12 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                 targetUtcMillis,
                 examType: examType.trim() || 'General Assessment',
                 isPinned,
+                alertEnabled,
+                alertLeadMinutes: computedLeadMinutes,
+                alertMessage: cleanMsg,
+                vibrateOnAlert,
+                alertSoundEnabled,
+                alertAtZero,
               }
             : cd
         )
@@ -104,6 +170,12 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
         examType: examType.trim() || 'General Assessment',
         isPinned,
         color: colors.teal,
+        alertEnabled,
+        alertLeadMinutes: computedLeadMinutes,
+        alertMessage: cleanMsg,
+        vibrateOnAlert,
+        alertSoundEnabled,
+        alertAtZero,
       };
       onSaveCountdowns([next, ...countdowns]);
     }
@@ -257,6 +329,236 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               </div>
             )}
 
+            <div className="pt-2 space-y-2.5" style={{ borderTop: `1px solid ${colors.border}` }}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {alertEnabled ? (
+                    <Bell className="w-4 h-4 flex-shrink-0" style={{ color: colors.teal }} />
+                  ) : (
+                    <BellOff className="w-4 h-4 flex-shrink-0" style={{ color: colors.muted }} />
+                  )}
+                  <div>
+                    <div className="text-xs font-bold" style={{ color: colors.inkBold }}>
+                      Early Alert & Vibration
+                    </div>
+                    <div className="text-[0.6875rem]" style={{ color: colors.muted }}>
+                      Default: {formatLeadDuration(safeDefaultLead)} before target
+                    </div>
+                  </div>
+                </div>
+                <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={alertEnabled}
+                    onChange={(e) => setAlertEnabled(e.target.checked)}
+                  />
+                  <span className="text-[0.6875rem] font-semibold" style={{ color: colors.inkBold }}>
+                    {alertEnabled ? 'On' : 'Off'}
+                  </span>
+                </label>
+              </div>
+
+              {alertEnabled && (
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-3 gap-2 items-end">
+                    <label className="block space-y-1">
+                      <span className="text-[0.6875rem] font-semibold" style={{ color: colors.muted }}>
+                        Lead Hours
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={720}
+                        value={leadHoursStr}
+                        onChange={(e) => setLeadHoursStr(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                        className="w-full px-2.5 py-2 rounded-lg focus:outline-none"
+                        style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[0.6875rem] font-semibold" style={{ color: colors.muted }}>
+                        Lead Mins
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={59}
+                        value={leadMinsStr}
+                        onChange={(e) => setLeadMinsStr(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                        className="w-full px-2.5 py-2 rounded-lg focus:outline-none"
+                        style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={isLeadInvalid || computedLeadMinutes === safeDefaultLead}
+                      onClick={() => {
+                        if (!isLeadInvalid && onSaveDefaultLeadMinutes) {
+                          onSaveDefaultLeadMinutes(computedLeadMinutes);
+                        }
+                      }}
+                      className="px-2.5 py-2 rounded-lg text-[0.6875rem] font-bold border transition disabled:opacity-60"
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderColor: computedLeadMinutes === safeDefaultLead ? colors.teal : colors.border,
+                        color: computedLeadMinutes === safeDefaultLead ? colors.teal : colors.inkBold,
+                      }}
+                    >
+                      {computedLeadMinutes === safeDefaultLead ? 'Default ✓' : 'Set Default'}
+                    </button>
+                  </div>
+
+                  {isLeadInvalid ? (
+                    <div className="text-[0.6875rem] font-semibold" style={{ color: colors.red }}>
+                      Enter at least 1 minute of advance lead time.
+                    </div>
+                  ) : (
+                    previewEarlyTriggerMs !== null &&
+                    previewUtcMs !== null && (
+                      <div
+                        className="p-2 rounded-lg text-[0.6875rem] flex items-start gap-1.5 border"
+                        style={{
+                          backgroundColor:
+                            previewEarlyTriggerMs <= nowMs ? colors.redLight : colors.surface,
+                          borderColor:
+                            previewEarlyTriggerMs <= nowMs ? colors.amber : colors.border,
+                          color:
+                            previewEarlyTriggerMs <= nowMs ? colors.inkBold : colors.tealDark,
+                        }}
+                      >
+                        <Clock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>
+                          {previewUtcMs <= nowMs
+                            ? 'Target date/time is already in the past — future alerts will not fire unless moved forward.'
+                            : previewEarlyTriggerMs <= nowMs
+                            ? `Early alert time (${StudyDateUtils.formatHumanDateTimeLocal(previewEarlyTriggerMs)}) already passed; ${
+                                alertAtZero ? 'only 0m on-time alert will fire.' : 'reduce lead time so it can fire.'
+                              }`
+                            : `Early alert fires ${StudyDateUtils.formatHumanDateTimeLocal(
+                                previewEarlyTriggerMs
+                              )} (${formatLeadDuration(computedLeadMinutes)} before)`}
+                        </span>
+                      </div>
+                    )
+                  )}
+
+                  <input
+                    type="text"
+                    value={alertMessage}
+                    onChange={(e) => setAlertMessage(e.target.value)}
+                    placeholder="What is going to happen (e.g., Hall gate opens — carry admit card)"
+                    className="w-full px-3 py-2 rounded-lg focus:outline-none"
+                    style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.inkBold }}
+                  />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVibrateOnAlert((v) => !v)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[0.6875rem] font-bold border transition"
+                      style={
+                        vibrateOnAlert
+                          ? { backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }
+                          : { backgroundColor: colors.surface, color: colors.muted, borderColor: colors.border }
+                      }
+                    >
+                      <Vibrate className="w-3.5 h-3.5" />
+                      {vibrateOnAlert ? 'Vibrate: On' : 'Vibrate: Off'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlertSoundEnabled((s) => !s)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[0.6875rem] font-bold border transition"
+                      style={
+                        alertSoundEnabled
+                          ? { backgroundColor: colors.tealLight, color: colors.tealDark, borderColor: colors.teal }
+                          : { backgroundColor: colors.surface, color: colors.muted, borderColor: colors.border }
+                      }
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                      {alertSoundEnabled ? 'Sound: On' : 'Sound: Off'}
+                    </button>
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={alertAtZero}
+                      onChange={(e) => setAlertAtZero(e.target.checked)}
+                    />
+                    <span className="text-[0.6875rem]" style={{ color: colors.ink }}>
+                      Also alert at exact countdown time (0m)
+                    </span>
+                  </label>
+
+                  {(readiness.blockingIssues.length > 0 || readiness.advisoryWarnings.length > 0) && (
+                    <div
+                      className="p-2.5 rounded-lg border space-y-1.5 text-[0.6875rem]"
+                      style={{
+                        backgroundColor: readiness.blockingIssues.length > 0 ? colors.redLight : colors.surface,
+                        borderColor: readiness.blockingIssues.length > 0 ? colors.red : colors.amber,
+                        color: colors.ink,
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold" style={{ color: readiness.blockingIssues.length > 0 ? colors.red : colors.amber }}>
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Web Alert Readiness</span>
+                      </div>
+                      {readiness.blockingIssues.map((msg, i) => (
+                        <div key={`blk-${i}`} className="font-medium" style={{ color: colors.inkBold }}>
+                          • {msg}
+                        </div>
+                      ))}
+                      {readiness.advisoryWarnings.map((msg, i) => (
+                        <div key={`adv-${i}`} style={{ color: colors.muted }}>
+                          • {msg}
+                        </div>
+                      ))}
+                      {readiness.notificationsSupported && readiness.notificationPermission === 'default' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await requestBrowserNotificationPermission();
+                            setReadiness(inspectWebAlertReadiness());
+                          }}
+                          className="mt-1 px-2.5 py-1.5 rounded-lg font-bold border"
+                          style={{ backgroundColor: colors.surface, borderColor: colors.teal, color: colors.tealDark }}
+                        >
+                          Allow Browser Alerts
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const msg = await testWebCountdownAlert({
+                        title,
+                        customMessage: alertMessage,
+                        leadMinutes: computedLeadMinutes,
+                        vibrate: vibrateOnAlert,
+                        sound: alertSoundEnabled,
+                      });
+                      setTestStatus(msg);
+                      setReadiness(inspectWebAlertReadiness());
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[0.6875rem] font-bold border transition"
+                    style={{ backgroundColor: colors.surface, borderColor: colors.teal, color: colors.tealDark }}
+                  >
+                    <Vibrate className="w-3.5 h-3.5" />
+                    Test Vibration & Alert Now
+                  </button>
+
+                  {testStatus && (
+                    <div className="text-[0.6875rem] font-medium" style={{ color: colors.tealDark }}>
+                      {testStatus}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
@@ -278,7 +580,8 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
               </label>
               <button
                 type="submit"
-                className="flex items-center justify-center gap-1 px-4 py-2 rounded-lg font-bold whitespace-nowrap"
+                disabled={isLeadInvalid}
+                className="flex items-center justify-center gap-1 px-4 py-2 rounded-lg font-bold whitespace-nowrap disabled:opacity-50"
                 style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -326,10 +629,44 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="text-[0.6875rem] break-words" style={{ color: colors.ink }}>
                           {StudyDateUtils.formatCountdownSchedule(cd)}
                         </div>
+                        {(() => {
+                          const earlyMs = computeEarlyAlertTriggerMillis(cd);
+                          const leadVal = clampLeadMinutes(cd.alertLeadMinutes);
+                          const isPastTarget = remMs !== null && remMs <= 0;
+                          const earlyMissed = Boolean(cd.alertEnabled && earlyMs !== null && earlyMs <= nowMs && !isPastTarget);
+                          const line = !cd.alertEnabled
+                            ? 'Alerts off'
+                            : isPastTarget
+                            ? 'Target passed — alert inactive'
+                            : earlyMissed
+                            ? `Early ${formatLeadDuration(leadVal)} window passed${cd.alertAtZero !== false ? ' • 0m alert active' : ''}`
+                            : `Alerts ${formatLeadDuration(leadVal)} before${cd.vibrateOnAlert !== false ? ' • Vibrate' : ''}${
+                                cd.alertSoundEnabled === false ? ' • Silent' : ''
+                              }${cd.alertAtZero !== false ? ' • +0m' : ''}`;
+                          return (
+                            <div
+                              className="text-[0.6875rem] font-medium"
+                              style={{
+                                color: !cd.alertEnabled || isPastTarget
+                                  ? colors.muted
+                                  : earlyMissed
+                                  ? colors.amber
+                                  : colors.tealDark,
+                              }}
+                            >
+                              {line}
+                            </div>
+                          );
+                        })()}
+                        {cd.alertEnabled && cd.alertMessage && (
+                          <div className="text-[0.6875rem] font-semibold line-clamp-2" style={{ color: colors.inkBold }}>
+                            Note: {cd.alertMessage}
+                          </div>
+                        )}
                         {cd.examType && (
                           <div className="text-[0.625rem] line-clamp-2" style={{ color: colors.muted }}>
                             {cd.examType}
@@ -364,6 +701,15 @@ export const ExamCountdownsModal: React.FC<ExamCountdownsModalProps> = ({
                             setTimezoneMode(cd.timezoneMode === 'GMT' ? 'GMT' : 'LOCAL');
                             setExamType(cd.examType || '');
                             setIsPinned(cd.isPinned);
+                            const editLead = clampLeadMinutes(cd.alertLeadMinutes);
+                            setAlertEnabled(Boolean(cd.alertEnabled));
+                            setLeadHoursStr(String(Math.floor(editLead / 60)));
+                            setLeadMinsStr(String(editLead % 60));
+                            setAlertMessage(cd.alertMessage || '');
+                            setVibrateOnAlert(cd.vibrateOnAlert !== false);
+                            setAlertSoundEnabled(cd.alertSoundEnabled !== false);
+                            setAlertAtZero(cd.alertAtZero !== false);
+                            setTestStatus(null);
                           }}
                           title="Edit countdown"
                           className="p-1.5 rounded-lg border"

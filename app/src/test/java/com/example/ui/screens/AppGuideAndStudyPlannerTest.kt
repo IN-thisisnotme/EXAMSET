@@ -274,6 +274,8 @@ class AppGuideAndStudyPlannerTest {
         var savedTitle = ""
         var savedTime = ""
         var savedTzMode = ""
+        var savedAlertEnabled = false
+        var savedLeadMinutes = 0
 
         composeTestRule.setContent {
             ExamSetTheme(darkTheme = false) {
@@ -289,10 +291,12 @@ class AppGuideAndStudyPlannerTest {
                         )
                     ),
                     nowMillis = nowMs,
-                    onSaveCountdown = { _, title, _, timeStr, tzMode, _, _, _ ->
+                    onSaveCountdown = { _, title, _, timeStr, tzMode, _, _, _, alertEnabled, leadMins, _, _, _, _ ->
                         savedTitle = title
                         savedTime = timeStr
                         savedTzMode = tzMode
+                        savedAlertEnabled = alertEnabled
+                        savedLeadMinutes = leadMins
                         true
                     },
                     onTogglePin = {},
@@ -306,6 +310,7 @@ class AppGuideAndStudyPlannerTest {
         composeTestRule.onNodeWithTag("countdown_time_input").assertIsDisplayed()
         composeTestRule.onNodeWithTag("countdown_tz_local").assertIsDisplayed()
         composeTestRule.onNodeWithTag("countdown_tz_gmt").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("countdown_lead_hours_input").assertIsDisplayed()
         composeTestRule.onNodeWithText("+7d").assertDoesNotExist()
         composeTestRule.onNodeWithText("Disaster Management").assertIsDisplayed()
 
@@ -317,6 +322,8 @@ class AppGuideAndStudyPlannerTest {
         assertEquals("Term-End Paper I", savedTitle)
         assertEquals("00:00", savedTime)
         assertEquals("GMT", savedTzMode)
+        assertTrue(savedAlertEnabled)
+        assertEquals(120, savedLeadMinutes)
     }
 
     @Test
@@ -347,7 +354,7 @@ class AppGuideAndStudyPlannerTest {
                             )
                         ),
                         nowMillis = nowMs,
-                        onSaveCountdown = { _, _, _, _, _, _, _, _ -> true },
+                        onSaveCountdown = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> true },
                         onTogglePin = {},
                         onDelete = {},
                         onDismiss = {}

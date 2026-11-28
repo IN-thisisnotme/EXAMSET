@@ -39,6 +39,8 @@ const KEYS = {
   ATTEMPTS: 'examset_attempts_v2',
   SESSIONS: 'examset_active_sessions_v1',
   COUNTDOWNS: 'examset_countdowns_v1',
+  DEFAULT_COUNTDOWN_LEAD_MINUTES: 'examset_default_countdown_lead_mins_v1',
+  FIRED_COUNTDOWN_ALERTS: 'examset_fired_countdown_alerts_v1',
   // Phase 4 Storage Keys
   STUDY_NOTES: 'examset_study_notes_v1',
   KNOWLEDGE_COURSES: 'examset_knowledge_courses_v1',
@@ -435,6 +437,51 @@ export const ExamStore = {
 
   saveCountdowns(items: ExamCountdownTarget[]): void {
     safeWriteJson(KEYS.COUNTDOWNS, items);
+  },
+
+  loadDefaultCountdownLeadMinutes(): number {
+    try {
+      const raw = localStorage.getItem(KEYS.DEFAULT_COUNTDOWN_LEAD_MINUTES);
+      if (!raw) return 120;
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return 120;
+      return Math.max(1, Math.min(43200, Math.round(parsed)));
+    } catch {
+      return 120;
+    }
+  },
+
+  saveDefaultCountdownLeadMinutes(minutes: number): number {
+    const clamped = Math.max(1, Math.min(43200, Math.round(minutes || 120)));
+    try {
+      localStorage.setItem(KEYS.DEFAULT_COUNTDOWN_LEAD_MINUTES, String(clamped));
+    } catch {
+      // ignore storage failure
+    }
+    return clamped;
+  },
+
+  loadFiredCountdownAlerts(): string[] {
+    return safeReadJson<string[]>(KEYS.FIRED_COUNTDOWN_ALERTS, []);
+  },
+
+  markFiredCountdownAlert(alertKey: string): string[] {
+    const existing = safeReadJson<string[]>(KEYS.FIRED_COUNTDOWN_ALERTS, []);
+    if (existing.includes(alertKey)) return existing;
+    const next = [...existing, alertKey].slice(-200);
+    safeWriteJson(KEYS.FIRED_COUNTDOWN_ALERTS, next);
+    return next;
+  },
+
+  clearFiredCountdownAlertsForId(countdownId: string): string[] {
+    if (!countdownId) return safeReadJson<string[]>(KEYS.FIRED_COUNTDOWN_ALERTS, []);
+    const prefix = `${countdownId}|`;
+    const existing = safeReadJson<string[]>(KEYS.FIRED_COUNTDOWN_ALERTS, []);
+    const next = existing.filter((k) => !k.startsWith(prefix));
+    if (next.length !== existing.length) {
+      safeWriteJson(KEYS.FIRED_COUNTDOWN_ALERTS, next);
+    }
+    return next;
   },
 
   // --- Phase 4 Persistence Methods ---

@@ -1058,3 +1058,96 @@ test('CloudSyncEngine supports non-Chromium browsers via OPFS + safe async downl
   }
 });
 
+test('countdownAlertEngine triggers early & zero alerts with dedup, ExamStore persists default lead, and Android ZIP round-trips alert fields', async () => {
+  const {
+    buildCountdownAlertKey,
+    evaluateDueCountdownAlerts,
+    formatLeadDuration,
+  } = await import('../src/utils/countdownAlertEngine');
+
+  const prevLocal = globalThis.localStorage;
+  const localStore = createMemoryStorage();
+  Object.defineProperty(globalThis, 'localStorage', { value: localStore, configurable: true, writable: true });
+
+  try {
+    // 1. ExamStore defaults & fired-key cleanup
+    assert.equal(ExamStore.loadDefaultCountdownLeadMinutes(), 120);
+    ExamStore.saveDefaultCountdownLeadMinutes(95);
+    assert.equal(ExamStore.loadDefaultCountdownLeadMinutes(), 95);
+
+    ExamStore.markFiredCountdownAlert('cd-a|EARLY|1000');
+    ExamStore.markFiredCountdownAlert('cd-b|EARLY|2000');
+    ExamStore.clearFiredCountdownAlertsForId('cd-a');
+    assert.deepEqual(ExamStore.loadFiredCountdownAlerts(), ['cd-b|EARLY|2000']);
+
+    assert.equal(formatLeadDuration(120), '2h');
+    assert.equal(formatLeadDuration(150), '2h 30m');
+
+    // 2. evaluateDueCountdownAlerts triggers EARLY (at T - 2h) and deduplicates on repeated ticks
+    const targetUtc = 1_800_000_000_000;
+    const earlyTrigger = targetUtc - 120 * 60_000;
+    const countdown = {
+      id: 'cd-early-1',
+      title: 'Mains Exam',
+      targetDateIso: '2027-01-15',
+      examType: 'GS',
+      isPinned: true,
+      color: '#0D9488',
+      targetTime: '09:00',
+      timezoneMode: 'GMT' as const,
+      targetUtcMillis: targetUtc,
+      alertEnabled: true,
+      alertLeadMinutes: 120,
+      alertMessage: 'Reporting gate closes soon',
+      vibrateOnAlert: true,
+      alertSoundEnabled: false,
+      alertAtZero: true,
+    };
+
+    // Before trigger window -> nothing
+    assert.equal(evaluateDueCountdownAlerts([countdown], new Set(), earlyTrigger - 10_000).length, 0);
+
+    // 2 minutes into early trigger window -> EARLY alert fires
+    const firedSet = new Set<string>();
+    const dueEarly = evaluateDueCountdownAlerts([countdown], firedSet, earlyTrigger + 120_000);
+    assert.equal(dueEarly.length, 1);
+    assert.equal(dueEarly[0].stage, 'EARLY');
+    assert.equal(dueEarly[0].customMessage, 'Reporting gate closes soon');
+    assert.equal(dueEarly[0].vibrate, true);
+    assert.equal(dueEarly[0].sound, false);
+
+    // Marked as fired -> does NOT re-fire
+    firedSet.add(buildCountdownAlertKey(countdown.id, 'EARLY', earlyTrigger));
+    assert.equal(evaluateDueCountdownAlerts([countdown], firedSet, earlyTrigger + 180_000).length, 0);
+
+    // At T + 30s -> ZERO stage fires
+    const dueZero = evaluateDueCountdownAlerts([countdown], firedSet, targetUtc + 30_000);
+    assert.equal(dueZero.length, 1);
+    assert.equal(dueZero[0].stage, 'ZERO');
+
+    // 3. Android ZIP export/import round-trips all 6 countdown alert fields
+    const state = makeWorkspaceState();
+    state.countdowns = [countdown];
+    const { bytes } = await buildAndroidZipVaultArchive(state, 'Alert Sync Test', 1_700_000_999_000);
+    const preview = await inspectVaultArchiveBytes(bytes, 'alerts.examset.zip');
+    assert.equal(preview.checksumVerified, true);
+    const restoredState = applyVaultRestoreToState(
+      makeWorkspaceState(),
+      preview,
+      'FULL_REPLACE',
+      state.folders[0]
+    );
+    assert.equal(restoredState.countdowns.length, 1);
+    const r = restoredState.countdowns[0];
+    assert.equal(r.alertEnabled, true);
+    assert.equal(r.alertLeadMinutes, 120);
+    assert.equal(r.alertMessage, 'Reporting gate closes soon');
+    assert.equal(r.vibrateOnAlert, true);
+    assert.equal(r.alertSoundEnabled, false);
+    assert.equal(r.alertAtZero, true);
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', { value: prevLocal, configurable: true, writable: true });
+  }
+});
+
+

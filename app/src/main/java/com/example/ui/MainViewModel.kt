@@ -105,7 +105,9 @@ import com.example.model.StudyDueSuggestion
 import com.example.model.StudyTodoItem
 import com.example.model.TodoLinkType
 import com.example.model.TodoPriority
+import com.example.util.CountdownAlertScheduler
 import com.example.util.FocusPomodoroController
+import com.example.util.InAppCountdownAlert
 import com.example.util.PomodoroUiState
 import com.example.util.StudyNoteBlock
 import com.example.util.StudyNoteParser
@@ -406,6 +408,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         focusPomodoroController.restoreDndIfOrphaned()
         focusPomodoroController.refreshDndAccessStatus()
         syncExamTickerWithClock()
+        checkAndRescheduleCountdownAlerts(rescheduleAlarms = true)
     }
 
     fun setPreferredEnglishVariant(variant: String) {
@@ -1976,6 +1979,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _countdownNowMillis = MutableStateFlow(TrustedTimeManager.getTrustedTimeMillis())
     val countdownNowMillis: StateFlow<Long> = _countdownNowMillis.asStateFlow()
 
+    private val _defaultCountdownAlertMinutes = MutableStateFlow(appPreferences.getDefaultCountdownAlertLeadMinutes())
+    val defaultCountdownAlertMinutes: StateFlow<Int> = _defaultCountdownAlertMinutes.asStateFlow()
+
+    private val _activeInAppCountdownAlert = MutableStateFlow<InAppCountdownAlert?>(null)
+    val activeInAppCountdownAlert: StateFlow<InAppCountdownAlert?> = _activeInAppCountdownAlert.asStateFlow()
+
+    fun setDefaultCountdownAlertMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(
+            ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+            ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+        )
+        appPreferences.setDefaultCountdownAlertLeadMinutes(clamped)
+        _defaultCountdownAlertMinutes.value = clamped
+        _statusMessage.value = "Default early alert set to ${ExamCountdownTarget.formatLeadDuration(clamped)} before target"
+    }
+
+    fun dismissInAppCountdownAlert() {
+        _activeInAppCountdownAlert.value = null
+    }
+
+    fun snoozeInAppCountdownAlert(alert: InAppCountdownAlert, snoozeMinutes: Int = 10) {
+        _activeInAppCountdownAlert.value = null
+        CountdownAlertScheduler.scheduleSnoozeAlert(
+            context = getApplication(),
+            countdownId = alert.countdownId,
+            title = alert.title,
+            customMessage = alert.customMessage,
+            targetUtcMillis = alert.targetUtcMillis,
+            vibrate = alert.vibrate,
+            sound = alert.sound,
+            snoozeMinutes = snoozeMinutes
+        )
+        _statusMessage.value = "Snoozed '${alert.title}' for ${snoozeMinutes}m"
+    }
+
+    fun testCountdownAlert(
+        title: String,
+        message: String,
+        leadMinutes: Int,
+        vibrate: Boolean,
+        sound: Boolean
+    ): String {
+        val feedback = CountdownAlertScheduler.testAlertNow(
+            context = getApplication(),
+            title = title,
+            customMessage = message,
+            leadMinutes = leadMinutes,
+            vibrate = vibrate,
+            sound = sound
+        )
+        _statusMessage.value = feedback
+        return feedback
+    }
+
+    private fun checkAndRescheduleCountdownAlerts(rescheduleAlarms: Boolean) {
+        val list = _examCountdowns.value
+        val now = TrustedTimeManager.getTrustedTimeMillis()
+        _countdownNowMillis.value = now
+        val appCtx = getApplication<Application>()
+        if (rescheduleAlarms && list.isNotEmpty()) {
+            CountdownAlertScheduler.rescheduleAll(appCtx, list, now)
+        }
+        if (list.any { it.alertEnabled } && _activeInAppCountdownAlert.value == null) {
+            val due = CountdownAlertScheduler.checkDueForegroundAlerts(appCtx, appPreferences, list, now)
+            if (due != null) {
+                _activeInAppCountdownAlert.value = due
+            }
+        }
+    }
+
     fun addOrUpdateExamCountdown(
         id: String? = null,
         title: String,
@@ -1984,7 +2057,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         colorHex: String = "#0D9488",
         isPinned: Boolean = true,
         targetTimeStr: String = "",
-        timezoneMode: String = "LOCAL"
+        timezoneMode: String = "LOCAL",
+        alertEnabled: Boolean = true,
+        alertLeadMinutes: Int = _defaultCountdownAlertMinutes.value,
+        alertMessage: String = "",
+        vibrateOnAlert: Boolean = true,
+        alertSoundEnabled: Boolean = true,
+        alertAtZero: Boolean = true
     ): Boolean {
         val cleanTitle = title.trim()
         val cleanDate = targetDateStr.trim()
@@ -2007,11 +2086,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             null
         }
+        val clampedLead = alertLeadMinutes.coerceIn(
+            ExamCountdownTarget.MIN_ALERT_LEAD_MINUTES,
+            ExamCountdownTarget.MAX_ALERT_LEAD_MINUTES
+        )
+        val cleanAlertMsg = alertMessage.trim()
         val now = TrustedTimeManager.getTrustedTimeMillis()
         val list = _examCountdowns.value.toMutableList()
         val existingIdx = if (!id.isNullOrBlank()) list.indexOfFirst { it.id == id } else -1
-        if (existingIdx >= 0) {
-            list[existingIdx] = list[existingIdx].copy(
+        val savedTarget = if (existingIdx >= 0) {
+            list[existingIdx].copy(
                 title = cleanTitle,
                 targetDateStr = cleanDate,
                 subject = subject.trim(),
@@ -2020,32 +2104,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 updatedAt = now,
                 targetTimeStr = cleanTime,
                 timezoneMode = normalizedTzMode,
-                targetUtcMillis = resolvedUtcMillis
-            )
+                targetUtcMillis = resolvedUtcMillis,
+                alertEnabled = alertEnabled,
+                alertLeadMinutes = clampedLead,
+                alertMessage = cleanAlertMsg,
+                vibrateOnAlert = vibrateOnAlert,
+                alertSoundEnabled = alertSoundEnabled,
+                alertAtZero = alertAtZero
+            ).also { list[existingIdx] = it }
         } else {
-            list.add(
-                ExamCountdownTarget(
-                    title = cleanTitle,
-                    targetDateStr = cleanDate,
-                    subject = subject.trim(),
-                    colorHex = colorHex,
-                    isPinned = isPinned,
-                    createdAt = now,
-                    updatedAt = now,
-                    targetTimeStr = cleanTime,
-                    timezoneMode = normalizedTzMode,
-                    targetUtcMillis = resolvedUtcMillis
-                )
-            )
+            ExamCountdownTarget(
+                title = cleanTitle,
+                targetDateStr = cleanDate,
+                subject = subject.trim(),
+                colorHex = colorHex,
+                isPinned = isPinned,
+                createdAt = now,
+                updatedAt = now,
+                targetTimeStr = cleanTime,
+                timezoneMode = normalizedTzMode,
+                targetUtcMillis = resolvedUtcMillis,
+                alertEnabled = alertEnabled,
+                alertLeadMinutes = clampedLead,
+                alertMessage = cleanAlertMsg,
+                vibrateOnAlert = vibrateOnAlert,
+                alertSoundEnabled = alertSoundEnabled,
+                alertAtZero = alertAtZero
+            ).also { list.add(it) }
         }
         _examCountdowns.value = list
         appPreferences.saveExamCountdowns(list)
+        appPreferences.clearFiredCountdownAlertsForId(savedTarget.id)
+        CountdownAlertScheduler.scheduleForCountdown(getApplication(), savedTarget, now)
         _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
-        _statusMessage.value = "Saved exam countdown: $cleanTitle"
+        _statusMessage.value = if (savedTarget.alertEnabled) {
+            "Saved countdown: $cleanTitle (alerts ${savedTarget.formattedLeadSummary()} before)"
+        } else {
+            "Saved exam countdown: $cleanTitle"
+        }
         return true
     }
 
     fun deleteExamCountdown(id: String) {
+        CountdownAlertScheduler.cancelForCountdown(getApplication(), id)
+        appPreferences.clearFiredCountdownAlertsForId(id)
+        if (_activeInAppCountdownAlert.value?.countdownId == id) {
+            _activeInAppCountdownAlert.value = null
+        }
         val updated = _examCountdowns.value.filterNot { it.id == id }
         _examCountdowns.value = updated
         appPreferences.saveExamCountdowns(updated)
@@ -2287,6 +2392,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
                 }
                 wasSynced = synced
+            }
+        }
+        viewModelScope.launch {
+            checkAndRescheduleCountdownAlerts(rescheduleAlarms = true)
+            while (true) {
+                delay(15_000L)
+                if (_examCountdowns.value.any { it.alertEnabled }) {
+                    checkAndRescheduleCountdownAlerts(rescheduleAlarms = false)
+                }
             }
         }
     }
@@ -5842,9 +5956,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _headwordInbox.value = appPreferences.getHeadwordInbox()
                     _dismissedWordKeys.value = appPreferences.getDismissedWordKeys()
                     _examCountdowns.value = appPreferences.getExamCountdowns()
+                    _defaultCountdownAlertMinutes.value = appPreferences.getDefaultCountdownAlertLeadMinutes()
                     _studyTodos.value = appPreferences.getStudyTodos()
                     focusPomodoroController.reloadPreferencesAfterRestore()
                     _countdownNowMillis.value = TrustedTimeManager.getTrustedTimeMillis()
+                    checkAndRescheduleCountdownAlerts(rescheduleAlarms = true)
                     _fontScaleMode.value = appPreferences.getFontScaleMode()
                     _fontSizeScale.value = appPreferences.getFontSizeScale()
                     _cbtFontScaleStep.value = appPreferences.getCbtFontScaleStep()
