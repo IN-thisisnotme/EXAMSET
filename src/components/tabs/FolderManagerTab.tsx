@@ -31,7 +31,7 @@ import { PaperLanguageDetector } from '../../utils/paperLanguageDetector';
 import { StudyDateUtils } from '../../utils/studyPlannerEngine';
 
 interface FolderManagerTabProps {
-  currentPaper: QuestionPaper;
+  currentPaper: QuestionPaper | null;
   papers: QuestionPaper[];
   folders: FolderItem[];
   countdowns: ExamCountdownTarget[];
@@ -580,7 +580,7 @@ export const FolderManagerTab: React.FC<FolderManagerTabProps> = ({
           </div>
         ) : (
           filteredPapers.map((p) => {
-            const isActive = p.metadata.id === currentPaper.metadata.id;
+            const isActive = Boolean(currentPaper && p.metadata.id === currentPaper.metadata.id);
             const isChecked = selectedIds.includes(p.metadata.id);
             const langs = PaperLanguageDetector.detectLanguages(
               p.questions.slice(0, 5).map((q) => q.question).join('\n'),

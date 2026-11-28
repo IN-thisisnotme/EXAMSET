@@ -60,9 +60,12 @@ const KEYS = {
   DISMISSED_TIPS: 'examset_dismissed_tips_v1',
   AUTO_BACKUP_SCHEDULE: 'examset_auto_backup_schedule_v1',
   LAST_AUTO_BACKUP_AT: 'examset_last_auto_backup_at_v1',
+  LEGACY_SAMPLES_CLEANED: 'examset_legacy_samples_cleaned_v1',
 };
 
 const LEGACY_SAMPLE_FOLDER_IDS = new Set(['f-science', 'f-upsc', 'f-ssc']);
+const LEGACY_STARTER_NOTE_IDS = new Set(['note-starter-physics', 'note-starter-flashcards']);
+const LEGACY_STARTER_VOCAB_DECK_IDS = new Set(['vocab-starter-editorial-b2']);
 
 export const DEFAULT_ROOT_FOLDER: FolderItem = {
   id: 'default',
@@ -82,11 +85,13 @@ function safeReadJson<T>(key: string, fallback: T): T {
   }
 }
 
-function safeWriteJson(key: string, val: unknown): void {
+function safeWriteJson(key: string, val: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(val));
+    return true;
   } catch (err) {
     console.warn('localStorage write failed for', key, err);
+    return false;
   }
 }
 
@@ -195,9 +200,90 @@ export function normalizePaperMetadata(paper: QuestionPaper): QuestionPaper {
 }
 
 export const ExamStore = {
-  loadPapers(seedPaper?: QuestionPaper): QuestionPaper[] {
-    const stored = safeReadJson<QuestionPaper[]>(KEYS.PAPERS_LIBRARY, []);
-    if (stored.length > 0) {
+  cleanLegacySamplesOnce(): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      if (localStorage.getItem(KEYS.LEGACY_SAMPLES_CLEANED) === '1') return;
+
+      const attempts = this.loadAttempts();
+      const attemptedPaperIds = new Set(attempts.map((a) => a.paperId));
+
+      const rawPapers = safeReadJson<QuestionPaper[]>(KEYS.PAPERS_LIBRARY, []);
+      if (rawPapers.length > 0) {
+        const filteredPapers = rawPapers.filter((p) => {
+          const isLegacyId = p.metadata?.id === 'paper-default-01';
+          const isLegacyTitle =
+            p.metadata?.title === 'National Science & Technology Olympiad' ||
+            p.metadata?.title === 'UPSC / SSC CGL Combined General Studies';
+          const hasDryIce =
+            Array.isArray(p.questions) &&
+            p.questions.some((q) => (q.question || '').includes('commonly known as dry ice'));
+          const untouched =
+            !p.metadata?.updatedAt || p.metadata.updatedAt === p.metadata.createdAt;
+          const hasAttempts = attemptedPaperIds.has(p.metadata?.id || '');
+          if ((isLegacyId || (isLegacyTitle && hasDryIce)) && untouched && !hasAttempts) {
+            return false;
+          }
+          return true;
+        });
+        if (filteredPapers.length !== rawPapers.length) {
+          this.savePapers(filteredPapers);
+          const activeId = localStorage.getItem(KEYS.ACTIVE_PAPER_ID);
+          if (activeId && !filteredPapers.some((p) => p.metadata.id === activeId)) {
+            this.setActivePaper(filteredPapers[0] || null);
+          }
+        }
+      }
+
+      const rawLegacyActive = safeReadJson<QuestionPaper | null>(KEYS.ACTIVE_PAPER, null);
+      if (
+        rawLegacyActive &&
+        (rawLegacyActive.metadata?.id === 'paper-default-01' ||
+          rawLegacyActive.metadata?.title === 'National Science & Technology Olympiad') &&
+        (!rawLegacyActive.metadata?.updatedAt ||
+          rawLegacyActive.metadata.updatedAt === rawLegacyActive.metadata.createdAt) &&
+        !attemptedPaperIds.has(rawLegacyActive.metadata?.id || '')
+      ) {
+        localStorage.removeItem(KEYS.ACTIVE_PAPER);
+        localStorage.removeItem(KEYS.ACTIVE_PAPER_ID);
+      }
+
+      const rawNotes = safeReadJson<StudyNoteRecord[] | null>(KEYS.STUDY_NOTES, null);
+      if (Array.isArray(rawNotes) && rawNotes.length > 0) {
+        const filteredNotes = rawNotes.filter((n) => {
+          const isStarter = LEGACY_STARTER_NOTE_IDS.has(n.id);
+          const untouched = !n.updatedAt || n.updatedAt === n.createdAt;
+          const noSrs = !n.srsStates || Object.keys(n.srsStates).length === 0;
+          return !(isStarter && untouched && noSrs);
+        });
+        if (filteredNotes.length !== rawNotes.length) {
+          this.saveStudyNotes(filteredNotes);
+        }
+      }
+
+      const rawDecks = safeReadJson<VocabularyDeck[] | null>(KEYS.VOCAB_DECKS, null);
+      if (Array.isArray(rawDecks) && rawDecks.length > 0) {
+        const vocabSrs = this.loadVocabSrs();
+        const filteredDecks = rawDecks.filter((d) => {
+          const isStarter = LEGACY_STARTER_VOCAB_DECK_IDS.has(d.id);
+          const untouched = !d.updatedAt || d.updatedAt === d.createdAt;
+          const hasSrs = vocabSrs[d.id] && Object.keys(vocabSrs[d.id]).length > 0;
+          return !(isStarter && untouched && !hasSrs);
+        });
+        if (filteredDecks.length !== rawDecks.length) {
+          this.saveVocabDecks(filteredDecks);
+        }
+      }
+
+      localStorage.setItem(KEYS.LEGACY_SAMPLES_CLEANED, '1');
+    } catch {
+      // Best-effort cleanup
+    }
+  },
+
+  loadPapers(_seedPaper?: QuestionPaper): QuestionPaper[] {
+    const stored = safeReadJson<QuestionPaper[] | null>(KEYS.PAPERS_LIBRARY, null);
+    if (Array.isArray(stored)) {
       return stored.map((p) => ({
         ...p,
         metadata: {
@@ -214,9 +300,8 @@ export const ExamStore = {
     }
 
     const legacyActive = safeReadJson<QuestionPaper | null>(KEYS.ACTIVE_PAPER, null);
-    const initial = legacyActive || seedPaper;
-    if (initial) {
-      const norm = normalizePaperMetadata(initial);
+    if (legacyActive) {
+      const norm = normalizePaperMetadata(legacyActive);
       safeWriteJson(KEYS.PAPERS_LIBRARY, [norm]);
       return [norm];
     }
@@ -237,7 +322,16 @@ export const ExamStore = {
     return next;
   },
 
-  setActivePaper(paper: QuestionPaper): void {
+  setActivePaper(paper: QuestionPaper | null): void {
+    if (!paper) {
+      try {
+        localStorage.removeItem(KEYS.ACTIVE_PAPER);
+        localStorage.removeItem(KEYS.ACTIVE_PAPER_ID);
+      } catch {
+        // ignore
+      }
+      return;
+    }
     safeWriteJson(KEYS.ACTIVE_PAPER, paper);
     try {
       localStorage.setItem(KEYS.ACTIVE_PAPER_ID, paper.metadata.id);
@@ -246,8 +340,9 @@ export const ExamStore = {
     }
   },
 
-  getActivePaper(seedPaper: QuestionPaper): QuestionPaper {
-    const library = this.loadPapers(seedPaper);
+  getActivePaper(_seedPaper?: QuestionPaper): QuestionPaper | null {
+    const library = this.loadPapers();
+    if (library.length === 0) return null;
     const activeId = (() => {
       try {
         return localStorage.getItem(KEYS.ACTIVE_PAPER_ID);
@@ -259,9 +354,7 @@ export const ExamStore = {
       const found = library.find((p) => p.metadata.id === activeId);
       if (found) return found;
     }
-    const legacy = safeReadJson<QuestionPaper | null>(KEYS.ACTIVE_PAPER, null);
-    if (legacy) return normalizePaperMetadata(legacy);
-    return library[0] || normalizePaperMetadata(seedPaper);
+    return library[0] || null;
   },
 
   loadFolders(papers: QuestionPaper[]): FolderItem[] {
@@ -303,8 +396,8 @@ export const ExamStore = {
     return next;
   },
 
-  saveAttempts(attempts: AttemptRecord[]): void {
-    safeWriteJson(KEYS.ATTEMPTS, Array.isArray(attempts) ? attempts : []);
+  saveAttempts(attempts: AttemptRecord[]): boolean {
+    return safeWriteJson(KEYS.ATTEMPTS, attempts.slice(0, 500));
   },
 
   deleteAttempt(attemptId: string): AttemptRecord[] {
@@ -322,6 +415,10 @@ export const ExamStore = {
     return safeReadJson<Record<string, ActiveExamSession>>(KEYS.SESSIONS, {});
   },
 
+  saveAllActiveSessions(sessions: Record<string, ActiveExamSession>): boolean {
+    return safeWriteJson(KEYS.SESSIONS, sessions || {});
+  },
+
   saveActiveSession(paperId: string, session: ActiveExamSession | null): void {
     const map = safeReadJson<Record<string, ActiveExamSession>>(KEYS.SESSIONS, {});
     if (session === null) {
@@ -330,10 +427,6 @@ export const ExamStore = {
       map[paperId] = session;
     }
     safeWriteJson(KEYS.SESSIONS, map);
-  },
-
-  saveAllActiveSessions(sessions: Record<string, ActiveExamSession>): void {
-    safeWriteJson(KEYS.SESSIONS, sessions && typeof sessions === 'object' ? sessions : {});
   },
 
   loadCountdowns(): ExamCountdownTarget[] {
@@ -419,15 +512,10 @@ export const ExamStore = {
     safeWriteJson(KEYS.KNOWLEDGE_COURSES, this.normalizeKnowledgeCoursesMap(map));
   },
 
-  loadStudyNotes(seedNotes: StudyNoteRecord[] = []): StudyNoteRecord[] {
+  loadStudyNotes(_seedNotes: StudyNoteRecord[] = []): StudyNoteRecord[] {
     const stored = safeReadJson<StudyNoteRecord[] | null>(KEYS.STUDY_NOTES, null);
     if (stored && Array.isArray(stored) && stored.length > 0) {
       return [...stored].map((n) => this.normalizeStudyNote(n)).sort((a, b) => b.updatedAt - a.updatedAt);
-    }
-    if (stored === null && seedNotes.length > 0) {
-      const normalized = seedNotes.map((n) => this.normalizeStudyNote(n));
-      safeWriteJson(KEYS.STUDY_NOTES, normalized);
-      return normalized;
     }
     return (stored || []).map((n) => this.normalizeStudyNote(n));
   },
@@ -439,14 +527,10 @@ export const ExamStore = {
     );
   },
 
-  loadVocabDecks(seedDecks: VocabularyDeck[] = []): VocabularyDeck[] {
+  loadVocabDecks(_seedDecks: VocabularyDeck[] = []): VocabularyDeck[] {
     const stored = safeReadJson<VocabularyDeck[] | null>(KEYS.VOCAB_DECKS, null);
     if (stored && Array.isArray(stored) && stored.length > 0) {
       return stored;
-    }
-    if (stored === null && seedDecks.length > 0) {
-      safeWriteJson(KEYS.VOCAB_DECKS, seedDecks);
-      return seedDecks;
     }
     return stored || [];
   },
@@ -620,14 +704,17 @@ export const ExamStore = {
     );
   },
 
-  saveVaultSnapshots(snapshots: VaultSnapshotRecord[]): void {
-    safeWriteJson(KEYS.VAULT_SNAPSHOTS, snapshots);
+  saveVaultSnapshots(snapshots: VaultSnapshotRecord[]): boolean {
+    return safeWriteJson(KEYS.VAULT_SNAPSHOTS, snapshots);
   },
 
   addVaultSnapshot(snap: VaultSnapshotRecord): VaultSnapshotRecord[] {
     const existing = this.loadVaultSnapshots();
     const { kept } = pruneVaultSnapshotList([snap, ...existing]);
-    this.saveVaultSnapshots(kept);
+    const ok = this.saveVaultSnapshots(kept);
+    if (!ok) {
+      throw new Error('Browser storage quota exceeded while saving snapshot metadata.');
+    }
     return kept;
   },
 
@@ -658,7 +745,37 @@ export const ExamStore = {
 
     const existing = this.loadVaultSnapshots();
     const { kept, evictedIds } = pruneVaultSnapshotList([storedSnap, ...existing]);
-    this.saveVaultSnapshots(kept);
+    let saved = this.saveVaultSnapshots(kept);
+    if (!saved && storedSnap.blobStorage === 'inline') {
+      // Retry keeping only the newest inline snapshots if localStorage is near the 5MB limit
+      const compactKept = pruneVaultSnapshotList([
+        storedSnap,
+        ...existing.filter((s) => s.blobStorage === 'idb').slice(0, 4),
+      ]).kept;
+      saved = this.saveVaultSnapshots(compactKept);
+      if (saved) {
+        if (evictedIds.length > 0) {
+          try {
+            await deleteSnapshotBlobsInIdb(evictedIds);
+          } catch {
+            // Best-effort cleanup
+          }
+        }
+        return compactKept;
+      }
+    }
+    if (!saved) {
+      if (storedSnap.blobStorage === 'idb') {
+        try {
+          await deleteSnapshotBlobsInIdb([storedSnap.id]);
+        } catch {
+          // ignore
+        }
+      }
+      throw new Error(
+        'Browser storage quota exceeded or IndexedDB unavailable (private browsing?). Export a vault file instead or delete older snapshots.'
+      );
+    }
     if (evictedIds.length > 0) {
       try {
         await deleteSnapshotBlobsInIdb(evictedIds);

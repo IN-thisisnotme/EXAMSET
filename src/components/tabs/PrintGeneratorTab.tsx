@@ -22,19 +22,28 @@ import {
 import { useTheme } from '../../theme/ThemeProvider';
 import { ExamNumberGenerator } from '../../utils/examNumberGenerator';
 import { PrintDocumentHelper } from '../../utils/printDocumentHelper';
+import { downloadTextSafely } from '../../utils/downloadHelper';
+import { EmptyPaperPromptCard } from '../EmptyPaperPromptCard';
 
 interface PrintGeneratorTabProps {
-  currentPaper: QuestionPaper;
+  currentPaper: QuestionPaper | null;
   allPapers?: QuestionPaper[];
+  onOpenCreateModal?: () => void;
+  onOpenBatchImportModal?: () => void;
+  onNavigateToVault?: () => void;
 }
 
 export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
   currentPaper,
   allPapers = [],
+  onOpenCreateModal,
+  onOpenBatchImportModal,
+  onNavigateToVault,
 }) => {
   const { colors } = useTheme();
 
   const [config, setConfig] = useState<ExamConfig>(() => {
+    if (!currentPaper) return { ...DEFAULT_EXAM_CONFIG };
     const pos = currentPaper.metadata.positiveMarks ?? 2.0;
     const count = Math.max(1, currentPaper.questions.length);
     const hasE = currentPaper.questions.some((q) => Boolean(q.options.e?.trim()));
@@ -59,6 +68,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
 
   // Sync key metadata changes when switching active paper
   useEffect(() => {
+    if (!currentPaper) return;
     const count = Math.max(1, currentPaper.questions.length);
     const pos = currentPaper.metadata.positiveMarks ?? 2.0;
     const hasE = currentPaper.questions.some((q) => Boolean(q.options.e?.trim()));
@@ -78,17 +88,30 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
       maxMarks: `${(count * pos).toFixed(0)} Marks`,
       omrOptionCount: hasE ? 5 : prev.omrOptionCount,
     }));
-  }, [currentPaper.metadata.id, currentPaper.questions.length]);
+  }, [currentPaper?.metadata.id, currentPaper?.questions.length]);
 
   const [activeMode, setActiveMode] = useState<PrintMode>('paper_and_omr');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const generatedHtml = useMemo(() => {
+    if (!currentPaper) return '';
     return PrintDocumentHelper.generatePrintHtml(currentPaper, {
       ...config,
       printMode: activeMode,
     });
   }, [currentPaper, config, activeMode]);
+
+  if (!currentPaper) {
+    return (
+      <EmptyPaperPromptCard
+        title="Print & A4 OMR Studio — No Question Set Loaded"
+        description="Load, create, or restore a Question Set to generate A4 Print Papers, OMR Sheets, and Standalone Interactive CBT HTML files."
+        onCreateSet={onOpenCreateModal}
+        onBatchImport={onOpenBatchImportModal}
+        onOpenVault={onNavigateToVault}
+      />
+    );
+  }
 
   const handlePrint = () => {
     const iframe = iframeRef.current;
@@ -108,15 +131,7 @@ export const PrintGeneratorTab: React.FC<PrintGeneratorTabProps> = ({
   };
 
   const downloadFile = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadTextSafely(content, filename, 'text/html;charset=utf-8');
   };
 
   const handleDownloadPrintableHtml = () => {

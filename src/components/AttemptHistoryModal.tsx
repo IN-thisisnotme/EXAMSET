@@ -4,6 +4,7 @@ import { AttemptRecord, QuestionPaper } from '../types/exam';
 import { useTheme } from '../theme/ThemeProvider';
 import { AnswerKeyMatcher } from '../utils/answerKeyMatcher';
 import { PsychometricEngine } from '../utils/psychometricEngine';
+import { downloadTextSafely } from '../utils/downloadHelper';
 
 interface AttemptHistoryModalProps {
   isOpen: boolean;
@@ -54,15 +55,11 @@ export const AttemptHistoryModal: React.FC<AttemptHistoryModalProps> = ({
       att.submittedAnswers,
       attempts.length
     );
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ReportCard_${att.rollNumber}_${paper.metadata.title.replace(/\s+/g, '_')}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadTextSafely(
+      text,
+      `ReportCard_${att.rollNumber}_${paper.metadata.title.replace(/\s+/g, '_')}.txt`,
+      'text/plain;charset=utf-8'
+    );
   };
 
   return (

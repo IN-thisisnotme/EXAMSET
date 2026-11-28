@@ -15,6 +15,8 @@ import type {
   PromptPreset,
   StudyNoteRecord,
   VocabularyDeck,
+  VocabularyEntry,
+  VocabularyExample,
 } from '../types/phase4';
 import type {
   BackupCounts,
@@ -33,9 +35,16 @@ import {
   EMPTY_BRAIN_LAB_STATS,
 } from '../types/phase5';
 import { mergeBrainLabStats } from './brainLabEngines';
+import { sha256HexSync } from './sha256Sync';
+import { isZipBytes, MAX_ZIP_TOTAL_BYTES } from './zipArchiveHelper';
+import {
+  buildAndroidZipVaultArchive,
+  inspectAndroidZipBytes,
+} from './androidZipVaultBridge';
 
-export const MAX_TEXT_BACKUP_BYTES = 32 * 1024 * 1024;
-export const MAX_ZIP_BACKUP_BYTES = 64 * 1024 * 1024;
+export { sha256HexSync, buildAndroidZipVaultArchive, inspectAndroidZipBytes };
+
+export const MAX_JSON_IMPORT_BYTES = 64 * 1024 * 1024;
 
 export interface WorkspaceBackupState {
   papers: QuestionPaper[];
@@ -100,134 +109,6 @@ export interface VaultArchiveDocument {
       fontScaleMode: AppFontScaleMode;
     };
   };
-}
-
-// Pure synchronous FIPS 180-4 SHA-256 implementation so checksums work
-// identically across HTTPS browsers, localhost, file://, and Node tests.
-const SHA256_K = [
-  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-];
-
-function rotr(x: number, n: number): number {
-  return (x >>> n) | (x << (32 - n));
-}
-
-function encodeUtf8Bytes(input: string): number[] {
-  if (typeof TextEncoder !== 'undefined') {
-    return Array.from(new TextEncoder().encode(input));
-  }
-  const bytes: number[] = [];
-  for (let i = 0; i < input.length; i++) {
-    let code = input.charCodeAt(i);
-    if (code < 0x80) {
-      bytes.push(code);
-    } else if (code < 0x800) {
-      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-    } else if (code < 0xd800 || code >= 0xe000) {
-      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-    } else {
-      i++;
-      code = 0x10000 + (((code & 0x3ff) << 10) | (input.charCodeAt(i) & 0x3ff));
-      bytes.push(
-        0xf0 | (code >> 18),
-        0x80 | ((code >> 12) & 0x3f),
-        0x80 | ((code >> 6) & 0x3f),
-        0x80 | (code & 0x3f)
-      );
-    }
-  }
-  return bytes;
-}
-
-export function sha256HexSync(input: string): string {
-  return sha256HexBytesSync(encodeUtf8Bytes(input));
-}
-
-export function sha256HexBytesSync(bytes: Uint8Array | number[]): string {
-  const rawLen = bytes.length;
-  const msg = new Array<number>(rawLen);
-  for (let i = 0; i < rawLen; i++) {
-    msg[i] = bytes[i] & 0xff;
-  }
-  const bitLen = rawLen * 8;
-  msg.push(0x80);
-  while ((msg.length % 64) !== 56) {
-    msg.push(0);
-  }
-  const highBits = Math.floor(bitLen / 0x100000000);
-  const lowBits = bitLen >>> 0;
-  for (let s = 24; s >= 0; s -= 8) msg.push((highBits >>> s) & 0xff);
-  for (let s = 24; s >= 0; s -= 8) msg.push((lowBits >>> s) & 0xff);
-
-  let h0 = 0x6a09e667;
-  let h1 = 0xbb67ae85;
-  let h2 = 0x3c6ef372;
-  let h3 = 0xa54ff53a;
-  let h4 = 0x510e527f;
-  let h5 = 0x9b05688c;
-  let h6 = 0x1f83d9ab;
-  let h7 = 0x5be0cd19;
-
-  const w = new Array<number>(64).fill(0);
-  for (let chunk = 0; chunk < msg.length; chunk += 64) {
-    for (let i = 0; i < 16; i++) {
-      const off = chunk + i * 4;
-      w[i] =
-        ((msg[off] << 24) | (msg[off + 1] << 16) | (msg[off + 2] << 8) | msg[off + 3]) >>> 0;
-    }
-    for (let i = 16; i < 64; i++) {
-      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
-      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
-      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
-    }
-
-    let a = h0;
-    let b = h1;
-    let c = h2;
-    let d = h3;
-    let e = h4;
-    let f = h5;
-    let g = h6;
-    let h = h7;
-
-    for (let i = 0; i < 64; i++) {
-      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-      const ch = (e & f) ^ (~e & g);
-      const temp1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0;
-      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-      const maj = (a & b) ^ (a & c) ^ (b & c);
-      const temp2 = (S0 + maj) >>> 0;
-
-      h = g;
-      g = f;
-      f = e;
-      e = (d + temp1) >>> 0;
-      d = c;
-      c = b;
-      b = a;
-      a = (temp1 + temp2) >>> 0;
-    }
-
-    h0 = (h0 + a) >>> 0;
-    h1 = (h1 + b) >>> 0;
-    h2 = (h2 + c) >>> 0;
-    h3 = (h3 + d) >>> 0;
-    h4 = (h4 + e) >>> 0;
-    h5 = (h5 + f) >>> 0;
-    h6 = (h6 + g) >>> 0;
-    h7 = (h7 + h) >>> 0;
-  }
-
-  return [h0, h1, h2, h3, h4, h5, h6, h7]
-    .map((n) => (n >>> 0).toString(16).padStart(8, '0'))
-    .join('');
 }
 
 export function normalizeCourseMapForBackup(raw: unknown): KnowledgeCoursesMap {
@@ -339,7 +220,9 @@ export function buildVaultArchive(
       studyTodos: state.studyTodos,
       pomodoroConfig: state.pomodoroConfig,
       dailyAnalytics: state.dailyAnalytics,
-      activeSessions: state.activeSessions || {},
+      ...(state.activeSessions && Object.keys(state.activeSessions).length > 0
+        ? { activeSessions: state.activeSessions }
+        : {}),
     },
     brainAndPreferences: {
       brainLabStats: state.brainLabStats,
@@ -372,10 +255,42 @@ export function buildVaultArchive(
   return { document, rawJson };
 }
 
+export async function inspectVaultArchiveBytes(
+  bytes: Uint8Array,
+  sourceLabel: string
+): Promise<RestorePreview> {
+  if (bytes.byteLength === 0) {
+    throw new Error('Selected backup file is empty.');
+  }
+  if (isZipBytes(bytes)) {
+    if (bytes.byteLength > MAX_ZIP_TOTAL_BYTES) {
+      throw new Error('Selected .examset.zip archive exceeds safe 80 MB size limit.');
+    }
+    return inspectAndroidZipBytes(bytes, sourceLabel);
+  }
+  if (bytes.byteLength > MAX_JSON_IMPORT_BYTES) {
+    throw new Error('Selected JSON backup exceeds safe 64 MB size limit.');
+  }
+  const text = new TextDecoder('utf-8').decode(bytes);
+  return inspectVaultArchiveText(text, sourceLabel);
+}
+
+export async function inspectVaultArchiveFile(file: File): Promise<RestorePreview> {
+  const maxAllowed = Math.max(MAX_ZIP_TOTAL_BYTES, MAX_JSON_IMPORT_BYTES);
+  if (file.size > maxAllowed) {
+    throw new Error(`Selected file (${Math.round(file.size / (1024 * 1024))} MB) exceeds safe size limit.`);
+  }
+  const buffer = await file.arrayBuffer();
+  return inspectVaultArchiveBytes(new Uint8Array(buffer), file.name);
+}
+
 export function inspectVaultArchiveText(rawText: string, sourceLabel: string): RestorePreview {
   const trimmed = (rawText || '').trim();
   if (!trimmed) {
     throw new Error('Empty backup input. Select a valid ExamSet vault or paper JSON file.');
+  }
+  if (trimmed.length > MAX_JSON_IMPORT_BYTES) {
+    throw new Error('JSON backup text exceeds safe 64 MB size limit.');
   }
 
   let parsed: unknown;
@@ -549,92 +464,6 @@ function mergeSrsEntry(
   return b.lastReviewedAtMillis >= a.lastReviewedAtMillis ? b : a;
 }
 
-const VALID_THEME_MODES = new Set<ThemeMode>(['LIGHT', 'DARK', 'SYSTEM']);
-const VALID_COLOR_PRESETS = new Set<ColorSchemePreset>([
-  'NORDIC_SLATE',
-  'WARM_PAPER',
-  'FOREST_SAGE',
-  'ROYAL_INDIGO',
-  'OLED_OBSIDIAN',
-]);
-const VALID_FONT_SCALE_MODES = new Set<AppFontScaleMode>([
-  'COMPACT',
-  'STANDARD_FIXED',
-  'LARGE',
-  'EXTRA_LARGE',
-  'FOLLOW_SYSTEM',
-]);
-
-function canonicalVocabBucketKey(deck: VocabularyDeck): string {
-  const lang = (deck.language || 'English').trim().toLowerCase() || 'english';
-  const level = (deck.levelCode || 'CUSTOM').trim().toUpperCase();
-  const custom = level === 'CUSTOM' ? (deck.customLevelLabel || '').trim().toLowerCase() : '';
-  return `${lang}|${level}|${custom}`;
-}
-
-function normalizedVocabWordKey(entry: VocabularyDeck['entries'][number]): string {
-  const word = (entry.word || '').trim().toLowerCase();
-  const pos = (entry.partOfSpeech || '').trim().toLowerCase();
-  return word ? `${word}|${pos}` : entry.id;
-}
-
-function mergeVocabEntryForRestore(
-  existing: VocabularyDeck['entries'][number],
-  incoming: VocabularyDeck['entries'][number]
-): VocabularyDeck['entries'][number] {
-  const preferIncoming = (incoming.updatedAt || 0) > (existing.updatedAt || 0);
-
-  const seenExamples = new Set<string>();
-  const mergedExamples: VocabularyDeck['entries'][number]['examples'] = [];
-  for (const ex of [...(existing.examples || []), ...(incoming.examples || [])]) {
-    const sent = (ex.sentence || '').trim();
-    const key = sent.toLowerCase();
-    if (sent && !seenExamples.has(key)) {
-      seenExamples.add(key);
-      mergedExamples.push(ex);
-    }
-  }
-
-  const dedupStrings = (a: string[] = [], b: string[] = []): string[] => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of [...a, ...b]) {
-      const trimmed = String(raw || '').trim();
-      const k = trimmed.toLowerCase();
-      if (trimmed && !seen.has(k)) {
-        seen.add(k);
-        out.push(trimmed);
-      }
-    }
-    return out;
-  };
-
-  const pickScalar = (incVal: string | undefined, exVal: string | undefined): string => {
-    const incClean = (incVal || '').trim();
-    const exClean = (exVal || '').trim();
-    if (preferIncoming && incClean) return incVal || '';
-    return exClean ? exVal || '' : incVal || '';
-  };
-
-  return {
-    ...existing,
-    pronunciation: pickScalar(incoming.pronunciation, existing.pronunciation),
-    partOfSpeech: pickScalar(incoming.partOfSpeech, existing.partOfSpeech),
-    meaning: pickScalar(incoming.meaning, existing.meaning),
-    translation: pickScalar(incoming.translation, existing.translation),
-    translationLanguage: (existing.translationLanguage || '').trim()
-      ? existing.translationLanguage
-      : incoming.translationLanguage || '',
-    usageNote: pickScalar(incoming.usageNote, existing.usageNote),
-    examples: mergedExamples,
-    synonyms: dedupStrings(existing.synonyms, incoming.synonyms),
-    antonyms: dedupStrings(existing.antonyms, incoming.antonyms),
-    collocations: dedupStrings(existing.collocations, incoming.collocations),
-    isBookmarked: Boolean(existing.isBookmarked || incoming.isBookmarked),
-    updatedAt: Math.max(existing.updatedAt || 0, incoming.updatedAt || 0),
-  };
-}
-
 export function applyVaultRestoreToState(
   current: WorkspaceBackupState,
   preview: RestorePreview,
@@ -687,28 +516,20 @@ export function applyVaultRestoreToState(
         folderId: p.metadata.folderId && folderIds.has(p.metadata.folderId) ? p.metadata.folderId : 'default',
       },
     }));
-    const studyNotes = (Array.isArray(s.studyNotes) ? s.studyNotes : []).map((n) =>
-      normalizeStudyNoteForBackup({
-        ...n,
-        folderId: n.folderId && folderIds.has(n.folderId) ? n.folderId : 'default',
-      })
-    );
-    const rawSessions = s.plannerAndAnalytics?.activeSessions;
-    const activeSessions: Record<string, ActiveExamSession> =
-      rawSessions && typeof rawSessions === 'object' && !Array.isArray(rawSessions)
-        ? { ...rawSessions }
-        : {};
-    const incTheme = s.brainAndPreferences?.themeMode;
-    const incPreset = s.brainAndPreferences?.colorPreset;
-    const incFontScale = s.brainAndPreferences?.fontScaleMode;
 
     return {
       papers,
       folders,
       attempts: Array.isArray(s.attempts) ? s.attempts : [],
-      activeSessions,
+      activeSessions: s.plannerAndAnalytics?.activeSessions || {},
       countdowns: Array.isArray(s.countdowns) ? s.countdowns : [],
-      studyNotes,
+      studyNotes: (Array.isArray(s.studyNotes) ? s.studyNotes : []).map((n) => {
+        const norm = normalizeStudyNoteForBackup(n);
+        return {
+          ...norm,
+          folderId: norm.folderId && folderIds.has(norm.folderId) ? norm.folderId : 'default',
+        };
+      }),
       knowledgeCourses: normalizeCourseMapForBackup(s.brainAndPreferences?.knowledgeCourses || {}),
       vocabDecks: s.vocabulary?.decks || [],
       vocabSrs: s.vocabulary?.srs || {},
@@ -724,24 +545,9 @@ export function applyVaultRestoreToState(
       brainLabStats: { ...EMPTY_BRAIN_LAB_STATS, ...(s.brainAndPreferences?.brainLabStats || {}) },
       brainLabSettings: { ...DEFAULT_BRAIN_LAB_SETTINGS, ...(s.brainAndPreferences?.brainLabSettings || {}) },
       dismissedTips: s.brainAndPreferences?.dismissedTips || [],
-      themeMode:
-        incTheme && VALID_THEME_MODES.has(incTheme)
-          ? incTheme
-          : VALID_THEME_MODES.has(current.themeMode)
-            ? current.themeMode
-            : 'LIGHT',
-      colorPreset:
-        incPreset && VALID_COLOR_PRESETS.has(incPreset)
-          ? incPreset
-          : VALID_COLOR_PRESETS.has(current.colorPreset)
-            ? current.colorPreset
-            : 'NORDIC_SLATE',
-      fontScaleMode:
-        incFontScale && VALID_FONT_SCALE_MODES.has(incFontScale)
-          ? incFontScale
-          : VALID_FONT_SCALE_MODES.has(current.fontScaleMode)
-            ? current.fontScaleMode
-            : 'STANDARD_FIXED',
+      themeMode: s.brainAndPreferences?.themeMode || current.themeMode,
+      colorPreset: s.brainAndPreferences?.colorPreset || current.colorPreset,
+      fontScaleMode: s.brainAndPreferences?.fontScaleMode || current.fontScaleMode,
     };
   }
 
@@ -785,23 +591,6 @@ export function applyVaultRestoreToState(
   for (const a of s.attempts || []) addAttempt(a);
   const mergedAttempts = Array.from(attemptByKey.values()).sort((a, b) => b.submittedAt - a.submittedAt);
 
-  // Active exam sessions merge (per paperId, preserve local or take incoming with more progress)
-  const mergedActiveSessions: Record<string, ActiveExamSession> = {
-    ...(current.activeSessions || {}),
-  };
-  for (const [paperId, incSess] of Object.entries(s.plannerAndAnalytics?.activeSessions || {})) {
-    if (!incSess || typeof incSess !== 'object') continue;
-    const exSess = mergedActiveSessions[paperId];
-    if (
-      !exSess ||
-      (incSess.startedAt || 0) > (exSess.startedAt || 0) ||
-      ((incSess.startedAt || 0) === (exSess.startedAt || 0) &&
-        (incSess.elapsedSeconds || 0) > (exSess.elapsedSeconds || 0))
-    ) {
-      mergedActiveSessions[paperId] = incSess;
-    }
-  }
-
   // Countdowns union by title+date+time+timezoneMode
   const countdownMap = new Map<string, ExamCountdownTarget>();
   for (const cd of current.countdowns) {
@@ -815,22 +604,16 @@ export function applyVaultRestoreToState(
     if (!countdownMap.has(k)) countdownMap.set(k, cd);
   }
 
-  // Study Notes merge (taking newer rawContent + unioning bookmarks/mastery + merging SRS + preserving course + validating folderId)
+  // Study Notes merge (taking newer rawContent + unioning bookmarks/mastery + merging SRS + preserving course)
   const noteMap = new Map<string, StudyNoteRecord>();
-  for (const n of current.studyNotes) {
-    noteMap.set(
-      n.id,
-      normalizeStudyNoteForBackup({
-        ...n,
-        folderId: n.folderId && validFolderIds.has(n.folderId) ? n.folderId : 'default',
-      })
-    );
-  }
+  for (const n of current.studyNotes) noteMap.set(n.id, normalizeStudyNoteForBackup(n));
   for (const rawInc of s.studyNotes || []) {
-    const inc = normalizeStudyNoteForBackup({
-      ...rawInc,
-      folderId: rawInc.folderId && validFolderIds.has(rawInc.folderId) ? rawInc.folderId : 'default',
-    });
+    const rawNorm = normalizeStudyNoteForBackup(rawInc);
+    const inc: StudyNoteRecord = {
+      ...rawNorm,
+      folderId:
+        rawNorm.folderId && validFolderIds.has(rawNorm.folderId) ? rawNorm.folderId : 'default',
+    };
     const ex = noteMap.get(inc.id);
     if (!ex) {
       noteMap.set(inc.id, inc);
@@ -853,6 +636,7 @@ export function applyVaultRestoreToState(
         course: preferIncoming
           ? (inc.course || ex.course || '')
           : (ex.course || inc.course || ''),
+        folderId: preferIncoming ? inc.folderId : ex.folderId,
         bookmarkedIndices: mergedBookmarks,
         masteredIndices: mergedMastered,
         srsStates: mergedSrs,
@@ -864,72 +648,90 @@ export function applyVaultRestoreToState(
     normalizeCourseMapForBackup(s.brainAndPreferences?.knowledgeCourses || {})
   );
 
-  // [DEPRECATED 2026-11-27] Reason: Matching vocabulary decks only by id and skipping existing word|partOfSpeech entries causes cross-device duplicate decks and drops entry edits/examples/bookmarks. Restore if: Strict deck-ID-only non-overwriting merge is explicitly needed.
-  // const deckMap = new Map<string, VocabularyDeck>();
-  // for (const d of current.vocabDecks) deckMap.set(d.id, d);
-  // for (const incDeck of s.vocabulary?.decks || []) { ... }
-  // const mergedVocabSrs: Record<string, Record<string, FlashcardSrsState>> = {};
-  // for (const [deckId, incMap] of Object.entries(s.vocabulary?.srs || {})) { ... }
+  // Vocab Decks & SRS canonical bucket union (`language|levelCode|customLevelLabel`) + ID remapping
+  const canonicalBucketKey = (d: VocabularyDeck) =>
+    `${(d.language || 'English').trim().toLowerCase()}|${(d.levelCode || 'B2').trim().toLowerCase()}|${(d.customLevelLabel || '').trim().toLowerCase()}`;
 
-  // Canonical Vocab Decks (matching by id OR language|levelCode|customLevelLabel) & SRS remap
-  const mergedDecks = current.vocabDecks.map((d) => ({ ...d, entries: [...(d.entries || [])] }));
+  const mergeStringListUnion = (a: string[] = [], b: string[] = []): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of [...a, ...b]) {
+      const clean = String(raw || '').trim();
+      const key = clean.toLowerCase();
+      if (clean && !seen.has(key)) {
+        seen.add(key);
+        out.push(clean);
+      }
+    }
+    return out;
+  };
+
+  const mergeExamplesUnion = (a: VocabularyExample[] = [], b: VocabularyExample[] = []): VocabularyExample[] => {
+    const out: VocabularyExample[] = [];
+    const seen = new Set<string>();
+    for (const exItem of [...a, ...b]) {
+      const sent = String(exItem?.sentence || '').trim();
+      const key = sent.toLowerCase();
+      if (sent && !seen.has(key)) {
+        seen.add(key);
+        out.push(exItem);
+      }
+    }
+    return out;
+  };
+
+  const deckList: VocabularyDeck[] = [];
+  const deckIdxById = new Map<string, number>();
+  const deckIdxByBucket = new Map<string, number>();
   const deckIdRemap = new Map<string, string>();
   const entryIdRemap = new Map<string, string>();
 
-  for (const incDeck of s.vocabulary?.decks || []) {
-    const incBucket = canonicalVocabBucketKey(incDeck);
-    const matchIdx = mergedDecks.findIndex(
-      (ex) => ex.id === incDeck.id || canonicalVocabBucketKey(ex) === incBucket
-    );
-    if (matchIdx < 0) {
-      mergedDecks.push({ ...incDeck, entries: [...(incDeck.entries || [])] });
-      deckIdRemap.set(incDeck.id, incDeck.id);
-    } else {
-      const exDeck = mergedDecks[matchIdx];
-      deckIdRemap.set(incDeck.id, exDeck.id);
-      const entries = [...(exDeck.entries || [])];
-      const idxByWordKey = new Map<string, number>();
-      entries.forEach((entry, idx) => {
-        const key = normalizedVocabWordKey(entry);
-        if (!idxByWordKey.has(key)) idxByWordKey.set(key, idx);
-      });
+  for (const d of current.vocabDecks) {
+    const idx = deckList.length;
+    deckList.push(d);
+    deckIdxById.set(d.id, idx);
+    const bKey = canonicalBucketKey(d);
+    if (!deckIdxByBucket.has(bKey)) deckIdxByBucket.set(bKey, idx);
+  }
 
+  for (const incDeck of s.vocabulary?.decks || []) {
+    const bKey = canonicalBucketKey(incDeck);
+    const matchIdx = deckIdxById.get(incDeck.id) ?? deckIdxByBucket.get(bKey);
+    if (matchIdx === undefined) {
+      const idx = deckList.length;
+      deckList.push(incDeck);
+      deckIdxById.set(incDeck.id, idx);
+      deckIdxByBucket.set(bKey, idx);
+    } else {
+      const ex = deckList[matchIdx];
+      deckIdRemap.set(incDeck.id, ex.id);
+      const wordMap = new Map<string, VocabularyEntry>();
+      for (const e of ex.entries) {
+        wordMap.set(`${e.word.trim().toLowerCase()}|${e.partOfSpeech.trim().toLowerCase()}`, e);
+      }
       for (const incEntry of incDeck.entries || []) {
-        const key = normalizedVocabWordKey(incEntry);
-        let existingEntryIdx = idxByWordKey.get(key);
-        if (existingEntryIdx === undefined) {
-          const byIdIdx = entries.findIndex((e) => e.id === incEntry.id);
-          if (byIdIdx >= 0) existingEntryIdx = byIdIdx;
-        }
-        if (existingEntryIdx === undefined) {
-          entries.push(incEntry);
-          idxByWordKey.set(key, entries.length - 1);
+        const wKey = `${incEntry.word.trim().toLowerCase()}|${incEntry.partOfSpeech.trim().toLowerCase()}`;
+        const existingEntry = wordMap.get(wKey);
+        if (!existingEntry) {
+          wordMap.set(wKey, incEntry);
         } else {
-          const curEntry = entries[existingEntryIdx];
-          entryIdRemap.set(incEntry.id, curEntry.id);
-          entries[existingEntryIdx] = mergeVocabEntryForRestore(curEntry, incEntry);
+          entryIdRemap.set(incEntry.id, existingEntry.id);
+          const preferInc = (incEntry.updatedAt || 0) > (existingEntry.updatedAt || 0);
+          wordMap.set(wKey, {
+            ...(preferInc ? incEntry : existingEntry),
+            id: existingEntry.id,
+            examples: mergeExamplesUnion(existingEntry.examples, incEntry.examples),
+            synonyms: mergeStringListUnion(existingEntry.synonyms, incEntry.synonyms),
+            antonyms: mergeStringListUnion(existingEntry.antonyms, incEntry.antonyms),
+            collocations: mergeStringListUnion(existingEntry.collocations, incEntry.collocations),
+            isBookmarked: Boolean(existingEntry.isBookmarked || incEntry.isBookmarked),
+          });
         }
       }
-
-      entries.sort((a, b) => {
-        const wCmp = (a.word || '').trim().toLowerCase().localeCompare((b.word || '').trim().toLowerCase());
-        if (wCmp !== 0) return wCmp;
-        const pCmp = (a.partOfSpeech || '').trim().toLowerCase().localeCompare((b.partOfSpeech || '').trim().toLowerCase());
-        if (pCmp !== 0) return pCmp;
-        return (a.createdAt || 0) - (b.createdAt || 0);
-      });
-
-      mergedDecks[matchIdx] = {
-        ...exDeck,
-        translationLanguage: exDeck.translationLanguage?.trim()
-          ? exDeck.translationLanguage
-          : incDeck.translationLanguage || '',
-        languageVariant: exDeck.languageVariant?.trim()
-          ? exDeck.languageVariant
-          : incDeck.languageVariant || '',
-        domain: exDeck.domain?.trim() ? exDeck.domain : incDeck.domain || '',
-        entries,
-        updatedAt: Math.max(exDeck.updatedAt || 0, incDeck.updatedAt || 0),
+      deckList[matchIdx] = {
+        ...(incDeck.updatedAt > ex.updatedAt ? incDeck : ex),
+        id: ex.id,
+        entries: Array.from(wordMap.values()),
       };
     }
   }
@@ -994,6 +796,11 @@ export function applyVaultRestoreToState(
     }
   }
 
+  const mergedActiveSessions = {
+    ...(s.plannerAndAnalytics?.activeSessions || {}),
+    ...(current.activeSessions || {}),
+  };
+
   return {
     papers: Array.from(paperMap.values()),
     folders: mergedFolders,
@@ -1002,7 +809,7 @@ export function applyVaultRestoreToState(
     countdowns: Array.from(countdownMap.values()),
     studyNotes: Array.from(noteMap.values()).sort((a, b) => b.updatedAt - a.updatedAt),
     knowledgeCourses: mergedKnowledgeCourses,
-    vocabDecks: mergedDecks,
+    vocabDecks: deckList,
     vocabSrs: mergedVocabSrs,
     englishVariant: current.englishVariant || s.vocabulary?.englishVariant || 'UK',
     headwordInbox: Array.from(inboxMap.values()),
@@ -1027,4 +834,62 @@ export function applyVaultRestoreToState(
     colorPreset: current.colorPreset,
     fontScaleMode: current.fontScaleMode,
   };
+}
+
+export function buildPromptPresetsPackJson(presets: PromptPreset[]): string {
+  return JSON.stringify(
+    {
+      packType: 'examset_prompt_presets_pack',
+      schemaVersion: 1,
+      exportedAt: Date.now(),
+      presetsCount: presets.length,
+      presets,
+    },
+    null,
+    2
+  );
+}
+
+export function parsePromptPresetsPackJson(
+  rawJson: string,
+  existing: PromptPreset[]
+): { merged: PromptPreset[]; added: number; updated: number } {
+  const trimmed = (rawJson || '').trim();
+  if (!trimmed) {
+    throw new Error('Selected preset pack file is empty.');
+  }
+  const parsed = JSON.parse(trimmed) as unknown;
+  let incoming: PromptPreset[] = [];
+  if (Array.isArray(parsed)) {
+    incoming = parsed as PromptPreset[];
+  } else if (parsed && typeof parsed === 'object') {
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.presets)) {
+      incoming = obj.presets as PromptPreset[];
+    } else if (typeof obj.promptPresetsJson === 'string') {
+      incoming = JSON.parse(obj.promptPresetsJson) as PromptPreset[];
+    }
+  }
+  const validIncoming = incoming.filter(
+    (p) => p && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.mode === 'string'
+  );
+  if (validIncoming.length === 0) {
+    throw new Error('No valid Prompt Presets found in selected file.');
+  }
+
+  const map = new Map<string, PromptPreset>();
+  for (const p of existing) map.set(p.id, p);
+  let added = 0;
+  let updated = 0;
+  for (const inc of validIncoming) {
+    const ex = map.get(inc.id);
+    if (!ex) {
+      map.set(inc.id, inc);
+      added++;
+    } else if ((inc.updatedAt || 0) > (ex.updatedAt || 0)) {
+      map.set(inc.id, inc);
+      updated++;
+    }
+  }
+  return { merged: Array.from(map.values()), added, updated };
 }

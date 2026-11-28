@@ -58,7 +58,8 @@ import {
 } from './types/phase5';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
 import { DEFAULT_ROOT_FOLDER, ExamStore, normalizePaperMetadata } from './data/examStore';
-import { STARTER_STUDY_NOTES, STARTER_VOCAB_DECKS } from './data/phase4Seeds';
+// [DEPRECATED 2026-11-28] Reason: Web starts with a clean empty workspace matching Android without auto-seeding starter notes or vocab decks. Restore if: Starter seed packs are ever explicitly re-enabled.
+// import { STARTER_STUDY_NOTES, STARTER_VOCAB_DECKS } from './data/phase4Seeds';
 import { applyVaultRestoreToState, buildVaultArchive, type WorkspaceBackupState } from './utils/vaultArchiveEngine';
 import { CloudSyncEngine } from './utils/cloudSyncEngine';
 import { ThemePaletteModal } from './components/ThemePaletteModal';
@@ -229,28 +230,31 @@ const ExamSetWorkspace: React.FC = () => {
     studyNoteRequestCloseRef.current = fn;
   }, []);
 
-  const [papers, setPapers] = useState<QuestionPaper[]>(() => ExamStore.loadPapers(DEFAULT_PAPER));
-  const [currentPaper, setCurrentPaper] = useState<QuestionPaper>(() =>
-    ExamStore.getActivePaper(DEFAULT_PAPER)
+  const [papers, setPapers] = useState<QuestionPaper[]>(() => {
+    ExamStore.cleanLegacySamplesOnce();
+    return ExamStore.loadPapers();
+  });
+  const [currentPaper, setCurrentPaper] = useState<QuestionPaper | null>(() =>
+    ExamStore.getActivePaper()
   );
   const [folders, setFolders] = useState<FolderItem[]>(() =>
-    ExamStore.loadFolders(ExamStore.loadPapers(DEFAULT_PAPER))
+    ExamStore.loadFolders(ExamStore.loadPapers())
   );
   const [countdowns, setCountdowns] = useState<ExamCountdownTarget[]>(() =>
     ExamStore.loadCountdowns()
   );
   const [attempts, setAttempts] = useState<AttemptRecord[]>(() => ExamStore.loadAttempts());
 
-  // Phase 4 Persistent State
+  // Phase 4 Persistent State (Clean start matching Android)
   const [studyNotes, setStudyNotes] = useState<StudyNoteRecord[]>(() =>
-    ExamStore.loadStudyNotes(STARTER_STUDY_NOTES)
+    ExamStore.loadStudyNotes()
   );
   const [knowledgeCourses, setKnowledgeCourses] = useState<KnowledgeCoursesMap>(() =>
     ExamStore.loadKnowledgeCoursesMap()
   );
   const [requestedStudyNoteId, setRequestedStudyNoteId] = useState<string | null>(null);
   const [vocabDecks, setVocabDecks] = useState<VocabularyDeck[]>(() =>
-    ExamStore.loadVocabDecks(STARTER_VOCAB_DECKS)
+    ExamStore.loadVocabDecks()
   );
   const [vocabSrs, setVocabSrs] = useState<Record<string, Record<string, FlashcardSrsState>>>(() =>
     ExamStore.loadVocabSrs()
@@ -393,7 +397,7 @@ const ExamSetWorkspace: React.FC = () => {
 
   const handleBatchImport = (importedList: QuestionPaper[]) => {
     if (importedList.length === 0) return;
-    let list = ExamStore.loadPapers(DEFAULT_PAPER);
+    let list = ExamStore.loadPapers();
     const normalizedItems = importedList.map(normalizePaperMetadata);
     for (const item of normalizedItems) {
       const idx = list.findIndex((p) => p.metadata.id === item.metadata.id);
@@ -433,7 +437,7 @@ const ExamSetWorkspace: React.FC = () => {
     setFolders(nextFolders);
     ExamStore.savePapers(updatedPapers);
     ExamStore.saveFolders(nextFolders);
-    if (currentPaper.metadata.folderId === folderId) {
+    if (currentPaper && currentPaper.metadata.folderId === folderId) {
       setCurrentPaper({
         ...currentPaper,
         metadata: { ...currentPaper.metadata, folderId: 'default' },
@@ -451,7 +455,7 @@ const ExamSetWorkspace: React.FC = () => {
     );
     setPapers(next);
     ExamStore.savePapers(next);
-    if (idSet.has(currentPaper.metadata.id)) {
+    if (currentPaper && idSet.has(currentPaper.metadata.id)) {
       setCurrentPaper({
         ...currentPaper,
         metadata: { ...currentPaper.metadata, folderId: targetFolderId },
@@ -463,11 +467,10 @@ const ExamSetWorkspace: React.FC = () => {
   const handleDeletePapers = (paperIds: string[]) => {
     const idSet = new Set(paperIds);
     const remaining = papers.filter((p) => !idSet.has(p.metadata.id));
-    const finalList = remaining.length > 0 ? remaining : [normalizePaperMetadata(DEFAULT_PAPER)];
-    setPapers(finalList);
-    ExamStore.savePapers(finalList);
-    if (idSet.has(currentPaper.metadata.id)) {
-      setCurrentPaper(finalList[0]);
+    setPapers(remaining);
+    ExamStore.savePapers(remaining);
+    if (currentPaper && idSet.has(currentPaper.metadata.id)) {
+      setCurrentPaper(remaining[0] || null);
     }
     showToast(`Deleted ${paperIds.length} paper(s)`);
   };
@@ -487,8 +490,10 @@ const ExamSetWorkspace: React.FC = () => {
     );
     setPapers(next);
     ExamStore.savePapers(next);
-    const updatedActive = next.find((p) => p.metadata.id === currentPaper.metadata.id);
-    if (updatedActive) setCurrentPaper(updatedActive);
+    if (currentPaper) {
+      const updatedActive = next.find((p) => p.metadata.id === currentPaper.metadata.id);
+      if (updatedActive) setCurrentPaper(updatedActive);
+    }
   };
 
   const handleSaveCountdowns = (next: ExamCountdownTarget[]) => {
@@ -736,7 +741,7 @@ const ExamSetWorkspace: React.FC = () => {
 
         const disk = await CloudSyncEngine.getLinkedDiskStatus();
         if (disk.isLinked && disk.permissionState === 'granted') {
-          await CloudSyncEngine.syncToLinkedDiskFile(rawJson);
+          await CloudSyncEngine.syncToLinkedDiskFile(rawJson, undefined, true);
         }
       } catch {
         // Silent guard must not disrupt active study or exam session
@@ -801,29 +806,34 @@ const ExamSetWorkspace: React.FC = () => {
   };
 
   const handleExecuteRestore = async (preview: RestorePreview, mode: RestoreMode) => {
-    const latestState: WorkspaceBackupState = {
-      ...workspaceBackupState,
-      activeSessions: ExamStore.getAllActiveSessions(),
-    };
     if (mode === 'FULL_REPLACE') {
-      const preArchive = buildVaultArchive(latestState, 'Pre-Replace Safety Guard');
-      await handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
+      try {
+        const preArchive = buildVaultArchive(workspaceBackupState, 'Pre-Replace Safety Guard');
+        await handleCreateSnapshot('Auto Guard (Pre-Replace)', 'pre_restore', preArchive.rawJson);
+      } catch (err) {
+        showToast(
+          err instanceof Error
+            ? `Pre-restore snapshot skipped: ${err.message}`
+            : 'Pre-restore snapshot skipped due to storage limit.'
+        );
+      }
     }
 
     const merged = applyVaultRestoreToState(
-      latestState,
+      workspaceBackupState,
       preview,
       mode,
       DEFAULT_ROOT_FOLDER
     );
 
-    const safePapers =
-      merged.papers.length > 0 ? merged.papers : [normalizePaperMetadata(DEFAULT_PAPER)];
+    const safePapers = merged.papers;
     setPapers(safePapers);
     ExamStore.savePapers(safePapers);
 
     const activeMatch =
-      safePapers.find((p) => p.metadata.id === currentPaper.metadata.id) || safePapers[0];
+      (currentPaper ? safePapers.find((p) => p.metadata.id === currentPaper.metadata.id) : null) ||
+      safePapers[0] ||
+      null;
     setCurrentPaper(activeMatch);
     ExamStore.setActivePaper(activeMatch);
 
@@ -831,8 +841,6 @@ const ExamSetWorkspace: React.FC = () => {
     ExamStore.saveFolders(merged.folders);
 
     setAttempts(merged.attempts);
-    // [DEPRECATED 2026-11-27] Reason: Bypassed ExamStore guarded writer when persisting restored attempts. Restore if: Direct localStorage key access is required.
-    // localStorage.setItem('examset_attempts_v2', JSON.stringify(merged.attempts));
     ExamStore.saveAttempts(merged.attempts);
     ExamStore.saveAllActiveSessions(merged.activeSessions || {});
 
@@ -1157,20 +1165,20 @@ const ExamSetWorkspace: React.FC = () => {
   }[] = useMemo(
     () => [
       { id: 'creator', label: 'Exam Workbench', shortLabel: 'Workbench', icon: <FileText className="w-4 h-4 flex-shrink-0" />, group: 'exam' },
-      { id: 'master', label: 'Master View', shortLabel: 'Master', icon: <Eye className="w-4 h-4 flex-shrink-0" />, badge: `${currentPaper.questions.length}`, group: 'exam' },
+      { id: 'master', label: 'Master View', shortLabel: 'Master', icon: <Eye className="w-4 h-4 flex-shrink-0" />, badge: currentPaper ? `${currentPaper.questions.length}` : undefined, group: 'exam' },
       { id: 'print', label: 'Print & OMR Studio', shortLabel: 'Print/OMR', icon: <Printer className="w-4 h-4 flex-shrink-0" />, group: 'exam' },
       { id: 'student_portal', label: 'Student Test Portal', shortLabel: 'Test', icon: <CheckCircle2 className="w-4 h-4 flex-shrink-0" />, group: 'exam' },
-      { id: 'folders', label: 'Library & Folders', shortLabel: 'Library', icon: <Folder className="w-4 h-4 flex-shrink-0" />, badge: `${papers.length}`, group: 'exam' },
-      { id: 'knowledge_studio', label: 'Knowledge Studio', shortLabel: 'Knowledge', icon: <BookMarked className="w-4 h-4 flex-shrink-0" />, badge: `${studyNotes.length}`, group: 'study' },
+      { id: 'folders', label: 'Library & Folders', shortLabel: 'Library', icon: <Folder className="w-4 h-4 flex-shrink-0" />, badge: papers.length > 0 ? `${papers.length}` : undefined, group: 'exam' },
+      { id: 'knowledge_studio', label: 'Knowledge Studio', shortLabel: 'Knowledge', icon: <BookMarked className="w-4 h-4 flex-shrink-0" />, badge: studyNotes.length > 0 ? `${studyNotes.length}` : undefined, group: 'study' },
       { id: 'dictation', label: 'Dictation Lab', shortLabel: 'Dictation', icon: <Mic className="w-4 h-4 flex-shrink-0" />, group: 'study' },
-      { id: 'vocabulary_hub', label: 'Vocabulary Hub', shortLabel: 'Vocab', icon: <Globe className="w-4 h-4 flex-shrink-0" />, badge: `${totalVocabWords}`, group: 'study' },
+      { id: 'vocabulary_hub', label: 'Vocabulary Hub', shortLabel: 'Vocab', icon: <Globe className="w-4 h-4 flex-shrink-0" />, badge: totalVocabWords > 0 ? `${totalVocabWords}` : undefined, group: 'study' },
       { id: 'prompt_generator', label: 'AI Prompt Studio', shortLabel: 'Prompts', icon: <Sparkles className="w-4 h-4 flex-shrink-0" />, group: 'study' },
       { id: 'study_planner', label: 'Study Planner', shortLabel: 'Planner', icon: <CalendarCheck className="w-4 h-4 flex-shrink-0" />, badge: openTodoCount > 0 ? `${openTodoCount}` : undefined, group: 'focus' },
       { id: 'brain_lab', label: 'Brain & Calm Lab', shortLabel: 'Brain Lab', icon: <Brain className="w-4 h-4 flex-shrink-0" />, group: 'focus' },
       { id: 'backup_vault', label: 'Backup Vault', shortLabel: 'Vault', icon: <Archive className="w-4 h-4 flex-shrink-0" />, badge: vaultSnapshots.length > 0 ? `${vaultSnapshots.length}` : undefined, group: 'focus' },
       { id: 'share', label: 'Share & Export', shortLabel: 'Share', icon: <Share2 className="w-4 h-4 flex-shrink-0" />, group: 'focus' },
     ],
-    [currentPaper.questions.length, papers.length, studyNotes.length, totalVocabWords, openTodoCount, vaultSnapshots.length]
+    [currentPaper, papers.length, studyNotes.length, totalVocabWords, openTodoCount, vaultSnapshots.length]
   );
 
   const navGroupLabels: Record<'exam' | 'study' | 'focus', string> = {
@@ -1253,15 +1261,26 @@ const ExamSetWorkspace: React.FC = () => {
                       borderColor: colors.border,
                     }}
                   >
-                    Set {currentPaper.metadata.setNumber || '01'} • A4 OMR • SM-2
+                    Set {currentPaper ? currentPaper.metadata.setNumber || '01' : '--'} • A4 OMR • SM-2
                   </span>
                 </div>
                 <p
                   className="es-scroll-x text-[0.6875rem] font-medium"
                   style={{ color: colors.muted }}
-                  title={`${currentPaper.metadata.title} (${currentPaper.questions.length} Qs)`}
+                  title={
+                    currentPaper
+                      ? `${currentPaper.metadata.title} (${currentPaper.questions.length} Qs)`
+                      : 'Clean workspace — Create or Import a Question Set or Restore Vault'
+                  }
                 >
-                  {currentPaper.metadata.title} <span className="tabular-nums opacity-85">({currentPaper.questions.length} Qs)</span>
+                  {currentPaper ? (
+                    <>
+                      {currentPaper.metadata.title}{' '}
+                      <span className="tabular-nums opacity-85">({currentPaper.questions.length} Qs)</span>
+                    </>
+                  ) : (
+                    'Clean Workspace • Ready to Create, Import, or Restore'
+                  )}
                 </p>
               </div>
             </div>
@@ -1487,13 +1506,14 @@ const ExamSetWorkspace: React.FC = () => {
               onNavigateToStudentPortal={() => navigateTab('student_portal')}
               onNavigateToPrint={() => navigateTab('print')}
               onOpenCreateModal={() => {
-                setCreateDefaultFolderId(currentPaper.metadata.folderId || 'default');
+                setCreateDefaultFolderId(currentPaper?.metadata.folderId || 'default');
                 setCreateInitialText('');
                 setShowCreateModal(true);
               }}
               onOpenBatchImportModal={() => setShowBatchImportModal(true)}
-              onOpenEditMetadata={() => setEditingMetadataPaper(currentPaper)}
-              onOpenAuditModal={() => setShowAuditModal(true)}
+              onNavigateToVault={() => navigateTab('backup_vault')}
+              onOpenEditMetadata={() => currentPaper && setEditingMetadataPaper(currentPaper)}
+              onOpenAuditModal={() => currentPaper && setShowAuditModal(true)}
             />
           )}
 
@@ -1501,14 +1521,31 @@ const ExamSetWorkspace: React.FC = () => {
             <MasterViewTab
               currentPaper={currentPaper}
               onUpdatePaper={handleSavePaper}
-              onOpenEditMetadata={() => setEditingMetadataPaper(currentPaper)}
-              onOpenAuditModal={() => setShowAuditModal(true)}
+              onOpenCreateModal={() => {
+                setCreateDefaultFolderId('default');
+                setCreateInitialText('');
+                setShowCreateModal(true);
+              }}
+              onOpenBatchImportModal={() => setShowBatchImportModal(true)}
+              onNavigateToVault={() => navigateTab('backup_vault')}
+              onOpenEditMetadata={() => currentPaper && setEditingMetadataPaper(currentPaper)}
+              onOpenAuditModal={() => currentPaper && setShowAuditModal(true)}
               registerBackHandler={registerTabBackHandler}
             />
           )}
 
           {activeTab === 'print' && (
-            <PrintGeneratorTab currentPaper={currentPaper} allPapers={papers} />
+            <PrintGeneratorTab
+              currentPaper={currentPaper}
+              allPapers={papers}
+              onOpenCreateModal={() => {
+                setCreateDefaultFolderId('default');
+                setCreateInitialText('');
+                setShowCreateModal(true);
+              }}
+              onOpenBatchImportModal={() => setShowBatchImportModal(true)}
+              onNavigateToVault={() => navigateTab('backup_vault')}
+            />
           )}
 
           {activeTab === 'student_portal' && (
@@ -1517,6 +1554,13 @@ const ExamSetWorkspace: React.FC = () => {
               attempts={attempts}
               onSaveAttempt={handleSaveAttempt}
               onDeleteAttempt={handleDeleteAttempt}
+              onOpenCreateModal={() => {
+                setCreateDefaultFolderId('default');
+                setCreateInitialText('');
+                setShowCreateModal(true);
+              }}
+              onOpenBatchImportModal={() => setShowBatchImportModal(true)}
+              onNavigateToVault={() => navigateTab('backup_vault')}
               registerBackHandler={registerTabBackHandler}
             />
           )}
@@ -1618,7 +1662,7 @@ const ExamSetWorkspace: React.FC = () => {
               onNavigateToCreator={() => navigateTab('creator')}
               onNavigateToKnowledge={() => navigateTab('knowledge_studio')}
               onSendToCreator={(promptText) => {
-                setCreateDefaultFolderId(currentPaper.metadata.folderId || 'default');
+                setCreateDefaultFolderId(currentPaper?.metadata.folderId || 'default');
                 setCreateInitialText(promptText);
                 setShowCreateModal(true);
               }}
@@ -1682,6 +1726,7 @@ const ExamSetWorkspace: React.FC = () => {
               onCreateSnapshot={handleCreateSnapshot}
               onDeleteSnapshot={handleDeleteSnapshot}
               onExecuteRestore={handleExecuteRestore}
+              onImportPromptPresets={handleSavePromptPresets}
               onNotify={showToast}
             />
           )}
@@ -1696,6 +1741,11 @@ const ExamSetWorkspace: React.FC = () => {
               }}
               onImportPapers={handleBatchImport}
               onOpenBatchImport={() => setShowBatchImportModal(true)}
+              onOpenCreateModal={() => {
+                setCreateDefaultFolderId('default');
+                setCreateInitialText('');
+                setShowCreateModal(true);
+              }}
             />
           )}
           </section>
@@ -1781,7 +1831,7 @@ const ExamSetWorkspace: React.FC = () => {
           isOpen={showBatchImportModal}
           folders={folders}
           existingPapers={papers}
-          defaultFolderId={currentPaper.metadata.folderId || 'default'}
+          defaultFolderId={currentPaper?.metadata.folderId || 'default'}
           onImportBatch={handleBatchImport}
           onClose={() => setShowBatchImportModal(false)}
         />
@@ -1801,7 +1851,7 @@ const ExamSetWorkspace: React.FC = () => {
         />
       )}
 
-      {showAuditModal && (
+      {showAuditModal && currentPaper && (
         <AuditResolutionModal
           isOpen={showAuditModal}
           paper={currentPaper}

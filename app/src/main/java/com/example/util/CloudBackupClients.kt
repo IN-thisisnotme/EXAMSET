@@ -400,64 +400,11 @@ object CloudBackupClients {
                     )
                 }
                 val stream = resp.body?.byteStream() ?: throw IllegalStateException("Empty download body")
-                val maxBytes = VaultArchiveEngine.MAX_VAULT_ARCHIVE_BYTES
-                var totalRead = 0L
-                val buf = ByteArray(16 * 1024)
-                try {
-                    BufferedOutputStream(FileOutputStream(dest)).use { out ->
-                        while (true) {
-                            val n = stream.read(buf)
-                            if (n == -1) break
-                            totalRead += n
-                            if (totalRead > maxBytes) {
-                                throw IllegalStateException(
-                                    "Remote backup exceeds maximum supported size (${maxBytes / (1024 * 1024)} MB)."
-                                )
-                            }
-                            out.write(buf, 0, n)
-                        }
-                        out.flush()
-                    }
-                } catch (e: Throwable) {
-                    runCatching { dest.delete() }
-                    throw e
+                BufferedOutputStream(FileOutputStream(dest)).use { out ->
+                    stream.copyTo(out, bufferSize = 16 * 1024)
                 }
             }
             dest
-        }
-    }
-
-    suspend fun deleteRemoteBackup(
-        context: Context,
-        remoteFile: RemoteCloudBackupFile,
-        authStore: CloudAuthStore
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        if (!isDeviceOnline(context)) {
-            return@withContext Result.failure(
-                IllegalStateException("No active internet connection. Connect to Wi-Fi or mobile data to delete cloud backups.")
-            )
-        }
-        executeWithTokenRetry(remoteFile.provider, authStore) { token ->
-            val url = when (remoteFile.provider) {
-                CloudProviderType.GOOGLE_DRIVE ->
-                    "https://www.googleapis.com/drive/v3/files/${Uri.encode(remoteFile.remoteId)}"
-                CloudProviderType.ONEDRIVE ->
-                    "https://graph.microsoft.com/v1.0/me/drive/items/${Uri.encode(remoteFile.remoteId)}"
-            }
-            val req = Request.Builder()
-                .url(url)
-                .header("Authorization", "Bearer $token")
-                .delete()
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful && resp.code != 404) {
-                    val body = resp.body?.string().orEmpty()
-                    throw CloudHttpStatusException(
-                        resp.code,
-                        extractApiError(body, "Delete failed (HTTP ${resp.code})")
-                    )
-                }
-            }
         }
     }
 
@@ -562,7 +509,7 @@ object CloudBackupClients {
 
     private fun listGoogleDriveBackups(token: String): List<RemoteCloudBackupFile> {
         val folderId = ensureGoogleDriveBackupFolder(token)
-        val q = Uri.encode("'$folderId' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false")
+        val q = Uri.encode("'$folderId' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'")
         val req = Request.Builder()
             .url("https://www.googleapis.com/drive/v3/files?q=$q&orderBy=modifiedTime%20desc&pageSize=25&fields=files(id,name,size,modifiedTime)")
             .header("Authorization", "Bearer $token")

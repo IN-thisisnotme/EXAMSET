@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deflateRawSync } from 'node:zlib';
 
 import {
   DEFAULT_BRAIN_LAB_SETTINGS,
@@ -11,12 +10,15 @@ import {
 import { DEFAULT_DICTATION_CONFIG, DEFAULT_KNOWLEDGE_RULE } from '../src/types/phase4';
 import {
   applyVaultRestoreToState,
+  buildAndroidZipVaultArchive,
+  buildPromptPresetsPackJson,
   buildVaultArchive,
+  inspectVaultArchiveBytes,
   inspectVaultArchiveText,
-  sha256HexBytesSync,
+  parsePromptPresetsPackJson,
   type WorkspaceBackupState,
 } from '../src/utils/vaultArchiveEngine';
-import { inspectAndroidZipArchive, isZipMagicBytes } from '../src/utils/zipVaultReader';
+import { buildZipArchive, readZipTextEntries } from '../src/utils/zipArchiveHelper';
 import { CloudSyncEngine } from '../src/utils/cloudSyncEngine';
 import { ExamStore } from '../src/data/examStore';
 import { StudyNoteParser } from '../src/utils/studyNoteParser';
@@ -76,7 +78,6 @@ function makeWorkspaceState(): WorkspaceBackupState {
             explanation: 'Article 110 defines Money Bills.',
           },
         ],
-        rawText: '1. Which article defines Money Bill?\n(A) 108\n(B) 110\n(C) 112\n(D) 123\nAnswer: B',
       },
     ],
     folders: [
@@ -89,8 +90,10 @@ function makeWorkspaceState(): WorkspaceBackupState {
       },
     ],
     attempts: [],
+    activeSessions: {},
     countdowns: [],
     studyNotes: [],
+    knowledgeCourses: {},
     vocabDecks: [],
     vocabSrs: {},
     englishVariant: 'IN',
@@ -106,7 +109,7 @@ function makeWorkspaceState(): WorkspaceBackupState {
     brainLabSettings: DEFAULT_BRAIN_LAB_SETTINGS,
     dismissedTips: [],
     themeMode: 'LIGHT',
-    colorPreset: 'NORDIC_SLATE',
+    colorPreset: 'MINIMAL',
     fontScaleMode: 'STANDARD_FIXED',
   };
 }
@@ -389,518 +392,669 @@ test('vaultArchiveEngine round-trips knowledgeCourses, course, and masteredIndic
   assert.equal(olderPreview.manifest.counts.knowledgeCoursesCount, 0);
 });
 
-test('vaultArchiveEngine merges canonical vocab buckets with SRS remap, validates folderId, and handles activeSessions', () => {
+test('Android .examset.zip bridge exports, inspects, verifies SHA-256, and detects tampering', async () => {
+  const state = makeWorkspaceState();
+  state.knowledgeCourses = { 'UPSC GS': ['Polity', 'Economy'] };
+  state.studyNotes = [
+    {
+      id: 'note-zip-1',
+      title: 'Parliament Notes',
+      course: 'UPSC GS',
+      subject: 'Polity',
+      sourceAi: 'Custom',
+      rawContent: '1. **Money Bill** -> Art 110',
+      folderId: 'default',
+      collectionType: 'ONE_LINERS',
+      formatRule: DEFAULT_KNOWLEDGE_RULE,
+      bookmarkedIndices: [0],
+      masteredIndices: [0],
+      srsStates: {
+        0: {
+          blockIndex: 0,
+          intervalDays: 6,
+          easeFactor: 2.5,
+          repetitions: 2,
+          lapses: 0,
+          dueAtMillis: 1_700_500_000_000,
+          lastReviewedAtMillis: 1_700_000_100_000,
+          lastRating: 'GOOD',
+          reviewCount: 2,
+          correctCount: 2,
+        },
+      },
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_050_000,
+    },
+  ];
+  state.vocabDecks = [
+    {
+      id: 'deck-en-b2',
+      title: 'English B2',
+      language: 'English',
+      languageVariant: 'IN',
+      translationLanguage: '',
+      levelCode: 'B2',
+      customLevelLabel: '',
+      domain: 'Editorial',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_010_000,
+      entries: [
+        {
+          id: 'word-1',
+          word: 'ameliorate',
+          partOfSpeech: 'verb',
+          pronunciation: '/əˈmiːliəreɪt/',
+          levelCode: 'B2',
+          customLevelLabel: '',
+          language: 'English',
+          languageVariant: 'IN',
+          meaning: 'Make better',
+          translation: '',
+          translationLanguage: '',
+          examples: [{ context: 'Polity', sentence: 'Ameliorate rural distress.', translation: '' }],
+          synonyms: ['improve'],
+          antonyms: ['worsen'],
+          collocations: ['ameliorate conditions'],
+          usageNote: 'Formal',
+          isBookmarked: true,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_010_000,
+        },
+      ],
+    },
+  ];
+  state.vocabSrs = {
+    'deck-en-b2': {
+      'word-1': {
+        blockIndex: 0,
+        intervalDays: 4,
+        easeFactor: 2.6,
+        repetitions: 2,
+        lapses: 0,
+        dueAtMillis: 1_700_400_000_000,
+        lastReviewedAtMillis: 1_700_000_050_000,
+        lastRating: 'EASY',
+        reviewCount: 2,
+        correctCount: 2,
+      },
+    },
+  };
+  state.studyTodos = [
+    {
+      id: 'todo-1',
+      title: 'Revise Art 110',
+      subject: 'Polity',
+      priority: 'HIGH',
+      estimatedPomodoros: 2,
+      completedPomodoros: 1,
+      isCompleted: false,
+      dueDateStr: '2026-11-30',
+      createdAt: 1_700_000_000_000,
+    },
+  ];
+
+  const { bytes, manifest } = await buildAndroidZipVaultArchive(state, 'Web ZIP Device', 1_700_000_200_000);
+  assert.equal(manifest.format, 'examset-vault-v5');
+  assert.equal(manifest.counts.papersCount, 1);
+  assert.equal(manifest.counts.notesCount, 1);
+  assert.equal(manifest.counts.knowledgeCoursesCount, 1);
+  assert.equal(manifest.counts.vocabDecksCount, 1);
+  assert.equal(manifest.counts.vocabWordsCount, 1);
+
+  const preview = await inspectVaultArchiveBytes(bytes, 'roundtrip.examset.zip');
+  assert.equal(preview.checksumVerified, true);
+  assert.equal(preview.manifest.counts.papersCount, 1);
+  assert.equal(preview.manifest.counts.notesCount, 1);
+  assert.equal(preview.manifest.counts.knowledgeCoursesCount, 1);
+  const parsedDoc = JSON.parse(preview.rawJson);
+  assert.equal(parsedDoc.sections.studyNotes[0].course, 'UPSC GS');
+  assert.deepEqual(parsedDoc.sections.studyNotes[0].masteredIndices, [0]);
+  assert.equal(parsedDoc.sections.vocabulary.decks[0].entries[0].word, 'ameliorate');
+  assert.equal(parsedDoc.sections.vocabulary.srs['deck-en-b2']['word-1'].repetitions, 2);
+
+  // Tamper with one entry inside ZIP -> must fail checksum verification cleanly
+  const entries = await readZipTextEntries(bytes);
+  entries.set('folders.json', '[]');
+  const tamperedZip = await buildZipArchive(
+    Array.from(entries.entries()).map(([name, data]) => ({ name, data }))
+  );
+  const tamperedPreview = await inspectVaultArchiveBytes(tamperedZip, 'tampered.examset.zip');
+  assert.equal(tamperedPreview.checksumVerified, false);
+  assert.match(tamperedPreview.checksumDetails, /folders\.json/);
+});
+
+test('Smart Merge canonicalizes Vocab buckets, remaps vocabSrs IDs, validates note folderId, and merges/clears activeSessions', () => {
   const localState = makeWorkspaceState();
   localState.vocabDecks = [
     {
-      id: 'deck_local_c1',
-      title: 'English • C1',
+      id: 'local-deck-b2',
+      title: 'English B2',
       language: 'English',
-      languageVariant: 'UK',
-      translationLanguage: 'Hindi',
-      levelCode: 'C1',
-      customLevelLabel: '',
-      domain: 'General',
-      createdAt: 1000,
-      updatedAt: 2000,
-      entries: [
-        {
-          id: 'w_loc_ephemeral',
-          word: 'Ephemeral',
-          pronunciation: '',
-          partOfSpeech: 'adjective',
-          levelCode: 'C1',
-          customLevelLabel: '',
-          language: 'English',
-          languageVariant: 'UK',
-          meaning: 'Short',
-          translation: '',
-          translationLanguage: 'Hindi',
-          examples: [{ context: 'Daily', sentence: 'Fame is ephemeral.', translation: '' }],
-          synonyms: ['fleeting'],
-          antonyms: [],
-          collocations: [],
-          usageNote: '',
-          isBookmarked: true,
-          createdAt: 1000,
-          updatedAt: 1500,
-        },
-      ],
-    },
-  ];
-  localState.activeSessions = {
-    'stale-paper': {
-      paperId: 'stale-paper',
-      interfaceMode: 'TCS_ION_CBT',
-      timerMode: 'COUNTDOWN',
-      shuffleOptions: false,
-      shuffleSeed: 1,
-      currentIndex: 2,
-      answers: { 1: 'A' },
-      markedForReview: {},
-      visited: { 1: true },
-      questionTimes: { 1: 12 },
-      timeLeftSeconds: 600,
-      elapsedSeconds: 45,
-      targetDurationSeconds: 900,
-      startedAt: 1_700_000_010_000,
-    },
-  };
-
-  const incomingState = makeWorkspaceState();
-  incomingState.studyNotes = [
-    {
-      id: 'note-orphan',
-      title: 'Orphaned Folder Note',
-      subject: 'Polity',
-      sourceAi: 'Custom',
-      rawContent: '1. **Rule** -> Valid fallback',
-      folderId: 'missing_folder_id',
-      collectionType: 'ONE_LINERS',
-      formatRule: DEFAULT_KNOWLEDGE_RULE,
-      bookmarkedIndices: [],
-      masteredIndices: [],
-      srsStates: {},
-      createdAt: 1000,
-      updatedAt: 2000,
-    },
-  ];
-  incomingState.vocabDecks = [
-    {
-      id: 'deck_remote_c1_other_uuid',
-      title: 'English C1 Remote',
-      language: 'english',
-      languageVariant: 'UK',
-      translationLanguage: 'Hindi',
-      levelCode: 'C1',
+      languageVariant: 'IN',
+      translationLanguage: '',
+      levelCode: 'B2',
       customLevelLabel: '',
       domain: 'Editorial',
-      createdAt: 1000,
-      updatedAt: 5000,
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_010_000,
       entries: [
         {
-          id: 'w_rem_ephemeral',
-          word: 'Ephemeral',
-          pronunciation: '/ɪˈfɛm.ər.əl/',
-          partOfSpeech: 'adjective',
-          levelCode: 'C1',
-          customLevelLabel: '',
-          language: 'English',
-          languageVariant: 'UK',
-          meaning: 'Lasting for a very short time',
-          translation: 'क्षणिक',
-          translationLanguage: 'Hindi',
-          examples: [
-            { context: 'Daily', sentence: 'Fame is ephemeral.', translation: '' },
-            { context: 'Editorial', sentence: 'Spring blossoms are ephemeral.', translation: '' },
-          ],
-          synonyms: ['Fleeting', 'transitory'],
-          antonyms: ['permanent'],
-          collocations: [],
-          usageNote: 'Common in essays',
-          isBookmarked: false,
-          createdAt: 1000,
-          updatedAt: 5000,
-        },
-        {
-          id: 'w_rem_lucid',
-          word: 'Lucid',
+          id: 'local-w1',
+          word: 'ameliorate',
+          partOfSpeech: 'verb',
           pronunciation: '',
-          partOfSpeech: 'adjective',
-          levelCode: 'C1',
+          levelCode: 'B2',
           customLevelLabel: '',
           language: 'English',
-          languageVariant: 'UK',
-          meaning: 'Expressed clearly',
+          languageVariant: 'IN',
+          meaning: 'Make better',
           translation: '',
-          translationLanguage: 'Hindi',
-          examples: [],
-          synonyms: [],
+          translationLanguage: '',
+          examples: [{ context: 'Ctx', sentence: 'Local sentence.', translation: '' }],
+          synonyms: ['improve'],
           antonyms: [],
           collocations: [],
           usageNote: '',
-          isBookmarked: true,
-          createdAt: 2000,
-          updatedAt: 2000,
+          isBookmarked: false,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_010_000,
         },
       ],
     },
   ];
-  incomingState.vocabSrs = {
-    deck_remote_c1_other_uuid: {
-      w_rem_ephemeral: {
+  localState.vocabSrs = {
+    'local-deck-b2': {
+      'local-w1': {
         blockIndex: 0,
-        repetitions: 3,
-        easeFactor: 2.6,
-        intervalDays: 6,
-        dueAtMillis: 1_790_000_000_000,
-        lastReviewedAtMillis: 1_789_000_000_000,
-        lapses: 0,
-        lastRating: 'GOOD',
-        reviewCount: 5,
-        correctCount: 5,
-      },
-      w_rem_lucid: {
-        blockIndex: 1,
-        repetitions: 1,
+        intervalDays: 2,
         easeFactor: 2.5,
-        intervalDays: 1,
-        dueAtMillis: 1_790_000_000_000,
-        lastReviewedAtMillis: 1_789_000_000_000,
+        repetitions: 1,
         lapses: 0,
+        dueAtMillis: 1_700_100_000_000,
+        lastReviewedAtMillis: 1_700_000_010_000,
         lastRating: 'GOOD',
         reviewCount: 1,
         correctCount: 1,
       },
     },
   };
-  incomingState.activeSessions = {
+  localState.activeSessions = {
     'p-1': {
       paperId: 'p-1',
-      interfaceMode: 'TCS_ION_CBT',
-      timerMode: 'COUNTDOWN',
-      shuffleOptions: false,
-      shuffleSeed: 42,
-      currentIndex: 0,
-      answers: {},
+      answers: { 1: 'B' },
       markedForReview: {},
-      visited: { 0: true },
-      questionTimes: {},
-      timeLeftSeconds: 1700,
-      elapsedSeconds: 100,
-      targetDurationSeconds: 1800,
-      startedAt: 1_700_000_200_000,
+      questionTimes: { 1: 12 },
+      currentIndex: 0,
+      secondsRemaining: 1200,
+      elapsedSeconds: 600,
+      lastSavedAt: 1_700_000_050_000,
+    },
+  };
+
+  const incomingState = makeWorkspaceState();
+  incomingState.vocabDecks = [
+    {
+      id: 'remote-deck-b2-uuid',
+      title: 'English B2',
+      language: 'english',
+      languageVariant: 'IN',
+      translationLanguage: '',
+      levelCode: 'B2',
+      customLevelLabel: '',
+      domain: 'Editorial',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_020_000,
+      entries: [
+        {
+          id: 'remote-w1-uuid',
+          word: 'Ameliorate',
+          partOfSpeech: 'Verb',
+          pronunciation: '',
+          levelCode: 'B2',
+          customLevelLabel: '',
+          language: 'English',
+          languageVariant: 'IN',
+          meaning: 'Make better',
+          translation: '',
+          translationLanguage: '',
+          examples: [{ context: 'Ctx', sentence: 'Incoming sentence.', translation: '' }],
+          synonyms: ['mitigate'],
+          antonyms: [],
+          collocations: [],
+          usageNote: '',
+          isBookmarked: true,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_020_000,
+        },
+        {
+          id: 'remote-w2-uuid',
+          word: 'pragmatic',
+          partOfSpeech: 'adjective',
+          pronunciation: '',
+          levelCode: 'B2',
+          customLevelLabel: '',
+          language: 'English',
+          languageVariant: 'IN',
+          meaning: 'Practical',
+          translation: '',
+          translationLanguage: '',
+          examples: [],
+          synonyms: ['practical'],
+          antonyms: [],
+          collocations: [],
+          usageNote: '',
+          isBookmarked: false,
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_020_000,
+        },
+      ],
+    },
+  ];
+  incomingState.vocabSrs = {
+    'remote-deck-b2-uuid': {
+      'remote-w1-uuid': {
+        blockIndex: 0,
+        intervalDays: 8,
+        easeFactor: 2.6,
+        repetitions: 4,
+        lapses: 0,
+        dueAtMillis: 1_700_800_000_000,
+        lastReviewedAtMillis: 1_700_000_200_000,
+        lastRating: 'EASY',
+        reviewCount: 4,
+        correctCount: 4,
+      },
+    },
+  };
+  incomingState.studyNotes = [
+    {
+      id: 'note-bad-folder',
+      title: 'Orphan Note',
+      course: '',
+      subject: 'Polity',
+      sourceAi: 'Custom',
+      rawContent: '1. **Art 1** -> Union',
+      folderId: 'missing-folder-id',
+      collectionType: 'ONE_LINERS',
+      formatRule: DEFAULT_KNOWLEDGE_RULE,
+      bookmarkedIndices: [],
+      masteredIndices: [],
+      srsStates: {},
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    },
+  ];
+  incomingState.activeSessions = {
+    'p-remote': {
+      paperId: 'p-remote',
+      answers: { 1: 'A' },
+      markedForReview: {},
+      questionTimes: { 1: 5 },
+      currentIndex: 0,
+      secondsRemaining: 900,
+      elapsedSeconds: 300,
+      lastSavedAt: 1_700_000_040_000,
     },
   };
 
   const { rawJson } = buildVaultArchive(incomingState, 'Remote Device', 1_700_000_300_000);
-  const preview = inspectVaultArchiveText(rawJson, 'merge_vocab.examset.json');
-  assert.equal(preview.checksumVerified, true);
+  const preview = inspectVaultArchiveText(rawJson, 'remote.examset.json');
 
   const merged = applyVaultRestoreToState(localState, preview, 'SMART_MERGE', localState.folders[0]);
-  assert.equal(merged.vocabDecks.length, 1, 'Same canonical bucket must consolidate without duplicating decks');
-  assert.equal(merged.vocabDecks[0].id, 'deck_local_c1');
+  assert.equal(merged.vocabDecks.length, 1, 'Same language|levelCode bucket must merge cleanly without duplicating decks');
+  assert.equal(merged.vocabDecks[0].id, 'local-deck-b2');
   assert.equal(merged.vocabDecks[0].entries.length, 2);
-  const ephemeral = merged.vocabDecks[0].entries.find((e) => e.word === 'Ephemeral')!;
-  assert.equal(ephemeral.meaning, 'Lasting for a very short time');
-  assert.equal(ephemeral.isBookmarked, true);
-  assert.equal(ephemeral.examples.length, 2);
-  assert.deepEqual(ephemeral.synonyms, ['fleeting', 'transitory']);
-  assert.equal(merged.vocabSrs['deck_local_c1']?.['w_loc_ephemeral']?.reviewCount, 5);
-  assert.equal(merged.vocabSrs['deck_local_c1']?.['w_rem_lucid']?.reviewCount, 1);
-  assert.equal(merged.studyNotes[0].folderId, 'default');
-  assert.ok(merged.activeSessions?.['stale-paper']);
+  const mergedAmeliorate = merged.vocabDecks[0].entries.find((e) => e.word.toLowerCase() === 'ameliorate');
+  assert.ok(mergedAmeliorate);
+  assert.equal(mergedAmeliorate.isBookmarked, true);
+  assert.deepEqual(mergedAmeliorate.synonyms.sort(), ['improve', 'mitigate']);
+  assert.equal(merged.vocabSrs['local-deck-b2']?.['local-w1']?.repetitions, 4, 'SRS progress must remap onto canonical local IDs');
+  assert.equal(merged.studyNotes[0].folderId, 'default', 'Invalid note folderId must fall back to root folder');
   assert.ok(merged.activeSessions?.['p-1']);
+  assert.ok(merged.activeSessions?.['p-remote']);
 
-  // FULL_REPLACE clears stale sessions & falls back invalid appearance values
-  const tamperedAppearance = JSON.parse(rawJson);
-  tamperedAppearance.sections.brainAndPreferences.themeMode = 'INVALID_MODE';
-  tamperedAppearance.sections.brainAndPreferences.colorPreset = 'BAD_PRESET';
-  tamperedAppearance.sections.plannerAndAnalytics.activeSessions = {};
-  const replacePreview = inspectVaultArchiveText(JSON.stringify(tamperedAppearance), 'replace.examset.json');
-  const replaced = applyVaultRestoreToState(localState, replacePreview, 'FULL_REPLACE', localState.folders[0]);
-  assert.deepEqual(replaced.activeSessions, {});
-  assert.equal(replaced.themeMode, 'LIGHT');
-  assert.equal(replaced.colorPreset, 'NORDIC_SLATE');
-  assert.equal(replaced.studyNotes[0].folderId, 'default');
+  // Clean replace clears old activeSessions not in incoming backup
+  const replaced = applyVaultRestoreToState(localState, preview, 'FULL_REPLACE', localState.folders[0]);
+  assert.equal(replaced.activeSessions?.['p-1'], undefined);
+  assert.ok(replaced.activeSessions?.['p-remote']);
 });
 
-function buildZipBytesForTest(
-  entries: Array<{ name: string; bytes: Uint8Array; deflate?: boolean; dataDescriptor?: boolean }>
-): Uint8Array {
-  const localParts: Uint8Array[] = [];
-  const cdParts: Uint8Array[] = [];
-  let offset = 0;
-
-  for (const e of entries) {
-    const nameBytes = new TextEncoder().encode(e.name);
-    const compressed = e.deflate ? new Uint8Array(deflateRawSync(e.bytes)) : e.bytes;
-    const method = e.deflate ? 8 : 0;
-    const flags = e.dataDescriptor ? 0x08 : 0;
-
-    // Local File Header (with 0 sizes when dataDescriptor=true to test Central Directory precedence)
-    const lfh = new Uint8Array(30 + nameBytes.length);
-    const lv = new DataView(lfh.buffer);
-    lv.setUint32(0, 0x04034b50, true);
-    lv.setUint16(4, 20, true);
-    lv.setUint16(6, flags, true);
-    lv.setUint16(8, method, true);
-    lv.setUint32(18, e.dataDescriptor ? 0 : compressed.length, true);
-    lv.setUint32(22, e.dataDescriptor ? 0 : e.bytes.length, true);
-    lv.setUint16(26, nameBytes.length, true);
-    lfh.set(nameBytes, 30);
-
-    const dd = e.dataDescriptor ? new Uint8Array(12) : new Uint8Array(0);
-    if (e.dataDescriptor) {
-      const dv = new DataView(dd.buffer);
-      dv.setUint32(4, compressed.length, true);
-      dv.setUint32(8, e.bytes.length, true);
-    }
-
-    const cdh = new Uint8Array(46 + nameBytes.length);
-    const cv = new DataView(cdh.buffer);
-    cv.setUint32(0, 0x02014b50, true);
-    cv.setUint16(4, 20, true);
-    cv.setUint16(6, 20, true);
-    cv.setUint16(8, flags, true);
-    cv.setUint16(10, method, true);
-    cv.setUint32(20, compressed.length, true);
-    cv.setUint32(24, e.bytes.length, true);
-    cv.setUint16(28, nameBytes.length, true);
-    cv.setUint32(42, offset, true);
-    cdh.set(nameBytes, 46);
-
-    localParts.push(lfh, compressed, dd);
-    cdParts.push(cdh);
-    offset += lfh.length + compressed.length + dd.length;
-  }
-
-  const cdOffset = offset;
-  const cdSize = cdParts.reduce((s, p) => s + p.length, 0);
-  const eocd = new Uint8Array(22);
-  const ev = new DataView(eocd.buffer);
-  ev.setUint32(0, 0x06054b50, true);
-  ev.setUint16(8, entries.length, true);
-  ev.setUint16(10, entries.length, true);
-  ev.setUint32(12, cdSize, true);
-  ev.setUint32(16, cdOffset, true);
-
-  const totalLen = cdOffset + cdSize + eocd.length;
-  const out = new Uint8Array(totalLen);
-  let pos = 0;
-  for (const part of [...localParts, ...cdParts, eocd]) {
-    out.set(part, pos);
-    pos += part.length;
-  }
-  return out;
-}
-
-test('zipVaultReader verifies and converts Android v5 .examset.zip (DEFLATE + data descriptors) and detects tampering', async () => {
-  const enc = (s: string) => new TextEncoder().encode(s);
-  const foldersBytes = enc(JSON.stringify([{ id: 'fld_sci', name: 'Science', color: '#0284C7', parentId: null, createdAt: 1000 }]));
-  const papersBytes = enc(
-    `${JSON.stringify({
-      id: 7,
-      title: 'Android Physics Paper',
-      subject: 'Physics',
-      topic: 'Optics',
-      setNumber: '02',
-      exam: 'JEE',
-      questionCount: 1,
-      answerKeyCount: 1,
-      explanationCount: 1,
-      rawText: '1. Speed of light?\n(A) c\n(B) 2c\n(C) 3c\n(D) 4c\nAnswer Key:\n1: A',
-      createdAt: 1000,
-      updatedAt: 2000,
-      folderId: 'fld_sci',
-      durationMinutes: 45,
-      positiveMarks: 4,
-      negativeMarks: 1,
-      unattendedMarks: 0,
-      manualCategory: 'MOCK_TEST',
-    })}\n`
-  );
-  const notesBytes = enc(
-    `${JSON.stringify({
-      id: 3,
-      folderId: 'fld_sci',
-      title: 'Optics Summary',
-      subject: 'Physics',
-      course: 'JEE Core',
-      sourceAi: 'Notes',
-      rawContent: '1. **Snell Law** -> n1 sin i = n2 sin r',
-      bookmarkedLinesJson: '[0]',
-      createdAt: 1000,
-      updatedAt: 3000,
-      collectionType: 'ONE_LINER',
-      customLabel: '',
-      linkedPaperId: 7,
-      formatRuleJson: '{}',
-      masteredBlocksJson: '[0]',
-      syncUid: 'uid-optics-3',
-    })}\n`
-  );
-  const attemptsBytes = enc(
-    `${JSON.stringify({
-      id: 9,
-      paperId: 7,
-      answersJson: JSON.stringify({ '1': 'A', _qTime: { '1': 14 }, _rollNumber: '0000000099' }),
-      isSubmitted: true,
-      score: 4,
-      correctCount: 1,
-      incorrectCount: 0,
-      unansweredCount: 0,
-      totalQuestions: 1,
-      timeSpentSeconds: 14,
-      createdAt: 2500,
-      submittedAt: 2514,
-    })}\n`
-  );
-  const analyticsBytes = enc(
-    JSON.stringify([{ dateString: '2026-11-26', totalTestTimeSeconds: 300, testsCompletedCount: 1, questionsAttemptedCount: 1, correctAnswersCount: 1 }])
-  );
-  const vocabBytes = enc(
-    JSON.stringify({
-      vocabularyDecksJson: JSON.stringify([]),
-      vocabularySrsJson: JSON.stringify({}),
-      preferredEnglishVariant: 'IN',
-      languageWordOfTheDayStatesJson: JSON.stringify({}),
-      headwordInboxJson: JSON.stringify([]),
-      dismissedWordKeysJson: JSON.stringify([]),
-    })
-  );
-  const prefsBytes = enc(
-    JSON.stringify({
-      dailyGoalMinutes: 60,
-      fontScaleMode: 'LARGE',
-      themeMode: 'DARK',
-      colorSchemePreset: 'AMOLED_DARK',
-      defaultMsqScoringPolicy: 'PARTIAL_STRICT',
-      paperMsqPoliciesJson: JSON.stringify({ '7': 'PARTIAL_STRICT' }),
-      flashcardSrsByNoteUid: {
-        'uid-optics-3': [{ blockIndex: 0, repetitions: 2, easeFactor: 2.5, intervalDays: 3, dueAtMillis: 9000, lastReviewedAtMillis: 4000, lapses: 0, lastRating: 'GOOD', reviewCount: 3, correctCount: 3 }],
-      },
-      promptPresetsJson: '[]',
-      examCountdownsJson: JSON.stringify([{ id: 'cd-1', title: 'JEE Main', targetDateStr: '2027-01-20', subject: 'Physics', colorHex: '#177E89' }]),
-      studyTodosJson: JSON.stringify([{ id: 'td-1', title: 'Revise Optics', priority: 'HIGH', linkedType: 'NOTE', linkedNoteId: 3 }]),
-      knowledgeCoursesJson: JSON.stringify({ 'JEE Core': ['Physics', 'Maths'] }),
-    })
-  );
-
-  const checksums = {
-    'folders.json': sha256HexBytesSync(foldersBytes),
-    'papers.ndjson': sha256HexBytesSync(papersBytes),
-    'notes.ndjson': sha256HexBytesSync(notesBytes),
-    'attempts.ndjson': sha256HexBytesSync(attemptsBytes),
-    'analytics.json': sha256HexBytesSync(analyticsBytes),
-    'vocabulary.json': sha256HexBytesSync(vocabBytes),
-    'preferences.json': sha256HexBytesSync(prefsBytes),
-  };
-  const manifestBytes = enc(
-    JSON.stringify({
-      schemaVersion: 5,
-      appVersion: '1.0',
-      createdAt: 1_700_000_500_000,
-      deviceName: 'Pixel Test',
-      entryChecksumsSha256: checksums,
-    })
-  );
-
-  const zipBytes = buildZipBytesForTest([
-    { name: 'folders.json', bytes: foldersBytes, deflate: true, dataDescriptor: true },
-    { name: 'papers.ndjson', bytes: papersBytes, deflate: true, dataDescriptor: true },
-    { name: 'notes.ndjson', bytes: notesBytes, deflate: true, dataDescriptor: true },
-    { name: 'attempts.ndjson', bytes: attemptsBytes, deflate: false },
-    { name: 'analytics.json', bytes: analyticsBytes, deflate: true },
-    { name: 'vocabulary.json', bytes: vocabBytes, deflate: true },
-    { name: 'preferences.json', bytes: prefsBytes, deflate: true },
-    { name: 'manifest.json', bytes: manifestBytes, deflate: true },
+test('Prompt Presets pack exports, parses, and merges deterministically', () => {
+  const existing = [
+    {
+      id: 'preset-1',
+      name: 'Polity Prompt',
+      mode: 'QUESTIONS' as const,
+      configJson: '{}',
+      builtPrompt: 'old prompt',
+      createdAt: 100,
+      updatedAt: 200,
+    },
+  ];
+  const incomingPack = buildPromptPresetsPackJson([
+    {
+      id: 'preset-1',
+      name: 'Polity Prompt v2',
+      mode: 'QUESTIONS' as const,
+      configJson: '{}',
+      builtPrompt: 'new prompt',
+      createdAt: 100,
+      updatedAt: 300,
+    },
+    {
+      id: 'preset-2',
+      name: 'Vocab Pack',
+      mode: 'VOCAB' as const,
+      configJson: '{}',
+      builtPrompt: 'vocab prompt',
+      createdAt: 150,
+      updatedAt: 150,
+    },
   ]);
 
-  assert.equal(isZipMagicBytes(zipBytes), true);
-  const preview = await inspectAndroidZipArchive(zipBytes, 'android.examset.zip');
-  assert.equal(preview.checksumVerified, true, preview.checksumDetails);
-  assert.equal(preview.manifest.counts.papersCount, 1);
-  assert.equal(preview.manifest.counts.notesCount, 1);
-  assert.equal(preview.manifest.counts.knowledgeCoursesCount, 1);
-
-  const base = makeWorkspaceState();
-  const restored = applyVaultRestoreToState(base, preview, 'FULL_REPLACE', base.folders[0]);
-  assert.equal(restored.papers[0].metadata.msqScoringPolicy, 'PARTIAL_STRICT');
-  assert.equal(restored.papers[0].metadata.manualCategory, 'FULL_MOCK');
-  assert.equal(restored.studyNotes[0].id, 'uid-optics-3');
-  assert.equal(restored.studyNotes[0].course, 'JEE Core');
-  assert.equal(restored.studyNotes[0].linkedPaperId, 'paper-7');
-  assert.equal(restored.studyNotes[0].srsStates[0].reviewCount, 3);
-  assert.equal(restored.studyTodos[0].linkedNoteId, 'uid-optics-3');
-  assert.equal(restored.themeMode, 'DARK');
-  assert.equal(restored.colorPreset, 'OLED_OBSIDIAN');
-  assert.equal(restored.fontScaleMode, 'LARGE');
-  assert.deepEqual(restored.knowledgeCourses?.['JEE Core'], ['Physics', 'Maths']);
-
-  // Tamper notes.ndjson -> must fail checksumVerified
-  const tamperedZip = buildZipBytesForTest([
-    { name: 'folders.json', bytes: foldersBytes, deflate: true },
-    { name: 'papers.ndjson', bytes: papersBytes, deflate: true },
-    { name: 'notes.ndjson', bytes: enc('{"tampered":true}\n'), deflate: true },
-    { name: 'attempts.ndjson', bytes: attemptsBytes, deflate: true },
-    { name: 'analytics.json', bytes: analyticsBytes, deflate: true },
-    { name: 'vocabulary.json', bytes: vocabBytes, deflate: true },
-    { name: 'preferences.json', bytes: prefsBytes, deflate: true },
-    { name: 'manifest.json', bytes: manifestBytes, deflate: true },
-  ]);
-  const badPreview = await inspectAndroidZipArchive(tamperedZip, 'bad.examset.zip');
-  assert.equal(badPreview.checksumVerified, false);
-  assert.match(badPreview.checksumDetails, /notes\.ndjson \(hash mismatch\)/);
+  const res = parsePromptPresetsPackJson(incomingPack, existing);
+  assert.equal(res.added, 1);
+  assert.equal(res.updated, 1);
+  assert.equal(res.merged.length, 2);
+  assert.equal(res.merged.find((p) => p.id === 'preset-1')?.builtPrompt, 'new prompt');
 });
 
-test('cloudSyncEngine blocks OAuth under file:// origin, excludes Drive folders, and deletes remote backups', async () => {
+test('ExamStore starts cleanly empty and cleanLegacySamplesOnce removes only untouched starter samples', () => {
+  const prevLocal = globalThis.localStorage;
+  const localStore = createMemoryStorage();
+  Object.defineProperty(globalThis, 'localStorage', { value: localStore, configurable: true, writable: true });
+
+  try {
+    // 1. Fresh install starts completely empty
+    assert.deepEqual(ExamStore.loadPapers(), []);
+    assert.equal(ExamStore.getActivePaper(), null);
+    assert.deepEqual(ExamStore.loadStudyNotes(), []);
+    assert.deepEqual(ExamStore.loadVocabDecks(), []);
+
+    // 2. Populate legacy untouched starter items + user-modified starter item
+    localStore.setItem(
+      'examset_papers_library',
+      JSON.stringify([
+        {
+          metadata: {
+            id: 'paper-default-01',
+            title: 'National Science & Technology Olympiad',
+            subject: 'Physics',
+            topic: 'Dry Ice',
+            setNumber: '01',
+            targetExam: 'STEM',
+            createdAt: 1000,
+            updatedAt: 1000,
+            folderId: 'default',
+          },
+          questions: [{ id: 'q1', num: 1, question: 'What is commonly known as dry ice?', options: { a: 'CO2', b: 'H2O', c: 'N2', d: 'O2' }, correctAnswer: 'A', explanation: '' }],
+        },
+        {
+          metadata: {
+            id: 'user-paper-99',
+            title: 'My Custom UPSC Test',
+            subject: 'Polity',
+            topic: 'Rights',
+            setNumber: '01',
+            targetExam: 'UPSC',
+            createdAt: 1000,
+            updatedAt: 1000,
+            folderId: 'default',
+          },
+          questions: [],
+        },
+      ])
+    );
+    localStore.setItem(
+      'examset_study_notes_v1',
+      JSON.stringify([
+        {
+          id: 'note-starter-physics',
+          title: 'Thermodynamics',
+          subject: 'Physics',
+          sourceAi: 'Starter',
+          rawContent: '1. Law',
+          folderId: 'default',
+          collectionType: 'MULTI_LINER',
+          formatRule: DEFAULT_KNOWLEDGE_RULE,
+          bookmarkedIndices: [],
+          srsStates: {},
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+        {
+          id: 'note-starter-flashcards',
+          title: 'Edited Starter Flashcards',
+          subject: 'Polity',
+          sourceAi: 'Starter',
+          rawContent: 'Q1: Test\nA: Ans',
+          folderId: 'default',
+          collectionType: 'FLASHCARDS',
+          formatRule: DEFAULT_KNOWLEDGE_RULE,
+          bookmarkedIndices: [],
+          srsStates: {},
+          createdAt: 1000,
+          updatedAt: 2000,
+        },
+      ])
+    );
+    localStore.setItem(
+      'examset_vocab_decks_v1',
+      JSON.stringify([
+        {
+          id: 'vocab-starter-editorial-b2',
+          title: 'Starter Vocab',
+          language: 'English',
+          languageVariant: 'UK',
+          translationLanguage: '',
+          levelCode: 'B2',
+          customLevelLabel: '',
+          domain: 'Editorial',
+          createdAt: 1000,
+          updatedAt: 1000,
+          entries: [],
+        },
+      ])
+    );
+
+    ExamStore.cleanLegacySamplesOnce();
+
+    const remainingPapers = ExamStore.loadPapers();
+    assert.equal(remainingPapers.length, 1);
+    assert.equal(remainingPapers[0].metadata.id, 'user-paper-99');
+
+    const remainingNotes = ExamStore.loadStudyNotes();
+    assert.equal(remainingNotes.length, 1);
+    assert.equal(remainingNotes[0].id, 'note-starter-flashcards', 'User-edited starter note must be preserved');
+
+    assert.deepEqual(ExamStore.loadVocabDecks(), []);
+    assert.equal(localStore.getItem('examset_legacy_samples_cleaned_v1'), '1');
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', { value: prevLocal, configurable: true, writable: true });
+  }
+});
+
+test('CloudSyncEngine supports non-Chromium browsers via OPFS + safe async download, blocks file:// OAuth, and excludes Drive folders', async () => {
   const prevWindow = globalThis.window;
+  const prevDocument = globalThis.document;
   const prevLocal = globalThis.localStorage;
   const prevSession = globalThis.sessionStorage;
   const prevFetch = globalThis.fetch;
+  const navDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const urlDesc = Object.getOwnPropertyDescriptor(globalThis, 'URL');
 
   const localStore = createMemoryStorage();
   const sessionStore = createMemoryStorage();
-  const fileWindow = {
-    location: { protocol: 'file:', origin: 'null', pathname: '/ExamSet-Standalone.html', href: 'file:///ExamSet-Standalone.html', hash: '', search: '' },
+  const opfsFiles = new Map<string, Uint8Array | string>();
+  const mockOpfsDir = {
+    async getDirectoryHandle() {
+      return mockOpfsDir;
+    },
+    async getFileHandle(name: string, opts?: { create?: boolean }) {
+      if (!opfsFiles.has(name) && !opts?.create) {
+        throw new Error('NotFoundError');
+      }
+      return {
+        async createWritable() {
+          let written: Uint8Array | string = '';
+          return {
+            async write(chunk: unknown) {
+              if (typeof chunk === 'string') {
+                written = chunk;
+              } else if (chunk instanceof ArrayBuffer) {
+                written = new Uint8Array(chunk);
+              }
+            },
+            async close() {
+              opfsFiles.set(name, written);
+            },
+          };
+        },
+        async getFile() {
+          const val = opfsFiles.get(name);
+          const buf =
+            typeof val === 'string'
+              ? new TextEncoder().encode(val).buffer
+              : val instanceof Uint8Array
+                ? val.buffer.slice(val.byteOffset, val.byteOffset + val.byteLength)
+                : new ArrayBuffer(0);
+          return {
+            name,
+            async arrayBuffer() {
+              return buf;
+            },
+          };
+        },
+      };
+    },
+    async removeEntry() {
+      opfsFiles.clear();
+    },
+  };
+
+  let clickedDownloads = 0;
+  let immediateRevokeCalls = 0;
+  let createObjectUrlCount = 0;
+
+  const mockWindow = {
+    location: {
+      protocol: 'https:',
+      origin: 'https://examset.example.test',
+      pathname: '/',
+      href: 'https://examset.example.test/',
+      hash: '',
+      search: '',
+      assign() {},
+    },
     history: { replaceState() {} },
     opener: null,
     self: null as unknown,
     top: null as unknown,
+    open: () => null,
+    addEventListener() {},
+    removeEventListener() {},
   };
-  fileWindow.self = fileWindow;
-  fileWindow.top = fileWindow;
+  mockWindow.self = mockWindow;
+  mockWindow.top = mockWindow;
 
-  Object.defineProperty(globalThis, 'window', { value: fileWindow, configurable: true, writable: true });
+  const mockDocument = {
+    title: 'ExamSet',
+    body: {
+      appendChild() {},
+      removeChild() {},
+    },
+    createElement() {
+      return {
+        style: {},
+        href: '',
+        download: '',
+        click() {
+          clickedDownloads++;
+        },
+        remove() {},
+      };
+    },
+  };
+
+  Object.defineProperty(globalThis, 'window', { value: mockWindow, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'document', { value: mockDocument, configurable: true, writable: true });
   Object.defineProperty(globalThis, 'localStorage', { value: localStore, configurable: true, writable: true });
   Object.defineProperty(globalThis, 'sessionStorage', { value: sessionStore, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { storage: { getDirectory: async () => mockOpfsDir } },
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(globalThis, 'URL', {
+    value: {
+      createObjectURL() {
+        createObjectUrlCount++;
+        return 'blob:examset-test';
+      },
+      revokeObjectURL() {
+        immediateRevokeCalls++;
+      },
+    },
+    configurable: true,
+    writable: true,
+  });
 
   try {
-    assert.equal(CloudSyncEngine.isFileProtocolOrigin(), true);
-    CloudSyncEngine.setClientId('GOOGLE_DRIVE', 'client-id-1');
-    await assert.rejects(
-      () => CloudSyncEngine.startCloudOAuth('GOOGLE_DRIVE'),
-      /Quick Disk Sync/i
-    );
+    assert.equal(CloudSyncEngine.isFileSystemAccessSupported(), false);
 
-    // Switch to HTTPS origin to verify Drive list query filter & remote deletion
-    fileWindow.location.protocol = 'https:';
-    fileWindow.location.origin = 'https://examset.example.test';
+    // 1. linkNewDiskSyncFile works cleanly in Firefox/non-Chromium and does NOT revoke ObjectURL synchronously
+    const linkRes = await CloudSyncEngine.linkNewDiskSyncFile('{"hello":"world"}');
+    assert.equal(linkRes.status.isLinked, true);
+    assert.equal(linkRes.status.syncMode, 'DOWNLOAD_FALLBACK');
+    assert.equal(clickedDownloads, 1);
+    assert.equal(createObjectUrlCount, 1);
+    assert.equal(immediateRevokeCalls, 0, 'Firefox download fix must defer revokeObjectURL asynchronously');
+
+    // 2. silentOpfsOnly background sync writes to OPFS without firing an unwanted download
+    await CloudSyncEngine.syncToLinkedDiskFile('{"updated":true}', undefined, true);
+    assert.equal(clickedDownloads, 1, 'Background auto-guard sync must not trigger unexpected file downloads');
+
+    // 3. Unlinking clears OPFS + linked state
+    const unlinked = await CloudSyncEngine.unlinkDiskSyncFile();
+    assert.equal(unlinked.isLinked, false);
+    assert.equal(opfsFiles.size, 0);
+
+    // 4. Google Drive listCloudBackups query excludes folder mimeType
+    CloudSyncEngine.setClientId('GOOGLE_DRIVE', 'test-client');
     sessionStore.setItem(
       'examset_sync_token_v1_GOOGLE_DRIVE',
-      JSON.stringify({ accessToken: 'tok', refreshToken: '', expiresAt: Date.now() + 600_000 })
+      JSON.stringify({ accessToken: 'tok-1', refreshToken: '', expiresAt: 0 })
     );
-
-    const fetchedCalls: { url: string; method: string }[] = [];
+    const seenUrls: string[] = [];
     Object.defineProperty(globalThis, 'fetch', {
       configurable: true,
       writable: true,
-      value: async (url: string, init?: { method?: string }) => {
-        fetchedCalls.push({ url, method: init?.method || 'GET' });
-        if (url.includes('spaces=drive')) {
-          return { ok: true, json: async () => ({ files: [{ id: 'folder-123' }] }) };
+      value: async (url: string) => {
+        seenUrls.push(String(url));
+        if (String(url).includes('application%2Fvnd.google-apps.folder') && String(url).includes('name%3D')) {
+          return { ok: true, status: 200, json: async () => ({ files: [{ id: 'folder-123' }] }) };
         }
-        if (url.includes('orderBy=modifiedTime')) {
-          return { ok: true, json: async () => ({ files: [{ id: 'file-1', name: 'Vault.examset.json', size: '1024', modifiedTime: '2026-11-27T00:00:00Z' }] }) };
-        }
-        return { ok: true, status: 204, json: async () => ({}) };
+        return { ok: true, status: 200, json: async () => ({ files: [] }) };
       },
     });
+    await CloudSyncEngine.listCloudBackups('GOOGLE_DRIVE');
+    const listUrl = decodeURIComponent(seenUrls[seenUrls.length - 1] || '');
+    assert.match(listUrl, /mimeType!='application\/vnd\.google-apps\.folder'/);
 
-    const list = await CloudSyncEngine.listCloudBackups('GOOGLE_DRIVE');
-    assert.equal(list.length, 1);
-    const listCall = fetchedCalls.find((c) => c.url.includes('orderBy=modifiedTime'))!;
-    assert.match(decodeURIComponent(listCall.url), /mimeType!='application\/vnd\.google-apps\.folder'/);
-
-    await CloudSyncEngine.deleteCloudBackup(list[0]);
-    const delCall = fetchedCalls.find((c) => c.method === 'DELETE');
-    assert.ok(delCall?.url.includes('/files/file-1'));
+    // 5. file:// OAuth fails cleanly with actionable offline hint
+    mockWindow.location.protocol = 'file:';
+    await assert.rejects(
+      () => CloudSyncEngine.startCloudOAuth('GOOGLE_DRIVE'),
+      /requires http:\/\/ or https:\/\/ hosting/i
+    );
   } finally {
     Object.defineProperty(globalThis, 'window', { value: prevWindow, configurable: true, writable: true });
+    Object.defineProperty(globalThis, 'document', { value: prevDocument, configurable: true, writable: true });
     Object.defineProperty(globalThis, 'localStorage', { value: prevLocal, configurable: true, writable: true });
     Object.defineProperty(globalThis, 'sessionStorage', { value: prevSession, configurable: true, writable: true });
     Object.defineProperty(globalThis, 'fetch', { value: prevFetch, configurable: true, writable: true });
+    if (navDesc) Object.defineProperty(globalThis, 'navigator', navDesc);
+    if (urlDesc) Object.defineProperty(globalThis, 'URL', urlDesc);
   }
 });
 

@@ -883,7 +883,7 @@ class VaultArchiveEngineTest {
 
     @Test
     fun `pruneExportCacheDir removes expired files while keeping excluded and fresh files`() {
-        val exportDir = File(context.cacheDir, "vault_exports").apply { mkdirs() }
+        val exportDir = File(context.cacheDir, "vault_export_cache").apply { mkdirs() }
         val staleFile = File(exportDir, "inspect_old.tmp").apply {
             writeText("stale")
             setLastModified(System.currentTimeMillis() - 120_000L)
@@ -955,5 +955,118 @@ class VaultArchiveEngineTest {
         assertEquals(setOf("History", "Polity", "Economy"), merged["UPSC Prelims"]?.toSet())
         assertEquals(listOf("Geometry"), merged["CAT Quant"])
         assertEquals(listOf("Geography"), merged["State PSC"])
+    }
+
+    @Test
+    fun `smartMerge preserves StudyNote mastery bookmarks and non-blank course across devices`() = runBlocking {
+        // Incoming archive has newer StudyNote with blank course, bookmark [2], mastered [1]
+        db.studyNoteDao().insertStudyNote(
+            StudyNoteEntity(
+                syncUid = "uid-shared-note",
+                title = "Constitutional Bodies",
+                subject = "Polity",
+                course = "",
+                rawContent = "1. **CAG** -> Art 148\n2. **ECI** -> Art 324\n3. **UPSC** -> Art 315",
+                bookmarkedLinesJson = "[2]",
+                masteredBlocksJson = "[1]",
+                createdAt = 1_000L,
+                updatedAt = 5_000L
+            )
+        )
+        appPrefs.saveKnowledgeCoursesMap(mapOf("UPSC GS" to listOf("Polity")))
+        val archiveFile = File(tempDir, "note_merge.examset.zip")
+        val manifest = VaultArchiveEngine.createVaultArchive(context, db, appPrefs, themePrefs, archiveFile)
+        assertEquals(1, manifest.counts.knowledgeCoursesCount)
+
+        // Local device has older StudyNote with course "UPSC GS", bookmark [0], mastered [0]
+        db.studyNoteDao().deleteAllStudyNotes()
+        db.studyNoteDao().insertStudyNote(
+            StudyNoteEntity(
+                syncUid = "uid-shared-note",
+                title = "Constitutional Bodies",
+                subject = "Polity",
+                course = "UPSC GS",
+                rawContent = "1. **CAG** -> Art 148",
+                bookmarkedLinesJson = "[0]",
+                masteredBlocksJson = "[0]",
+                createdAt = 1_000L,
+                updatedAt = 2_000L
+            )
+        )
+
+        val preview = VaultArchiveEngine.inspectLocalFile(archiveFile)
+        assertTrue(preview.checksumVerified)
+        assertEquals(1, preview.manifest.counts.knowledgeCoursesCount)
+
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.SMART_MERGE
+        )
+
+        val mergedNote = db.studyNoteDao().getStudyNoteBySyncUid("uid-shared-note")
+        assertNotNull(mergedNote)
+        assertEquals("UPSC GS", mergedNote?.course)
+        assertEquals(setOf(0, 2), mergedNote?.getBookmarkedIndices())
+        assertEquals(setOf(0, 1), mergedNote?.getMasteredIndices())
+    }
+
+    @Test
+    fun `inspectLocalFile and restoreFromPreview handle Web examset-vault-v5 JSON with SHA-256 verification`() = runBlocking {
+        fun sha256(s: String): String = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(s.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+        val papersSec = """[{"metadata":{"id":"web-p1","title":"Web Polity Set","subject":"Polity","topic":"Parliament","setNumber":"01","targetExam":"UPSC","durationMinutes":45,"positiveMarks":2,"negativeMarks":0.66,"folderId":"fld_web","createdAt":1700000000000,"updatedAt":1700000010000},"questions":[{"num":1,"question":"Which house is the Upper House?","options":{"a":"Lok Sabha","b":"Rajya Sabha","c":"Vidhan Sabha","d":"Gram Sabha"},"correctAnswer":"B","explanation":"Rajya Sabha is the Council of States."}]}]"""
+        val foldersSec = """[{"id":"default","name":"My Question Papers","color":"#177E89","parentId":null,"createdAt":1700000000000},{"id":"fld_web","name":"Web UPSC","color":"#0284C7","parentId":null,"createdAt":1700000000000}]"""
+        val attemptsSec = """[{"id":"att-1","paperId":"web-p1","score":2,"maxScore":2,"correctCount":1,"partialCount":0,"incorrectCount":0,"unansweredCount":0,"timeSpentSeconds":30,"submittedAnswers":{"1":"B"},"questionTimes":{"1":15},"submittedAt":1700000020000}]"""
+        val notesSec = """[{"id":"web-note-1","title":"Directive Principles","course":"UPSC Mains","subject":"Polity","sourceAi":"Web","rawContent":"1. **Art 40** -> Village Panchayats","folderId":"fld_web","collectionType":"ONE_LINERS","customLabel":"","linkedPaperId":"web-p1","formatRule":{},"bookmarkedIndices":[0],"masteredIndices":[0],"srsStates":{"0":{"blockIndex":0,"repetitions":2,"easeFactor":2.5,"intervalDays":6,"dueAtMillis":1790000000000,"lastReviewedAtMillis":1780000000000,"lapses":0,"lastRating":"GOOD","reviewCount":2,"correctCount":2}},"createdAt":1700000000000,"updatedAt":1700000010000}]"""
+        val vocabSec = """{"vocabDecks":[{"id":"d-en-b2","title":"English B2","language":"English","languageVariant":"UK","translationLanguage":"","levelCode":"B2","customLevelLabel":"","domain":"General","entries":[{"id":"w1","word":"Candor","pronunciation":"","partOfSpeech":"noun","levelCode":"B2","customLevelLabel":"","language":"English","languageVariant":"UK","meaning":"Frankness","translation":"","translationLanguage":"","examples":[],"synonyms":["frankness"],"antonyms":[],"collocations":[],"usageNote":"","isBookmarked":true,"createdAt":1700000000000,"updatedAt":1700000000000}],"createdAt":1700000000000,"updatedAt":1700000000000}],"vocabSrs":{},"englishVariant":"UK","headwordInbox":[],"dismissedHeadwords":[],"wotdStates":{},"promptPresets":[]}"""
+        val plannerSec = """{"countdowns":[{"id":"cd-1","title":"UPSC Prelims","targetDateIso":"2027-05-24","examType":"GS","color":"#0D9488","isPinned":true}],"studyTodos":[{"id":"td-1","title":"Revise Art 40","priority":"HIGH","dueDateStr":"2027-05-01","isCompleted":false,"targetPomodoros":2,"completedPomodoros":1,"linkedType":"NOTE","linkedNoteId":"web-note-1","linkedDeckLanguage":"","linkedLabel":"Directive Principles","createdAt":1700000000000}],"pomodoroConfig":{"preset":"DEEP_50_10","customFocusMinutes":30,"customBreakMinutes":5,"dailyFocusGoalMinutes":90},"dailyAnalytics":{"2026-11-27":{"dateStr":"2026-11-27","testsCompleted":1,"questionsAnswered":1,"correctAnswers":1,"studyTimeSeconds":300}}}"""
+        val brainSec = """{"knowledgeCourses":{"UPSC Mains":["Polity"]},"brainLabStats":{"bestNBackTier":3,"totalCognitiveSeconds":420,"lastUpdatedAtMillis":1700000010000},"brainLabSettings":{"audioEnabled":false,"countCalmInDailyStudyTime":false,"preferredBudgetMinutes":5},"dismissedTips":["tip_one"],"themeMode":"DARK","colorPreset":"WARM_PAPER","fontScaleMode":"LARGE"}"""
+
+        val webJson = """{"manifest":{"format":"examset-vault-v5","schemaVersion":5,"appVersion":"web-2.5","createdAt":1700000050000,"deviceName":"Firefox Web","counts":{"papersCount":1,"notesCount":1,"knowledgeCoursesCount":1,"foldersCount":2,"attemptsCount":1,"analyticsDaysCount":1,"vocabDecksCount":1,"vocabWordsCount":1,"promptPresetsCount":0,"todosCount":1,"countdownsCount":1},"entryChecksumsSha256":{"papers":"${sha256(papersSec)}","folders":"${sha256(foldersSec)}","attempts":"${sha256(attemptsSec)}","studyNotes":"${sha256(notesSec)}","vocabAndPresets":"${sha256(vocabSec)}","plannerAndAnalytics":"${sha256(plannerSec)}","brainAndPreferences":"${sha256(brainSec)}"}},"sections":{"papers":$papersSec,"folders":$foldersSec,"attempts":$attemptsSec,"studyNotes":$notesSec,"vocabAndPresets":$vocabSec,"plannerAndAnalytics":$plannerSec,"brainAndPreferences":$brainSec}}"""
+
+        val webFile = File(tempDir, "web_backup.examset.json").apply { writeText(webJson) }
+        val preview = VaultArchiveEngine.inspectLocalFile(webFile)
+        assertTrue("Web Vault v5 JSON checksum must verify cleanly", preview.checksumVerified)
+        assertTrue(preview.isWebVaultJson)
+        assertEquals(1, preview.manifest.counts.papersCount)
+        assertEquals(1, preview.manifest.counts.knowledgeCoursesCount)
+
+        VaultArchiveEngine.restoreFromPreview(
+            context = context,
+            db = db,
+            appPrefs = appPrefs,
+            themePrefs = themePrefs,
+            preview = preview,
+            mode = RestoreMode.FULL_REPLACE
+        )
+
+        val restoredPapers = db.paperDao().getAllPapersOnce()
+        val restoredNotes = db.studyNoteDao().getAllStudyNotesOnce()
+        val restoredAttempts = db.paperDao().getAllAttemptsOnce()
+        assertEquals(1, restoredPapers.size)
+        assertEquals("Web Polity Set", restoredPapers.first().title)
+        assertEquals("fld_web", restoredPapers.first().folderId)
+        assertEquals(1, restoredNotes.size)
+        assertEquals("UPSC Mains", restoredNotes.first().course)
+        assertEquals(restoredPapers.first().id, restoredNotes.first().linkedPaperId)
+        assertEquals(1, restoredAttempts.size)
+        assertEquals(listOf("Polity"), appPrefs.getKnowledgeCoursesMap()["UPSC Mains"])
+        assertEquals(3, appPrefs.getBrainLabStats().bestNBackTier)
+        assertEquals(ThemeMode.DARK, themePrefs.getThemeMode())
+        assertEquals(1, appPrefs.getVocabularyDecks().size)
+        assertEquals(1, appPrefs.getExamCountdowns().size)
+
+        // Tampered Web JSON must fail verification
+        val tamperedFile = File(tempDir, "web_tampered.examset.json").apply {
+            writeText(webJson.replace("Rajya Sabha", "Upper Council"))
+        }
+        val tamperedPreview = VaultArchiveEngine.inspectLocalFile(tamperedFile)
+        assertFalse(tamperedPreview.checksumVerified)
     }
 }

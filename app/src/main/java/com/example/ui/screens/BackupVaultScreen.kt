@@ -116,7 +116,6 @@ fun BackupVaultCenterSection(
     val folders by viewModel.folders.collectAsState()
     val allAttempts by viewModel.allAttempts.collectAsState()
     val vocabularyDecks by viewModel.vocabularyDecks.collectAsState()
-    val knowledgeCoursesMap by viewModel.knowledgeCoursesMap.collectAsState()
     val promptPresets by viewModel.promptPresets.collectAsState()
     val examCountdowns by viewModel.examCountdowns.collectAsState()
     val studyTodos by viewModel.studyTodos.collectAsState()
@@ -135,21 +134,12 @@ fun BackupVaultCenterSection(
     var showUnlinkCloudFileConfirm by remember { mutableStateOf(false) }
     var pendingDisconnectProvider by remember { mutableStateOf<CloudProviderType?>(null) }
     var pendingDeleteSnapshot by remember { mutableStateOf<BackupSnapshotEntity?>(null) }
-    var pendingDeleteRemoteBackup by remember { mutableStateOf<RemoteCloudBackupFile?>(null) }
 
     val exportVaultLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) {
             viewModel.exportVaultToUri(uri)
-        }
-    }
-
-    val exportWebVaultJsonLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            viewModel.exportWebVaultJsonToUri(uri)
         }
     }
 
@@ -310,43 +300,6 @@ fun BackupVaultCenterSection(
         )
     }
 
-    pendingDeleteRemoteBackup?.let { remote ->
-        AlertDialog(
-            onDismissRequest = { pendingDeleteRemoteBackup = null },
-            containerColor = colors.surface,
-            titleContentColor = colors.inkBold,
-            textContentColor = colors.ink,
-            title = { Text("Delete Remote Cloud Backup?", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Permanently delete \"${remote.name}\" (${formatBytes(remote.sizeBytes)}) from ${remote.provider.displayName}? This cannot be undone."
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteRemoteBackup(remote)
-                        pendingDeleteRemoteBackup = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .testTag("confirm_delete_remote_backup_button")
-                ) {
-                    Text("Delete", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { pendingDeleteRemoteBackup = null },
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -404,9 +357,6 @@ fun BackupVaultCenterSection(
                         }
                         item {
                             VaultStatPill(label = "${studyNotes.size} Knowledge Sets", color = colors.tealDark)
-                        }
-                        item {
-                            VaultStatPill(label = "${knowledgeCoursesMap.size} Courses", color = colors.teal)
                         }
                         item {
                             VaultStatPill(label = "${vocabularyDecks.size} Vocab ($totalVocabWords Words)", color = colors.teal)
@@ -575,23 +525,6 @@ fun BackupVaultCenterSection(
 
                         OutlinedButton(
                             onClick = {
-                                val jsonName = VaultArchiveEngine.defaultVaultFileName("examset_web_vault")
-                                    .removeSuffix(".zip") + ".json"
-                                exportWebVaultJsonLauncher.launch(jsonName)
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .testTag("export_web_vault_json_button")
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, tint = colors.tealDark, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export Web .json", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
                                 importVaultLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream", "*/*"))
                             },
                             shape = RoundedCornerShape(10.dp),
@@ -725,8 +658,7 @@ fun BackupVaultCenterSection(
                     remoteCloudBackups.take(6).forEach { remote ->
                         RemoteBackupRow(
                             file = remote,
-                            onRestore = { viewModel.restoreFromRemoteBackup(remote) },
-                            onDelete = { pendingDeleteRemoteBackup = remote }
+                            onRestore = { viewModel.restoreFromRemoteBackup(remote) }
                         )
                     }
                 }
@@ -1131,8 +1063,7 @@ private fun CloudProviderSyncCard(
 @Composable
 private fun RemoteBackupRow(
     file: RemoteCloudBackupFile,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit
+    onRestore: () -> Unit
 ) {
     val colors = ExamTheme.colors
     val dateStr = remember(file.modifiedAt) {
@@ -1144,9 +1075,9 @@ private fun RemoteBackupRow(
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(file.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.inkBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1156,21 +1087,8 @@ private fun RemoteBackupRow(
                     color = colors.inkMuted
                 )
             }
-            OutlinedButton(
-                onClick = onRestore,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("restore_remote_backup_button")
-            ) {
+            OutlinedButton(onClick = onRestore, modifier = Modifier.heightIn(min = 38.dp)) {
                 Text("Restore", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier
-                    .size(48.dp)
-                    .testTag("delete_remote_backup_button")
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete remote backup", tint = colors.red, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -1265,46 +1183,7 @@ fun RestorePreviewDialog(
     val colors = ExamTheme.colors
     var selectedMode by remember { mutableStateOf(RestoreMode.SMART_MERGE) }
     var mergeAppSettings by remember { mutableStateOf(true) }
-    var showUnverifiedConfirm by remember(preview) { mutableStateOf(false) }
     val counts = preview.manifest.counts
-
-    if (showUnverifiedConfirm) {
-        AlertDialog(
-            onDismissRequest = { showUnverifiedConfirm = false },
-            containerColor = colors.surface,
-            titleContentColor = colors.inkBold,
-            textContentColor = colors.ink,
-            title = { Text("Proceed With Unverified Archive?", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "SHA-256 verification did not pass for \"${preview.sourceLabel}\". The archive may be corrupted, edited externally, or incomplete. Continue restoring (${selectedMode.label}) anyway?"
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showUnverifiedConfirm = false
-                        val effectiveSettings = if (selectedMode == RestoreMode.FULL_REPLACE) true else mergeAppSettings
-                        onConfirmRestore(selectedMode, effectiveSettings)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.red, contentColor = Color.White),
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .testTag("confirm_unverified_restore_button")
-                ) {
-                    Text("Proceed Anyway", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showUnverifiedConfirm = false },
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("Go Back")
-                }
-            }
-        )
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1340,10 +1219,11 @@ fun RestorePreviewDialog(
                     Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("Contents Verified:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.inkMuted)
                         Text("• ${counts.papersCount} Question Sets", fontSize = 12.sp, color = colors.inkBold)
-                        Text("• ${counts.notesCount} Knowledge Sets (+ Flashcard SRS)", fontSize = 12.sp, color = colors.inkBold)
-                        if (counts.knowledgeCoursesCount > 0) {
-                            Text("• ${counts.knowledgeCoursesCount} Courses", fontSize = 12.sp, color = colors.inkBold)
-                        }
+                        Text(
+                            "• ${counts.notesCount} Knowledge Sets (${counts.knowledgeCoursesCount} Courses + Flashcard SRS)",
+                            fontSize = 12.sp,
+                            color = colors.inkBold
+                        )
                         Text("• ${counts.vocabDecksCount} Vocabulary Sets (${counts.vocabWordsCount} Words + SRS & WOTD)", fontSize = 12.sp, color = colors.inkBold)
                         Text("• ${counts.foldersCount} Folders • ${counts.promptPresetsCount} AI Presets • ${counts.draftsCount} Drafts", fontSize = 12.sp, color = colors.inkBold)
                         Text("• ${counts.countdownsCount} Countdowns • ${counts.todosCount} Tasks", fontSize = 12.sp, color = colors.inkBold)
@@ -1428,10 +1308,11 @@ fun RestorePreviewDialog(
             }
         },
         confirmButton = {
+            var showUnverifiedConfirm by remember { mutableStateOf(false) }
             Button(
                 onClick = {
+                    val effectiveSettings = if (selectedMode == RestoreMode.FULL_REPLACE) true else mergeAppSettings
                     if (preview.checksumVerified) {
-                        val effectiveSettings = if (selectedMode == RestoreMode.FULL_REPLACE) true else mergeAppSettings
                         onConfirmRestore(selectedMode, effectiveSettings)
                     } else {
                         showUnverifiedConfirm = true
@@ -1440,13 +1321,45 @@ fun RestorePreviewDialog(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (preview.checksumVerified) colors.teal else colors.red
                 ),
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("restore_preview_confirm_button")
+                modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text(
                     if (preview.checksumVerified) "Restore Now" else "Restore Unverified Archive",
                     fontWeight = FontWeight.Bold
+                )
+            }
+            if (showUnverifiedConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showUnverifiedConfirm = false },
+                    title = { Text("Confirm Unverified Restore?", fontWeight = FontWeight.Bold, color = colors.red) },
+                    text = {
+                        Text(
+                            text = "This archive failed integrity verification (${preview.checksumDetails}). Restoring may import incomplete or corrupted records. Continue anyway?",
+                            fontSize = 12.5.sp,
+                            color = colors.inkBold
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showUnverifiedConfirm = false
+                                val effectiveSettings = if (selectedMode == RestoreMode.FULL_REPLACE) true else mergeAppSettings
+                                onConfirmRestore(selectedMode, effectiveSettings)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.red),
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Yes, Restore Anyway", fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showUnverifiedConfirm = false },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Go Back")
+                        }
+                    }
                 )
             }
         },

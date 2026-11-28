@@ -39,15 +39,19 @@ import {
 } from '../../types/phase5';
 import { ExamStore } from '../../data/examStore';
 import { CloudSyncEngine } from '../../utils/cloudSyncEngine';
+import { downloadBytesSafely, downloadTextSafely } from '../../utils/downloadHelper';
+import type { PromptPreset } from '../../types/phase4';
 import {
+  buildAndroidZipVaultArchive,
+  buildPromptPresetsPackJson,
   buildVaultArchive,
   computeBackupCounts,
+  inspectVaultArchiveBytes,
+  inspectVaultArchiveFile,
   inspectVaultArchiveText,
-  MAX_TEXT_BACKUP_BYTES,
-  MAX_ZIP_BACKUP_BYTES,
+  parsePromptPresetsPackJson,
   type WorkspaceBackupState,
 } from '../../utils/vaultArchiveEngine';
-import { inspectAndroidZipArchive, isZipMagicBytes } from '../../utils/zipVaultReader';
 
 interface BackupVaultTabProps {
   workspaceState: WorkspaceBackupState;
@@ -58,6 +62,7 @@ interface BackupVaultTabProps {
   onCreateSnapshot: (label: string, kind: 'manual' | 'pre_restore', rawJson: string) => void | Promise<void>;
   onDeleteSnapshot: (snapshotId: string) => void | Promise<void>;
   onExecuteRestore: (preview: RestorePreview, mode: RestoreMode) => void | Promise<void>;
+  onImportPromptPresets?: (presets: PromptPreset[]) => void;
   onNotify: (msg: string) => void;
 }
 
@@ -76,10 +81,12 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
   onCreateSnapshot,
   onDeleteSnapshot,
   onExecuteRestore,
+  onImportPromptPresets,
   onNotify,
 }) => {
   const { colors, scalePx } = useTheme();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const presetPackInputRef = useRef<HTMLInputElement | null>(null);
 
   const [pasteMode, setPasteMode] = useState(false);
   const [rawPasteText, setRawPasteText] = useState('');
@@ -87,6 +94,9 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
   const [restoreMode, setRestoreMode] = useState<RestoreMode>('SMART_MERGE');
   const [inspectError, setInspectError] = useState<string | null>(null);
   const [customSnapshotLabel, setCustomSnapshotLabel] = useState('');
+  const [confirmDeleteSnapshotId, setConfirmDeleteSnapshotId] = useState<string | null>(null);
+  const [unverifiedConfirmOpen, setUnverifiedConfirmOpen] = useState(false);
+  const [syncArchiveFormat, setSyncArchiveFormat] = useState<'json' | 'zip'>('json');
 
   // Sync & Cloud States
   const [diskStatus, setDiskStatus] = useState<LinkedDiskFileStatus>({
@@ -115,18 +125,14 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
   const [opBusyLabel, setOpBusyLabel] = useState<string | null>(null);
   const [opFeedback, setOpFeedback] = useState<{ ok: boolean; message: string } | null>(null);
 
-  // Client ID Setup Modal & Safety Confirmation States
+  // Client ID Setup Modal State
   const [configProvider, setConfigProvider] = useState<CloudProviderType | null>(null);
   const [clientIdDraft, setClientIdDraft] = useState('');
   const [tokenPrefDraft, setTokenPrefDraft] = useState<TokenStoragePreference>('SESSION');
   const [copiedUri, setCopiedUri] = useState<string | null>(null);
-  const [pendingDeleteSnapshot, setPendingDeleteSnapshot] = useState<VaultSnapshotRecord | null>(null);
-  const [pendingDeleteRemote, setPendingDeleteRemote] = useState<RemoteCloudBackupFile | null>(null);
-  const [unverifiedConfirmOpen, setUnverifiedConfirmOpen] = useState(false);
 
   const liveCounts = useMemo(() => computeBackupCounts(workspaceState), [workspaceState]);
   const isEmbeddedFrame = useMemo(() => CloudSyncEngine.isEmbeddedCrossOriginFrame(), []);
-  const isStandaloneFileOrigin = useMemo(() => CloudSyncEngine.isFileProtocolOrigin(), []);
   const activeOrigin = useMemo(
     () => (typeof window !== 'undefined' ? window.location.origin : ''),
     []
@@ -149,35 +155,77 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
   }, [refreshAllSyncStates]);
 
   const triggerDownload = (filename: string, rawJson: string) => {
-    const blob = new Blob([rawJson], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadTextSafely(rawJson, filename, 'application/json;charset=utf-8');
   };
 
   const handleDownloadVault = () => {
     const { rawJson } = buildVaultArchive(workspaceState, 'ExamSet Web Workspace');
     const dateStamp = new Date().toISOString().slice(0, 10);
     triggerDownload(`ExamSet_Vault_${dateStamp}.examset.json`, rawJson);
-    onNotify('Downloaded SHA-256 verified Backup Vault archive');
+    onNotify('Downloaded SHA-256 verified .examset.json Backup Vault');
+  };
+
+  const handleDownloadAndroidZipVault = async () => {
+    setInspectError(null);
+    setOpBusyLabel('Building Android-compatible .examset.zip vault…');
+    try {
+      const { bytes } = await buildAndroidZipVaultArchive(workspaceState, 'ExamSet Web Workspace');
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      downloadBytesSafely(bytes, `ExamSet_Vault_${dateStamp}.examset.zip`, 'application/zip');
+      onNotify('Downloaded cross-platform .examset.zip Vault for Android & Web');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to build .examset.zip archive.';
+      setInspectError(msg);
+      onNotify(msg);
+    } finally {
+      setOpBusyLabel(null);
+    }
+  };
+
+  const handleExportPromptPresets = () => {
+    const json = buildPromptPresetsPackJson(workspaceState.promptPresets || []);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    downloadTextSafely(json, `ExamSet_PromptPresets_${dateStamp}.json`, 'application/json;charset=utf-8');
+    onNotify(`Exported ${workspaceState.promptPresets.length} Prompt Preset(s)`);
+  };
+
+  const handleImportPromptPresetsFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setInspectError(null);
+    try {
+      const text = await file.text();
+      const res = parsePromptPresetsPackJson(text, workspaceState.promptPresets || []);
+      if (onImportPromptPresets) {
+        onImportPromptPresets(res.merged);
+      }
+      const msg = `Prompt Presets imported: ${res.added} added, ${res.updated} updated.`;
+      setOpFeedback({ ok: true, message: msg });
+      onNotify(msg);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to parse Prompt Presets pack.';
+      setInspectError(msg);
+      onNotify(msg);
+    }
   };
 
   const handleSaveLocalCheckpoint = async () => {
-    const { document, rawJson } = buildVaultArchive(workspaceState, 'Browser Local Vault');
-    const label =
-      customSnapshotLabel.trim() ||
-      `Checkpoint (${document.manifest.counts.papersCount} Sets, ${document.manifest.counts.notesCount} Notes, ${document.manifest.counts.vocabWordsCount} Words)`;
+    setInspectError(null);
     try {
+      const { document, rawJson } = buildVaultArchive(workspaceState, 'Browser Local Vault');
+      const label =
+        customSnapshotLabel.trim() ||
+        `Checkpoint (${document.manifest.counts.papersCount} Sets, ${document.manifest.counts.notesCount} Notes, ${document.manifest.counts.vocabWordsCount} Words)`;
       await onCreateSnapshot(label, 'manual', rawJson);
       setCustomSnapshotLabel('');
       onNotify('Saved verified snapshot to Browser Local Vault');
     } catch (err) {
-      onNotify(err instanceof Error ? err.message : 'Unable to save local snapshot.');
+      const msg =
+        err instanceof Error ? err.message : 'Unable to save local snapshot (browser storage quota or private mode limit).';
+      setInspectError(msg);
+      setOpFeedback({ ok: false, message: msg });
+      onNotify(msg);
     }
   };
 
@@ -185,12 +233,6 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     setInspectError(null);
     setUnverifiedConfirmOpen(false);
     try {
-      const byteEstimate = new TextEncoder().encode(rawText || '').byteLength;
-      if (byteEstimate > MAX_TEXT_BACKUP_BYTES) {
-        throw new Error(
-          `Backup text exceeds the ${MAX_TEXT_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
-        );
-      }
       const preview = inspectVaultArchiveText(rawText, sourceLabel);
       setRestorePreview(preview);
     } catch (err) {
@@ -199,41 +241,39 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     }
   };
 
+  const handleInspectBinaryOrText = async (
+    rawText: string,
+    rawBytes: Uint8Array | undefined,
+    sourceLabel: string
+  ) => {
+    setInspectError(null);
+    setUnverifiedConfirmOpen(false);
+    try {
+      const preview = rawBytes
+        ? await inspectVaultArchiveBytes(rawBytes, sourceLabel)
+        : inspectVaultArchiveText(rawText, sourceLabel);
+      setRestorePreview(preview);
+    } catch (err) {
+      setRestorePreview(null);
+      setInspectError(err instanceof Error ? err.message : 'Unable to inspect backup archive.');
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-
     setInspectError(null);
     setUnverifiedConfirmOpen(false);
-    const isLikelyZipName = file.name.toLowerCase().endsWith('.zip');
-    const maxBytes = isLikelyZipName ? MAX_ZIP_BACKUP_BYTES : MAX_TEXT_BACKUP_BYTES;
-    if (file.size > maxBytes) {
-      setRestorePreview(null);
-      setInspectError(
-        `Selected file (${formatBytes(file.size)}) exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
-      );
-      return;
-    }
-
+    setOpBusyLabel(`Inspecting "${file.name}"…`);
     try {
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      if (isZipMagicBytes(bytes) || isLikelyZipName) {
-        if (bytes.byteLength > MAX_ZIP_BACKUP_BYTES) {
-          throw new Error(
-            `ZIP archive exceeds the ${MAX_ZIP_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
-          );
-        }
-        const preview = await inspectAndroidZipArchive(bytes, file.name);
-        setRestorePreview(preview);
-      } else {
-        const text = new TextDecoder('utf-8').decode(bytes);
-        handleInspectRaw(text, file.name);
-      }
+      const preview = await inspectVaultArchiveFile(file);
+      setRestorePreview(preview);
     } catch (err) {
       setRestorePreview(null);
-      setInspectError(err instanceof Error ? err.message : 'Unable to inspect selected archive.');
+      setInspectError(err instanceof Error ? err.message : 'Unable to inspect backup file.');
+    } finally {
+      setOpBusyLabel(null);
     }
   };
 
@@ -261,28 +301,17 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     }
   };
 
-  const executeConfirmedRestore = async () => {
+  const confirmRestore = async () => {
     if (!restorePreview) return;
-    setUnverifiedConfirmOpen(false);
-    try {
-      await onExecuteRestore(restorePreview, restoreMode);
-      setRestorePreview(null);
-      setRawPasteText('');
-      setPasteMode(false);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Restore failed cleanly without data loss.';
-      setInspectError(msg);
-      onNotify(msg);
-    }
-  };
-
-  const handleRestoreButtonClick = () => {
-    if (!restorePreview) return;
-    if (!restorePreview.checksumVerified) {
+    if (!restorePreview.checksumVerified && !unverifiedConfirmOpen) {
       setUnverifiedConfirmOpen(true);
       return;
     }
-    void executeConfirmedRestore();
+    await onExecuteRestore(restorePreview, restoreMode);
+    setUnverifiedConfirmOpen(false);
+    setRestorePreview(null);
+    setRawPasteText('');
+    setPasteMode(false);
   };
 
   // --- Computer Disk & Cloud-Synced Folder Handlers ---
@@ -292,7 +321,11 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     setOpBusyLabel('Preparing live disk sync file…');
     try {
       const { rawJson } = buildVaultArchive(workspaceState, 'ExamSet Live Disk Sync');
-      const res = await CloudSyncEngine.linkNewDiskSyncFile(rawJson);
+      const zipBundle =
+        syncArchiveFormat === 'zip'
+          ? (await buildAndroidZipVaultArchive(workspaceState, 'ExamSet Live Disk Sync')).bytes
+          : undefined;
+      const res = await CloudSyncEngine.linkNewDiskSyncFile(rawJson, zipBundle);
       setDiskStatus(res.status);
       setOpFeedback({ ok: !res.status.lastError, message: res.message });
       onNotify(res.message);
@@ -311,7 +344,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
       const res = await CloudSyncEngine.linkExistingDiskSyncFile();
       if (res) {
         setDiskStatus(res.status);
-        handleInspectRaw(res.rawJson, `Linked Disk: ${res.fileName}`);
+        await handleInspectBinaryOrText(res.rawJson, res.rawBytes, `Linked Disk: ${res.fileName}`);
         setOpFeedback({
           ok: true,
           message: `Linked "${res.fileName}" and staged verified restore preview.`,
@@ -330,7 +363,12 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     setOpBusyLabel(`Syncing "${diskStatus.displayName}" to disk…`);
     try {
       const { rawJson } = buildVaultArchive(workspaceState, 'ExamSet Live Disk Sync');
-      const updated = await CloudSyncEngine.syncToLinkedDiskFile(rawJson);
+      const wantZip =
+        syncArchiveFormat === 'zip' || diskStatus.displayName.toLowerCase().endsWith('.zip');
+      const zipBundle = wantZip
+        ? (await buildAndroidZipVaultArchive(workspaceState, 'ExamSet Live Disk Sync')).bytes
+        : undefined;
+      const updated = await CloudSyncEngine.syncToLinkedDiskFile(rawJson, zipBundle);
       setDiskStatus(updated);
       const msg = `Synced "${updated.displayName}" cleanly.`;
       setOpFeedback({ ok: true, message: msg });
@@ -348,9 +386,9 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     setOpFeedback(null);
     setOpBusyLabel(`Reading "${diskStatus.displayName}"…`);
     try {
-      const { rawJson, fileName, status } = await CloudSyncEngine.readFromLinkedDiskFile();
+      const { rawJson, rawBytes, fileName, status } = await CloudSyncEngine.readFromLinkedDiskFile();
       setDiskStatus(status);
-      handleInspectRaw(rawJson, `Disk File: ${fileName}`);
+      await handleInspectBinaryOrText(rawJson, rawBytes, `Disk File: ${fileName}`);
       setOpFeedback({ ok: true, message: `Loaded "${fileName}" — choose Merge or Clean Replace.` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to read linked disk file.';
@@ -411,10 +449,16 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
     const label = provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'OneDrive';
     setOpBusyLabel(`Uploading verified vault to ${label}…`);
     try {
-      const { rawJson } = buildVaultArchive(workspaceState, `ExamSet ${label} Sync`);
       const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const fileName = `ExamSet_Vault_${stamp}.examset.json`;
-      const remote = await CloudSyncEngine.uploadVaultToCloud(provider, fileName, rawJson);
+      let fileName = `ExamSet_Vault_${stamp}.examset.json`;
+      let payload: string | Uint8Array;
+      if (syncArchiveFormat === 'zip') {
+        fileName = `ExamSet_Vault_${stamp}.examset.zip`;
+        payload = (await buildAndroidZipVaultArchive(workspaceState, `ExamSet ${label} Sync`)).bytes;
+      } else {
+        payload = buildVaultArchive(workspaceState, `ExamSet ${label} Sync`).rawJson;
+      }
+      const remote = await CloudSyncEngine.uploadVaultToCloud(provider, fileName, payload);
       setDriveStatus(CloudSyncEngine.getAccountStatus('GOOGLE_DRIVE'));
       setOneDriveStatus(CloudSyncEngine.getAccountStatus('ONEDRIVE'));
       setRemoteBackups((prev) => [remote, ...prev.filter((r) => r.remoteId !== remote.remoteId)].slice(0, 15));
@@ -457,45 +501,20 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
 
   const handleRestoreRemoteBackup = async (remote: RemoteCloudBackupFile) => {
     setOpFeedback(null);
-    setInspectError(null);
-    setUnverifiedConfirmOpen(false);
     setOpBusyLabel(`Downloading "${remote.name}"…`);
-    const label = `${remote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'OneDrive'}: ${remote.name}`;
     try {
-      const { bytes, isZip } = await CloudSyncEngine.downloadCloudBackupPayload(remote);
-      if (isZip) {
-        const preview = await inspectAndroidZipArchive(bytes, label);
-        setRestorePreview(preview);
-      } else {
-        const rawJson = new TextDecoder('utf-8').decode(bytes);
-        handleInspectRaw(rawJson, label);
-      }
+      const bytes = await CloudSyncEngine.downloadCloudBackupBytes(remote);
+      await handleInspectBinaryOrText(
+        '',
+        bytes,
+        `${remote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'OneDrive'}: ${remote.name}`
+      );
       setOpFeedback({
         ok: true,
         message: `Downloaded "${remote.name}" — verify checksum & select restore mode.`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Download failed.';
-      setOpFeedback({ ok: false, message: msg });
-    } finally {
-      setOpBusyLabel(null);
-    }
-  };
-
-  const handleDeleteRemoteBackup = async (remote: RemoteCloudBackupFile) => {
-    setPendingDeleteRemote(null);
-    setOpFeedback(null);
-    setOpBusyLabel(`Deleting "${remote.name}"…`);
-    try {
-      await CloudSyncEngine.deleteCloudBackup(remote);
-      setRemoteBackups((prev) =>
-        prev.filter((r) => !(r.provider === remote.provider && r.remoteId === remote.remoteId))
-      );
-      const msg = `Deleted remote archive "${remote.name}".`;
-      setOpFeedback({ ok: true, message: msg });
-      onNotify(msg);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to delete remote archive.';
       setOpFeedback({ ok: false, message: msg });
     } finally {
       setOpBusyLabel(null);
@@ -587,7 +606,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={() => openProviderConfigModal(status.provider)}
-                className="min-h-[44px] px-3 py-1.5 rounded-lg border text-xs font-bold"
+                className="min-h-[40px] px-3 py-1.5 rounded-lg border text-xs font-bold"
                 style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
               >
                 Client ID Setup
@@ -599,13 +618,8 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                     ? void handleConnectProvider(status.provider)
                     : openProviderConfigModal(status.provider)
                 }
-                disabled={Boolean(opBusyLabel) || isStandaloneFileOrigin}
-                title={
-                  isStandaloneFileOrigin
-                    ? 'OAuth redirects are unsupported from file:// pages; use Quick Disk Sync instead.'
-                    : undefined
-                }
-                className="min-h-[44px] px-3.5 py-1.5 rounded-lg text-xs font-black text-white disabled:opacity-50"
+                disabled={Boolean(opBusyLabel)}
+                className="min-h-[40px] px-3.5 py-1.5 rounded-lg text-xs font-black text-white disabled:opacity-50"
                 style={{ backgroundColor: accent }}
               >
                 {status.hasClientIdConfigured ? 'Connect Account' : 'Setup & Connect'}
@@ -688,6 +702,17 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => void handleDownloadAndroidZipVault()}
+            disabled={Boolean(opBusyLabel)}
+            className="min-h-[44px] flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border disabled:opacity-50"
+            style={{ backgroundColor: colors.tealLight, borderColor: colors.teal, color: colors.tealDark }}
+            title="Cross-platform ZIP archive compatible with Android ExamSet App & Web"
+          >
+            <Archive className="w-4 h-4" />
+            Export .examset.zip (Android)
+          </button>
+          <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             className="min-h-[44px] flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border"
             style={{
@@ -697,14 +722,14 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
             }}
           >
             <Upload className="w-4 h-4" style={{ color: colors.teal }} />
-            Import (.json / Android .zip)
+            Import &amp; Inspect (.json / .zip)
           </button>
           <input
             ref={fileInputRef}
             type="file"
             accept=".json,.examset.json,.zip,.examset.zip"
             className="hidden"
-            onChange={(ev) => void handleFileChange(ev)}
+            onChange={(e) => void handleFileChange(e)}
           />
         </div>
       </div>
@@ -811,19 +836,47 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
           <div className="flex items-start gap-2.5">
             <Link2 className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: colors.teal }} />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-black" style={{ color: colors.inkBold }}>
-                Quick Disk &amp; Desktop Cloud-Folder Sync (Zero OAuth Setup)
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-black" style={{ color: colors.inkBold }}>
+                  Quick Disk &amp; Desktop Cloud-Folder Sync (Zero OAuth Setup)
+                </div>
+                <div
+                  className="inline-flex rounded-lg border p-0.5 text-[0.6875rem] font-bold"
+                  style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSyncArchiveFormat('json')}
+                    className="px-2.5 py-1 rounded-md transition"
+                    style={
+                      syncArchiveFormat === 'json'
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText }
+                        : { color: colors.muted }
+                    }
+                  >
+                    .examset.json
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSyncArchiveFormat('zip')}
+                    className="px-2.5 py-1 rounded-md transition"
+                    style={
+                      syncArchiveFormat === 'zip'
+                        ? { backgroundColor: colors.teal, color: colors.onAccentText }
+                        : { color: colors.muted }
+                    }
+                  >
+                    .examset.zip (Android)
+                  </button>
+                </div>
               </div>
-              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: colors.inkMuted }}>
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: colors.inkMuted }}>
                 {diskStatus.isLinked
-                  ? `Linked File: ${diskStatus.displayName}${diskStatus.lastSyncedAt > 0 ? ` • Last synced ${new Date(diskStatus.lastSyncedAt).toLocaleString()}` : ''}`
-                  : 'Link an .examset.json file on your computer hard disk—or inside your synced Google Drive for Desktop, OneDrive, iCloud Drive, or Dropbox folder—for 1-click overwrite and restore.'}
+                  ? `Linked Checkpoint: ${diskStatus.displayName}${diskStatus.lastSyncedAt > 0 ? ` • Last synced ${new Date(diskStatus.lastSyncedAt).toLocaleString()}` : ''}`
+                  : CloudSyncEngine.isFileSystemAccessSupported() && !isEmbeddedFrame
+                  ? 'Link an .examset.json or Android .examset.zip file on your hard disk—or inside Google Drive for Desktop, OneDrive, iCloud Drive, or Dropbox—for 1-click live overwrite and restore.'
+                  : 'Cross-browser Sync (Firefox / Safari / Embedded): saves a private browser checkpoint (OPFS) and downloads your .examset.json or Android .examset.zip archive cleanly, while allowing 1-click re-open from any synced disk folder.'}
               </p>
-              {isEmbeddedFrame && !diskStatus.isLinked && (
-                <p className="text-[0.6875rem] mt-1 font-semibold" style={{ color: colors.amber }}>
-                  Note: Persistent File Picker handles require a direct Chrome/Edge browser tab; inside embedded preview frames or Safari/Firefox, safe file download/import is used automatically.
-                </p>
-              )}
             </div>
           </div>
 
@@ -901,21 +954,6 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
           <div className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.muted }}>
             Direct OAuth2 Cloud Drive Sync (BYO Web Client ID)
           </div>
-          {isStandaloneFileOrigin && (
-            <div
-              className="p-3 rounded-xl border flex items-start gap-2.5 text-xs font-semibold"
-              style={{
-                backgroundColor: colors.amberLight,
-                borderColor: colors.amber,
-                color: colors.inkBold,
-              }}
-            >
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: colors.amber }} />
-              <span>
-                Running from a local <code className="font-mono">file://</code> standalone HTML page: Google &amp; Microsoft OAuth popups cannot redirect to a <code className="font-mono">null</code> origin. Use <strong>Quick Disk Sync</strong> or Download/Import <code className="font-mono">.examset.json</code> / Android <code className="font-mono">.examset.zip</code> above instead.
-              </span>
-            </div>
-          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {renderCloudProviderCard(driveStatus)}
             {renderCloudProviderCard(oneDriveStatus)}
@@ -957,36 +995,18 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                         : ''}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => void handleRestoreRemoteBackup(remote)}
-                      disabled={Boolean(opBusyLabel)}
-                      className="min-h-[44px] px-3 py-1.5 rounded-lg border text-xs font-bold disabled:opacity-50"
-                      style={{
-                        backgroundColor: colors.surface,
-                        borderColor: colors.teal,
-                        color: colors.tealDark,
-                      }}
-                    >
-                      Inspect &amp; Restore
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPendingDeleteRemote(remote)}
-                      disabled={Boolean(opBusyLabel)}
-                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border disabled:opacity-50"
-                      style={{
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                        color: colors.red,
-                      }}
-                      aria-label={`Delete remote backup ${remote.name}`}
-                      title={`Delete ${remote.name} from cloud`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleRestoreRemoteBackup(remote)}
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg border text-xs font-bold flex-shrink-0"
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderColor: colors.teal,
+                      color: colors.tealDark,
+                    }}
+                  >
+                    Inspect &amp; Restore
+                  </button>
                 </div>
               ))}
             </div>
@@ -1070,11 +1090,63 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               <button
                 type="button"
                 onClick={() => void handleSaveLocalCheckpoint()}
-                className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black flex-shrink-0"
+                className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black flex-shrink-0"
                 style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
               >
                 Save Snapshot
               </button>
+            </div>
+          </div>
+
+          {/* Standalone Prompt Presets Pack Export/Import */}
+          <div
+            className="rounded-2xl border p-4 sm:p-5 space-y-3"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4" style={{ color: colors.teal }} />
+                <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
+                  AI Prompt Presets Pack (.json)
+                </h3>
+              </div>
+              <span className="text-[0.6875rem] font-bold" style={{ color: colors.muted }}>
+                {workspaceState.promptPresets.length} saved
+              </span>
+            </div>
+            <p className="text-xs" style={{ color: colors.muted }}>
+              Share or transfer your custom AI Prompt Studio presets independently between Android &amp; Web without replacing other library data.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportPromptPresets}
+                className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.inkBold }}
+              >
+                <Download className="w-3.5 h-3.5" style={{ color: colors.teal }} />
+                Export Presets Pack
+              </button>
+              {onImportPromptPresets && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => presetPackInputRef.current?.click()}
+                    className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black"
+                    style={{ backgroundColor: colors.tealLight, color: colors.tealDark }}
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Import Presets Pack
+                  </button>
+                  <input
+                    ref={presetPackInputRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => void handleImportPromptPresetsFile(e)}
+                  />
+                </>
+              )}
             </div>
           </div>
 
@@ -1233,26 +1305,59 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={handleRestoreButtonClick}
-                className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor: restorePreview.checksumVerified ? colors.teal : colors.amber,
-                  color: colors.onAccentText,
-                }}
-              >
-                {restorePreview.checksumVerified ? (
+              {!restorePreview.checksumVerified && (
+                <div
+                  className="p-3 rounded-xl border text-xs space-y-2"
+                  style={{ backgroundColor: colors.amberLight, borderColor: colors.amber, color: colors.inkBold }}
+                >
+                  <div className="flex items-center gap-2 font-black" style={{ color: colors.amber }}>
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    SHA-256 Checksum Warning — Secondary Confirmation Required
+                  </div>
+                  <p className="text-[0.6875rem] leading-relaxed" style={{ color: colors.inkMuted }}>
+                    This archive could not be fully SHA-256 verified ({restorePreview.checksumDetails}). Only restore if you explicitly trust its source.
+                  </p>
+                </div>
+              )}
+
+              {unverifiedConfirmOpen && !restorePreview.checksumVerified ? (
+                <div
+                  className="p-3.5 rounded-xl border-2 space-y-2.5"
+                  style={{ backgroundColor: colors.redLight, borderColor: colors.red }}
+                >
+                  <div className="text-xs font-black" style={{ color: colors.red }}>
+                    Confirm restoring unverified backup archive?
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void confirmRestore()}
+                      className="min-h-[42px] px-4 py-2 rounded-lg text-xs font-black text-white"
+                      style={{ backgroundColor: colors.red }}
+                    >
+                      Acknowledge Risks &amp; Restore Anyway
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUnverifiedConfirmOpen(false)}
+                      className="min-h-[42px] px-4 py-2 rounded-lg border text-xs font-bold"
+                      style={{ backgroundColor: colors.surface, borderColor: colors.border, color: colors.inkBold }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void confirmRestore()}
+                  className="w-full min-h-[44px] py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2"
+                  style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
+                >
                   <CheckCircle2 className="w-4 h-4" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4" />
-                )}
-                {!restorePreview.checksumVerified
-                  ? 'Review Integrity Warning & Restore…'
-                  : restoreMode === 'SMART_MERGE'
-                  ? 'Apply Smart Merge'
-                  : 'Save Safety Snapshot & Clean Replace'}
-              </button>
+                  {restoreMode === 'SMART_MERGE' ? 'Apply Smart Merge' : 'Save Safety Snapshot & Clean Replace'}
+                </button>
+              )}
             </div>
           )}
 
@@ -1314,7 +1419,7 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       <button
                         type="button"
                         onClick={() => void handleRestoreSnapshot(snap)}
-                        className="min-h-[44px] px-3 py-1.5 rounded-lg text-xs font-bold"
+                        className="min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-bold"
                         style={{ backgroundColor: colors.teal, color: colors.onAccentText }}
                       >
                         Restore
@@ -1322,26 +1427,53 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
                       <button
                         type="button"
                         onClick={() => void handleDownloadSnapshot(snap)}
-                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border"
+                        className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg border"
                         style={{
                           backgroundColor: colors.surface,
                           borderColor: colors.border,
                           color: colors.inkBold,
                         }}
                         title="Download this snapshot JSON"
-                        aria-label={`Download snapshot ${snap.label}`}
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setPendingDeleteSnapshot(snap)}
-                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg"
-                        style={{ color: colors.red }}
-                        aria-label={`Delete snapshot ${snap.label}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {confirmDeleteSnapshotId === snap.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDeleteSnapshotId(null);
+                              void onDeleteSnapshot(snap.id);
+                            }}
+                            className="min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-black text-white"
+                            style={{ backgroundColor: colors.red }}
+                          >
+                            Confirm Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteSnapshotId(null)}
+                            className="min-h-[38px] px-2.5 py-1.5 rounded-lg border text-xs font-bold"
+                            style={{
+                              backgroundColor: colors.surface,
+                              borderColor: colors.border,
+                              color: colors.ink,
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteSnapshotId(snap.id)}
+                          className="min-w-[38px] min-h-[38px] flex items-center justify-center rounded-lg"
+                          style={{ color: colors.red }}
+                          aria-label="Delete snapshot"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1380,6 +1512,14 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
             </div>
 
             <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1 text-xs">
+              {typeof window !== 'undefined' && window.location.protocol === 'file:' && (
+                <div
+                  className="p-2.5 rounded-xl border font-semibold leading-relaxed"
+                  style={{ backgroundColor: colors.amberLight, borderColor: colors.amber, color: colors.inkBold }}
+                >
+                  Offline file:// Bundle Detected: Google Drive &amp; OneDrive OAuth2 require http://localhost or https:// hosting. Use Export .examset.zip / .examset.json or Quick Disk Sync when running directly from a local file.
+                </div>
+              )}
               <p className="leading-relaxed" style={{ color: colors.muted }}>
                 {configProvider === 'GOOGLE_DRIVE'
                   ? 'In Google Cloud Console, create an OAuth 2.0 Web Application Client ID, enable Google Drive API (scope: drive.file), and whitelist the Origin & Redirect URI below.'
@@ -1493,141 +1633,6 @@ export const BackupVaultTab: React.FC<BackupVaultTabProps> = ({
               >
                 Save Client Config
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Unverified Archive Secondary Confirmation Modal */}
-      {unverifiedConfirmOpen && restorePreview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
-          onClick={() => setUnverifiedConfirmOpen(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-5 space-y-3">
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: colors.red }} />
-                <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
-                  Restore Unverified Archive?
-                </h3>
-              </div>
-              <p className="text-xs leading-relaxed" style={{ color: colors.muted }}>
-                {restorePreview.checksumDetails} Restoring an incomplete or modified backup can corrupt your workspace. Continue with{' '}
-                <strong>{restoreMode === 'FULL_REPLACE' ? 'Clean Replace' : 'Smart Merge'}</strong>?
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setUnverifiedConfirmOpen(false)}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border text-xs font-bold"
-                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void executeConfirmedRestore()}
-                  className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black text-white"
-                  style={{ backgroundColor: colors.red }}
-                >
-                  Restore Anyway
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Local Snapshot Delete Confirmation Modal */}
-      {pendingDeleteSnapshot && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
-          onClick={() => setPendingDeleteSnapshot(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-5 space-y-3">
-              <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
-                Delete Local Snapshot?
-              </h3>
-              <p className="text-xs leading-relaxed" style={{ color: colors.muted }}>
-                Remove <strong>{pendingDeleteSnapshot.label}</strong> from browser storage? This cannot be undone.
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setPendingDeleteSnapshot(null)}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border text-xs font-bold"
-                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const targetId = pendingDeleteSnapshot.id;
-                    setPendingDeleteSnapshot(null);
-                    void onDeleteSnapshot(targetId);
-                  }}
-                  className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black text-white"
-                  style={{ backgroundColor: colors.red }}
-                >
-                  Delete Snapshot
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Remote Cloud Backup Delete Confirmation Modal */}
-      {pendingDeleteRemote && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
-          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)' }}
-          onClick={() => setPendingDeleteRemote(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, color: colors.ink }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-5 space-y-3">
-              <h3 className="text-sm font-black" style={{ color: colors.inkBold }}>
-                Delete Cloud Backup?
-              </h3>
-              <p className="text-xs leading-relaxed" style={{ color: colors.muted }}>
-                Permanently delete <strong>{pendingDeleteRemote.name}</strong> from{' '}
-                {pendingDeleteRemote.provider === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Microsoft OneDrive'}? Your local workspace stays untouched.
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setPendingDeleteRemote(null)}
-                  className="min-h-[44px] px-4 py-2 rounded-lg border text-xs font-bold"
-                  style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border, color: colors.ink }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteRemoteBackup(pendingDeleteRemote)}
-                  className="min-h-[44px] px-4 py-2 rounded-lg text-xs font-black text-white"
-                  style={{ backgroundColor: colors.red }}
-                >
-                  Delete from Cloud
-                </button>
-              </div>
             </div>
           </div>
         </div>

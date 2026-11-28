@@ -14,13 +14,16 @@ import { QuestionPaper } from '../../types/exam';
 import { useTheme } from '../../theme/ThemeProvider';
 import { BatchExamImporter } from '../../utils/batchExamImporter';
 import { SvgQrGenerator } from '../../utils/qrCodeHelper';
+import { downloadTextSafely } from '../../utils/downloadHelper';
+import { EmptyPaperPromptCard } from '../EmptyPaperPromptCard';
 
 interface ShareSystemTabProps {
-  currentPaper: QuestionPaper;
+  currentPaper: QuestionPaper | null;
   allPapers?: QuestionPaper[];
   onImportPaper: (paper: QuestionPaper) => void;
   onImportPapers?: (papers: QuestionPaper[]) => void;
   onOpenBatchImport?: () => void;
+  onOpenCreateModal?: () => void;
 }
 
 export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
@@ -29,6 +32,7 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
   onImportPaper,
   onImportPapers,
   onOpenBatchImport,
+  onOpenCreateModal,
 }) => {
   const { colors } = useTheme();
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
@@ -37,9 +41,13 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
-  const sharePayload = useMemo(() => JSON.stringify(currentPaper, null, 2), [currentPaper]);
+  const sharePayload = useMemo(
+    () => (currentPaper ? JSON.stringify(currentPaper, null, 2) : ''),
+    [currentPaper]
+  );
 
   const offlineKeyQrSvg = useMemo(() => {
+    if (!currentPaper) return '';
     const payload = SvgQrGenerator.generatePayload(
       currentPaper.metadata.id,
       currentPaper.metadata.subject,
@@ -58,24 +66,18 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
   };
 
   const handleCopyJson = () => {
+    if (!sharePayload) return;
     navigator.clipboard?.writeText(sharePayload);
     setCopiedJson(true);
     setTimeout(() => setCopiedJson(false), 2400);
   };
 
   const downloadJson = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadTextSafely(content, filename, 'application/json;charset=utf-8');
   };
 
   const handleDownloadSingleJson = () => {
+    if (!currentPaper) return;
     downloadJson(
       `${currentPaper.metadata.title.replace(/\s+/g, '_')}.examset.json`,
       sharePayload
@@ -83,10 +85,12 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
   };
 
   const handleDownloadLibraryBundle = () => {
+    const bundlePapers = allPapers.length > 0 ? allPapers : currentPaper ? [currentPaper] : [];
+    if (bundlePapers.length === 0) return;
     const bundle = {
       schemaVersion: 2,
       exportedAt: new Date().toISOString(),
-      papers: allPapers.length > 0 ? allPapers : [currentPaper],
+      papers: bundlePapers,
     };
     downloadJson(
       `ExamSet_Library_Bundle_${new Date().toISOString().slice(0, 10)}.json`,
@@ -103,7 +107,7 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
       return;
     }
 
-    const folderId = currentPaper.metadata.folderId || 'default';
+    const folderId = currentPaper?.metadata.folderId || 'default';
     const parsedItems = BatchExamImporter.validateRawContent(rawText, 'pasted_import.json', rawText.length);
     const validPapers = parsedItems
       .map((item) => item.paper)
@@ -178,14 +182,16 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
               Export All ({allPapers.length} Sets)
             </button>
           )}
-          <button
-            onClick={handleDownloadSingleJson}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition"
-            style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
-          >
-            <Download className="w-4 h-4" />
-            Download .examset.json
-          </button>
+          {currentPaper && (
+            <button
+              onClick={handleDownloadSingleJson}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition"
+              style={{ backgroundColor: colors.primaryButtonBg, color: colors.primaryButtonText }}
+            >
+              <Download className="w-4 h-4" />
+              Download .examset.json
+            </button>
+          )}
         </div>
       </div>
 
@@ -220,29 +226,38 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
               </button>
             </div>
 
-            <div
-              className="p-4 rounded-xl border flex items-center justify-between gap-4"
-              style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
-            >
-              <div className="space-y-1 min-w-0">
-                <span className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
-                  Offline Grading Matrix Ready
-                </span>
-                <h5 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
-                  {currentPaper.metadata.title}
-                </h5>
-                <p className="text-xs" style={{ color: colors.muted }}>
-                  {currentPaper.metadata.subject} • {currentPaper.questions.length} Items • Set {currentPaper.metadata.setNumber}
-                </p>
-              </div>
-
+            {currentPaper ? (
               <div
-                className="p-1.5 rounded-lg border bg-white flex-shrink-0 shadow-sm"
-                style={{ borderColor: colors.border }}
-                dangerouslySetInnerHTML={{ __html: offlineKeyQrSvg }}
-                title="Serialized OMR Offline Answer Key QR"
+                className="p-4 rounded-xl border flex items-center justify-between gap-4"
+                style={{ backgroundColor: colors.surfaceVariant, borderColor: colors.border }}
+              >
+                <div className="space-y-1 min-w-0">
+                  <span className="text-[0.6875rem] font-bold uppercase tracking-wider" style={{ color: colors.teal }}>
+                    Offline Grading Matrix Ready
+                  </span>
+                  <h5 className="text-sm font-bold truncate" style={{ color: colors.inkBold }}>
+                    {currentPaper.metadata.title}
+                  </h5>
+                  <p className="text-xs" style={{ color: colors.muted }}>
+                    {currentPaper.metadata.subject} • {currentPaper.questions.length} Items • Set {currentPaper.metadata.setNumber}
+                  </p>
+                </div>
+
+                <div
+                  className="p-1.5 rounded-lg border bg-white flex-shrink-0 shadow-sm"
+                  style={{ borderColor: colors.border }}
+                  dangerouslySetInnerHTML={{ __html: offlineKeyQrSvg }}
+                  title="Serialized OMR Offline Answer Key QR"
+                />
+              </div>
+            ) : (
+              <EmptyPaperPromptCard
+                title="No Question Set Selected for Export"
+                description="Import a shared .examset.json or multi-paper bundle below, or create your first Question Set to generate its Offline OMR Answer Key QR."
+                onCreateSet={onOpenCreateModal}
+                onBatchImport={onOpenBatchImport}
               />
-            </div>
+            )}
           </div>
 
           {/* Import Card */}
@@ -334,15 +349,17 @@ export const ShareSystemTab: React.FC<ShareSystemTabProps> = ({
 
             <textarea
               readOnly
-              value={sharePayload}
+              value={sharePayload || '// No active Question Set loaded yet. Create or import a paper to inspect its JSON contract.'}
               className="flex-1 w-full bg-transparent text-emerald-400 font-mono text-[0.6875rem] leading-relaxed border-0 resize-none focus:outline-none"
             />
 
             <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-[0.6875rem] text-slate-400">
               <span>Includes metadata, MSQ keys, Option E, formulas &amp; explanations</span>
-              <button onClick={handleDownloadSingleJson} className="font-semibold text-sky-400 hover:text-sky-300">
-                Download File
-              </button>
+              {currentPaper && (
+                <button onClick={handleDownloadSingleJson} className="font-semibold text-sky-400 hover:text-sky-300">
+                  Download File
+                </button>
+              )}
             </div>
           </div>
         </div>

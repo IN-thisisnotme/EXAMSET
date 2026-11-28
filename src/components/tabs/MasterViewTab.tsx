@@ -23,10 +23,14 @@ import { shouldStackOptions } from '../../utils/questionFormatter';
 import { StructuredQuestionView } from '../StructuredQuestionView';
 import { LatexText } from '../LatexText';
 import { computeQuestionDiffs, ReviewChangesModal } from '../ReviewChangesModal';
+import { EmptyPaperPromptCard } from '../EmptyPaperPromptCard';
 
 interface MasterViewTabProps {
-  currentPaper: QuestionPaper;
+  currentPaper: QuestionPaper | null;
   onUpdatePaper: (paper: QuestionPaper, silent?: boolean) => void;
+  onOpenCreateModal?: () => void;
+  onOpenBatchImportModal?: () => void;
+  onNavigateToVault?: () => void;
   onOpenEditMetadata?: () => void;
   onOpenAuditModal?: () => void;
   registerBackHandler?: (handler: (() => boolean) | null) => void;
@@ -37,6 +41,9 @@ type MasterFilter = 'all' | 'missing-key' | 'missing-exp' | 'missing-option' | '
 export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   currentPaper,
   onUpdatePaper,
+  onOpenCreateModal,
+  onOpenBatchImportModal,
+  onNavigateToVault,
   onOpenEditMetadata,
   onOpenAuditModal,
   registerBackHandler,
@@ -48,7 +55,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   // Protected Edit Mode state with rollback snapshot & Review Changes modal
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [snapshotQuestions, setSnapshotQuestions] = useState<QuestionItem[] | null>(null);
-  const [draftQuestions, setDraftQuestions] = useState<QuestionItem[]>(currentPaper.questions);
+  const [draftQuestions, setDraftQuestions] = useState<QuestionItem[]>(currentPaper?.questions || []);
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
 
   // Bulk Key / Explanation Merge modal
@@ -56,7 +63,13 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   const [bulkText, setBulkText] = useState<string>('');
   const [bulkStatusMsg, setBulkStatusMsg] = useState<string | null>(null);
 
-  const activeQuestions = isEditMode ? draftQuestions : currentPaper.questions;
+  useEffect(() => {
+    setIsEditMode(false);
+    setSnapshotQuestions(null);
+    setDraftQuestions(currentPaper?.questions || []);
+  }, [currentPaper?.metadata.id]);
+
+  const activeQuestions = isEditMode ? draftQuestions : (currentPaper?.questions || []);
 
   const stats = useMemo(() => {
     const qs = activeQuestions;
@@ -97,6 +110,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   }, [isEditMode, snapshotQuestions, draftQuestions]);
 
   const enterEditMode = () => {
+    if (!currentPaper) return;
     setSnapshotQuestions(JSON.parse(JSON.stringify(currentPaper.questions)));
     setDraftQuestions(JSON.parse(JSON.stringify(currentPaper.questions)));
     setIsEditMode(true);
@@ -112,6 +126,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   };
 
   const handleConfirmSaveEdits = () => {
+    if (!currentPaper) return;
     onUpdatePaper({
       ...currentPaper,
       questions: draftQuestions,
@@ -208,6 +223,7 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
   };
 
   const handleApplyBulkMerge = () => {
+    if (!currentPaper) return;
     setBulkStatusMsg(null);
     if (!bulkText.trim()) return;
     const keysMap = McqParser.parseAnswerKeys(bulkText);
@@ -235,6 +251,18 @@ export const MasterViewTab: React.FC<MasterViewTabProps> = ({
     setShowBulkModal(false);
     setBulkStatusMsg(`Updated ${matched} question(s).`);
   };
+
+  if (!currentPaper) {
+    return (
+      <EmptyPaperPromptCard
+        title="Master View — No Active Question Set"
+        description="Create a Question Set, batch-import files, or restore a backup archive to inspect and edit questions, answer keys, and explanations here."
+        onCreateSet={onOpenCreateModal}
+        onBatchImport={onOpenBatchImportModal}
+        onOpenVault={onNavigateToVault}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">

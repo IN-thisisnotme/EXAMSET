@@ -41,12 +41,16 @@ import { StructuredQuestionView } from '../StructuredQuestionView';
 import { LatexText } from '../LatexText';
 import { AttemptHistoryModal } from '../AttemptHistoryModal';
 import { PsychometricAnalysisModal } from '../PsychometricAnalysisModal';
+import { EmptyPaperPromptCard } from '../EmptyPaperPromptCard';
 
 interface StudentPortalTabProps {
-  currentPaper: QuestionPaper;
+  currentPaper: QuestionPaper | null;
   attempts?: AttemptRecord[];
   onSaveAttempt?: (record: AttemptRecord) => void;
   onDeleteAttempt?: (attemptId: string) => void;
+  onOpenCreateModal?: () => void;
+  onOpenBatchImportModal?: () => void;
+  onNavigateToVault?: () => void;
   registerBackHandler?: (handler: (() => boolean) | null) => void;
 }
 
@@ -83,31 +87,37 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   attempts: externalAttempts,
   onSaveAttempt,
   onDeleteAttempt,
+  onOpenCreateModal,
+  onOpenBatchImportModal,
+  onNavigateToVault,
   registerBackHandler,
 }) => {
   const { colors, scalePx } = useTheme();
 
   // Internal fallback store if parent props not provided
   const [localAttempts, setLocalAttempts] = useState<AttemptRecord[]>(() =>
-    ExamStore.loadAttempts(currentPaper.metadata.id)
+    currentPaper ? ExamStore.loadAttempts(currentPaper.metadata.id) : []
   );
   const paperAttempts = useMemo(() => {
+    if (!currentPaper) return [];
     if (externalAttempts) {
       return externalAttempts.filter((a) => a.paperId === currentPaper.metadata.id);
     }
     return localAttempts;
-  }, [externalAttempts, localAttempts, currentPaper.metadata.id]);
+  }, [externalAttempts, localAttempts, currentPaper]);
 
   // Saved in-progress session
   const [savedSession, setSavedSession] = useState<ActiveExamSession | null>(() =>
-    ExamStore.getActiveSession(currentPaper.metadata.id)
+    currentPaper ? ExamStore.getActiveSession(currentPaper.metadata.id) : null
   );
 
   // Lobby configuration state
   const [interfaceMode, setInterfaceMode] = useState<ExamInterfaceMode>('TCS_ION_CBT');
   const [timerMode, setTimerMode] = useState<ExamTimerMode>('COUNTDOWN');
   const [customMinutes, setCustomMinutes] = useState<number>(
-    currentPaper.metadata.durationMinutes || Math.max(15, currentPaper.questions.length * 2)
+    currentPaper
+      ? currentPaper.metadata.durationMinutes || Math.max(15, currentPaper.questions.length * 2)
+      : 30
   );
   const [shuffleOptions, setShuffleOptions] = useState<boolean>(false);
   const [shuffleSeed, setShuffleSeed] = useState<number>(() => Date.now() % 100000);
@@ -145,12 +155,18 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
     setLastSubmittedRecord(null);
     setShowSubmitModal(false);
     setPaletteOpen(false);
+    if (!currentPaper) {
+      setCustomMinutes(30);
+      setSavedSession(null);
+      setLocalAttempts([]);
+      return;
+    }
     setCustomMinutes(
       currentPaper.metadata.durationMinutes || Math.max(15, currentPaper.questions.length * 2)
     );
     setSavedSession(ExamStore.getActiveSession(currentPaper.metadata.id));
     setLocalAttempts(ExamStore.loadAttempts(currentPaper.metadata.id));
-  }, [currentPaper.metadata.id, currentPaper.questions.length, currentPaper.metadata.durationMinutes]);
+  }, [currentPaper?.metadata.id, currentPaper?.questions.length, currentPaper?.metadata.durationMinutes]);
 
   useEffect(() => {
     if (!registerBackHandler) return;
@@ -194,17 +210,18 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   }, [registerBackHandler, showHistoryModal, showPsychometricModal, showSubmitModal, paletteOpen, stage]);
 
   const activeQuestions: QuestionItem[] = useMemo(() => {
-    if (!activeSubsetNums || activeSubsetNums.length === 0) return currentPaper.questions;
+    const qs = currentPaper?.questions || [];
+    if (!activeSubsetNums || activeSubsetNums.length === 0) return qs;
     const set = new Set(activeSubsetNums);
-    return currentPaper.questions.filter((q) => set.has(q.num));
-  }, [currentPaper.questions, activeSubsetNums]);
+    return qs.filter((q) => set.has(q.num));
+  }, [currentPaper, activeSubsetNums]);
 
   const currentQuestion = activeQuestions[currentIndex];
 
-  const posMarks = (currentPaper.metadata.positiveMarks ?? 0) > 0 ? currentPaper.metadata.positiveMarks! : 2.0;
-  const negMarks = (currentPaper.metadata.negativeMarks ?? 0) >= 0 ? currentPaper.metadata.negativeMarks! : 0.66;
-  const unkMarks = (currentPaper.metadata.unattendedMarks ?? 0) >= 0 ? currentPaper.metadata.unattendedMarks! : 0.0;
-  const msqPolicy: MsqScoringPolicy = currentPaper.metadata.msqScoringPolicy || 'ALL_OR_NOTHING';
+  const posMarks = (currentPaper?.metadata.positiveMarks ?? 0) > 0 ? currentPaper!.metadata.positiveMarks! : 2.0;
+  const negMarks = (currentPaper?.metadata.negativeMarks ?? 0) >= 0 ? currentPaper!.metadata.negativeMarks! : 0.66;
+  const unkMarks = (currentPaper?.metadata.unattendedMarks ?? 0) >= 0 ? currentPaper!.metadata.unattendedMarks! : 0.0;
+  const msqPolicy: MsqScoringPolicy = currentPaper?.metadata.msqScoringPolicy || 'ALL_OR_NOTHING';
 
   // Build deterministic shuffled option order for any question
   const getDisplayOptionOrder = useCallback(
@@ -227,7 +244,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
   // Persist active session while test is running
   useEffect(() => {
-    if (stage !== 'ACTIVE') return;
+    if (stage !== 'ACTIVE' || !currentPaper) return;
     const session: ActiveExamSession = {
       paperId: currentPaper.metadata.id,
       interfaceMode,
@@ -248,7 +265,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
     setSavedSession(session);
   }, [
     stage,
-    currentPaper.metadata.id,
+    currentPaper,
     interfaceMode,
     timerMode,
     shuffleOptions,
@@ -275,6 +292,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
 
   // Submit handler
   const handleFinalSubmit = useCallback(() => {
+    if (!currentPaper) return;
     setShowSubmitModal(false);
     setPaletteOpen(false);
 
@@ -349,7 +367,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
     activeQuestions,
     activeSubsetNums,
     answers,
-    currentPaper.metadata,
+    currentPaper,
     elapsedSeconds,
     msqPolicy,
     negMarks,
@@ -470,6 +488,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   ]);
 
   const handleStartNewTest = (subsetNums: number[] | null = null) => {
+    if (!currentPaper) return;
     const qList =
       subsetNums && subsetNums.length > 0
         ? currentPaper.questions.filter((q) => subsetNums.includes(q.num))
@@ -496,7 +515,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   };
 
   const handleResumeSession = () => {
-    if (!savedSession) return;
+    if (!savedSession || !currentPaper) return;
     setActiveSubsetNums(null);
     setInterfaceMode(savedSession.interfaceMode);
     setTimerMode(savedSession.timerMode);
@@ -542,6 +561,36 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   };
 
   const pacingSummary = useMemo(() => {
+    if (!currentPaper) {
+      return QuestionPacingAnalyzer.analyzePacing(
+        {
+          metadata: {
+            id: '',
+            title: '',
+            subject: '',
+            topic: '',
+            setNumber: '01',
+            targetExam: '',
+            rollNumber: '0000000001',
+            bookletNumber: '0000001',
+            durationMinutes: 30,
+            positiveMarks: 2,
+            negativeMarks: 0.66,
+            unattendedMarks: 0,
+            msqScoringPolicy: 'ALL_OR_NOTHING',
+            createdAt: 0,
+            folderId: 'default',
+          },
+          questions: [],
+        },
+        {},
+        {},
+        posMarks,
+        negMarks,
+        unkMarks,
+        msqPolicy
+      );
+    }
     return QuestionPacingAnalyzer.analyzePacing(
       { ...currentPaper, questions: activeQuestions },
       questionTimes,
@@ -556,7 +605,7 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
   // Latest saved attempt for Retry Wrong / Unattempted shortcuts from overview
   const latestAttempt = paperAttempts[0] || null;
   const wrongOrPartialNumsFromLatest = useMemo(() => {
-    if (!latestAttempt) return [];
+    if (!latestAttempt || !currentPaper) return [];
     return currentPaper.questions
       .filter((q) => {
         const res = AnswerKeyMatcher.scoreQuestion(
@@ -570,14 +619,26 @@ export const StudentPortalTab: React.FC<StudentPortalTabProps> = ({
         return res.status === 'INCORRECT' || res.status === 'PARTIAL';
       })
       .map((q) => q.num);
-  }, [latestAttempt, currentPaper.questions, posMarks, negMarks, unkMarks, msqPolicy]);
+  }, [latestAttempt, currentPaper, posMarks, negMarks, unkMarks, msqPolicy]);
 
   const unattemptedNumsFromLatest = useMemo(() => {
-    if (!latestAttempt) return [];
+    if (!latestAttempt || !currentPaper) return [];
     return currentPaper.questions
       .filter((q) => !latestAttempt.submittedAnswers[q.num])
       .map((q) => q.num);
-  }, [latestAttempt, currentPaper.questions]);
+  }, [latestAttempt, currentPaper]);
+
+  if (!currentPaper) {
+    return (
+      <EmptyPaperPromptCard
+        title="Student Test Portal — No Question Set Loaded"
+        description="Create your first Question Set, batch-import papers, or restore an .examset.zip / .examset.json backup to launch timed CBT exams & OMR evaluation."
+        onCreateSet={onOpenCreateModal}
+        onBatchImport={onOpenBatchImportModal}
+        onOpenVault={onNavigateToVault}
+      />
+    );
+  }
 
   if (currentPaper.questions.length === 0) {
     return (

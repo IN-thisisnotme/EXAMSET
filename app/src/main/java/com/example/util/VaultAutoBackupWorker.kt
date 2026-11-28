@@ -74,29 +74,27 @@ class VaultAutoBackupWorker(
                 }
             }
 
-            // 2. Auto-sync to connected OAuth2 cloud providers (Google Drive / OneDrive) when online
-            if (CloudBackupClients.isDeviceOnline(context)) {
-                CloudProviderType.entries.forEach { provider ->
-                    if (authStore.buildAccountStatus(provider).isConnected) {
-                        val uploadRes = CloudBackupClients.uploadBackupFile(provider, authStore, file, context)
-                        uploadRes.onSuccess { remote ->
-                            db.backupSnapshotDao().insertSnapshot(
-                                BackupSnapshotEntity(
-                                    provider = provider.code,
-                                    fileName = remote.name,
-                                    localPath = file.absolutePath,
-                                    remoteFileId = remote.remoteId,
-                                    checksumSha256 = snapshot.checksumSha256,
-                                    papersCount = snapshot.papersCount,
-                                    notesCount = snapshot.notesCount,
-                                    foldersCount = snapshot.foldersCount,
-                                    attemptsCount = snapshot.attemptsCount,
-                                    sizeBytes = remote.sizeBytes,
-                                    status = "UPLOADED",
-                                    details = snapshot.details
-                                )
+            // 2. Auto-sync to connected OAuth2 cloud providers (Google Drive / OneDrive)
+            CloudProviderType.entries.forEach { provider ->
+                if (authStore.buildAccountStatus(provider).isConnected) {
+                    val uploadRes = CloudBackupClients.uploadBackupFile(provider, authStore, file, context)
+                    uploadRes.onSuccess { remote ->
+                        db.backupSnapshotDao().insertSnapshot(
+                            BackupSnapshotEntity(
+                                provider = provider.code,
+                                fileName = remote.name,
+                                localPath = file.absolutePath,
+                                remoteFileId = remote.remoteId,
+                                checksumSha256 = snapshot.checksumSha256,
+                                papersCount = snapshot.papersCount,
+                                notesCount = snapshot.notesCount,
+                                foldersCount = snapshot.foldersCount,
+                                attemptsCount = snapshot.attemptsCount,
+                                sizeBytes = remote.sizeBytes,
+                                status = "UPLOADED",
+                                details = snapshot.details
                             )
-                        }
+                        )
                     }
                 }
             }
@@ -115,8 +113,6 @@ class VaultAutoBackupWorker(
                 wm.cancelUniqueWork(UNIQUE_WORK_NAME)
                 return
             }
-            // [DEPRECATED 2026-11-27] Reason: NetworkType.CONNECTED blocked offline local snapshots & SAF sync. Restore if: Only online auto-backups are desired.
-            // .setRequiredNetworkType(NetworkType.CONNECTED)
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
                 .setRequiresBatteryNotLow(true)

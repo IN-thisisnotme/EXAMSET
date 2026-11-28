@@ -6,7 +6,8 @@ import type {
   TokenStoragePreference,
   TrustedTimeStatus,
 } from '../types/phase5';
-import { MAX_TEXT_BACKUP_BYTES, MAX_ZIP_BACKUP_BYTES } from './vaultArchiveEngine';
+import { downloadBytesSafely, downloadTextSafely } from './downloadHelper';
+import { isZipBytes } from './zipArchiveHelper';
 
 const STORAGE_KEYS = {
   GOOGLE_CLIENT_ID: 'examset_sync_google_client_id_v1',
@@ -15,8 +16,13 @@ const STORAGE_KEYS = {
   TOKEN_PREFIX: 'examset_sync_token_v1_',
   LINKED_DISK_META: 'examset_linked_disk_file_meta_v1',
   OAUTH_PENDING: 'examset_oauth_pending_tx_v1',
+  OAUTH_RELAY: 'examset_oauth_callback_relay_v1',
 };
 
+const OAUTH_CHANNEL_NAME = 'examset_oauth_callback';
+const OPFS_SYNC_DIR = 'examset_sync';
+const OPFS_DEFAULT_JSON_NAME = 'ExamSet_Live_Sync.examset.json';
+const MAX_CLOUD_DOWNLOAD_BYTES = 80 * 1024 * 1024;
 const IDB_NAME = 'examset_disk_sync_v1';
 const IDB_STORE = 'file_handles';
 const IDB_HANDLE_KEY = 'linked_sync_handle';
@@ -50,7 +56,7 @@ interface BrowserFileHandle {
   kind?: string;
   queryPermission?: (opts: { mode: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>;
   requestPermission?: (opts: { mode: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>;
-  createWritable?: () => Promise<{ write: (data: string) => Promise<void>; close: () => Promise<void> }>;
+  createWritable?: () => Promise<{ write: (data: string | Uint8Array | Blob) => Promise<void>; close: () => Promise<void> }>;
   getFile?: () => Promise<File>;
 }
 
@@ -276,17 +282,114 @@ async function clearDiskFileHandle(): Promise<void> {
   }
 }
 
-function triggerDownloadTextFile(filename: string, rawJson: string): void {
-  if (typeof document === 'undefined') return;
-  const blob = new Blob([rawJson], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+// [DEPRECATED 2026-11-28] Reason: Synchronous URL.revokeObjectURL cancelled downloads in Firefox & Safari; replaced with downloadTextSafely / downloadBytesSafely + OPFS helpers. Restore if: Synchronous revocation is ever needed.
+// function triggerDownloadTextFile(filename: string, rawJson: string): void { ... }
+function triggerDownloadArchive(filename: string, payload: string | Uint8Array): void {
+  if (typeof payload === 'string') {
+    downloadTextSafely(payload, filename, 'application/json;charset=utf-8');
+  } else {
+    downloadBytesSafely(payload, filename, 'application/zip');
+  }
+}
+
+async function getOpfsSyncDir(create: boolean): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return null;
+    const root = await navigator.storage.getDirectory();
+    return await root.getDirectoryHandle(OPFS_SYNC_DIR, { create });
+  } catch {
+    return null;
+  }
+}
+
+async function writeOpfsSyncFile(fileName: string, payload: string | Uint8Array): Promise<boolean> {
+  try {
+    const dir = await getOpfsSyncDir(true);
+    if (!dir) return false;
+    const fh = await dir.getFileHandle(fileName, { create: true });
+    const writable = await fh.createWritable();
+    if (typeof payload === 'string') {
+      await writable.write(payload);
+    } else {
+      const copy = new Uint8Array(payload.byteLength);
+      copy.set(payload);
+      await writable.write(copy.buffer);
+    }
+    await writable.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readOpfsSyncFile(preferredName?: string): Promise<{ bytes: Uint8Array; fileName: string } | null> {
+  try {
+    const dir = await getOpfsSyncDir(false);
+    if (!dir) return null;
+    const candidates = Array.from(
+      new Set([preferredName, 'ExamSet_Live_Sync.examset.zip', OPFS_DEFAULT_JSON_NAME].filter(Boolean))
+    ) as string[];
+    for (const name of candidates) {
+      try {
+        const fh = await dir.getFileHandle(name);
+        const file = await fh.getFile();
+        const buf = await file.arrayBuffer();
+        return { bytes: new Uint8Array(buf), fileName: file.name || name };
+      } catch {
+        // try next
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearOpfsSyncFiles(): Promise<void> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return;
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry(OPFS_SYNC_DIR, { recursive: true });
+  } catch {
+    // ignore
+  }
+}
+
+function pickDiskFileViaInput(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.style.display = 'none';
+    let settled = false;
+    const finalize = (file: File | null) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', onWindowFocus);
+      if (input.parentNode) input.parentNode.removeChild(input);
+      resolve(file);
+    };
+    const onWindowFocus = () => {
+      setTimeout(() => {
+        if (!settled) {
+          finalize(input.files?.[0] || null);
+        }
+      }, 650);
+    };
+    input.addEventListener('change', () => {
+      finalize(input.files?.[0] || null);
+    });
+    input.addEventListener('cancel', () => {
+      finalize(null);
+    });
+    document.body.appendChild(input);
+    window.addEventListener('focus', onWindowFocus, { once: true });
+    input.click();
+  });
 }
 
 function readLinkedDiskMeta(): { displayName: string; lastSyncedAt: number; lastError: string | null } {
@@ -327,11 +430,6 @@ export const CloudSyncEngine = {
     return typeof win.showSaveFilePicker === 'function' && typeof win.showOpenFilePicker === 'function';
   },
 
-  isFileProtocolOrigin(): boolean {
-    if (typeof window === 'undefined') return false;
-    return window.location.protocol === 'file:' || window.location.origin === 'null';
-  },
-
   isEmbeddedCrossOriginFrame(): boolean {
     if (typeof window === 'undefined') return false;
     try {
@@ -349,6 +447,17 @@ export const CloudSyncEngine = {
     const handle = fsaAvailable ? await loadDiskFileHandle() : null;
 
     if (!handle) {
+      const opfsMatch = meta.displayName ? await readOpfsSyncFile(meta.displayName) : null;
+      if (meta.displayName && opfsMatch) {
+        return {
+          isLinked: true,
+          displayName: opfsMatch.fileName || meta.displayName,
+          syncMode: 'DOWNLOAD_FALLBACK',
+          permissionState: 'granted',
+          lastSyncedAt: meta.lastSyncedAt,
+          lastError: meta.lastError,
+        };
+      }
       return {
         isLinked: false,
         displayName: '',
@@ -371,7 +480,7 @@ export const CloudSyncEngine = {
 
     return {
       isLinked: true,
-      displayName: handle.name || meta.displayName || 'ExamSet_Live_Sync.examset.json',
+      displayName: handle.name || meta.displayName || OPFS_DEFAULT_JSON_NAME,
       syncMode: 'CHROMIUM_FSA',
       permissionState: perm,
       lastSyncedAt: meta.lastSyncedAt,
@@ -379,15 +488,27 @@ export const CloudSyncEngine = {
     };
   },
 
-  async linkNewDiskSyncFile(rawJson: string): Promise<{ status: LinkedDiskFileStatus; message: string }> {
-    const defaultName = 'ExamSet_Live_Sync.examset.json';
+  async linkNewDiskSyncFile(
+    rawJson: string,
+    binaryZipBytes?: Uint8Array
+  ): Promise<{ status: LinkedDiskFileStatus; message: string }> {
+    const preferZip = Boolean(binaryZipBytes && binaryZipBytes.byteLength > 0);
+    const defaultName = preferZip ? 'ExamSet_Live_Sync.examset.zip' : OPFS_DEFAULT_JSON_NAME;
+    const payload: string | Uint8Array = preferZip ? binaryZipBytes! : rawJson;
+
     if (!this.isFileSystemAccessSupported()) {
-      triggerDownloadTextFile(defaultName, rawJson);
+      const opfsSaved = await writeOpfsSyncFile(defaultName, payload);
+      triggerDownloadArchive(defaultName, payload);
+      const now = Date.now();
+      if (opfsSaved) {
+        writeLinkedDiskMeta({ displayName: defaultName, lastSyncedAt: now, lastError: null });
+      }
       const status = await this.getLinkedDiskStatus();
       return {
         status,
-        message:
-          'Direct file handles require Chrome or Edge outside a sandboxed frame. Downloaded archive directly instead.',
+        message: opfsSaved
+          ? `Saved browser-private checkpoint "${defaultName}" and downloaded a copy to your Downloads / synced cloud folder.`
+          : `Downloaded "${defaultName}" safely to your Downloads folder.`,
       };
     }
 
@@ -398,17 +519,39 @@ export const CloudSyncEngine = {
     try {
       const handle = await win.showSaveFilePicker({
         suggestedName: defaultName,
-        types: [
-          {
-            description: 'ExamSet Verified Vault Archive (.examset.json)',
-            accept: { 'application/json': ['.examset.json', '.json'] },
-          },
-        ],
+        types: preferZip
+          ? [
+              {
+                description: 'ExamSet Cross-Platform Vault (.examset.zip)',
+                accept: { 'application/zip': ['.examset.zip', '.zip'] },
+              },
+              {
+                description: 'ExamSet Verified Vault JSON (.examset.json)',
+                accept: { 'application/json': ['.examset.json', '.json'] },
+              },
+            ]
+          : [
+              {
+                description: 'ExamSet Verified Vault Archive (.examset.json)',
+                accept: { 'application/json': ['.examset.json', '.json'] },
+              },
+              {
+                description: 'ExamSet Cross-Platform Vault (.examset.zip)',
+                accept: { 'application/zip': ['.examset.zip', '.zip'] },
+              },
+            ],
       });
 
       const writable = await handle.createWritable?.();
       if (!writable) throw new Error('Unable to obtain writable stream for selected file.');
-      await writable.write(rawJson);
+      const chosenName = (handle.name || defaultName).toLowerCase();
+      if (chosenName.endsWith('.zip') && binaryZipBytes) {
+        const copy = new Uint8Array(binaryZipBytes.byteLength);
+        copy.set(binaryZipBytes);
+        await writable.write(copy);
+      } else {
+        await writable.write(rawJson);
+      }
       await writable.close();
 
       await saveDiskFileHandle(handle);
@@ -428,13 +571,14 @@ export const CloudSyncEngine = {
         };
       }
       if (e?.name === 'SecurityError') {
-        triggerDownloadTextFile(defaultName, rawJson);
-        const errMsg =
-          'This embedded preview frame restricts persistent disk handles. Downloaded vault copy to Downloads instead; open the app directly in a Chrome/Edge tab for 1-click live folder overwrite.';
-        writeLinkedDiskMeta({ displayName: '', lastSyncedAt: Date.now(), lastError: errMsg });
+        await writeOpfsSyncFile(defaultName, payload);
+        triggerDownloadArchive(defaultName, payload);
+        writeLinkedDiskMeta({ displayName: defaultName, lastSyncedAt: Date.now(), lastError: null });
+        const msg =
+          'This embedded preview frame restricts persistent disk handles. Saved browser checkpoint & downloaded vault archive cleanly instead.';
         return {
           status: await this.getLinkedDiskStatus(),
-          message: errMsg,
+          message: msg,
         };
       }
       throw new Error(e?.message || 'Could not link computer disk file.');
@@ -444,11 +588,25 @@ export const CloudSyncEngine = {
   async linkExistingDiskSyncFile(): Promise<{
     status: LinkedDiskFileStatus;
     rawJson: string;
+    rawBytes?: Uint8Array;
     fileName: string;
   } | null> {
     if (!this.isFileSystemAccessSupported()) {
-      throw new Error('Open Existing Disk Sync requires Chrome or Edge in a top-level browser tab.');
+      const picked = await pickDiskFileViaInput('.json,.examset.json,.zip,.examset.zip');
+      if (!picked) return null;
+      const bytes = new Uint8Array(await picked.arrayBuffer());
+      const fileName = picked.name || OPFS_DEFAULT_JSON_NAME;
+      await writeOpfsSyncFile(fileName, bytes);
+      writeLinkedDiskMeta({ displayName: fileName, lastSyncedAt: Date.now(), lastError: null });
+      const rawJson = isZipBytes(bytes) ? '' : new TextDecoder('utf-8').decode(bytes);
+      return {
+        status: await this.getLinkedDiskStatus(),
+        rawJson,
+        rawBytes: bytes,
+        fileName,
+      };
     }
+
     const win = window as unknown as {
       showOpenFilePicker: (opts: unknown) => Promise<BrowserFileHandle[]>;
     };
@@ -457,43 +615,69 @@ export const CloudSyncEngine = {
         multiple: false,
         types: [
           {
-            description: 'ExamSet Verified Vault Archive',
-            accept: { 'application/json': ['.examset.json', '.json'] },
+            description: 'ExamSet Verified Vault Archive (.examset.json / .examset.zip)',
+            accept: {
+              'application/json': ['.examset.json', '.json'],
+              'application/zip': ['.examset.zip', '.zip'],
+            },
           },
         ],
       });
       if (!handle) return null;
       const file = await handle.getFile?.();
       if (!file) throw new Error('Could not read selected file.');
-      if (file.size > MAX_TEXT_BACKUP_BYTES) {
-        throw new Error(
-          `Selected disk file exceeds the ${MAX_TEXT_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
-        );
-      }
-      const rawJson = await file.text();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const rawJson = isZipBytes(bytes) ? '' : new TextDecoder('utf-8').decode(bytes);
       await saveDiskFileHandle(handle);
-      const fileName = handle.name || file.name || 'ExamSet_Live_Sync.examset.json';
+      const fileName = handle.name || file.name || OPFS_DEFAULT_JSON_NAME;
       writeLinkedDiskMeta({ displayName: fileName, lastSyncedAt: Date.now(), lastError: null });
       return {
         status: await this.getLinkedDiskStatus(),
         rawJson,
+        rawBytes: bytes,
         fileName,
       };
     } catch (err) {
       const e = err as { name?: string; message?: string };
       if (e?.name === 'AbortError') return null;
       if (e?.name === 'SecurityError') {
-        throw new Error(
-          'Embedded iframe preview restricts File Picker permissions. Use "Import & Inspect File" or open the app in a direct browser tab.'
-        );
+        const picked = await pickDiskFileViaInput('.json,.examset.json,.zip,.examset.zip');
+        if (!picked) return null;
+        const bytes = new Uint8Array(await picked.arrayBuffer());
+        const fileName = picked.name || OPFS_DEFAULT_JSON_NAME;
+        await writeOpfsSyncFile(fileName, bytes);
+        writeLinkedDiskMeta({ displayName: fileName, lastSyncedAt: Date.now(), lastError: null });
+        const rawJson = isZipBytes(bytes) ? '' : new TextDecoder('utf-8').decode(bytes);
+        return {
+          status: await this.getLinkedDiskStatus(),
+          rawJson,
+          rawBytes: bytes,
+          fileName,
+        };
       }
       throw new Error(e?.message || 'Unable to open disk sync file.');
     }
   },
 
-  async syncToLinkedDiskFile(rawJson: string): Promise<LinkedDiskFileStatus> {
+  async syncToLinkedDiskFile(
+    rawJson: string,
+    binaryZipBytes?: Uint8Array,
+    silentOpfsOnly: boolean = false
+  ): Promise<LinkedDiskFileStatus> {
     const handle = await loadDiskFileHandle();
+    const meta = readLinkedDiskMeta();
     if (!handle) {
+      if (meta.displayName) {
+        const preferZip = meta.displayName.toLowerCase().endsWith('.zip') && binaryZipBytes;
+        const targetName = preferZip ? meta.displayName : OPFS_DEFAULT_JSON_NAME;
+        const payload: string | Uint8Array = preferZip ? binaryZipBytes! : rawJson;
+        await writeOpfsSyncFile(targetName, payload);
+        if (!silentOpfsOnly) {
+          triggerDownloadArchive(targetName, payload);
+        }
+        writeLinkedDiskMeta({ displayName: targetName, lastSyncedAt: Date.now(), lastError: null });
+        return await this.getLinkedDiskStatus();
+      }
       throw new Error('No linked disk/cloud-folder file found. Click "Link Disk / Sync Folder" first.');
     }
     try {
@@ -511,25 +695,50 @@ export const CloudSyncEngine = {
       }
       const writable = await handle.createWritable?.();
       if (!writable) throw new Error('Writable handle stream unavailable.');
-      await writable.write(rawJson);
+      const name = handle.name || meta.displayName || OPFS_DEFAULT_JSON_NAME;
+      if (name.toLowerCase().endsWith('.zip') && binaryZipBytes) {
+        const copy = new Uint8Array(binaryZipBytes.byteLength);
+        copy.set(binaryZipBytes);
+        await writable.write(copy);
+      } else {
+        await writable.write(rawJson);
+      }
       await writable.close();
 
       const now = Date.now();
-      const name = handle.name || readLinkedDiskMeta().displayName || 'ExamSet_Live_Sync.examset.json';
       writeLinkedDiskMeta({ displayName: name, lastSyncedAt: now, lastError: null });
       return await this.getLinkedDiskStatus();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Disk file sync failed.';
-      const prev = readLinkedDiskMeta();
-      writeLinkedDiskMeta({ ...prev, lastError: msg });
+      writeLinkedDiskMeta({ ...meta, lastError: msg });
       throw new Error(msg);
     }
   },
 
-  async readFromLinkedDiskFile(): Promise<{ rawJson: string; fileName: string; status: LinkedDiskFileStatus }> {
+  async readFromLinkedDiskFile(): Promise<{
+    rawJson: string;
+    rawBytes?: Uint8Array;
+    fileName: string;
+    status: LinkedDiskFileStatus;
+  }> {
     const handle = await loadDiskFileHandle();
+    const meta = readLinkedDiskMeta();
     if (!handle) {
-      throw new Error('No linked disk file configured.');
+      const opfsFile = await readOpfsSyncFile(meta.displayName);
+      if (opfsFile) {
+        const rawJson = isZipBytes(opfsFile.bytes) ? '' : new TextDecoder('utf-8').decode(opfsFile.bytes);
+        return {
+          rawJson,
+          rawBytes: opfsFile.bytes,
+          fileName: opfsFile.fileName,
+          status: await this.getLinkedDiskStatus(),
+        };
+      }
+      const picked = await this.linkExistingDiskSyncFile();
+      if (!picked) {
+        throw new Error('No linked disk file selected.');
+      }
+      return picked;
     }
     let granted = false;
     if (handle.queryPermission) {
@@ -545,15 +754,12 @@ export const CloudSyncEngine = {
     }
     const file = await handle.getFile?.();
     if (!file) throw new Error('Unable to read linked file.');
-    if (file.size > MAX_TEXT_BACKUP_BYTES) {
-      throw new Error(
-        `Linked disk file exceeds the ${MAX_TEXT_BACKUP_BYTES / (1024 * 1024)} MB safety limit.`
-      );
-    }
-    const rawJson = await file.text();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const rawJson = isZipBytes(bytes) ? '' : new TextDecoder('utf-8').decode(bytes);
     const fileName = handle.name || file.name || 'Linked Disk Archive';
     return {
       rawJson,
+      rawBytes: bytes,
       fileName,
       status: await this.getLinkedDiskStatus(),
     };
@@ -561,6 +767,7 @@ export const CloudSyncEngine = {
 
   async unlinkDiskSyncFile(): Promise<LinkedDiskFileStatus> {
     await clearDiskFileHandle();
+    await clearOpfsSyncFiles();
     safeLocalRemove(STORAGE_KEYS.LINKED_DISK_META);
     return await this.getLinkedDiskStatus();
   },
@@ -711,18 +918,35 @@ export const CloudSyncEngine = {
       return null;
     }
 
-    // If this window was spawned as an OAuth popup, hand callback URL to opener safely and close
+    // Hand callback URL back to opener across same-origin popup, BroadcastChannel, and storage relay (Firefox COOP / ETP)
+    const relayPayload = { type: 'EXAMSET_OAUTH_CALLBACK', href: window.location.href, at: Date.now() };
+    let handedOffToOpener = false;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const ch = new BroadcastChannel(OAUTH_CHANNEL_NAME);
+        ch.postMessage(relayPayload);
+        ch.close();
+      }
+    } catch {
+      // ignore BroadcastChannel failures
+    }
     if (window.opener && window.opener !== window) {
       try {
-        window.opener.postMessage(
-          { type: 'EXAMSET_OAUTH_CALLBACK', href: window.location.href },
-          window.location.origin
-        );
-        window.close();
-        return null;
+        window.opener.postMessage(relayPayload, window.location.origin);
+        handedOffToOpener = true;
       } catch {
-        // Fallback to handling inside current window if opener cross-origin blocked
+        // Fallback below
       }
+    }
+    if (handedOffToOpener) {
+      window.close();
+      return null;
+    }
+    // If window.name matches our popup name and opener was stripped by Firefox COOP/ETP, publish via localStorage relay and close
+    if (window.name?.startsWith('examset_oauth_') && safeSessionGet(STORAGE_KEYS.OAUTH_PENDING) === '') {
+      safeLocalSet(STORAGE_KEYS.OAUTH_RELAY, JSON.stringify(relayPayload));
+      window.close();
+      return null;
     }
 
     // Redirect fallback path in same window: consume pending transaction and clean URL
@@ -782,9 +1006,9 @@ export const CloudSyncEngine = {
     if (typeof window === 'undefined') {
       throw new Error('OAuth requires a browser window.');
     }
-    if (this.isFileProtocolOrigin()) {
+    if (window.location.protocol === 'file:') {
       throw new Error(
-        'OAuth2 popups cannot redirect to a local file:// standalone HTML page. Use Quick Disk Sync or Download/Import .examset.json instead.'
+        'Cloud OAuth2 requires http:// or https:// hosting. When running directly from a file:// offline bundle, use "Export .examset.json / .examset.zip" or Quick Disk Sync.'
       );
     }
     const clientId = this.getClientId(provider);
@@ -821,7 +1045,7 @@ export const CloudSyncEngine = {
         code_challenge_method: 'S256',
         state,
       });
-      authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
+      authUrl = `https://login.microsoftonline.com/common/oauth2/v2/authorize?${params.toString()}`;
     }
 
     const tx: PendingOAuthTx = {
@@ -838,6 +1062,7 @@ export const CloudSyncEngine = {
     } else {
       safeLocalRemove(STORAGE_KEYS.OAUTH_PENDING);
     }
+    safeLocalRemove(STORAGE_KEYS.OAUTH_RELAY);
 
     const popup = window.open(
       authUrl,
@@ -853,15 +1078,22 @@ export const CloudSyncEngine = {
 
     const callbackHref = await new Promise<string>((resolve, reject) => {
       let finished = false;
+      let bc: BroadcastChannel | null = null;
       const cleanup = () => {
         window.removeEventListener('message', onMsg);
+        window.removeEventListener('storage', onStorage);
+        try {
+          bc?.close();
+        } catch {
+          // ignore
+        }
+        safeLocalRemove(STORAGE_KEYS.OAUTH_RELAY);
         clearInterval(closedPoll);
         clearTimeout(timeoutId);
       };
 
-      const onMsg = (ev: MessageEvent) => {
-        if (ev.origin !== window.location.origin) return;
-        const data = ev.data as { type?: string; href?: string } | null;
+      const acceptPayload = (data: { type?: string; href?: string } | null) => {
+        if (finished) return;
         if (data?.type === 'EXAMSET_OAUTH_CALLBACK' && typeof data.href === 'string') {
           finished = true;
           cleanup();
@@ -869,8 +1101,36 @@ export const CloudSyncEngine = {
         }
       };
 
+      const onMsg = (ev: MessageEvent) => {
+        if (ev.origin !== window.location.origin) return;
+        acceptPayload(ev.data as { type?: string; href?: string } | null);
+      };
+
+      const onStorage = (ev: StorageEvent) => {
+        if (ev.key !== STORAGE_KEYS.OAUTH_RELAY || !ev.newValue) return;
+        try {
+          acceptPayload(JSON.parse(ev.newValue) as { type?: string; href?: string });
+        } catch {
+          // ignore
+        }
+      };
+
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          bc = new BroadcastChannel(OAUTH_CHANNEL_NAME);
+          bc.onmessage = (ev) => acceptPayload(ev.data as { type?: string; href?: string } | null);
+        }
+      } catch {
+        bc = null;
+      }
+
       const closedPoll = setInterval(() => {
         try {
+          const relayRaw = safeLocalGet(STORAGE_KEYS.OAUTH_RELAY);
+          if (relayRaw) {
+            acceptPayload(JSON.parse(relayRaw) as { type?: string; href?: string });
+            return;
+          }
           if (popup.closed && !finished) {
             finished = true;
             cleanup();
@@ -895,6 +1155,7 @@ export const CloudSyncEngine = {
       }, 180000);
 
       window.addEventListener('message', onMsg);
+      window.addEventListener('storage', onStorage);
     });
 
     safeSessionRemove(STORAGE_KEYS.OAUTH_PENDING);
@@ -1078,11 +1339,14 @@ export const CloudSyncEngine = {
   async uploadVaultToCloud(
     provider: CloudProviderType,
     fileName: string,
-    rawJson: string
+    payload: string | Uint8Array
   ): Promise<RemoteCloudBackupFile> {
     try {
       const token = await this.ensureValidAccessToken(provider);
       let remote: RemoteCloudBackupFile;
+      const isBinaryZip = typeof payload !== 'string';
+      const contentType = isBinaryZip ? 'application/zip' : 'application/json';
+      const payloadSize = typeof payload === 'string' ? payload.length : payload.byteLength;
 
       if (provider === 'GOOGLE_DRIVE') {
         const folderId = await this.ensureGoogleDriveFolder(token);
@@ -1090,16 +1354,20 @@ export const CloudSyncEngine = {
         const metadataJson = JSON.stringify({
           name: fileName,
           parents: [folderId],
-          mimeType: 'application/json',
+          mimeType: contentType,
         });
-        const multipartBody =
-          `--${boundary}\r\n` +
-          `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-          `${metadataJson}\r\n` +
-          `--${boundary}\r\n` +
-          `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-          `${rawJson}\r\n` +
-          `--${boundary}--`;
+        const bodyBlob = isBinaryZip
+          ? new Blob([
+              `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataJson}\r\n`,
+              `--${boundary}\r\nContent-Type: application/zip\r\n\r\n`,
+              (() => {
+                const copy = new Uint8Array(payload.byteLength);
+                copy.set(payload);
+                return copy.buffer;
+              })(),
+              `\r\n--${boundary}--`,
+            ])
+          : `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataJson}\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${payload}\r\n--${boundary}--`;
 
         const resp = await fetch(
           'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,modifiedTime',
@@ -1109,7 +1377,7 @@ export const CloudSyncEngine = {
               Authorization: `Bearer ${token}`,
               'Content-Type': `multipart/related; boundary=${boundary}`,
             },
-            body: multipartBody,
+            body: bodyBlob,
           }
         );
         const data = (await resp.json()) as {
@@ -1119,6 +1387,10 @@ export const CloudSyncEngine = {
           modifiedTime?: string;
           error?: { message?: string };
         };
+        if (resp.status === 401) {
+          clearTokenBundle(provider);
+          throw new Error('Session expired. Click Reconnect to authorize access again.');
+        }
         if (!resp.ok || !data.id) {
           throw new Error(data.error?.message || `Google Drive upload failed (HTTP ${resp.status}).`);
         }
@@ -1126,20 +1398,28 @@ export const CloudSyncEngine = {
           provider: 'GOOGLE_DRIVE',
           remoteId: data.id,
           name: data.name || fileName,
-          sizeBytes: Number(data.size || rawJson.length),
+          sizeBytes: Number(data.size || payloadSize),
           modifiedAt: data.modifiedTime ? Date.parse(data.modifiedTime) : Date.now(),
         };
       } else {
         const encodedFolder = encodeURIComponent(BACKUP_FOLDER_NAME);
         const encodedFile = encodeURIComponent(fileName);
         const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${encodedFolder}/${encodedFile}:/content`;
+        let body: string | ArrayBuffer;
+        if (isBinaryZip) {
+          const copy = new Uint8Array(payload.byteLength);
+          copy.set(payload);
+          body = copy.buffer;
+        } else {
+          body = payload;
+        }
         const resp = await fetch(url, {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            'Content-Type': contentType,
           },
-          body: rawJson,
+          body,
         });
         const data = (await resp.json()) as {
           id?: string;
@@ -1148,6 +1428,10 @@ export const CloudSyncEngine = {
           lastModifiedDateTime?: string;
           error?: { message?: string };
         };
+        if (resp.status === 401) {
+          clearTokenBundle(provider);
+          throw new Error('Session expired. Click Reconnect to authorize access again.');
+        }
         if (!resp.ok || !data.id) {
           throw new Error(data.error?.message || `OneDrive upload failed (HTTP ${resp.status}).`);
         }
@@ -1155,7 +1439,7 @@ export const CloudSyncEngine = {
           provider: 'ONEDRIVE',
           remoteId: data.id,
           name: data.name || fileName,
-          sizeBytes: Number(data.size || rawJson.length),
+          sizeBytes: Number(data.size || payloadSize),
           modifiedAt: data.lastModifiedDateTime ? Date.parse(data.lastModifiedDateTime) : Date.now(),
         };
       }
@@ -1177,6 +1461,10 @@ export const CloudSyncEngine = {
       `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
+    if (searchResp.status === 401) {
+      clearTokenBundle('GOOGLE_DRIVE');
+      throw new Error('Session expired. Click Reconnect to authorize access again.');
+    }
     const searchJson = (await searchResp.json()) as { files?: { id: string }[] };
     if (searchResp.ok && searchJson.files && searchJson.files.length > 0) {
       return searchJson.files[0].id;
@@ -1211,6 +1499,10 @@ export const CloudSyncEngine = {
         );
         const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=15&fields=files(id,name,size,modifiedTime)`;
         const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (resp.status === 401) {
+          clearTokenBundle(provider);
+          throw new Error('Session expired. Click Reconnect to authorize access again.');
+        }
         const json = (await resp.json()) as {
           files?: { id: string; name?: string; size?: string; modifiedTime?: string }[];
           error?: { message?: string };
@@ -1230,6 +1522,10 @@ export const CloudSyncEngine = {
         const encodedFolder = encodeURIComponent(BACKUP_FOLDER_NAME);
         const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${encodedFolder}:/children?$orderby=lastModifiedDateTime desc&$top=15`;
         const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (resp.status === 401) {
+          clearTokenBundle(provider);
+          throw new Error('Session expired. Click Reconnect to authorize access again.');
+        }
         if (resp.status === 404) {
           return [];
         }
@@ -1258,19 +1554,11 @@ export const CloudSyncEngine = {
     }
   },
 
-  async downloadCloudBackupPayload(
-    remote: RemoteCloudBackupFile
-  ): Promise<{ bytes: Uint8Array; isZip: boolean }> {
-    const token = await this.ensureValidAccessToken(remote.provider);
-    const maxBytes = remote.name.toLowerCase().endsWith('.zip')
-      ? MAX_ZIP_BACKUP_BYTES
-      : MAX_TEXT_BACKUP_BYTES;
-    if (remote.sizeBytes > maxBytes) {
-      throw new Error(
-        `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
-      );
+  async downloadCloudBackupBytes(remote: RemoteCloudBackupFile): Promise<Uint8Array> {
+    if (remote.sizeBytes > MAX_CLOUD_DOWNLOAD_BYTES) {
+      throw new Error(`Remote archive (${Math.round(remote.sizeBytes / (1024 * 1024))} MB) exceeds safe 80 MB download limit.`);
     }
-
+    const token = await this.ensureValidAccessToken(remote.provider);
     const url =
       remote.provider === 'GOOGLE_DRIVE'
         ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(remote.remoteId)}?alt=media`
@@ -1279,83 +1567,28 @@ export const CloudSyncEngine = {
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (resp.status === 401) {
+      clearTokenBundle(remote.provider);
+      const errMsg = 'Session expired. Click Reconnect to authorize access again.';
+      writeMeta(remote.provider, { lastError: errMsg });
+      throw new Error(errMsg);
+    }
     if (!resp.ok) {
       throw new Error(`Failed to download remote archive (${resp.status}).`);
     }
-
-    const headerLen = Number(resp.headers?.get?.('content-length') || 0);
-    if (Number.isFinite(headerLen) && headerLen > maxBytes) {
-      throw new Error(
-        `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
-      );
+    const contentLen = Number(resp.headers.get('content-length') || 0);
+    if (contentLen > MAX_CLOUD_DOWNLOAD_BYTES) {
+      throw new Error('Remote archive exceeds safe 80 MB download limit.');
     }
-
-    let bytes: Uint8Array;
-    if (resp.body && typeof resp.body.getReader === 'function') {
-      const reader = resp.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let total = 0;
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) {
-            total += value.byteLength;
-            if (total > maxBytes) {
-              await reader.cancel();
-              throw new Error(
-                `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
-              );
-            }
-            chunks.push(value);
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      bytes = new Uint8Array(total);
-      let off = 0;
-      for (const c of chunks) {
-        bytes.set(c, off);
-        off += c.byteLength;
-      }
-    } else {
-      const buf = await resp.arrayBuffer();
-      if (buf.byteLength > maxBytes) {
-        throw new Error(
-          `Remote archive "${remote.name}" exceeds the ${maxBytes / (1024 * 1024)} MB safety limit.`
-        );
-      }
-      bytes = new Uint8Array(buf);
+    const buf = await resp.arrayBuffer();
+    if (buf.byteLength > MAX_CLOUD_DOWNLOAD_BYTES) {
+      throw new Error('Downloaded remote archive exceeds safe 80 MB limit.');
     }
-
-    const isZip =
-      (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) ||
-      remote.name.toLowerCase().endsWith('.zip');
-    return { bytes, isZip };
+    return new Uint8Array(buf);
   },
 
   async downloadCloudBackupText(remote: RemoteCloudBackupFile): Promise<string> {
-    const { bytes, isZip } = await this.downloadCloudBackupPayload(remote);
-    if (isZip) {
-      throw new Error('Remote file is a compressed .zip archive; use downloadCloudBackupPayload instead.');
-    }
+    const bytes = await this.downloadCloudBackupBytes(remote);
     return new TextDecoder('utf-8').decode(bytes);
-  },
-
-  async deleteCloudBackup(remote: RemoteCloudBackupFile): Promise<void> {
-    const token = await this.ensureValidAccessToken(remote.provider);
-    const url =
-      remote.provider === 'GOOGLE_DRIVE'
-        ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(remote.remoteId)}`
-        : `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(remote.remoteId)}`;
-
-    const resp = await fetch(url, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!resp.ok && resp.status !== 204) {
-      throw new Error(`Failed to delete remote archive (HTTP ${resp.status}).`);
-    }
   },
 };

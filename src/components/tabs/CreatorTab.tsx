@@ -20,15 +20,17 @@ import { PaperLanguageDetector } from '../../utils/paperLanguageDetector';
 import { getDisplayTypeLabel, shouldStackOptions } from '../../utils/questionFormatter';
 import { StructuredQuestionView } from '../StructuredQuestionView';
 import { LatexText } from '../LatexText';
+import { EmptyPaperPromptCard } from '../EmptyPaperPromptCard';
 
 interface CreatorTabProps {
-  currentPaper: QuestionPaper;
+  currentPaper: QuestionPaper | null;
   onSavePaper: (paper: QuestionPaper, silent?: boolean) => void;
   onNavigateToMaster: () => void;
   onNavigateToStudentPortal?: () => void;
   onNavigateToPrint?: () => void;
   onOpenCreateModal?: () => void;
   onOpenBatchImportModal?: () => void;
+  onNavigateToVault?: () => void;
   onOpenEditMetadata?: () => void;
   onOpenAuditModal?: () => void;
 }
@@ -40,6 +42,7 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
   onNavigateToPrint,
   onOpenCreateModal,
   onOpenBatchImportModal,
+  onNavigateToVault,
   onOpenEditMetadata,
   onOpenAuditModal,
 }) => {
@@ -49,36 +52,52 @@ export const CreatorTab: React.FC<CreatorTabProps> = ({
   const [showAnswersInPreview, setShowAnswersInPreview] = useState<boolean>(false);
 
   const metrics = useMemo(() => {
-    const total = currentPaper.questions.length;
-    const withKeys = currentPaper.questions.filter((q) => Boolean(AnswerKeyMatcher.normalizeKey(q.correctAnswer))).length;
-    const withExps = currentPaper.questions.filter((q) => Boolean(q.explanation?.trim())).length;
-    const msqCount = currentPaper.questions.filter((q) => AnswerKeyMatcher.isMultiSelect(q)).length;
-    const optECount = currentPaper.questions.filter((q) => Boolean(q.options.e?.trim())).length;
-    const verifiedCount = currentPaper.questions.filter((q) => Boolean(q.isVerified)).length;
-    const neutralizedCount = currentPaper.questions.filter((q) => Boolean(q.isNeutralized)).length;
+    const qs = currentPaper?.questions || [];
+    const total = qs.length;
+    const withKeys = qs.filter((q) => Boolean(AnswerKeyMatcher.normalizeKey(q.correctAnswer))).length;
+    const withExps = qs.filter((q) => Boolean(q.explanation?.trim())).length;
+    const msqCount = qs.filter((q) => AnswerKeyMatcher.isMultiSelect(q)).length;
+    const optECount = qs.filter((q) => Boolean(q.options.e?.trim())).length;
+    const verifiedCount = qs.filter((q) => Boolean(q.isVerified)).length;
+    const neutralizedCount = qs.filter((q) => Boolean(q.isNeutralized)).length;
     return { total, withKeys, withExps, msqCount, optECount, verifiedCount, neutralizedCount };
   }, [currentPaper]);
 
   const detectedLangs = useMemo(
     () =>
-      PaperLanguageDetector.detectLanguages(
-        currentPaper.questions.slice(0, 8).map((q) => q.question).join('\n'),
-        currentPaper.metadata.title
-      ),
+      currentPaper
+        ? PaperLanguageDetector.detectLanguages(
+            currentPaper.questions.slice(0, 8).map((q) => q.question).join('\n'),
+            currentPaper.metadata.title
+          )
+        : ['English'],
     [currentPaper]
   );
 
   const filteredPreviewQuestions = useMemo(() => {
+    const qs = currentPaper?.questions || [];
     const s = inspectSearch.trim().toLowerCase();
-    if (!s) return currentPaper.questions;
-    return currentPaper.questions.filter(
+    if (!s) return qs;
+    return qs.filter(
       (q) =>
         String(q.num) === s ||
         q.question.toLowerCase().includes(s) ||
         q.options.a.toLowerCase().includes(s) ||
         q.options.b.toLowerCase().includes(s)
     );
-  }, [currentPaper.questions, inspectSearch]);
+  }, [currentPaper, inspectSearch]);
+
+  if (!currentPaper) {
+    return (
+      <EmptyPaperPromptCard
+        title="Welcome to ExamSet Workbench"
+        description="Start fresh just like Android: create your first MCQ/MSQ Question Set, batch-import .txt/.json files, or restore an existing .examset.zip / .examset.json backup."
+        onCreateSet={onOpenCreateModal}
+        onBatchImport={onOpenBatchImportModal}
+        onOpenVault={onNavigateToVault}
+      />
+    );
+  }
 
   const safeIdx = Math.min(inspectIdx, Math.max(0, filteredPreviewQuestions.length - 1));
   const activeQ = filteredPreviewQuestions[safeIdx];
